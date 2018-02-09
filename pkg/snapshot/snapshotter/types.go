@@ -16,31 +16,14 @@ package snapshotter
 
 import (
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
+	"github.com/robfig/cron"
 	"github.com/sirupsen/logrus"
 )
 
 // Snapshotter is a struct for etcd snapshot taker
 type Snapshotter struct {
 	logger    *logrus.Logger
-	endpoints []string
-	schedule  string
+	endpoints string
+	schedule  cron.Schedule
 	store     snapstore.SnapStore
-}
-
-//NewSnapshotter returns the snpashotter object
-func NewSnapshotter(endpoints []string, schedule string, store snapstore.SnapStore, logger *logrus.Logger) *Snapshotter {
-	return &Snapshotter{
-		logger:    logger,
-		schedule:  schedule,
-		endpoints: endpoints,
-		store:     store,
-	}
-}
-
-// Run process loop for scheduled backup
-func (ssr *Snapshotter) Run(stopCh <-chan struct{}) {
-	select {
-	case <-stopCh:
-		return
-	}
 }

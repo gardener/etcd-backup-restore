@@ -30,7 +30,7 @@ type LocalSnapStore struct {
 // NewLocalSnapStore return the new local disk based snapstore
 func NewLocalSnapStore(prefix string) (*LocalSnapStore, error) {
 	if len(prefix) != 0 {
-		err := os.Mkdir(prefix, os.ModeDir)
+		err := os.MkdirAll(prefix, 0700)
 		if err != nil && !os.IsExist(err) {
 			return nil, err
 		}

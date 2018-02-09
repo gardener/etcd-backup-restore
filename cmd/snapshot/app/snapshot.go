@@ -17,6 +17,7 @@ package app
 import (
 	"fmt"
 	"os"
+	"path"
 
 	"github.com/gardener/etcd-backup-restore/pkg/snapshot/snapshotter"
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
@@ -27,18 +28,16 @@ import (
 const (
 	envStorageContainer = "STORAGE_CONTAINER"
 	defaultLocalStore   = "default.etcd.bkp"
+	backupFormatVersion = "v1"
 )
+
+var logger = logrus.New()
 
 // configuration is struct to hold configuration for utility
 type configuration struct {
 	schedule        string
-	etcdEndpoints   []string
+	etcdEndpoints   string
 	storageProvider string
-}
-
-// validate will validate the configuration
-func validate(config *configuration) error {
-	return nil
 }
 
 // NewCommandStartSnapshotter create cobra command for snapshot
@@ -47,22 +46,24 @@ func NewCommandStartSnapshotter(stopCh <-chan struct{}) *cobra.Command {
 	var command = &cobra.Command{
 		Use:   "snapshot",
 		Short: "Backup the tcd periodically.",
-		Long: `Snapshot utility will backup the etcd at regular interval. It supports \
+		Long: `Snapshot utility will backup the etcd at regular interval. It supports
 storing snapshots on various cloud storage providers as well as local disk location.`,
 		Run: func(cmd *cobra.Command, args []string) {
-			logger := logrus.New()
-			err := validate(config)
-			if err != nil {
-				logger.Errorf("invalid configuration provided: %v\n", err)
-				return
-			}
 			ss, err := getSnapstore(config.storageProvider)
 			if err != nil {
-				logger.Errorf("unable to create snapstore from configured storage provider: %v\n", err)
+				logger.Errorf("Failed to create snapstore from configured storage provider: %v", err)
 				return
 			}
-			ssr := snapshotter.NewSnapshotter(config.etcdEndpoints, config.schedule, ss, logger)
-			ssr.Run(stopCh)
+			ssr, err := snapshotter.NewSnapshotter(config.etcdEndpoints, config.schedule, ss, logger)
+			if err != nil {
+				logger.Errorf("Failed to creat snapshotter: %v", err)
+				return
+			}
+			err = ssr.Run(stopCh)
+			if err != nil {
+				logger.Errorf("Snapshotter failed with error: %v", err)
+				return
+			}
 			logger.Printf("Shutting down...")
 			return
 		},
@@ -73,7 +74,7 @@ storing snapshots on various cloud storage providers as well as local disk locat
 
 // initializeFlags adds the flags to <cmd>
 func initializeFlags(config *configuration, cmd *cobra.Command) {
-	cmd.Flags().StringArrayVarP(&config.etcdEndpoints, "etcd-endpoints", "e", []string{"http://localhost:2379"}, "comma separate list of etcd endpoints")
+	cmd.Flags().StringVarP(&config.etcdEndpoints, "etcd-endpoints", "e", "http://localhost:2379", "comma separated list of etcd endpoints")
 	cmd.Flags().StringVar(&config.storageProvider, "storage-provider", snapstore.SnapstoreProviderLocal, "snapshot storage provider")
 	cmd.Flags().StringVarP(&config.schedule, "schedule", "s", "* */1 * * *", "schedule for snapshots")
 }
@@ -86,13 +87,13 @@ func getSnapstore(storageProvider string) (snapstore.SnapStore, error) {
 		if container == "" {
 			container = defaultLocalStore
 		}
-		return snapstore.NewLocalSnapStore(container)
+		return snapstore.NewLocalSnapStore(path.Join(container, backupFormatVersion))
 	case snapstore.SnapstoreProviderS3:
 		container := os.Getenv(envStorageContainer)
 		if container == "" {
 			return nil, fmt.Errorf("storage container name not specified")
 		}
-		return snapstore.NewS3SnapStore(container, "")
+		return snapstore.NewS3SnapStore(container, backupFormatVersion)
 	default:
 		return nil, fmt.Errorf("unsupported storage provider : %s", storageProvider)
 

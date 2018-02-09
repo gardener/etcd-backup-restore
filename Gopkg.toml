@@ -29,3 +29,11 @@
 [[constraint]]
   name = "github.com/spf13/cobra"
   version = "0.0.1"
+
+[[constraint]]
+  name = "github.com/robfig/cron"
+  version = "1.0.0"
+
+[[constraint]]
+  name = "github.com/coreos/etcd"
+  version = "3.2.15"
