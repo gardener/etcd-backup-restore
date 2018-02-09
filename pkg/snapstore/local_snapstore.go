@@ -29,9 +29,11 @@ type LocalSnapStore struct {
 
 // NewLocalSnapStore return the new local disk based snapstore
 func NewLocalSnapStore(prefix string) (*LocalSnapStore, error) {
-	err := os.Mkdir(prefix, os.ModeDir)
-	if err != nil && !os.IsExist(err) {
-		return nil, err
+	if len(prefix) != 0 {
+		err := os.Mkdir(prefix, os.ModeDir)
+		if err != nil && !os.IsExist(err) {
+			return nil, err
+		}
 	}
 	return &LocalSnapStore{
 		prefix: prefix,

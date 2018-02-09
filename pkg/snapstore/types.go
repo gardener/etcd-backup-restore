@@ -34,3 +34,10 @@ type SnapStore interface {
 	// Size returns the size of snapshot
 	Size(string) (int64, error)
 }
+
+const (
+	// SnapstoreProviderLocal is constant for local disk storage provider
+	SnapstoreProviderLocal = "Local"
+	// SnapstoreProviderS3 is constant for aws S3 storage provider
+	SnapstoreProviderS3 = "S3"
+)
