@@ -38,15 +38,16 @@ type configuration struct {
 	schedule        string
 	etcdEndpoints   string
 	storageProvider string
+	maxBackups      int
 }
 
-// NewCommandStartSnapshotter create cobra command for snapshot
-func NewCommandStartSnapshotter(stopCh <-chan struct{}) *cobra.Command {
+// NewSnapshotCommand create cobra command for snapshot
+func NewSnapshotCommand(stopCh <-chan struct{}) *cobra.Command {
 	config := &configuration{}
 	var command = &cobra.Command{
-		Use:   "snapshot",
-		Short: "Backup the tcd periodically.",
-		Long: `Snapshot utility will backup the etcd at regular interval. It supports
+		Use:   "etcd-backup",
+		Short: "Backup the etcd periodically.",
+		Long: `Backup utility will backup the etcd at regular interval. It supports
 storing snapshots on various cloud storage providers as well as local disk location.`,
 		Run: func(cmd *cobra.Command, args []string) {
 			ss, err := getSnapstore(config.storageProvider)
@@ -54,7 +55,7 @@ storing snapshots on various cloud storage providers as well as local disk locat
 				logger.Errorf("Failed to create snapstore from configured storage provider: %v", err)
 				return
 			}
-			ssr, err := snapshotter.NewSnapshotter(config.etcdEndpoints, config.schedule, ss, logger)
+			ssr, err := snapshotter.NewSnapshotter(config.etcdEndpoints, config.schedule, ss, logger, config.maxBackups)
 			if err != nil {
 				logger.Errorf("Failed to creat snapshotter: %v", err)
 				return
@@ -65,6 +66,7 @@ storing snapshots on various cloud storage providers as well as local disk locat
 				return
 			}
 			logger.Printf("Shutting down...")
+			//TODO: do cleanup work here.
 			return
 		},
 	}
@@ -77,6 +79,7 @@ func initializeFlags(config *configuration, cmd *cobra.Command) {
 	cmd.Flags().StringVarP(&config.etcdEndpoints, "etcd-endpoints", "e", "http://localhost:2379", "comma separated list of etcd endpoints")
 	cmd.Flags().StringVar(&config.storageProvider, "storage-provider", snapstore.SnapstoreProviderLocal, "snapshot storage provider")
 	cmd.Flags().StringVarP(&config.schedule, "schedule", "s", "* */1 * * *", "schedule for snapshots")
+	cmd.Flags().IntVarP(&config.maxBackups, "maxBackups", "m", 7, "maximum number of previous backups to keep")
 }
 
 // getSnapstore returns the snapstore object for give storageProvider with specified container

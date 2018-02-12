@@ -20,6 +20,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path"
+	"sort"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
@@ -69,10 +70,10 @@ func NewS3FromClient(bucket, prefix string, cli *s3.S3) *S3SnapStore {
 }
 
 // Fetch should open reader for the snapshot file from store
-func (s *S3SnapStore) Fetch(snap string) (io.ReadCloser, error) {
+func (s *S3SnapStore) Fetch(snap Snapshot) (io.ReadCloser, error) {
 	resp, err := s.client.GetObject(&s3.GetObjectInput{
 		Bucket: aws.String(s.bucket),
-		Key:    aws.String(path.Join(s.prefix, snap)),
+		Key:    aws.String(path.Join(s.prefix, snap.SnapPath)),
 	})
 	if err != nil {
 		return nil, err
@@ -82,11 +83,11 @@ func (s *S3SnapStore) Fetch(snap string) (io.ReadCloser, error) {
 }
 
 // Size returns the size of snapshot
-func (s *S3SnapStore) Size(snap string) (int64, error) {
-	fmt.Printf("requesting size of key %v on bucket %v", path.Join(s.prefix, snap), s.bucket)
+func (s *S3SnapStore) Size(snap Snapshot) (int64, error) {
+	fmt.Printf("requesting size of key %v on bucket %v", path.Join(s.prefix, snap.SnapPath), s.bucket)
 	resp, err := s.client.HeadObject(&s3.HeadObjectInput{
 		Bucket: aws.String(s.bucket),
-		Key:    aws.String(path.Join(s.prefix, snap)),
+		Key:    aws.String(path.Join(s.prefix, snap.SnapPath)),
 	})
 	if err != nil {
 		return 0, err
@@ -96,7 +97,7 @@ func (s *S3SnapStore) Size(snap string) (int64, error) {
 }
 
 // Save will write the snapshot to store
-func (s *S3SnapStore) Save(snap string, r io.Reader) error {
+func (s *S3SnapStore) Save(snap Snapshot, r io.Reader) error {
 	// since s3 requires io.ReadSeeker, this is the required hack.
 	tmpfile, err := ioutil.TempFile(tmpDir, tmpBackupFilePrefix)
 	if err != nil {
@@ -118,7 +119,7 @@ func (s *S3SnapStore) Save(snap string, r io.Reader) error {
 	// S3 put is atomic, so let's go ahead and put the key directly.
 	_, err = s.client.PutObject(&s3.PutObjectInput{
 		Bucket: aws.String(s.bucket),
-		Key:    aws.String(path.Join(s.prefix, snap)),
+		Key:    aws.String(path.Join(s.prefix, snap.SnapPath)),
 		Body:   tmpfile,
 	})
 
@@ -126,7 +127,7 @@ func (s *S3SnapStore) Save(snap string, r io.Reader) error {
 }
 
 // List will list the snapshots from store
-func (s *S3SnapStore) List() ([]string, error) {
+func (s *S3SnapStore) List() (SnapList, error) {
 	resp, err := s.client.ListObjects(&s3.ListObjectsInput{
 		Bucket: aws.String(s.bucket),
 		Prefix: aws.String(fmt.Sprintf("%s/", s.prefix)),
@@ -135,11 +136,26 @@ func (s *S3SnapStore) List() ([]string, error) {
 		return nil, err
 	}
 
-	keys := []string{}
+	var snapList SnapList
 	for _, key := range resp.Contents {
 		k := (*key.Key)[len(*resp.Prefix):]
-		keys = append(keys, k)
+		s, err := ParseSnapshot(k)
+		if err != nil {
+			// Warning
+			fmt.Printf("Invalid snapshot found. Ignoring it:%s\n", k)
+		} else {
+			snapList = append(snapList, s)
+		}
 	}
+	sort.Sort(snapList)
+	return snapList, nil
+}
 
-	return keys, nil
+// Delete should delete the snapshot file from store
+func (s *S3SnapStore) Delete(snap Snapshot) error {
+	_, err := s.client.DeleteObject(&s3.DeleteObjectInput{
+		Bucket: aws.String(s.bucket),
+		Key:    aws.String(path.Join(s.prefix, snap.SnapPath)),
+	})
+	return err
 }

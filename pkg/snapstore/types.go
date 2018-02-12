@@ -16,6 +16,7 @@ package snapstore
 
 import (
 	"io"
+	"time"
 )
 
 // SnapStore is the interface to be implemented for different
@@ -24,15 +25,15 @@ import (
 // access files.
 type SnapStore interface {
 	// Fetch should open reader for the snapshot file from store
-	Fetch(string) (io.ReadCloser, error)
+	Fetch(Snapshot) (io.ReadCloser, error)
 	// List will list all snapshot files on store
-	List() ([]string, error)
+	List() (SnapList, error)
 	// Save will write the snapshot to store
-	Save(string, io.Reader) error
+	Save(Snapshot, io.Reader) error
 	// Delete should delete the snapshot file from store
-	Delete(string) error
+	Delete(Snapshot) error
 	// Size returns the size of snapshot
-	Size(string) (int64, error)
+	Size(Snapshot) (int64, error)
 }
 
 const (
@@ -40,4 +41,19 @@ const (
 	SnapstoreProviderLocal = "Local"
 	// SnapstoreProviderS3 is constant for aws S3 storage provider
 	SnapstoreProviderS3 = "S3"
+
+	// SnapshotKindFull is constant for full snapshot kind
+	SnapshotKindFull = "Full"
 )
+
+// Snapshot structure represents the metadata of snapshot
+type Snapshot struct {
+	Kind          string //incr:incremental,full:full
+	StartRevision int64
+	LastRevision  int64 //latest revision on snapshot
+	CreatedOn     time.Time
+	SnapPath      string
+}
+
+// SnapList is list of snapshots
+type SnapList []*Snapshot

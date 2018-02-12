@@ -31,7 +31,7 @@ func main() {
 	}
 
 	stopCh := setupSignalHandler()
-	command := app.NewCommandStartSnapshotter(stopCh)
+	command := app.NewSnapshotCommand(stopCh)
 	if err := command.Execute(); err != nil {
 		fmt.Println(err)
 		os.Exit(1)

@@ -22,8 +22,9 @@ import (
 
 // Snapshotter is a struct for etcd snapshot taker
 type Snapshotter struct {
-	logger    *logrus.Logger
-	endpoints string
-	schedule  cron.Schedule
-	store     snapstore.SnapStore
+	logger     *logrus.Logger
+	endpoints  string
+	schedule   cron.Schedule
+	store      snapstore.SnapStore
+	maxBackups int
 }

@@ -12,14 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package utils
+package snapstore_test
 
 import (
-	"fmt"
-	"time"
+	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/gomega"
+
+	"testing"
 )
 
-// GetFullSnapshotName returns the snapshot name for given revision
-func GetFullSnapshotName(lastRevision int64) string {
-	return fmt.Sprintf("full-%08d-%08d-%08d", 0, lastRevision, time.Now().Unix())
+func TestSnapstore(t *testing.T) {
+	RegisterFailHandler(Fail)
+	RunSpecs(t, "Snapstore Suite")
 }

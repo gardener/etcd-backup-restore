@@ -20,24 +20,24 @@ import (
 	"time"
 
 	"github.com/coreos/etcd/clientv3"
-	"github.com/gardener/etcd-backup-restore/pkg/snapshot/utils"
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	"github.com/robfig/cron"
 	"github.com/sirupsen/logrus"
 )
 
 // NewSnapshotter returns the snapshotter object.
-func NewSnapshotter(endpoints string, schedule string, store snapstore.SnapStore, logger *logrus.Logger) (*Snapshotter, error) {
+func NewSnapshotter(endpoints string, schedule string, store snapstore.SnapStore, logger *logrus.Logger, maxBackups int) (*Snapshotter, error) {
 	logger.Printf("Validating schedule...")
 	sdl, err := cron.Parse(schedule)
 	if err != nil {
 		return nil, fmt.Errorf("invalid schedule provied %s : %v", schedule, err)
 	}
 	return &Snapshotter{
-		logger:    logger,
-		schedule:  sdl,
-		endpoints: endpoints,
-		store:     store,
+		logger:     logger,
+		schedule:   sdl,
+		endpoints:  endpoints,
+		store:      store,
+		maxBackups: maxBackups,
 	}, nil
 }
 
@@ -54,16 +54,17 @@ func (ssr *Snapshotter) Run(stopCh <-chan struct{}) error {
 		case <-stopCh:
 			return nil
 		case <-time.After(effective.Sub(now)):
-			ssr.logger.Infof("Taking next snapshot for time :%s", time.Now().Local())
+			ssr.logger.Infof("Taking next snapshot for time: %s", time.Now().Local())
 			err := ssr.takeFUllSnapshot()
 			if err != nil {
 				// As per design principle, in business critical service if backup is not working,
 				// it's better to failed the process. So, we are quiting here
 				return err
 			}
-
 			now = time.Now()
 			effective = ssr.schedule.Next(now)
+
+			ssr.garbageCollector()
 			if effective.IsZero() {
 				ssr.logger.Infoln("There are no backup scheduled for future. Stopping now.")
 				return nil
@@ -99,11 +100,35 @@ func (ssr *Snapshotter) takeFUllSnapshot() error {
 		return err
 	}
 
-	snapName := utils.GetFullSnapshotName(lastRevision)
-	err = ssr.store.Save(snapName, rc)
+	s := snapstore.Snapshot{
+		Kind:          snapstore.SnapshotKindFull,
+		CreatedOn:     time.Now(),
+		StartRevision: 0,
+		LastRevision:  lastRevision,
+	}
+	s.GenerateSnapshotName()
+	err = ssr.store.Save(s, rc)
 	if err != nil {
 		ssr.logger.Warnf("Failed to save snapshot: %v", err)
 		return err
 	}
 	return nil
+}
+
+// garbageCollector basically consider the older backups as garbage and deletes it
+func (ssr *Snapshotter) garbageCollector() {
+	ssr.logger.Infoln("Executing garbage collection...")
+	snapList, err := ssr.store.List()
+	if err != nil {
+		ssr.logger.Warnf("Failed to list snapshots: %v", err)
+		return
+	}
+	snapLen := len(snapList)
+	for i := 0; i < (snapLen - ssr.maxBackups); i++ {
+		ssr.logger.Infof("Deleting old snapshot: %s", snapList[i].SnapPath)
+		err = ssr.store.Delete(*snapList[i])
+		if err != nil {
+			ssr.logger.Warnf("Failed to delete snapshot: %s", snapList[i].SnapPath)
+		}
+	}
 }

@@ -16,3 +16,6 @@
 # Build Binaries
 bin
 default.etcd.bkp
+
+# IDE config
+.vscode
