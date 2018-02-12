@@ -55,7 +55,7 @@ build-backup:
 .PHONY: docker-image-backup
 docker-image-backup: 
 	@if [[ ! -f $(BIN_DIR)/linux-amd64/etcd-backup ]]; then echo "No binary found. Please run 'make docker-build'"; false; fi
-	@docker build -t $(BACKUP_IMAGE_REPOSITORY):$(BACKUP_IMAGE_TAG) -f $(BUILD)/etcd-backup/Dockerfile --rm .
+	@docker build -t $(BACKUP_IMAGE_REPOSITORY):$(BACKUP_IMAGE_TAG) -f $(BUILD_DIR)/etcd-backup/Dockerfile --rm .
 
 .PHONY: docker-push-backup
 docker-push-backup:
