@@ -34,7 +34,7 @@ Apache 2 license (https://github.com/coreos/etcd/blob/master/LICENSE).
 Cron.  
 https://github.com/robfig/cron.  
 Copyright (C) 2012 Rob Figueiredo.  
-MIT license(https://github.com/robfig/cron/blob/master/LICENSE)
+MIT license (https://github.com/robfig/cron/blob/master/LICENSE)
 
 Logrus.  
 https://github.com/sirupsen/logrus.  
@@ -44,4 +44,14 @@ MIT license (https://github.com/sirupsen/logrus/blob/master/LICENSE)
 AWS SDK for Go.  
 https://github.com/aws/aws-sdk-go.  
 Copyright 2015 Amazon.com, Inc. or its affiliates. All Rights Reserved.  
-Apache 2 license(https://github.com/aws/aws-sdk-go/blob/master/LICENSE.txt)
+Apache 2 license (https://github.com/aws/aws-sdk-go/blob/master/LICENSE.txt)
+
+Ginkgo.  
+https://github.com/onsi/ginkgo.  
+Copyright (c) 2013-2014 Onsi Fakhouri.  
+MIT License (https://github.com/onsi/ginkgo/blob/master/LICENSE)
+
+Gomega.  
+https://github.com/onsi/gomega.  
+Copyright (c) 2013-2014 Onsi Fakhouri.  
+MIT License (https://github.com/onsi/gomega/blob/master/LICENSE)
