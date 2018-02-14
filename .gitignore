@@ -16,6 +16,10 @@
 # Build Binaries
 bin
 default.etcd.bkp
+default.etcd
 
 # IDE config
 .vscode
+
+# devlopers workspace
+dev
