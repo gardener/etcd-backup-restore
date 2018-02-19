@@ -30,12 +30,12 @@ spec:
     spec:
       initContainers:
         - name: restore
-          image: <docker.io/gardener/etcdbr/etcd-restore:0.1.0>     # change image here
+          image: <docker.io/gardener/etcdbr/etcdbrctl:0.1.0>     # change image here
           imagePullPolicy: Always
           command: 
           - /bin/sh
           - -ec
-          - "if [ ! -d /var/etcd/data ]; then /usr/local/bin/etcd-restore --data-dir=/var/etcd/data --storage-provider=S3; fi"
+          - "if [ ! -d /var/etcd/data ]; then etcdbrctl restore --data-dir=/var/etcd/data --storage-provider=S3; fi"
           env:
             - name: STORAGE_CONTAINER
               value: i342057-etcd-poc
@@ -77,11 +77,12 @@ spec:
             name: etcd-data
         - name: backup
           command:
-          - /usr/local/bin/etcd-backup
+          - etcdbrctl
+          - snapshot
           - --schedule=*/5 * * * *
-          - --maxBackups=5
+          - --max-backups=5
           - --storage-provider=S3
-          image: <docker.io/gardener/etcdbr/etcd-backup:0.1.0>    # change image here
+          image: <docker.io/gardener/etcdbr/etcdbrctl:0.1.0>    # change image here
           imagePullPolicy: Always
           env:
             - name: STORAGE_CONTAINER

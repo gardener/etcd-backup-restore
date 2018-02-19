@@ -53,7 +53,7 @@ func NewRestorer(store snapstore.SnapStore, logger *logrus.Logger) *Restorer {
 func (r *Restorer) Restore(ro RestoreOptions) error {
 	var err error
 	if ro.Snapshot.SnapPath == "" {
-		r.logger.Warnf("Base snapshot path not provied. Will do nothing.")
+		r.logger.Warnf("Base snapshot path not provided. Will do nothing.")
 		return nil
 	}
 
@@ -171,14 +171,6 @@ func makeDB(snapdir string, snap snapstore.Snapshot, commit int, ss snapstore.Sn
 	s.Close()
 	be.Close()
 	return nil
-}
-
-func initialClusterFromName(name string) string {
-	n := name
-	if name == "" {
-		n = "default"
-	}
-	return fmt.Sprintf("%s=http://localhost:2380", n)
 }
 
 func makeWALAndSnap(waldir, snapdir string, cl *membership.RaftCluster, restoreName string) error {

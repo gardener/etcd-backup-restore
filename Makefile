@@ -12,19 +12,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-VCS                                := github.com
-ORGANIZATION                       := gardener
-PROJECT                            := etcd-backup-restore
-REPOSITORY                         := $(VCS)/$(ORGANIZATION)/$(PROJECT)
-VERSION                            := 0.1.0
-LD_FLAGS                           := "-w -X $(REPOSITORY)/pkg/version.Version=$(VERSION)"
-PACKAGES                           := $(shell go list ./... | grep -vE '/vendor/')
-LINT_FOLDERS                       := $(shell echo $(PACKAGES) | sed "s|$(REPOSITORY)|.|g")
-REGISTRY                           := docker.io/gardener/etcdbr
-BACKUP_IMAGE_REPOSITORY		       := $(REGISTRY)/etcd-backup
-BACKUP_IMAGE_TAG          		   := $(VERSION)
-RESTORE_IMAGE_REPOSITORY		   := $(REGISTRY)/etcd-restore
-RESTORE_IMAGE_TAG          		   := $(VERSION)
+VCS                 := github.com
+ORGANIZATION        := gardener
+PROJECT             := etcd-backup-restore
+REPOSITORY          := $(VCS)/$(ORGANIZATION)/$(PROJECT)
+VERSION             := 0.1.0
+LD_FLAGS            := "-w -X $(REPOSITORY)/pkg/version.Version=$(VERSION)"
+PACKAGES            := $(shell go list ./... | grep -vE '/vendor/')
+LINT_FOLDERS        := $(shell echo $(PACKAGES) | sed "s|$(REPOSITORY)|.|g")
+REGISTRY            := docker.io/gardener/etcdbr
+IMAGE_REPOSITORY    := $(REGISTRY)/etcdbrctl
+IMAGE_TAG           := $(VERSION)
 
 BUILD_DIR        := build
 BIN_DIR          := bin
@@ -36,14 +34,10 @@ USER             := $(shell id -u -n)
 export PATH
 export GOBIN
 
-.PHONY: dev-backup
-dev-backup: 
-	@go build -o $(BIN_DIR)/etcd-backup $(GO_EXTRA_FLAGS) -ldflags $(LD_FLAGS) cmd/snapshot/main.go
+.PHONY: dev
+dev: 
+	@go build -o $(BIN_DIR)/etcdbrctl $(GO_EXTRA_FLAGS) -ldflags $(LD_FLAGS) main.go
 	
-.PHONY: dev-restore
-dev-restore: 
-	@go build -o $(BIN_DIR)/etcd-restore $(GO_EXTRA_FLAGS) -ldflags $(LD_FLAGS) cmd/initializer/main.go
-
 .PHONY: verify
 verify: vet fmt lint
 
@@ -52,35 +46,18 @@ revendor:
 	@dep ensure -update
 
 .PHONY: build
-build: build-backup build-restore
+build: 
+	@env GOOS=linux GOARCH=amd64 go build -o $(BIN_DIR)/linux-amd64/etcdbrctl $(GO_EXTRA_FLAGS) -ldflags $(LD_FLAGS) main.go
 
-.PHONY: build-backup
-build-backup: 
-	@env GOOS=linux GOARCH=amd64 go build -o $(BIN_DIR)/linux-amd64/etcd-backup $(GO_EXTRA_FLAGS) -ldflags $(LD_FLAGS) cmd/snapshot/main.go
+.PHONY: docker-image
+docker-image: 
+	@if [[ ! -f $(BIN_DIR)/linux-amd64/etcdbrctl ]]; then echo "No binary found. Please run 'make build'"; false; fi
+	@docker build -t $(IMAGE_REPOSITORY):$(IMAGE_TAG) -f $(BUILD_DIR)/Dockerfile --rm .
 
-.PHONY: build-restore
-build-restore: 
-	@env GOOS=linux GOARCH=amd64 go build -o $(BIN_DIR)/linux-amd64/etcd-restore $(GO_EXTRA_FLAGS) -ldflags $(LD_FLAGS) cmd/initializer/main.go
-
-.PHONY: docker-image-backup
-docker-image-backup: 
-	@if [[ ! -f $(BIN_DIR)/linux-amd64/etcd-backup ]]; then echo "No binary found. Please run 'make build-backup'"; false; fi
-	@docker build -t $(BACKUP_IMAGE_REPOSITORY):$(BACKUP_IMAGE_TAG) -f $(BUILD_DIR)/etcd-backup/Dockerfile --rm .
-
-.PHONY: docker-push-backup
-docker-push-backup:
-	@if ! docker images $(BACKUP_IMAGE_REPOSITORY) | awk '{ print $$2 }' | grep -q -F $(BACKUP_IMAGE_TAG); then echo "$(BACKUP_IMAGE_REPOSITORY) version $(BACKUP_IMAGE_TAG) is not yet built. Please run 'make docker-image-backup'"; false; fi
-	@docker push $(BACKUP_IMAGE_REPOSITORY):$(BACKUP_IMAGE_TAG)
-
-.PHONY: docker-image-restore
-docker-image-restore: 
-	@if [[ ! -f $(BIN_DIR)/linux-amd64/etcd-restore ]]; then echo "No binary found. Please run 'make build-restore'"; false; fi
-	@docker build -t $(RESTORE_IMAGE_REPOSITORY):$(RESTORE_IMAGE_TAG) -f $(BUILD_DIR)/etcd-restore/Dockerfile --rm .
-
-.PHONY: docker-push-restore
-docker-push-restore:
-	@if ! docker images $(RESTORE_IMAGE_REPOSITORY) | awk '{ print $$2 }' | grep -q -F $(RESTORE_IMAGE_TAG); then echo "$(RESTORE_IMAGE_REPOSITORY) version $(RESTORE_IMAGE_TAG) is not yet built. Please run 'make docker-image-restore'"; false; fi
-	@docker push $(RESTORE_IMAGE_REPOSITORY):$(RESTORE_IMAGE_TAG)
+.PHONY: docker-push
+docker-push:
+	@if ! docker images $(IMAGE_REPOSITORY) | awk '{ print $$2 }' | grep -q -F $(IMAGE_TAG); then echo "$(IMAGE_REPOSITORY) version $(IMAGE_TAG) is not yet built. Please run 'make docker-image'"; false; fi
+	@docker push $(IMAGE_REPOSITORY):$(IMAGE_TAG)
 
 .PHONY: clean
 clean:

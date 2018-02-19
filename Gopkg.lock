@@ -20,6 +20,7 @@
     "aws/request",
     "aws/session",
     "aws/signer/v4",
+    "internal/sdkrand",
     "internal/shareddefaults",
     "private/protocol",
     "private/protocol/query",
@@ -30,8 +31,8 @@
     "service/s3",
     "service/sts"
   ]
-  revision = "35d933260a22b7435667bd957f422029f6012e98"
-  version = "v1.12.76"
+  revision = "bff41fb23b7550368282029f6478819d6a99ae0f"
+  version = "v1.12.79"
 
 [[projects]]
   branch = "master"
@@ -274,8 +275,7 @@
 [[projects]]
   name = "github.com/robfig/cron"
   packages = ["."]
-  revision = "b024fc5ea0e34bc3f83d9941c8d60b0622bfaca4"
-  version = "v1"
+  revision = "2315d5715e36303a941d907f038da7f7c44c773b"
 
 [[projects]]
   name = "github.com/sirupsen/logrus"
@@ -332,7 +332,7 @@
     "lex/httplex",
     "trace"
   ]
-  revision = "f5dfe339be1d06f81b22525fe34671ee7d2c8904"
+  revision = "cbe0f9307d0156177f9dd5dc85da1a31abc5f2fb"
 
 [[projects]]
   branch = "master"
@@ -399,6 +399,7 @@
     "connectivity",
     "credentials",
     "encoding",
+    "encoding/proto",
     "grpclb/grpc_lb_v1/messages",
     "grpclog",
     "health/grpc_health_v1",
@@ -415,8 +416,8 @@
     "tap",
     "transport"
   ]
-  revision = "6b51017f791ae1cfbec89c52efdf444b13b550ef"
-  version = "v1.9.2"
+  revision = "8e4536a86ab602859c20df5ebfd0bd4228d08655"
+  version = "v1.10.0"
 
 [[projects]]
   branch = "v2"
@@ -427,6 +428,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "3c01e6786472bb3a8ad5cab08e51d12e14b96c6a36268256a8e48ff30b65a62c"
+  inputs-digest = "c688ea4230ee2d5e8a4d1984f5e6ee247d3cd0e0d88f055b1a2e038ce1bbeb36"
   solver-name = "gps-cdcl"
   solver-version = 1

@@ -17,6 +17,8 @@
 # Refer to https://github.com/golang/dep/blob/master/docs/Gopkg.toml.md
 # for detailed Gopkg.toml documentation.
 
+# This is hack to dep. Since dep follows semvar, which will eventually pull unexpected
+# commit of coreos/bbolt, the compilation on linux system will not work without this. 
 required = ["github.com/coreos/bbolt"]
 
 [[constraint]]
@@ -41,7 +43,7 @@ required = ["github.com/coreos/bbolt"]
 
 [[constraint]]
   name = "github.com/robfig/cron"
-  version = "1.0.0"
+  revision = "2315d5715e36303a941d907f038da7f7c44c773b"
 
 [[constraint]]
   name = "github.com/sirupsen/logrus"
