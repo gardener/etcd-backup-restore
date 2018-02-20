@@ -15,6 +15,8 @@
 package snapshotter
 
 import (
+	"time"
+
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	"github.com/robfig/cron"
 	"github.com/sirupsen/logrus"
@@ -22,9 +24,10 @@ import (
 
 // Snapshotter is a struct for etcd snapshot taker
 type Snapshotter struct {
-	logger     *logrus.Logger
-	endpoints  string
-	schedule   cron.Schedule
-	store      snapstore.SnapStore
-	maxBackups int
+	logger                *logrus.Logger
+	endpoints             string
+	schedule              cron.Schedule
+	store                 snapstore.SnapStore
+	maxBackups            int
+	etcdConnectionTimeout time.Duration
 }

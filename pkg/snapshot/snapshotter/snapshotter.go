@@ -26,18 +26,19 @@ import (
 )
 
 // NewSnapshotter returns the snapshotter object.
-func NewSnapshotter(endpoints string, schedule string, store snapstore.SnapStore, logger *logrus.Logger, maxBackups int) (*Snapshotter, error) {
+func NewSnapshotter(endpoints string, schedule string, store snapstore.SnapStore, logger *logrus.Logger, maxBackups int, etcdConnectionTimeout time.Duration) (*Snapshotter, error) {
 	logger.Printf("Validating schedule...")
-	sdl, err := cron.Parse(schedule)
+	sdl, err := cron.ParseStandard(schedule)
 	if err != nil {
 		return nil, fmt.Errorf("invalid schedule provied %s : %v", schedule, err)
 	}
 	return &Snapshotter{
-		logger:     logger,
-		schedule:   sdl,
-		endpoints:  endpoints,
-		store:      store,
-		maxBackups: maxBackups,
+		logger:                logger,
+		schedule:              sdl,
+		endpoints:             endpoints,
+		store:                 store,
+		maxBackups:            maxBackups,
+		etcdConnectionTimeout: etcdConnectionTimeout,
 	}, nil
 }
 
@@ -52,6 +53,8 @@ func (ssr *Snapshotter) Run(stopCh <-chan struct{}) error {
 	for {
 		select {
 		case <-stopCh:
+			//TODO: Cleanup work here
+			ssr.logger.Infof("Stop signal received. Terminating scheduled snapshot.")
 			return nil
 		case <-time.After(effective.Sub(now)):
 			ssr.logger.Infof("Taking next snapshot for time: %s", time.Now().Local())
@@ -85,7 +88,7 @@ func (ssr *Snapshotter) takeFUllSnapshot() error {
 		return err
 	}
 
-	ctx, cancel := context.WithTimeout(context.TODO(), 60*time.Second)
+	ctx, cancel := context.WithTimeout(context.TODO(), ssr.etcdConnectionTimeout*time.Second)
 	defer cancel()
 	resp, err := client.Get(ctx, "", clientv3.WithPrefix())
 	if err != nil {
@@ -99,7 +102,7 @@ func (ssr *Snapshotter) takeFUllSnapshot() error {
 		ssr.logger.Errorf("Failed to create etcd snapshot: %v", err)
 		return err
 	}
-
+	ssr.logger.Infof("Successfully opened snapshot reader on etcd")
 	s := snapstore.Snapshot{
 		Kind:          snapstore.SnapshotKindFull,
 		CreatedOn:     time.Now(),
