@@ -34,6 +34,26 @@ type SnapStore interface {
 	Delete(Snapshot) error
 	// Size returns the size of snapshot
 	Size(Snapshot) (int64, error)
+	// GetLates resturns the latet snapshot
+	GetLatest() (*Snapshot, error)
+}
+
+// SnapStoreImpl is global structure with implmentation for common implementation of
+// some of the API's defined
+type SnapStoreImpl struct {
+	SnapStore
+}
+
+// GetLatest returns the latest snapshot in snapstore
+func (s *SnapStoreImpl) GetLatest() (*Snapshot, error) {
+	snapList, err := s.List()
+	if err != nil {
+		return nil, err
+	}
+	if snapList.Len() == 0 {
+		return nil, nil
+	}
+	return snapList[snapList.Len()-1], nil
 }
 
 const (

@@ -34,7 +34,7 @@ const (
 
 // S3SnapStore is snapstore with local disk as backend
 type S3SnapStore struct {
-	SnapStore
+	SnapStoreImpl
 	prefix string
 	client *s3.S3
 	bucket string

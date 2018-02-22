@@ -23,3 +23,8 @@ default.etcd
 
 # devlopers workspace
 dev
+
+# Vendor directory
+vendor
+
+Gopkg.lock
