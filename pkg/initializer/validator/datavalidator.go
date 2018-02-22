@@ -2,21 +2,13 @@ package validator
 
 import (
 	"fmt"
-	"hash/crc32"
 	"io"
-	"io/ioutil"
 	"os"
-	"path/filepath"
-	"sort"
-	"strings"
 	"time"
 
+	"github.com/sirupsen/logrus"
+
 	"github.com/coreos/etcd/embed"
-	"github.com/coreos/etcd/raft/raftpb"
-	"github.com/coreos/etcd/snap"
-	"github.com/coreos/etcd/snap/snappb"
-	"github.com/coreos/etcd/wal"
-	"github.com/coreos/etcd/wal/walpb"
 )
 
 const (
@@ -26,28 +18,13 @@ const (
 	DATA_DIRECTORY_ERROR
 )
 
-var (
-	// A map of valid files that can be present in the snap folder.
-	validFiles = map[string]bool{
-		"db": true,
-	}
-	crcTable = crc32.MakeTable(crc32.Castagnoli)
-)
-
-const (
-	snapSuffix = ".snap"
-)
-
-type consistentIndex uint64
 type DataDirStatus int
 
-func (d *DataValidator) MemberDir() string { return filepath.Join(d.Config.DataDir, "member") }
+var logger *logrus.Logger
 
-func (d *DataValidator) WALDir() string { return filepath.Join(d.MemberDir(), "wal") }
-
-func (d *DataValidator) SnapDir() string { return filepath.Join(d.MemberDir(), "snap") }
-
-func (d *DataValidator) BackendPath() string { return filepath.Join(d.SnapDir(), "db") }
+func init() {
+	logger = logrus.New()
+}
 
 //Validate performs the steps required to validate data for Etcd instance.
 // The steps involed are:
@@ -66,14 +43,113 @@ func (d *DataValidator) Validate() (DataDirStatus, error) {
 	if !isEmpty {
 		err := d.CheckForDataCorruption()
 		if err != nil {
-			fmt.Println("Data directory corrupt.")
+			d.Logger.Error("Data directory corrupt.")
 			return DATA_DIRECTORY_CORRUPT, err
 		}
-		fmt.Println("Data directory valid.")
+		d.Logger.Info("Data directory valid.")
 		return DATA_DIRECTORY_VALID, nil
 	}
-	fmt.Println("Data directory empty.")
+	d.Logger.Info("Data directory empty.")
 	return DATA_DIRECTORY_EMPTY, nil
+}
+
+func (d *DataValidator) CheckForDataCorruption() error {
+	etcd, err := startEmbeddedEtcd(d.Config.DataDir)
+	if err != nil {
+		logger.Error("Corruption check error:", err)
+		return err
+	}
+	logger.Info("Embedded server is ready!")
+	defer etcd.Close()
+	return nil
+}
+
+func startEmbeddedEtcd(dataDir string) (e *embed.Etcd, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("etcd server crashed while starting")
+		}
+	}()
+	cfg := embed.NewConfig()
+	cfg.Dir = dataDir
+	e, err = embed.StartEtcd(cfg)
+
+	if err != nil {
+		logger.Error("Corruption check error: %v", err)
+		return e, err
+	}
+	select {
+	case <-e.Server.ReadyNotify():
+		logger.Info("Embedded server is ready!")
+	case <-time.After(60 * time.Second):
+		e.Server.Stop() // trigger a shutdown
+		e.Close()
+		return nil, fmt.Errorf("server took too long to start")
+	}
+	return e, err
+}
+
+func isDirEmpty(dataDir string) (bool, error) {
+	f, err := os.Open(dataDir)
+	if err != nil {
+		return false, err
+	}
+	defer f.Close()
+
+	_, err = f.Readdirnames(1) // Or f.Readdir(1)
+	if err == io.EOF {
+		return true, nil
+	}
+	return false, err // Either not empty or error, suits both cases
+}
+
+/*
+
+var (
+	// A map of valid files that can be present in the snap folder.
+	validFiles = map[string]bool{
+		"db": true,
+	}
+	crcTable = crc32.MakeTable(crc32.Castagnoli)
+)
+
+const (
+	snapSuffix = ".snap"
+)
+
+type consistentIndex uint64
+
+func (d *DataValidator) MemberDir() string { return filepath.Join(d.Config.DataDir, "member") }
+
+func (d *DataValidator) WALDir() string { return filepath.Join(d.MemberDir(), "wal") }
+
+func (d *DataValidator) SnapDir() string { return filepath.Join(d.MemberDir(), "snap") }
+
+func (d *DataValidator) BackendPath() string { return filepath.Join(d.SnapDir(), "db") }
+
+func (d *DataValidator) checkForDataCorruption() error {
+	var walsnap walpb.Snapshot
+	fmt.Println("Verifying snap directory...")
+	snapshot, err := d.verifySnapDir()
+	if err != nil && err != snap.ErrNoSnapshot {
+		return err
+	}
+
+	if snapshot != nil {
+		walsnap.Index, walsnap.Term = snapshot.Metadata.Index, snapshot.Metadata.Term
+	}
+	fmt.Println("Verifying WAL directory...")
+	if err := verifyWALDir(d.WALDir(), walsnap); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (d *DataValidator) NewBackend() backend.Backend {
+	bcfg := backend.DefaultBackendConfig()
+	bcfg.Path = d.BackendPath()
+	return backend.New(bcfg)
 }
 
 func (d *DataValidator) verifySnapDir() (*raftpb.Snapshot, error) {
@@ -173,19 +249,7 @@ func checkSuffix(names []string) []string {
 	return snaps
 }
 
-func isDirEmpty(dataDir string) (bool, error) {
-	f, err := os.Open(dataDir)
-	if err != nil {
-		return false, err
-	}
-	defer f.Close()
 
-	_, err = f.Readdirnames(1) // Or f.Readdir(1)
-	if err == io.EOF {
-		return true, nil
-	}
-	return false, err // Either not empty or error, suits both cases
-}
 
 func verifyWALDir(waldir string, snap walpb.Snapshot) error {
 	var (
@@ -219,74 +283,4 @@ func verifyWALDir(waldir string, snap walpb.Snapshot) error {
 	return err
 }
 
-/*
-
-func (d *DataValidator) checkForDataCorruption() error {
-	var walsnap walpb.Snapshot
-	fmt.Println("Verifying snap directory...")
-	snapshot, err := d.verifySnapDir()
-	if err != nil && err != snap.ErrNoSnapshot {
-		return err
-	}
-
-	if snapshot != nil {
-		walsnap.Index, walsnap.Term = snapshot.Metadata.Index, snapshot.Metadata.Term
-	}
-	fmt.Println("Verifying WAL directory...")
-	if err := verifyWALDir(d.WALDir(), walsnap); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func (d *DataValidator) NewBackend() backend.Backend {
-	bcfg := backend.DefaultBackendConfig()
-	bcfg.Path = d.BackendPath()
-	return backend.New(bcfg)
-}
-
 */
-
-func (d *DataValidator) CheckForDataCorruption() error {
-	etcd, err := startEmbeddedEtcd(d.Config.DataDir)
-	if err != nil {
-		fmt.Println("Corruption check error: %v", err)
-		return err
-	}
-	fmt.Println("Embedded server is ready!")
-	defer etcd.Close()
-	return nil
-}
-
-func recoverFromPanic() {
-	if r := recover(); r != nil {
-		//fmt.Printf("Observed a panic: %#v (%v)\n", r, r)
-	}
-}
-
-func startEmbeddedEtcd(dataDir string) (e *embed.Etcd, err error) {
-	defer func() {
-		if r := recover(); r != nil {
-			fmt.Println("Recovered in f", r)
-			err = fmt.Errorf("server took too long to start")
-		}
-	}()
-	cfg := embed.NewConfig()
-	cfg.Dir = dataDir
-	e, err = embed.StartEtcd(cfg)
-
-	if err != nil {
-		fmt.Println("Corruption check error: %v", err)
-		return e, err
-	}
-	select {
-	case <-e.Server.ReadyNotify():
-		fmt.Println("Embedded server is ready!")
-	case <-time.After(60 * time.Second):
-		e.Server.Stop() // trigger a shutdown
-		e.Close()
-		return nil, fmt.Errorf("server took too long to start")
-	}
-	return e, err
-}

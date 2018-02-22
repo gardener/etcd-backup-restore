@@ -17,7 +17,6 @@ package initializer
 import (
 	"fmt"
 	"log"
-	"os"
 
 	"github.com/gardener/etcd-backup-restore/pkg/initializer"
 	"github.com/sirupsen/logrus"
@@ -39,10 +38,6 @@ func NewInitializeCommand(stopCh <-chan struct{}) *cobra.Command {
 		Long:  fmt.Sprintf(`Initializes an etcd instance. Data directory is checked for corruption and restored in case of corruption.`),
 		Run: func(cmd *cobra.Command, args []string) {
 			logger := logrus.New()
-			if dataDir == "" {
-				fmt.Printf("Please set a valid data-dir")
-				os.Exit(1)
-			}
 			etcdInitializer := initializer.NewInitializer(dataDir, storageProvider, logger)
 			err := etcdInitializer.Initialize()
 			if err != nil {

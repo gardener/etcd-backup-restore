@@ -2,7 +2,6 @@ package initializer
 
 import (
 	"fmt"
-	"log"
 	"os"
 	"path"
 	"path/filepath"
@@ -30,16 +29,14 @@ const (
 func (e *EtcdInitializer) Initialize() error {
 	dataDirStatus, err := e.Validator.Validate()
 	if err != nil {
-		log.Fatal(err)
+		e.Logger.Error(err)
 	}
 	switch dataDirStatus {
 	case validator.DATA_DIRECTORY_EMPTY:
-		break
+		//e.restoreCorruptData()
 	case validator.DATA_DIRECTORY_CORRUPT:
 		//e.restoreCorruptData()
-		break
 	case validator.DATA_DIRECTORY_VALID:
-		break
 	default:
 		return err
 	}
@@ -69,7 +66,7 @@ func (e *EtcdInitializer) restoreCorruptData() error {
 	logger := e.Logger
 	dataDir := e.Config.DataDir
 	storageProvider := e.Config.StorageProvider
-	fmt.Println("Emptying data directory(%s) for snapshot restoration.", e.Config.DataDir)
+	logger.Infof("Emptying data directory(%s) for snapshot restoration.", e.Config.DataDir)
 	err := makeEmptyDirectory(dataDir)
 	store, err := getSnapstore(storageProvider)
 	if err != nil {
