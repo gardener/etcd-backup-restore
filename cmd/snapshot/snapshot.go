@@ -54,8 +54,7 @@ storing snapshots on various cloud storage providers as well as local disk locat
 		Run: func(cmd *cobra.Command, args []string) {
 			ss, err := getSnapstore(config.storageProvider)
 			if err != nil {
-				logger.Errorf("Failed to create snapstore from configured storage provider: %v", err)
-				return
+				logger.Fatalf("Failed to create snapstore from configured storage provider: %v", err)
 			}
 			ssr, err := snapshotter.NewSnapshotter(
 				config.etcdEndpoints,
@@ -65,15 +64,13 @@ storing snapshots on various cloud storage providers as well as local disk locat
 				config.maxBackups,
 				time.Duration(config.etcdConnectionTimeout))
 			if err != nil {
-				logger.Errorf("Failed to creat snapshotter: %v", err)
-				return
+				logger.Fatalf("Failed to creat snapshotter: %v", err)
 			}
 			err = ssr.Run(stopCh)
 			if err != nil {
-				logger.Errorf("Snapshotter failed with error: %v", err)
-				return
+				logger.Fatalf("Snapshotter failed with error: %v", err)
 			}
-			logger.Printf("Shutting down...")
+			logger.Info("Shutting down...")
 			//TODO: do cleanup work here.
 			return
 		},

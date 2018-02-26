@@ -25,7 +25,7 @@ import (
 
 // LocalSnapStore is snapstore with local disk as backend
 type LocalSnapStore struct {
-	SnapStoreImpl
+	SnapStore
 	prefix string
 }
 
@@ -54,6 +54,18 @@ func (s *LocalSnapStore) Size(snap Snapshot) (int64, error) {
 		return 0, err
 	}
 	return fi.Size(), nil
+}
+
+// GetLatest returns the latest snapshot in snapstore
+func (s *LocalSnapStore) GetLatest() (*Snapshot, error) {
+	snapList, err := s.List()
+	if err != nil {
+		return nil, err
+	}
+	if snapList.Len() == 0 {
+		return nil, nil
+	}
+	return snapList[snapList.Len()-1], nil
 }
 
 // Save will write the snapshot to store

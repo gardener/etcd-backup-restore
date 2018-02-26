@@ -34,7 +34,7 @@ const (
 
 // S3SnapStore is snapstore with local disk as backend
 type S3SnapStore struct {
-	SnapStoreImpl
+	SnapStore
 	prefix string
 	client *s3.S3
 	bucket string
@@ -80,6 +80,18 @@ func (s *S3SnapStore) Fetch(snap Snapshot) (io.ReadCloser, error) {
 	}
 
 	return resp.Body, nil
+}
+
+// GetLatest returns the latest snapshot in snapstore
+func (s *S3SnapStore) GetLatest() (*Snapshot, error) {
+	snapList, err := s.List()
+	if err != nil {
+		return nil, err
+	}
+	if snapList.Len() == 0 {
+		return nil, nil
+	}
+	return snapList[snapList.Len()-1], nil
 }
 
 // Size returns the size of snapshot

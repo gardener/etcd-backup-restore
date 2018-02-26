@@ -38,24 +38,6 @@ type SnapStore interface {
 	GetLatest() (*Snapshot, error)
 }
 
-// SnapStoreImpl is global structure with implmentation for common implementation of
-// some of the API's defined
-type SnapStoreImpl struct {
-	SnapStore
-}
-
-// GetLatest returns the latest snapshot in snapstore
-func (s *SnapStoreImpl) GetLatest() (*Snapshot, error) {
-	snapList, err := s.List()
-	if err != nil {
-		return nil, err
-	}
-	if snapList.Len() == 0 {
-		return nil, nil
-	}
-	return snapList[snapList.Len()-1], nil
-}
-
 const (
 	// SnapstoreProviderLocal is constant for local disk storage provider
 	SnapstoreProviderLocal = "Local"

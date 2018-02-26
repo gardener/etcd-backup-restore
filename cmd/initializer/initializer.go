@@ -16,7 +16,6 @@ package initializer
 
 import (
 	"fmt"
-	"log"
 
 	"github.com/gardener/etcd-backup-restore/pkg/initializer"
 	"github.com/sirupsen/logrus"
@@ -41,7 +40,7 @@ func NewInitializeCommand(stopCh <-chan struct{}) *cobra.Command {
 			etcdInitializer := initializer.NewInitializer(dataDir, storageProvider, logger)
 			err := etcdInitializer.Initialize()
 			if err != nil {
-				log.Fatal(err)
+				logger.Fatalf("initializer failed. %v", err)
 			}
 		},
 	}

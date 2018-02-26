@@ -17,7 +17,7 @@ const (
 	backupFormatVersion = "v1"
 )
 
-// The steps involed are:
+// Initialize has the following steps:
 //   * Check if data directory exists.
 //     - If data directory exists
 //       * Check for data corruption.
@@ -29,20 +29,17 @@ const (
 func (e *EtcdInitializer) Initialize() error {
 	dataDirStatus, err := e.Validator.Validate()
 	if err != nil {
-		e.Logger.Error(err)
-	}
-	switch dataDirStatus {
-	case validator.DATA_DIRECTORY_EMPTY:
-		//e.restoreCorruptData()
-	case validator.DATA_DIRECTORY_CORRUPT:
-		//e.restoreCorruptData()
-	case validator.DATA_DIRECTORY_VALID:
-	default:
+		e.Logger.Errorf("error while initializing: %v", err)
 		return err
 	}
-	return nil
+	if dataDirStatus != validator.DataDirectoryValid {
+		err = e.restoreCorruptData()
+		e.Logger.Errorf("error while intializing: %v", err)
+	}
+	return err
 }
 
+//NewInitializer creates an etcd initializer object.
 func NewInitializer(dataDir, storageProvider string, logger *logrus.Logger) *EtcdInitializer {
 
 	etcdInit := &EtcdInitializer{
@@ -66,8 +63,12 @@ func (e *EtcdInitializer) restoreCorruptData() error {
 	logger := e.Logger
 	dataDir := e.Config.DataDir
 	storageProvider := e.Config.StorageProvider
-	logger.Infof("Emptying data directory(%s) for snapshot restoration.", e.Config.DataDir)
-	err := makeEmptyDirectory(dataDir)
+	logger.Infof("Removing data directory(%s) for snapshot restoration.", e.Config.DataDir)
+	err := os.RemoveAll(filepath.Join(dataDir))
+	if err != nil {
+		logger.Errorf("failed to delete the Data directory: %v", err)
+		return err
+	}
 	store, err := getSnapstore(storageProvider)
 	if err != nil {
 		logger.Errorf("failed to create snapstore from configured storage provider: %v", err)
@@ -105,23 +106,4 @@ func getSnapstore(storageProvider string) (snapstore.SnapStore, error) {
 		return nil, fmt.Errorf("unsupported storage provider : %s", storageProvider)
 
 	}
-}
-
-func makeEmptyDirectory(dir string) error {
-	d, err := os.Open(dir)
-	if err != nil {
-		return err
-	}
-	defer d.Close()
-	names, err := d.Readdirnames(-1)
-	if err != nil {
-		return err
-	}
-	for _, name := range names {
-		err = os.RemoveAll(filepath.Join(dir, name))
-		if err != nil {
-			return err
-		}
-	}
-	return nil
 }

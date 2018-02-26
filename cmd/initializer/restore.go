@@ -66,25 +66,21 @@ func NewRestoreCommand(stopCh <-chan struct{}) *cobra.Command {
 			}
 			clusterUrlsMap, err := types.NewURLsMap(restoreCluster)
 			if err != nil {
-				logger.Errorf("failed creating url map for restore cluster: %v", err)
-				return
+				logger.Fatalf("failed creating url map for restore cluster: %v", err)
 			}
 
 			peerUrls, err := types.NewURLs(restorePeerURLs)
 			if err != nil {
-				logger.Errorf("failed parsing peers urls for restore cluster: %v", err)
-				return
+				logger.Fatalf("failed parsing peers urls for restore cluster: %v", err)
 			}
 			store, err := getSnapstore(storageProvider)
 			if err != nil {
-				logger.Errorf("failed to create snapstore from configured storage provider: %v", err)
-				return
+				logger.Fatalf("failed to create snapstore from configured storage provider: %v", err)
 			}
 			logger.Infoln("Finding latest snapshot...")
 			snap, err := store.GetLatest()
 			if err != nil {
-				logger.Errorf("failed to get latest snapshot: %v", err)
-				return
+				logger.Fatalf("failed to get latest snapshot: %v", err)
 			}
 			if snap == nil {
 				logger.Infof("No snapshot found. Will do nothing.")
@@ -106,7 +102,7 @@ func NewRestoreCommand(stopCh <-chan struct{}) *cobra.Command {
 			logger.Infof("Restoring from latest snapshot: %s...", snap.SnapPath)
 			err = rs.Restore(*options)
 			if err != nil {
-				logger.Errorf("Failed to restore snapshot: %v", err)
+				logger.Fatalf("Failed to restore snapshot: %v", err)
 				return
 			}
 			logger.Infoln("Successfully restored the etcd data directory.")
