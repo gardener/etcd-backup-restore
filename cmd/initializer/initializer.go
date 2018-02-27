@@ -17,7 +17,9 @@ package initializer
 import (
 	"fmt"
 
+	"github.com/coreos/etcd/pkg/types"
 	"github.com/gardener/etcd-backup-restore/pkg/initializer"
+	"github.com/gardener/etcd-backup-restore/pkg/snapshot/restorer"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )
@@ -37,8 +39,28 @@ func NewInitializeCommand(stopCh <-chan struct{}) *cobra.Command {
 		Long:  fmt.Sprintf(`Initializes an etcd instance. Data directory is checked for corruption and restored in case of corruption.`),
 		Run: func(cmd *cobra.Command, args []string) {
 			logger := logrus.New()
-			etcdInitializer := initializer.NewInitializer(dataDir, storageProvider, logger)
-			err := etcdInitializer.Initialize()
+
+			clusterUrlsMap, err := types.NewURLsMap(restoreCluster)
+			if err != nil {
+				logger.Fatalf("failed creating url map for restore cluster: %v", err)
+			}
+
+			peerUrls, err := types.NewURLs(restorePeerURLs)
+			if err != nil {
+				logger.Fatalf("failed parsing peers urls for restore cluster: %v", err)
+			}
+
+			options := &restorer.RestoreOptions{
+				RestoreDataDir: dataDir,
+				Name:           restoreName,
+				ClusterURLs:    clusterUrlsMap,
+				PeerURLs:       peerUrls,
+				ClusterToken:   restoreClusterToken,
+				SkipHashCheck:  skipHashCheck,
+			}
+
+			etcdInitializer := initializer.NewInitializer(options, storageProvider, logger)
+			err = etcdInitializer.Initialize()
 			if err != nil {
 				logger.Fatalf("initializer failed. %v", err)
 			}

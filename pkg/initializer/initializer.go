@@ -21,6 +21,7 @@ import (
 	"path/filepath"
 
 	"github.com/gardener/etcd-backup-restore/pkg/initializer/validator"
+	"github.com/gardener/etcd-backup-restore/pkg/snapshot/restorer"
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	"github.com/sirupsen/logrus"
 )
@@ -47,23 +48,25 @@ func (e *EtcdInitializer) Initialize() error {
 		return err
 	}
 	if dataDirStatus != validator.DataDirectoryValid {
-		err = e.restoreCorruptData()
-		e.Logger.Errorf("error while intializing: %v", err)
+		if err = e.restoreCorruptData(); err != nil {
+			e.Logger.Errorf("error while restoring corrupt data: %v", err)
+		}
 	}
 	return err
 }
 
 //NewInitializer creates an etcd initializer object.
-func NewInitializer(dataDir, storageProvider string, logger *logrus.Logger) *EtcdInitializer {
+func NewInitializer(options *restorer.RestoreOptions, storageProvider string, logger *logrus.Logger) *EtcdInitializer {
 
 	etcdInit := &EtcdInitializer{
 		Config: &InitializerConfig{
-			DataDir:         dataDir,
+			DataDir:         options.RestoreDataDir,
 			StorageProvider: storageProvider,
+			RestoreOptions:  options,
 		},
 		Validator: &validator.DataValidator{
 			Config: &validator.ValidatorConfig{
-				DataDir: dataDir,
+				DataDir: options.RestoreDataDir,
 			},
 			Logger: logger,
 		},
@@ -98,6 +101,19 @@ func (e *EtcdInitializer) restoreCorruptData() error {
 		logger.Infof("No snapshot found. Will do nothing.")
 		return err
 	}
+
+	logger.Infof("Restoring from latest snapshot: %s...", snap.SnapPath)
+
+	e.Config.RestoreOptions.Snapshot = *snap
+
+	rs := restorer.NewRestorer(store, logger)
+
+	err = rs.Restore(*e.Config.RestoreOptions)
+	if err != nil {
+		logger.Fatalf("Failed to restore snapshot: %v", err)
+		return err
+	}
+	logger.Infoln("Successfully restored the etcd data directory.")
 	return err
 }
 

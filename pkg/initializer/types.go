@@ -16,12 +16,14 @@ package initializer
 
 import (
 	"github.com/gardener/etcd-backup-restore/pkg/initializer/validator"
+	"github.com/gardener/etcd-backup-restore/pkg/snapshot/restorer"
 	"github.com/sirupsen/logrus"
 )
 
 type InitializerConfig struct {
 	DataDir         string
 	StorageProvider string
+	RestoreOptions  *restorer.RestoreOptions
 }
 
 type EtcdInitializer struct {

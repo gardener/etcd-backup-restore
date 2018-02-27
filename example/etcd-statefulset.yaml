@@ -38,7 +38,7 @@ spec:
           - "if [ ! -d /var/etcd/data ]; then etcdbrctl restore --data-dir=/var/etcd/data --storage-provider=S3; fi"
           env:
             - name: STORAGE_CONTAINER
-              value: i342057-etcd-poc
+              value: <Container Name>
           volumeMounts:
             - mountPath: /root/.aws/
               name: aws-secret
@@ -86,7 +86,7 @@ spec:
           imagePullPolicy: Always
           env:
             - name: STORAGE_CONTAINER
-              value: i342057-etcd-poc
+              value: <Container Name>
           volumeMounts:
             - mountPath: /root/.aws/
               name: aws-secret

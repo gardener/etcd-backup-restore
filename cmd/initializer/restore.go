@@ -61,9 +61,6 @@ func NewRestoreCommand(stopCh <-chan struct{}) *cobra.Command {
 			- Restore etcd data diretory from full snapshot.
 			*/
 			logger := logrus.New()
-			if restoreName != defaultName && restoreCluster == initialClusterFromName("<name>") {
-				restoreCluster = initialClusterFromName(restoreName)
-			}
 			clusterUrlsMap, err := types.NewURLsMap(restoreCluster)
 			if err != nil {
 				logger.Fatalf("failed creating url map for restore cluster: %v", err)
@@ -115,7 +112,7 @@ func NewRestoreCommand(stopCh <-chan struct{}) *cobra.Command {
 func initializeFlags(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&storageProvider, "storage-provider", snapstore.SnapstoreProviderLocal, "snapshot storage provider")
 	cmd.Flags().StringVarP(&dataDir, "data-dir", "d", fmt.Sprintf("%s.etcd", defaultName), "path to the data directory")
-	cmd.Flags().StringVar(&restoreCluster, "initial-cluster", initialClusterFromName("<name>"), "initial cluster configuration for restore bootstrap")
+	cmd.Flags().StringVar(&restoreCluster, "initial-cluster", initialClusterFromName(defaultName), "initial cluster configuration for restore bootstrap")
 	cmd.Flags().StringVar(&restoreClusterToken, "initial-cluster-token", "etcd-cluster", "initial cluster token for the etcd cluster during restore bootstrap")
 	cmd.Flags().StringArrayVar(&restorePeerURLs, "initial-advertise-peer-urls", []string{defaultInitialAdvertisePeerURLs}, "list of this member's peer URLs to advertise to the rest of the cluster")
 	cmd.Flags().StringVar(&restoreName, "name", defaultName, "human-readable name for this member")
