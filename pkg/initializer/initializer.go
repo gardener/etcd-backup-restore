@@ -60,7 +60,6 @@ func NewInitializer(options *restorer.RestoreOptions, storageProvider string, lo
 
 	etcdInit := &EtcdInitializer{
 		Config: &InitializerConfig{
-			DataDir:         options.RestoreDataDir,
 			StorageProvider: storageProvider,
 			RestoreOptions:  options,
 		},
@@ -78,9 +77,9 @@ func NewInitializer(options *restorer.RestoreOptions, storageProvider string, lo
 
 func (e *EtcdInitializer) restoreCorruptData() error {
 	logger := e.Logger
-	dataDir := e.Config.DataDir
+	dataDir := e.Config.RestoreOptions.RestoreDataDir
 	storageProvider := e.Config.StorageProvider
-	logger.Infof("Removing data directory(%s) for snapshot restoration.", e.Config.DataDir)
+	logger.Infof("Removing data directory(%s) for snapshot restoration.", dataDir)
 	err := os.RemoveAll(filepath.Join(dataDir))
 	if err != nil {
 		logger.Errorf("failed to delete the Data directory: %v", err)

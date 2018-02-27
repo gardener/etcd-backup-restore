@@ -21,7 +21,6 @@ import (
 )
 
 type InitializerConfig struct {
-	DataDir         string
 	StorageProvider string
 	RestoreOptions  *restorer.RestoreOptions
 }
