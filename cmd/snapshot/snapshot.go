@@ -64,7 +64,7 @@ storing snapshots on various cloud storage providers as well as local disk locat
 				config.maxBackups,
 				time.Duration(config.etcdConnectionTimeout))
 			if err != nil {
-				logger.Fatalf("Failed to creat snapshotter: %v", err)
+				logger.Fatalf("Failed to create snapshotter: %v", err)
 			}
 			err = ssr.Run(stopCh)
 			if err != nil {

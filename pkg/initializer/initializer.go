@@ -44,12 +44,12 @@ const (
 func (e *EtcdInitializer) Initialize() error {
 	dataDirStatus, err := e.Validator.Validate()
 	if err != nil {
-		e.Logger.Errorf("error while initializing: %v", err)
+		err = fmt.Errorf("error while initializing: %v", err)
 		return err
 	}
 	if dataDirStatus != validator.DataDirectoryValid {
 		if err = e.restoreCorruptData(); err != nil {
-			e.Logger.Errorf("error while restoring corrupt data: %v", err)
+			err = fmt.Errorf("error while restoring corrupt data: %v", err)
 		}
 	}
 	return err
@@ -59,12 +59,12 @@ func (e *EtcdInitializer) Initialize() error {
 func NewInitializer(options *restorer.RestoreOptions, storageProvider string, logger *logrus.Logger) *EtcdInitializer {
 
 	etcdInit := &EtcdInitializer{
-		Config: &InitializerConfig{
+		Config: &Config{
 			StorageProvider: storageProvider,
 			RestoreOptions:  options,
 		},
 		Validator: &validator.DataValidator{
-			Config: &validator.ValidatorConfig{
+			Config: &validator.Config{
 				DataDir: options.RestoreDataDir,
 			},
 			Logger: logger,
@@ -82,18 +82,18 @@ func (e *EtcdInitializer) restoreCorruptData() error {
 	logger.Infof("Removing data directory(%s) for snapshot restoration.", dataDir)
 	err := os.RemoveAll(filepath.Join(dataDir))
 	if err != nil {
-		logger.Errorf("failed to delete the Data directory: %v", err)
+		err = fmt.Errorf("failed to delete the Data directory: %v", err)
 		return err
 	}
 	store, err := getSnapstore(storageProvider)
 	if err != nil {
-		logger.Errorf("failed to create snapstore from configured storage provider: %v", err)
+		err = fmt.Errorf("failed to create snapstore from configured storage provider: %v", err)
 		return err
 	}
 	logger.Infoln("Finding latest snapshot...")
 	snap, err := store.GetLatest()
 	if err != nil {
-		logger.Errorf("failed to get latest snapshot: %v", err)
+		err = fmt.Errorf("failed to get latest snapshot: %v", err)
 		return err
 	}
 	if snap == nil {
@@ -109,7 +109,7 @@ func (e *EtcdInitializer) restoreCorruptData() error {
 
 	err = rs.Restore(*e.Config.RestoreOptions)
 	if err != nil {
-		logger.Fatalf("Failed to restore snapshot: %v", err)
+		err = fmt.Errorf("Failed to restore snapshot: %v", err)
 		return err
 	}
 	logger.Infoln("Successfully restored the etcd data directory.")

@@ -20,17 +20,22 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-type InitializerConfig struct {
+// Config holds etcd related configuration required for initialization
+// checks and snapshot restoration in case of corruption.
+type Config struct {
 	StorageProvider string
 	RestoreOptions  *restorer.RestoreOptions
 }
 
+// EtcdInitializer implements Initializer interface to perform validation and
+// data restore if required.
 type EtcdInitializer struct {
 	Validator *validator.DataValidator
-	Config    *InitializerConfig
+	Config    *Config
 	Logger    *logrus.Logger
 }
 
+// Initializer is the interface for etcd initialization actions.
 type Initializer interface {
 	Initialize() error
 }

@@ -16,15 +16,18 @@ package validator
 
 import "github.com/sirupsen/logrus"
 
-type ValidatorConfig struct {
+// Config store configuration for DataValidator.
+type Config struct {
 	DataDir string
 }
 
+// DataValidator contains implements Validator interface to perform data validation.
 type DataValidator struct {
-	Config *ValidatorConfig
+	Config *Config
 	Logger *logrus.Logger
 }
 
+// Validator is the interface for data validation actions.
 type Validator interface {
 	Validate() error
 }

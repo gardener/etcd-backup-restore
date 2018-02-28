@@ -24,10 +24,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var (
-	dataDir string
-)
-
 // NewInitializeCommand returns the command to initialize etcd by validating the data
 // directory and restoring from cloud store if needed.
 func NewInitializeCommand(stopCh <-chan struct{}) *cobra.Command {
@@ -51,7 +47,7 @@ func NewInitializeCommand(stopCh <-chan struct{}) *cobra.Command {
 			}
 
 			options := &restorer.RestoreOptions{
-				RestoreDataDir: dataDir,
+				RestoreDataDir: restoreDataDir,
 				Name:           restoreName,
 				ClusterURLs:    clusterUrlsMap,
 				PeerURLs:       peerUrls,

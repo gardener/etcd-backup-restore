@@ -35,10 +35,10 @@ spec:
           command: 
           - /bin/sh
           - -ec
-          - "if [ ! -d /var/etcd/data ]; then etcdbrctl restore --data-dir=/var/etcd/data --storage-provider=S3; fi"
+          - "etcdbrctl initialize --data-dir=/var/etcd/data --storage-provider=S3"      # change provider details here. (S3/Local)
           env:
             - name: STORAGE_CONTAINER
-              value: <Container Name>
+              value: <Container Name>          # change storage container name here
           volumeMounts:
             - mountPath: /root/.aws/
               name: aws-secret
@@ -81,19 +81,19 @@ spec:
           - snapshot
           - --schedule=*/5 * * * *
           - --max-backups=5
-          - --storage-provider=S3
+          - --storage-provider=S3      # change provider details here. (S3/Local)
           image: <docker.io/gardener/etcdbr/etcdbrctl:0.1.0>    # change image here
           imagePullPolicy: Always
           env:
             - name: STORAGE_CONTAINER
-              value: <Container Name>
+              value: <Container Name>      # change storage container name here
           volumeMounts:
             - mountPath: /root/.aws/
               name: aws-secret
       volumes:
         - name: aws-secret
           secret:
-            secretName: etcd-aws-backup 
+            secretName: <backup provider secret> # change provider credential secret name here
             defaultMode: 0420
   volumeClaimTemplates:
   - metadata:

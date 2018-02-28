@@ -27,13 +27,21 @@ import (
 )
 
 const (
+	// DataDirectoryValid indicates data directory is valid.
 	DataDirectoryValid = iota
+	// DataDirectoryEmpty indicates data directory is empty.
 	DataDirectoryEmpty
+	// DataDirectoryNotExist indicates data directory is non-existant.
 	DataDirectoryNotExist
+	// DataDirectoryInvStruct indicates data directory has invalid structure.
+	DataDirectoryInvStruct
+	// DataDirectoryCorrupt indicates data directory is corrupt.
 	DataDirectoryCorrupt
+	// DataDirectoryError indicates unknown error while validation.
 	DataDirectoryError
 )
 
+// DataDirStatus represents the status of the etcd data directory.
 type DataDirStatus int
 
 var logger *logrus.Logger
@@ -42,11 +50,11 @@ func init() {
 	logger = logrus.New()
 }
 
-func (d *DataValidator) MemberDir() string { return filepath.Join(d.Config.DataDir, "member") }
+func (d *DataValidator) memberDir() string { return filepath.Join(d.Config.DataDir, "member") }
 
-func (d *DataValidator) WALDir() string { return filepath.Join(d.MemberDir(), "wal") }
+func (d *DataValidator) walDir() string { return filepath.Join(d.memberDir(), "wal") }
 
-func (d *DataValidator) SnapDir() string { return filepath.Join(d.MemberDir(), "snap") }
+func (d *DataValidator) snapDir() string { return filepath.Join(d.memberDir(), "snap") }
 
 //Validate performs the steps required to validate data for Etcd instance.
 // The steps involed are:
@@ -62,7 +70,7 @@ func (d *DataValidator) Validate() (DataDirStatus, error) {
 	if err != nil {
 		return DataDirectoryError, err
 	} else if !dirExists {
-		d.Logger.Error("Data directory corrupt.")
+		err = fmt.Errorf("Directory does not exist. %v", err)
 		return DataDirectoryCorrupt, err
 	}
 	isEmpty, err := isDirEmpty(dataDir)
@@ -71,16 +79,16 @@ func (d *DataValidator) Validate() (DataDirStatus, error) {
 	}
 	etcdDirStructValid, err := d.hasEtcdDirectoryStructure()
 	if err != nil {
-		return DataDirectoryError, err
+		return DataDirectoryInvStruct, err
 	}
 	if !etcdDirStructValid {
-		d.Logger.Error("Data directory corrupt.")
+		err = fmt.Errorf("Data directory structure invalid. %v", err)
 		return DataDirectoryCorrupt, err
 	}
 	if !isEmpty {
 		err := d.checkForDataCorruption()
 		if err != nil {
-			d.Logger.Error("Data directory corrupt.")
+			err = fmt.Errorf("Data directory corrupt. %v", err)
 			return DataDirectoryCorrupt, err
 		}
 		d.Logger.Info("Data directory valid.")
@@ -93,13 +101,13 @@ func (d *DataValidator) Validate() (DataDirStatus, error) {
 func (d *DataValidator) hasEtcdDirectoryStructure() (bool, error) {
 	var memberExist, snapExist, walExist bool
 	var err error
-	if memberExist, err = directoryExist(d.MemberDir()); err != nil {
+	if memberExist, err = directoryExist(d.memberDir()); err != nil {
 		return false, err
 	}
-	if snapExist, err = directoryExist(d.SnapDir()); err != nil {
+	if snapExist, err = directoryExist(d.snapDir()); err != nil {
 		return false, err
 	}
-	if walExist, err = directoryExist(d.WALDir()); err != nil {
+	if walExist, err = directoryExist(d.walDir()); err != nil {
 		return false, err
 	}
 	return memberExist && snapExist && walExist, nil
@@ -108,7 +116,7 @@ func (d *DataValidator) hasEtcdDirectoryStructure() (bool, error) {
 func (d *DataValidator) checkForDataCorruption() error {
 	etcd, err := startEmbeddedEtcd(d.Config.DataDir)
 	if err != nil {
-		logger.Error("Corruption check error:", err)
+		err = fmt.Errorf("Corruption check error: %v", err)
 		return err
 	}
 	logger.Info("Embedded server is ready!")
@@ -127,7 +135,7 @@ func startEmbeddedEtcd(dataDir string) (e *embed.Etcd, err error) {
 	e, err = embed.StartEtcd(cfg)
 
 	if err != nil {
-		logger.Errorf("Corruption check error: %v", err)
+		err = fmt.Errorf("Corruption check error: %v", err)
 		return e, err
 	}
 	select {
