@@ -23,6 +23,7 @@ import (
 
 	"github.com/coreos/etcd/clientv3"
 	"github.com/coreos/etcd/pkg/types"
+	"github.com/gardener/etcd-backup-restore/pkg/errors"
 	"github.com/gardener/etcd-backup-restore/pkg/initializer"
 	"github.com/gardener/etcd-backup-restore/pkg/server"
 	"github.com/gardener/etcd-backup-restore/pkg/snapshot/restorer"
@@ -121,24 +122,28 @@ func NewServerCommand(stopCh <-chan struct{}) *cobra.Command {
 				logger.Fatalf("Failed to create snapshotter: %v", err)
 			}
 			for {
-				logger.Infof("Probing etcd...")
-				select {
-				case <-stopCh:
-					logger.Info("Shutting down...")
-					return
-				default:
-					err = probeEtcd(config.etcdEndpoints, time.Duration(config.etcdConnectionTimeout))
+				for {
+					logger.Infof("Probing etcd...")
+					select {
+					case <-stopCh:
+						logger.Info("Shutting down...")
+						return
+					default:
+						err = probeEtcd(config.etcdEndpoints, time.Duration(config.etcdConnectionTimeout))
+					}
+					if err == nil {
+						break
+					}
 				}
-				if err == nil {
-					break
+				err = ssr.Run(stopCh)
+				if err != nil {
+					if etcdErr, ok := err.(*errors.EtcdError); ok == true {
+						logger.Errorf("Snapshotter failed with error: %v", etcdErr)
+					} else {
+						logger.Fatalf("Snapshotter failed with error: %v", err)
+					}
 				}
 			}
-			err = ssr.Run(stopCh)
-			if err != nil {
-				logger.Fatalf("Snapshotter failed with error: %v", err)
-			}
-			logger.Info("Shutting down...")
-			return
 		},
 	}
 	initializeFlags(config, command)

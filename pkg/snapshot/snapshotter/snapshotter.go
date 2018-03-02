@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/coreos/etcd/clientv3"
+	"github.com/gardener/etcd-backup-restore/pkg/errors"
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	"github.com/robfig/cron"
 	"github.com/sirupsen/logrus"
@@ -78,30 +79,33 @@ func (ssr *Snapshotter) Run(stopCh <-chan struct{}) error {
 	}
 }
 
-// takeFullSnapshot will sotre full snpashot of etcd to snapstore.
+// takeFullSnapshot will store full snapshot of etcd to snapstore.
 // It basically will connect to etcd. Then ask for snapshot. And finally
 // move store it underlying snapstore on the fly.
 func (ssr *Snapshotter) takeFUllSnapshot() error {
 	var err error
 	client, err := clientv3.NewFromURL(ssr.endpoints)
 	if err != nil {
-		ssr.logger.Errorf("Failed to create etcd client: %v", err)
-		return err
+		return &errors.EtcdError{
+			Message: fmt.Sprintf("failed to create etcd client: %v", err),
+		}
 	}
 
 	ctx, cancel := context.WithTimeout(context.TODO(), ssr.etcdConnectionTimeout*time.Second)
 	defer cancel()
 	resp, err := client.Get(ctx, "", clientv3.WithLastRev()...)
 	if err != nil {
-		ssr.logger.Errorf("Failed to get etcd latest revision: %v", err)
-		return err
+		return &errors.EtcdError{
+			Message: fmt.Sprintf("failed to get etcd latest revision: %v", err),
+		}
 	}
 	lastRevision := resp.Header.Revision
 
 	rc, err := client.Snapshot(ctx)
 	if err != nil {
-		ssr.logger.Errorf("Failed to create etcd snapshot: %v", err)
-		return err
+		return &errors.EtcdError{
+			Message: fmt.Sprintf("failed to create etcd snapshot: %v", err),
+		}
 	}
 	ssr.logger.Infof("Successfully opened snapshot reader on etcd")
 	s := snapstore.Snapshot{
@@ -113,8 +117,9 @@ func (ssr *Snapshotter) takeFUllSnapshot() error {
 	s.GenerateSnapshotName()
 	err = ssr.store.Save(s, rc)
 	if err != nil {
-		ssr.logger.Warnf("Failed to save snapshot: %v", err)
-		return err
+		return &errors.SnapstoreError{
+			Message: fmt.Sprintf("failed to save snapshot: %v", err),
+		}
 	}
 	ssr.logger.Infof("Successfully saved full snapshot at: %s", s.SnapPath)
 	return nil
