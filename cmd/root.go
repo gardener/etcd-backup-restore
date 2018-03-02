@@ -16,6 +16,7 @@ package cmd
 
 import (
 	"github.com/gardener/etcd-backup-restore/cmd/initializer"
+	"github.com/gardener/etcd-backup-restore/cmd/server"
 	"github.com/gardener/etcd-backup-restore/cmd/snapshot"
 	"github.com/spf13/cobra"
 )
@@ -27,9 +28,12 @@ func NewBackupRestoreCommand(stopCh <-chan struct{}) *cobra.Command {
 		Short: "command line utility for etcd backup restore",
 		Long: `The etcdbrctl, command line utility, is built to support etcd's backup and restore 
 related functionality. Sub-command for this root command will support features
-like scheduled snapshot of etcd, etcd data directory valiation and restore etcd
+like scheduled snapshot of etcd, etcd data directory validation and restore etcd
 from previously taken snapshot.`,
 	}
-	RootCmd.AddCommand(snapshot.NewSnapshotCommand(stopCh), initializer.NewRestoreCommand(stopCh), initializer.NewInitializeCommand(stopCh))
+	RootCmd.AddCommand(snapshot.NewSnapshotCommand(stopCh),
+		initializer.NewRestoreCommand(stopCh),
+		initializer.NewInitializeCommand(stopCh),
+		server.NewServerCommand(stopCh))
 	return RootCmd
 }

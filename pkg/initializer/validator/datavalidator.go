@@ -37,8 +37,6 @@ import (
 const (
 	// DataDirectoryValid indicates data directory is valid.
 	DataDirectoryValid = iota
-	// DataDirectoryEmpty indicates data directory is empty.
-	DataDirectoryEmpty
 	// DataDirectoryNotExist indicates data directory is non-existant.
 	DataDirectoryNotExist
 	// DataDirectoryInvStruct indicates data directory has invalid structure.
@@ -91,64 +89,63 @@ func (d *DataValidator) backendPath() string { return filepath.Join(d.snapDir(),
 // The steps involed are:
 //   * Check if data directory exists.
 //     - If data directory exists
+//		 * Check for data directory structure.
+//			- If data directory structure is invalid return DataDirectoryInvStruct status.
 //       * Check for data corruption.
-//			- If data directory is in corrupted state, clear the data directory. Error out.
-//     - If data directory does not exist.
-//		 * Return nil
+//			- return data directory corruption status.
 func (d *DataValidator) Validate() (DataDirStatus, error) {
 	dataDir := d.Config.DataDir
 	dirExists, err := directoryExist(dataDir)
 	if err != nil {
 		return DataDirectoryError, err
 	} else if !dirExists {
-		err = fmt.Errorf("Directory does not exist. %v", err)
-		return DataDirectoryCorrupt, err
+		err = fmt.Errorf("Directory does not exist: %s", dataDir)
+		return DataDirectoryNotExist, err
 	}
-	isEmpty, err := isDirEmpty(dataDir)
+
+	d.Logger.Info("Checking for data directory structure validity...")
+	etcdDirStructValid, err := d.hasEtcdDirectoryStructure()
 	if err != nil {
 		return DataDirectoryError, err
 	}
-	etcdDirStructValid, err := d.hasEtcdDirectoryStructure()
-	if err != nil {
-		return DataDirectoryInvStruct, err
-	}
 	if !etcdDirStructValid {
-		err = fmt.Errorf("Data directory structure invalid. %v", err)
-		return DataDirectoryCorrupt, err
+		d.Logger.Infof("Data directory structure invalid.")
+		return DataDirectoryInvStruct, nil
 	}
-	if !isEmpty {
-		err := d.checkForDataCorruption()
-		if err != nil {
-			err = fmt.Errorf("Data directory corrupt. %v", err)
-			return DataDirectoryCorrupt, err
-		}
-		d.Logger.Info("Data directory valid.")
-		return DataDirectoryValid, nil
+	d.Logger.Info("Checking for data directory files corruption...")
+	err = d.checkForDataCorruption()
+	if err != nil {
+		d.Logger.Infof("Data directory corrupt. %v", err)
+		return DataDirectoryCorrupt, nil
 	}
-	d.Logger.Info("Data directory empty.")
-	return DataDirectoryEmpty, nil
+	d.Logger.Info("Data directory valid.")
+	return DataDirectoryValid, nil
 }
 
+// checkForDataCorruption will check for corruption of different files used by etcd.
 func (d *DataValidator) checkForDataCorruption() error {
 	var walsnap walpb.Snapshot
-	fmt.Println("Verifying snap directory...")
+	d.Logger.Info("Verifying snap directory...")
 	snapshot, err := d.verifySnapDir()
 	if err != nil && err != snap.ErrNoSnapshot {
-		return err
+		return fmt.Errorf("Invalid snapshot files: %v", err)
 	}
-
 	if snapshot != nil {
 		walsnap.Index, walsnap.Term = snapshot.Metadata.Index, snapshot.Metadata.Term
 	}
-	fmt.Println("Verifying WAL directory...")
+	d.Logger.Info("Verifying WAL directory...")
 	if err := verifyWALDir(d.walDir(), walsnap); err != nil {
-		return err
+		return fmt.Errorf("Invalid wal files: %v", err)
 	}
-	fmt.Println("Verifying DB file...")
+	d.Logger.Info("Verifying DB file...")
 	err = verifyDB(d.backendPath())
-	return err
+	if err != nil {
+		return fmt.Errorf("Invalid db files: %v", err)
+	}
+	return nil
 }
 
+// hasEtcdDirectoryStructure checks for existence of the required sub-directories.
 func (d *DataValidator) hasEtcdDirectoryStructure() (bool, error) {
 	var memberExist, snapExist, walExist bool
 	var err error
@@ -293,16 +290,18 @@ func verifyWALDir(waldir string, snap walpb.Snapshot) error {
 
 	repaired := false
 	for {
-		if w, err = wal.Open(waldir, snap); err != nil {
+		w, err = wal.Open(waldir, snap)
+		if err != nil {
 			fmt.Printf("open wal error: %v", err)
 		}
+		defer w.Close()
 		if _, _, _, err = w.ReadAll(); err != nil {
-			w.Close()
 			// we can only repair ErrUnexpectedEOF and we never repair twice.
 			if repaired || err != io.ErrUnexpectedEOF {
 				fmt.Printf("read wal error (%v) and cannot be repaired.\n", err)
 				return err
 			}
+			w.Close()
 			if !wal.Repair(waldir) {
 				fmt.Printf("WAL error (%v) cannot be repaired.\n", err)
 				return err

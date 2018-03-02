@@ -28,68 +28,66 @@ spec:
       labels:
         app: etcd 
     spec:
-      initContainers:
-        - name: restore
-          image: <docker.io/gardener/etcdbr/etcdbrctl:0.1.0>     # change image here
-          imagePullPolicy: Always
-          command: 
-          - /bin/sh
-          - -ec
-          - "etcdbrctl initialize --data-dir=/var/etcd/data --storage-provider=S3"      # change provider details here. (S3/Local)
-          env:
-            - name: STORAGE_CONTAINER
-              value: <Container Name>          # change storage container name here
-          volumeMounts:
-            - mountPath: /root/.aws/
-              name: aws-secret
-            - mountPath: /var/etcd
-              name: etcd-data
       containers:
-        - name: etcd
-          command:
-          - /bin/sh
-          - -ec
-          - /usr/local/bin/etcd --data-dir=/var/etcd/data
-          image: quay.io/coreos/etcd:v3.2.15
-          imagePullPolicy: IfNotPresent
-          livenessProbe:
-            exec:
-              command:
-              - /bin/sh
-              - -ec
-              - ETCDCTL_API=3 etcdctl get foo
-            failureThreshold: 3
-            initialDelaySeconds: 10
-            periodSeconds: 60
-            successThreshold: 1
-            timeoutSeconds: 10
-          ports:
-          - containerPort: 2380
-            name: server
-            protocol: TCP
-          - containerPort: 2379
-            name: client
-            protocol: TCP
-          terminationMessagePath: /dev/termination-log
-          terminationMessagePolicy: File
-          volumeMounts:
+      - name: etcd
+        command:
+        - /bin/sh
+        - -ec
+        - "wget http://localhost:8080/initialize -S -O -; if [ $? -eq 0 ]; then etcd --data-dir=/var/etcd/data; fi;"
+        image: quay.io/coreos/etcd:v3.3.1
+        imagePullPolicy: IfNotPresent
+        livenessProbe:
+          httpGet:
+            path: /metrics
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        readinessProbe:
+          exec:
+            command:
+            - /bin/sh
+            - -ec
+            - ETCDCTL_API=3 etcdctl get foo
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        ports:
+        - containerPort: 2380
+          name: server
+          protocol: TCP
+        - containerPort: 2379
+          name: client
+          protocol: TCP
+        volumeMounts:
+        - mountPath: /var/etcd
+          name: etcd-data
+      - name: backup
+        command:
+        - etcdbrctl
+        - server
+        - --schedule=*/5 * * * *
+        - --max-backups=5
+        - --data-dir=/var/etcd/data
+        - --storage-provider=S3      # change provider details here. (S3/Local)
+        image: <docker.io/gardener/etcdbr/etcdbrctl:0.1.0>    # change image here
+        imagePullPolicy: Always
+        livenessProbe:
+          httpGet:
+            path: /metrics
+            port: server
+          initialDelaySeconds: 3
+          periodSeconds: 3
+        ports:
+        - containerPort: 8080
+          name: server
+          protocol: TCP
+        env:
+          - name: STORAGE_CONTAINER
+            value: <Container Name>      # change storage container name here
+        volumeMounts:
+          - mountPath: /root/.aws/
+            name: aws-secret
           - mountPath: /var/etcd
             name: etcd-data
-        - name: backup
-          command:
-          - etcdbrctl
-          - snapshot
-          - --schedule=*/5 * * * *
-          - --max-backups=5
-          - --storage-provider=S3      # change provider details here. (S3/Local)
-          image: <docker.io/gardener/etcdbr/etcdbrctl:0.1.0>    # change image here
-          imagePullPolicy: Always
-          env:
-            - name: STORAGE_CONTAINER
-              value: <Container Name>      # change storage container name here
-          volumeMounts:
-            - mountPath: /root/.aws/
-              name: aws-secret
       volumes:
         - name: aws-secret
           secret:

@@ -50,6 +50,7 @@ func (ssr *Snapshotter) Run(stopCh <-chan struct{}) error {
 		ssr.logger.Infoln("There are no backup scheduled for future. Stopping now.")
 		return nil
 	}
+	ssr.logger.Infof("Will take next snapshot at time: %s", effective)
 	for {
 		select {
 		case <-stopCh:
@@ -57,11 +58,11 @@ func (ssr *Snapshotter) Run(stopCh <-chan struct{}) error {
 			ssr.logger.Infof("Stop signal received. Terminating scheduled snapshot.")
 			return nil
 		case <-time.After(effective.Sub(now)):
-			ssr.logger.Infof("Taking next snapshot for time: %s", time.Now().Local())
+			ssr.logger.Infof("Taking scheduled snapshot for time: %s", time.Now().Local())
 			err := ssr.takeFUllSnapshot()
 			if err != nil {
 				// As per design principle, in business critical service if backup is not working,
-				// it's better to failed the process. So, we are quiting here
+				// it's better to fail the process. So, we are quiting here.
 				return err
 			}
 			now = time.Now()
@@ -71,8 +72,8 @@ func (ssr *Snapshotter) Run(stopCh <-chan struct{}) error {
 			if effective.IsZero() {
 				ssr.logger.Infoln("There are no backup scheduled for future. Stopping now.")
 				return nil
-
 			}
+			ssr.logger.Infof("Will take next snapshot at time: %s", effective)
 		}
 	}
 }
@@ -90,7 +91,7 @@ func (ssr *Snapshotter) takeFUllSnapshot() error {
 
 	ctx, cancel := context.WithTimeout(context.TODO(), ssr.etcdConnectionTimeout*time.Second)
 	defer cancel()
-	resp, err := client.Get(ctx, "", clientv3.WithPrefix())
+	resp, err := client.Get(ctx, "", clientv3.WithLastRev()...)
 	if err != nil {
 		ssr.logger.Errorf("Failed to get etcd latest revision: %v", err)
 		return err
@@ -115,6 +116,7 @@ func (ssr *Snapshotter) takeFUllSnapshot() error {
 		ssr.logger.Warnf("Failed to save snapshot: %v", err)
 		return err
 	}
+	ssr.logger.Infof("Successfully saved full snapshot at: %s", s.SnapPath)
 	return nil
 }
 
