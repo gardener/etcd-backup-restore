@@ -17,24 +17,34 @@ package server
 import (
 	"fmt"
 	"net/http"
+	"sync"
 
 	"github.com/gardener/etcd-backup-restore/pkg/initializer"
-	"github.com/gardener/etcd-backup-restore/pkg/snapshot/snapshotter"
 	"github.com/sirupsen/logrus"
+)
+
+const (
+	initializationStatusNew        = "New"
+	initializationStatusProgress   = "Progress"
+	initializationStatusSuccessful = "Successful"
+	initializationStatusFailed     = "Failed"
 )
 
 // HTTPHandler is implementation to handle HTTP API exposed by server
 type HTTPHandler struct {
-	snapShotter     snapshotter.Snapshotter
-	EtcdInitializer initializer.EtcdInitializer
-	Port            int
-	server          *http.Server
-	Logger          *logrus.Logger
+	EtcdInitializer           initializer.EtcdInitializer
+	Port                      int
+	server                    *http.Server
+	Logger                    *logrus.Logger
+	initializationStatusMutex sync.Mutex
+	initializationStatus      string
 }
 
 // RegisterHandler registers the handler for different requests
 func (h *HTTPHandler) RegisterHandler() {
-	http.HandleFunc("/initialize", h.serveInitialize)
+	h.initializationStatus = "New"
+	http.HandleFunc("/initialization/start", h.serveInitialize)
+	http.HandleFunc("/initialization/status", h.serveInitializationStatus)
 	http.HandleFunc("/metrics", h.serveMetrics)
 	return
 }
@@ -65,13 +75,40 @@ func (h *HTTPHandler) serveMetrics(rw http.ResponseWriter, req *http.Request) {
 
 // ServeInitialize serves the http re
 func (h *HTTPHandler) serveInitialize(rw http.ResponseWriter, req *http.Request) {
-	//fmt.Fprintf(rw, "initialization request received.")
-	err := h.EtcdInitializer.Initialize()
-	if err != nil {
-		h.Logger.Infof("Failed initialization: %v", err)
-		rw.WriteHeader(http.StatusInternalServerError)
-		return
+	h.Logger.Info("Received start initialization request.")
+	h.initializationStatusMutex.Lock()
+	defer h.initializationStatusMutex.Unlock()
+	if h.initializationStatus == initializationStatusNew {
+		h.Logger.Infof("Updating status from %s to %s", h.initializationStatus, initializationStatusProgress)
+		h.initializationStatus = initializationStatusProgress
+		go func() {
+			err := h.EtcdInitializer.Initialize()
+			h.initializationStatusMutex.Lock()
+			defer h.initializationStatusMutex.Unlock()
+			if err != nil {
+				h.Logger.Errorf("Failed initialization: %v", err)
+				rw.WriteHeader(http.StatusInternalServerError)
+				h.initializationStatus = initializationStatusFailed
+				return
+			}
+			h.Logger.Infof("Successfully initialized data directory \"%s\" for etcd.", h.EtcdInitializer.Validator.Config.DataDir)
+			h.initializationStatus = initializationStatusSuccessful
+		}()
 	}
-	h.Logger.Infof("Successfully initialized data directory \"%s\" for etcd.", h.EtcdInitializer.Validator.Config.DataDir)
 	rw.WriteHeader(http.StatusOK)
+}
+
+// ServeInitializationStatus serves the etcd initialization progress status
+func (h *HTTPHandler) serveInitializationStatus(rw http.ResponseWriter, req *http.Request) {
+	//fmt.Fprintf(rw, "initialization request received.")
+	h.initializationStatusMutex.Lock()
+	defer h.initializationStatusMutex.Unlock()
+	h.Logger.Infof("Responding to status request with: %s", h.initializationStatus)
+
+	rw.WriteHeader(http.StatusOK)
+	rw.Write([]byte(h.initializationStatus))
+	if h.initializationStatus == initializationStatusSuccessful || h.initializationStatus == initializationStatusFailed {
+		h.Logger.Infof("Updating status from %s to %s", h.initializationStatus, initializationStatusNew)
+		h.initializationStatus = initializationStatusNew
+	}
 }

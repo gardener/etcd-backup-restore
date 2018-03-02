@@ -33,7 +33,7 @@ spec:
         command:
         - /bin/sh
         - -ec
-        - "wget http://localhost:8080/initialize -S -O -; if [ $? -eq 0 ]; then etcd --data-dir=/var/etcd/data; fi;"
+        - 'while true; do wget http://localhost:8080/initialization/status -S -O status; STATUS=`cat status`; case $STATUS in "New") wget http://localhost:8080/initialization/start -S -O - ;; "Progress") continue;; "Failed") continue;; "Successful") etcd --data-dir=/var/etcd/data; break;; esac; done'
         image: quay.io/coreos/etcd:v3.3.1
         imagePullPolicy: IfNotPresent
         livenessProbe:
