@@ -56,6 +56,18 @@ func (s *LocalSnapStore) Size(snap Snapshot) (int64, error) {
 	return fi.Size(), nil
 }
 
+// GetLatest returns the latest snapshot in snapstore
+func (s *LocalSnapStore) GetLatest() (*Snapshot, error) {
+	snapList, err := s.List()
+	if err != nil {
+		return nil, err
+	}
+	if snapList.Len() == 0 {
+		return nil, nil
+	}
+	return snapList[snapList.Len()-1], nil
+}
+
 // Save will write the snapshot to store
 func (s *LocalSnapStore) Save(snap Snapshot, r io.Reader) error {
 	f, err := os.Create(path.Join(s.prefix, snap.SnapPath))

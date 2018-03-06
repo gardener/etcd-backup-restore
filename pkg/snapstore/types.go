@@ -34,6 +34,8 @@ type SnapStore interface {
 	Delete(Snapshot) error
 	// Size returns the size of snapshot
 	Size(Snapshot) (int64, error)
+	// GetLates resturns the latet snapshot
+	GetLatest() (*Snapshot, error)
 }
 
 const (

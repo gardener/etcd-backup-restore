@@ -30,6 +30,6 @@ related functionality. Sub-command for this root command will support features
 like scheduled snapshot of etcd, etcd data directory valiation and restore etcd
 from previously taken snapshot.`,
 	}
-	RootCmd.AddCommand(snapshot.NewSnapshotCommand(stopCh), initializer.NewRestoreCommand(stopCh))
+	RootCmd.AddCommand(snapshot.NewSnapshotCommand(stopCh), initializer.NewRestoreCommand(stopCh), initializer.NewInitializeCommand(stopCh))
 	return RootCmd
 }
