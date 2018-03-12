@@ -12,23 +12,24 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package snapshotter
+package errors
 
-import (
-	"time"
+// EtcdError is struct to categorize errors occurred while processing etcd realted operations
+type EtcdError struct {
+	Message   string
+	operation string
+}
 
-	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
-	"github.com/robfig/cron"
-	"github.com/sirupsen/logrus"
-)
+func (e *EtcdError) Error() string {
+	return e.Message
+}
 
-// Snapshotter is a struct for etcd snapshot taker
-type Snapshotter struct {
-	logger                   *logrus.Logger
-	endpoints                string
-	schedule                 cron.Schedule
-	store                    snapstore.SnapStore
-	maxBackups               int
-	etcdConnectionTimeout    time.Duration
-	garbageCollectionTimeout time.Duration
+// SnapstoreError is struct to categorize errors occurred while processing snapstore realted operations
+type SnapstoreError struct {
+	Message   string
+	operation string
+}
+
+func (e *SnapstoreError) Error() string {
+	return e.Message
 }

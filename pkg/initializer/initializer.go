@@ -43,7 +43,7 @@ const (
 //		   - No snapshots are available, start etcd as a fresh installation.
 func (e *EtcdInitializer) Initialize() error {
 	dataDirStatus, err := e.Validator.Validate()
-	if err != nil {
+	if err != nil && dataDirStatus != validator.DataDirectoryNotExist {
 		err = fmt.Errorf("error while initializing: %v", err)
 		return err
 	}
