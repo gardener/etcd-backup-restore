@@ -39,11 +39,13 @@ Main goal of this project to provide a solution to make [etcd] instance backing 
 
 ## Architecture
 
-![architecture](images/etcd-backup-restore.png)
+![architecture](images/etcd-backup-restore.jpg)
 
-We will have a StatefulSet for etcd with two containers in it. 
+We will have a StatefulSet for etcd with two containers in it.
+
 - ETCD container
 - Sidecar container
+
 
 ### ETCD Container
 
@@ -51,29 +53,40 @@ We will have a StatefulSet for etcd with two containers in it.
 - The etcd process is started only if the `initialize` request to sidecar returns a success. 
 
 ### Sidecar Container
-- Sidecar container has two components
-  - Initializer
-  - Prober
+
+Sidecar container has two components
+
+- Initializer
+- Prober
+
 #### Initializer
-  - On request from the Etcd container, check the data directory for data corruption.
-    - if data directory is corrupt, restore the data directory from the latest snapshot.
-    - return successful response on validation/restoration of data directory.
+
+- On request from the Etcd container, check the data directory for data corruption.
+- if data directory is corrupt, restore the data directory from the latest snapshot.
+- return successful response on validation/restoration of data directory.
+
 #### Prober
-  - Probe etcd container for liveliness of etcd process.
-    - Probe is required to ensure that etcd is live before backups are triggered.
-    - Schedule the backup operation (probably using cron library) which triggers full snapshot at regular intervals.
-    - Store the snapshot in the configured cloud object store.
+
+- Probe etcd container for liveliness of etcd process.
+- Probe is required to ensure that etcd is live before backups are triggered.
+- Schedule the backup operation (probably using cron library) which triggers full snapshot at regular intervals.
+- Store the snapshot in the configured cloud object store.
   
 **Init container is not used for the validation/restoration of etcd data directory. The rationale behind the decision was to avoid baking in pod restart logic in sidecar container in the event etcd process had died. In case etcd container died, init-container had to be run before etcd container was run to ensure that data directory was valid. This required the pod to be restarted. With the current design, the sidecar handles the data directory validation/restoration and periodic backups. Pod restart is not required.**
 
 ## Workflow
-### Etcd container 
+
+![sequence-diagram](images/etcd-backup-restore-sequence-diagram.jpg)
+
+### Etcd container
+
 1. Etcd container starts and requests the sidecar for data directory initialization. It waits for the response.
 2. On response,
     1. in case of success, start etcd process.
     2. in case of failure/timeout, exit with error. (Container restarts)
-    
+
 ### Sidecar container
+
 1. Start periodic liveliness prober on etcd. Start http server to serve `initialize` requests.
 2. On receiving an `initialize` request, check the data directory for corruption.
     1. In case of data directory corruption, restore data directory from the latest cloud snapshot. Return success.
@@ -95,4 +108,3 @@ We will have a StatefulSet for etcd with two containers in it.
 We want to develop incremental/continuous etcd backups (write watch logs in between full backups), to ensure our backups are fresh enough to avoid discrepancies between etcd backup and external/physical world.
 
 [etcd]: https://github.com/coreos/etcd
-
