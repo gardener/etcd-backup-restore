@@ -25,6 +25,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3"
+	"github.com/aws/aws-sdk-go/service/s3/s3iface"
 )
 
 const (
@@ -36,7 +37,7 @@ const (
 type S3SnapStore struct {
 	SnapStore
 	prefix string
-	client *s3.S3
+	client s3iface.S3API
 	bucket string
 }
 
@@ -61,7 +62,7 @@ func NewS3FromSessionOpt(bucket, prefix string, so session.Options) (*S3SnapStor
 }
 
 // NewS3FromClient will create the new S3 snapstore object from S3 client
-func NewS3FromClient(bucket, prefix string, cli *s3.S3) *S3SnapStore {
+func NewS3FromClient(bucket, prefix string, cli s3iface.S3API) *S3SnapStore {
 	return &S3SnapStore{
 		bucket: bucket,
 		prefix: prefix,

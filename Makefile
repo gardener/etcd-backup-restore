@@ -20,6 +20,7 @@ VERSION             := 0.1.0
 LD_FLAGS            := "-w -X $(REPOSITORY)/pkg/version.Version=$(VERSION)"
 PACKAGES            := $(shell go list ./... | grep -vE '/vendor/')
 LINT_FOLDERS        := $(shell echo $(PACKAGES) | sed "s|$(REPOSITORY)|.|g")
+TEST_FOLDERS        := cmd pkg
 REGISTRY            := docker.io/gardener/etcdbr
 IMAGE_REPOSITORY    := $(REGISTRY)/etcdbrctl
 IMAGE_TAG           := $(VERSION)
@@ -39,11 +40,11 @@ dev:
 	@go build -o $(BIN_DIR)/etcdbrctl $(GO_EXTRA_FLAGS) -ldflags $(LD_FLAGS) main.go
 	
 .PHONY: verify
-verify: vet fmt lint
+verify: vet fmt lint test
 
 .PHONY: revendor
 revendor:
-	@dep ensure -update
+	@dep ensure -update -v
 
 .PHONY: build
 build: 
@@ -74,3 +75,7 @@ vet:
 .PHONY: lint
 lint:
 	@golint  --set_exit_status $(LINT_FOLDERS)
+
+.PHONY: test
+test:
+	@ginkgo -r $(TEST_FOLDERS)

@@ -60,7 +60,7 @@ func (ssr *Snapshotter) Run(stopCh <-chan struct{}) error {
 			return nil
 		case <-time.After(effective.Sub(now)):
 			ssr.logger.Infof("Taking scheduled snapshot for time: %s", time.Now().Local())
-			err := ssr.takeFUllSnapshot()
+			err := ssr.takeFullSnapshot()
 			if err != nil {
 				// As per design principle, in business critical service if backup is not working,
 				// it's better to fail the process. So, we are quiting here.
@@ -82,7 +82,7 @@ func (ssr *Snapshotter) Run(stopCh <-chan struct{}) error {
 // takeFullSnapshot will store full snapshot of etcd to snapstore.
 // It basically will connect to etcd. Then ask for snapshot. And finally
 // move store it underlying snapstore on the fly.
-func (ssr *Snapshotter) takeFUllSnapshot() error {
+func (ssr *Snapshotter) takeFullSnapshot() error {
 	var err error
 	client, err := clientv3.NewFromURL(ssr.endpoints)
 	if err != nil {

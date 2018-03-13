@@ -16,6 +16,7 @@ package snapstore_test
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -26,69 +27,64 @@ import (
 )
 
 var _ = Describe("Snapshot", func() {
-	var (
-		snap1 Snapshot
-		snap2 Snapshot
-		snap3 Snapshot
-		snap4 Snapshot
-		snap5 Snapshot
-		snap6 Snapshot
-		now   int64
-	)
-	BeforeEach(func() {
-		interval := int64(5)
-		now = time.Now().Unix()
-		snap1 = Snapshot{
-			CreatedOn:     time.Unix(now, 0),
-			StartRevision: 0,
-			LastRevision:  2088,
-			Kind:          SnapshotKindFull,
-		}
 
-		snap2 = Snapshot{
-			CreatedOn:     time.Unix(now-1*interval, 0),
-			StartRevision: 0,
-			LastRevision:  1988,
-			Kind:          SnapshotKindFull,
-		}
-		snap3 = Snapshot{
-			CreatedOn:     time.Unix(now-2*interval, 0),
-			StartRevision: 0,
-			LastRevision:  1888,
-			Kind:          SnapshotKindFull,
-		}
-
-		snap4 = Snapshot{
-			CreatedOn:     time.Unix(now-3*interval, 0),
-			StartRevision: 0,
-			LastRevision:  1788,
-			Kind:          SnapshotKindFull,
-		}
-		snap5 = Snapshot{
-			CreatedOn:     time.Unix(now-4*interval, 0),
-			StartRevision: 0,
-			LastRevision:  1688,
-			Kind:          SnapshotKindFull,
-		}
-
-		snap6 = Snapshot{
-			CreatedOn:     time.Unix(now-5*interval, 0),
-			StartRevision: 0,
-			LastRevision:  1588,
-			Kind:          SnapshotKindFull,
-		}
-
+	Describe("Sort snapshots by creation time", func() {
+		It("sorts snapshot by creation time", func() {
+			interval := int64(5)
+			now := time.Now().Unix()
+			snap1 := Snapshot{
+				CreatedOn:     time.Unix(now, 0),
+				StartRevision: 0,
+				LastRevision:  2088,
+				Kind:          SnapshotKindFull,
+			}
+			snap2 := Snapshot{
+				CreatedOn:     time.Unix(now+1*interval, 0),
+				StartRevision: 0,
+				LastRevision:  1988,
+				Kind:          SnapshotKindFull,
+			}
+			snap3 := Snapshot{
+				CreatedOn:     time.Unix(now+2*interval, 0),
+				StartRevision: 0,
+				LastRevision:  1888,
+				Kind:          SnapshotKindFull,
+			}
+			snap4 := Snapshot{
+				CreatedOn:     time.Unix(now+3*interval, 0),
+				StartRevision: 0,
+				LastRevision:  1788,
+				Kind:          SnapshotKindFull,
+			}
+			snap5 := Snapshot{
+				CreatedOn:     time.Unix(now+4*interval, 0),
+				StartRevision: 0,
+				LastRevision:  1688,
+				Kind:          SnapshotKindFull,
+			}
+			snap6 := Snapshot{
+				CreatedOn:     time.Unix(now+5*interval, 0),
+				StartRevision: 0,
+				LastRevision:  1588,
+				Kind:          SnapshotKindFull,
+			}
+			snapList := SnapList{&snap4, &snap3, &snap1, &snap6, &snap2, &snap5}
+			sort.Sort(snapList)
+			for i := 0; i < len(snapList); i++ {
+				Expect(snapList[i].CreatedOn.Unix()).To(Equal(now + int64(i)*interval))
+			}
+		})
 	})
 
 	Describe("Generate Snapshot name", func() {
-		/*now = time.Now().Unix()
-		snap1 = Snapshot{
-			CreatedOn:     time.Unix(now, 0),
-			StartRevision: 0,
-			LastRevision:  2088,
-			Kind:          SnapshotKindFull,
-		}*/
 		It("generates snapshot name ", func() {
+			now := time.Now().Unix()
+			snap1 := Snapshot{
+				CreatedOn:     time.Unix(now, 0),
+				StartRevision: 0,
+				LastRevision:  2088,
+				Kind:          SnapshotKindFull,
+			}
 			snap1.GenerateSnapshotName()
 			Expect(snap1.SnapPath).To(Equal(fmt.Sprintf("Full-00000000-00002088-%08d", now)))
 		})
@@ -99,7 +95,7 @@ var _ = Describe("Snapshot", func() {
 			Specify("does not return error", func() {
 				snapName := "Full-00000000-00030009-1518427675"
 				_, err := ParseSnapshot(snapName)
-				Expect(err).Should(BeNil())
+				Expect(err).To(BeNil())
 			})
 		})
 
@@ -107,7 +103,7 @@ var _ = Describe("Snapshot", func() {
 			Specify("returns error", func() {
 				snapName := "Full-00000000-00002088-2387428-43"
 				_, err := ParseSnapshot(snapName)
-				Expect(err).Should(Equal(fmt.Errorf("invalid snapshot name: %s", snapName)))
+				Expect(err).To(Equal(fmt.Errorf("invalid snapshot name: %s", snapName)))
 			})
 		})
 
@@ -116,7 +112,7 @@ var _ = Describe("Snapshot", func() {
 				snapName := "Full-00h000000-00002088-2387428"
 				tokens := strings.Split(snapName, "-")
 				_, err := ParseSnapshot(snapName)
-				Expect(err).Should(Equal(fmt.Errorf("invalid start revision: %s", tokens[1])))
+				Expect(err).To(Equal(fmt.Errorf("invalid start revision: %s", tokens[1])))
 			})
 		})
 		Context("when not integer last revision specified", func() {
@@ -124,7 +120,7 @@ var _ = Describe("Snapshot", func() {
 				snapName := "Full-00000000-00sdf002088-2387428"
 				tokens := strings.Split(snapName, "-")
 				_, err := ParseSnapshot(snapName)
-				Expect(err).Should(Equal(fmt.Errorf("invalid last revision: %s", tokens[2])))
+				Expect(err).To(Equal(fmt.Errorf("invalid last revision: %s", tokens[2])))
 			})
 		})
 		Context("when start revision is more than last revision", func() {
@@ -132,7 +128,7 @@ var _ = Describe("Snapshot", func() {
 				snapName := "Full-00012345-00002088-2387428"
 				tokens := strings.Split(snapName, "-")
 				_, err := ParseSnapshot(snapName)
-				Expect(err).Should(Equal(fmt.Errorf("last revision (%s) should be at least start revision(%s) ", tokens[2], tokens[1])))
+				Expect(err).To(Equal(fmt.Errorf("last revision (%s) should be at least start revision(%s) ", tokens[2], tokens[1])))
 			})
 		})
 		Context("when non integer unix time specified", func() {
@@ -140,7 +136,7 @@ var _ = Describe("Snapshot", func() {
 				snapName := "Full-00000000-00002088-23874sdf43"
 				tokens := strings.Split(snapName, "-")
 				_, err := ParseSnapshot(snapName)
-				Expect(err).Should(Equal(fmt.Errorf("invalid creation time: %s", tokens[3])))
+				Expect(err).To(Equal(fmt.Errorf("invalid creation time: %s", tokens[3])))
 			})
 		})
 		Context("when invalid kind is specified", func() {
@@ -148,7 +144,7 @@ var _ = Describe("Snapshot", func() {
 				snapName := "meta-00000000-00002088-2387428"
 				tokens := strings.Split(snapName, "-")
 				_, err := ParseSnapshot(snapName)
-				Expect(err).Should(Equal(fmt.Errorf("unknown snapshot kind: %s", tokens[0])))
+				Expect(err).To(Equal(fmt.Errorf("unknown snapshot kind: %s", tokens[0])))
 			})
 		})
 	})
