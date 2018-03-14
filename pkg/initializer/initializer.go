@@ -27,8 +27,6 @@ import (
 )
 
 const (
-	envStorageContainer = "STORAGE_CONTAINER"
-	defaultLocalStore   = "default.etcd.bkp"
 	backupFormatVersion = "v1"
 )
 
@@ -56,11 +54,12 @@ func (e *EtcdInitializer) Initialize() error {
 }
 
 //NewInitializer creates an etcd initializer object.
-func NewInitializer(options *restorer.RestoreOptions, storageProvider string, logger *logrus.Logger) *EtcdInitializer {
+func NewInitializer(options *restorer.RestoreOptions, storageProvider, storePrefix string, logger *logrus.Logger) *EtcdInitializer {
 
 	etcdInit := &EtcdInitializer{
 		Config: &Config{
 			StorageProvider: storageProvider,
+			StorePrefix:     storePrefix,
 			RestoreOptions:  options,
 		},
 		Validator: &validator.DataValidator{
@@ -85,7 +84,8 @@ func (e *EtcdInitializer) restoreCorruptData() error {
 		err = fmt.Errorf("failed to delete the Data directory: %v", err)
 		return err
 	}
-	store, err := getSnapstore(storageProvider)
+
+	store, err := snapstore.GetSnapstore(storageProvider, path.Join(e.Config.StorePrefix, backupFormatVersion))
 	if err != nil {
 		err = fmt.Errorf("failed to create snapstore from configured storage provider: %v", err)
 		return err
@@ -114,25 +114,4 @@ func (e *EtcdInitializer) restoreCorruptData() error {
 	}
 	logger.Infoln("Successfully restored the etcd data directory.")
 	return err
-}
-
-// getSnapstore returns the snapstore object for give storageProvider with specified container
-func getSnapstore(storageProvider string) (snapstore.SnapStore, error) {
-	switch storageProvider {
-	case snapstore.SnapstoreProviderLocal, "":
-		container := os.Getenv(envStorageContainer)
-		if container == "" {
-			container = defaultLocalStore
-		}
-		return snapstore.NewLocalSnapStore(path.Join(container, backupFormatVersion))
-	case snapstore.SnapstoreProviderS3:
-		container := os.Getenv(envStorageContainer)
-		if container == "" {
-			return nil, fmt.Errorf("storage container name not specified")
-		}
-		return snapstore.NewS3SnapStore(container, backupFormatVersion)
-	default:
-		return nil, fmt.Errorf("unsupported storage provider : %s", storageProvider)
-
-	}
 }

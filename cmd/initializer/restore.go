@@ -16,7 +16,6 @@ package initializer
 
 import (
 	"fmt"
-	"os"
 
 	"github.com/coreos/etcd/pkg/types"
 
@@ -29,8 +28,6 @@ import (
 )
 
 const (
-	envStorageContainer             = "STORAGE_CONTAINER"
-	defaultLocalStore               = "default.etcd.bkp"
 	defaultName                     = "default"
 	backupFormatVersion             = "v1"
 	defaultInitialAdvertisePeerURLs = "http://localhost:2380"
@@ -45,6 +42,7 @@ var (
 	restoreName         string
 	skipHashCheck       bool
 	storageProvider     string
+	storePrefix         string
 )
 
 // NewRestoreCommand returns the command to restore
@@ -70,7 +68,7 @@ func NewRestoreCommand(stopCh <-chan struct{}) *cobra.Command {
 			if err != nil {
 				logger.Fatalf("failed parsing peers urls for restore cluster: %v", err)
 			}
-			store, err := getSnapstore(storageProvider)
+			store, err := snapstore.GetSnapstore(storageProvider, path.Join(storePrefix, backupFormatVersion))
 			if err != nil {
 				logger.Fatalf("failed to create snapstore from configured storage provider: %v", err)
 			}
@@ -111,13 +109,13 @@ func NewRestoreCommand(stopCh <-chan struct{}) *cobra.Command {
 
 func initializeFlags(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&storageProvider, "storage-provider", snapstore.SnapstoreProviderLocal, "snapshot storage provider")
+	cmd.Flags().StringVar(&storePrefix, "store-prefix", "", "prefix or directory under which snapstore is created")
 	cmd.Flags().StringVarP(&restoreDataDir, "data-dir", "d", fmt.Sprintf("%s.etcd", defaultName), "path to the data directory")
 	cmd.Flags().StringVar(&restoreCluster, "initial-cluster", initialClusterFromName(defaultName), "initial cluster configuration for restore bootstrap")
 	cmd.Flags().StringVar(&restoreClusterToken, "initial-cluster-token", "etcd-cluster", "initial cluster token for the etcd cluster during restore bootstrap")
 	cmd.Flags().StringArrayVar(&restorePeerURLs, "initial-advertise-peer-urls", []string{defaultInitialAdvertisePeerURLs}, "list of this member's peer URLs to advertise to the rest of the cluster")
 	cmd.Flags().StringVar(&restoreName, "name", defaultName, "human-readable name for this member")
 	cmd.Flags().BoolVar(&skipHashCheck, "skip-hash-check", false, "ignore snapshot integrity hash value (required if copied from data directory)")
-	//cmd.Flags().BoolVar(&fromLatest, "from-latest", false, "Restore from latest snapshot in snapstore")
 }
 
 func initialClusterFromName(name string) string {
@@ -126,25 +124,4 @@ func initialClusterFromName(name string) string {
 		n = defaultName
 	}
 	return fmt.Sprintf("%s=http://localhost:2380", n)
-}
-
-// getSnapstore returns the snapstore object for give storageProvider with specified container
-func getSnapstore(storageProvider string) (snapstore.SnapStore, error) {
-	switch storageProvider {
-	case snapstore.SnapstoreProviderLocal, "":
-		container := os.Getenv(envStorageContainer)
-		if container == "" {
-			container = defaultLocalStore
-		}
-		return snapstore.NewLocalSnapStore(path.Join(container, backupFormatVersion))
-	case snapstore.SnapstoreProviderS3:
-		container := os.Getenv(envStorageContainer)
-		if container == "" {
-			return nil, fmt.Errorf("storage container name not specified")
-		}
-		return snapstore.NewS3SnapStore(container, backupFormatVersion)
-	default:
-		return nil, fmt.Errorf("unsupported storage provider : %s", storageProvider)
-
-	}
 }

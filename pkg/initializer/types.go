@@ -24,6 +24,7 @@ import (
 // checks and snapshot restoration in case of corruption.
 type Config struct {
 	StorageProvider string
+	StorePrefix     string
 	RestoreOptions  *restorer.RestoreOptions
 }
 

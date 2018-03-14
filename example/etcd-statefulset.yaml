@@ -33,7 +33,7 @@ spec:
         command:
         - /bin/sh
         - -ec
-        - 'while true; do wget http://localhost:8080/initialization/status -S -O status; STATUS=`cat status`; case $STATUS in "New") wget http://localhost:8080/initialization/start -S -O - ;; "Progress") continue;; "Failed") continue;; "Successful") etcd --data-dir=/var/etcd/data; break;; esac; done'
+        - 'while true; do wget http://localhost:8080/initialization/status -S -O status; STATUS=`cat status`; case $STATUS in "New") wget http://localhost:8080/initialization/start -S -O - ;; "Progress") sleep 1; continue;; "Failed") continue;; "Successful") exec etcd --data-dir=/var/etcd/data ;; esac; done'
         image: quay.io/coreos/etcd:v3.3.1
         imagePullPolicy: IfNotPresent
         livenessProbe:
@@ -74,8 +74,8 @@ spec:
           httpGet:
             path: /metrics
             port: server
-          initialDelaySeconds: 3
-          periodSeconds: 3
+          initialDelaySeconds: 5
+          periodSeconds: 10
         ports:
         - containerPort: 8080
           name: server
