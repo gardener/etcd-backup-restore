@@ -40,6 +40,12 @@ func GetSnapstore(storageProvider, prefix string) (SnapStore, error) {
 			return nil, fmt.Errorf("storage container name not specified")
 		}
 		return NewS3SnapStore(container, prefix)
+	case SnapstoreProviderGCS:
+		container := os.Getenv(envStorageContainer)
+		if container == "" {
+			return nil, fmt.Errorf("storage container name not specified")
+		}
+		return NewGCSSnapStore(container, prefix)
 	default:
 		return nil, fmt.Errorf("unsupported storage provider : %s", storageProvider)
 

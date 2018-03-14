@@ -326,10 +326,10 @@ func verifyDB(path string) error {
 
 	// Open database.
 	db, err := bolt.Open(path, 0666, nil)
+	defer db.Close()
 	if err != nil {
 		return err
 	}
-	defer db.Close()
 
 	// Perform consistency check.
 	return db.View(func(tx *bolt.Tx) error {
