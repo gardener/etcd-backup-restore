@@ -15,8 +15,6 @@
 package snapshot
 
 import (
-	"fmt"
-	"os"
 	"path"
 	"time"
 
@@ -27,8 +25,6 @@ import (
 )
 
 const (
-	envStorageContainer = "STORAGE_CONTAINER"
-	defaultLocalStore   = "default.etcd.bkp"
 	backupFormatVersion = "v1"
 )
 
@@ -39,6 +35,7 @@ type configuration struct {
 	schedule              string
 	etcdEndpoints         string
 	storageProvider       string
+	storePrefix           string
 	maxBackups            int
 	etcdConnectionTimeout int
 }
@@ -52,7 +49,7 @@ func NewSnapshotCommand(stopCh <-chan struct{}) *cobra.Command {
 		Long: `Snapshot utility will backup the etcd at regular interval. It supports
 storing snapshots on various cloud storage providers as well as local disk location.`,
 		Run: func(cmd *cobra.Command, args []string) {
-			ss, err := getSnapstore(config.storageProvider)
+			ss, err := snapstore.GetSnapstore(config.storageProvider, path.Join(config.storePrefix, backupFormatVersion))
 			if err != nil {
 				logger.Fatalf("Failed to create snapstore from configured storage provider: %v", err)
 			}
@@ -83,28 +80,8 @@ storing snapshots on various cloud storage providers as well as local disk locat
 func initializeFlags(config *configuration, cmd *cobra.Command) {
 	cmd.Flags().StringVarP(&config.etcdEndpoints, "etcd-endpoints", "e", "http://localhost:2379", "comma separated list of etcd endpoints")
 	cmd.Flags().StringVar(&config.storageProvider, "storage-provider", snapstore.SnapstoreProviderLocal, "snapshot storage provider")
+	cmd.Flags().StringVar(&config.storePrefix, "store-prefix", "", "prefix or directory under which snapstore is created")
 	cmd.Flags().StringVarP(&config.schedule, "schedule", "s", "* */1 * * *", "schedule for snapshots")
 	cmd.Flags().IntVarP(&config.maxBackups, "max-backups", "m", 7, "maximum number of previous backups to keep")
 	cmd.Flags().IntVar(&config.etcdConnectionTimeout, "etcd-connection-timeout", 30, "etcd client connection timeout")
-}
-
-// getSnapstore returns the snapstore object for give storageProvider with specified container
-func getSnapstore(storageProvider string) (snapstore.SnapStore, error) {
-	switch storageProvider {
-	case snapstore.SnapstoreProviderLocal, "":
-		container := os.Getenv(envStorageContainer)
-		if container == "" {
-			container = defaultLocalStore
-		}
-		return snapstore.NewLocalSnapStore(path.Join(container, backupFormatVersion))
-	case snapstore.SnapstoreProviderS3:
-		container := os.Getenv(envStorageContainer)
-		if container == "" {
-			return nil, fmt.Errorf("storage container name not specified")
-		}
-		return snapstore.NewS3SnapStore(container, backupFormatVersion)
-	default:
-		return nil, fmt.Errorf("unsupported storage provider : %s", storageProvider)
-
-	}
 }

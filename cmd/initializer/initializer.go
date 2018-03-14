@@ -55,7 +55,7 @@ func NewInitializeCommand(stopCh <-chan struct{}) *cobra.Command {
 				SkipHashCheck:  skipHashCheck,
 			}
 
-			etcdInitializer := initializer.NewInitializer(options, storageProvider, logger)
+			etcdInitializer := initializer.NewInitializer(options, storageProvider, storePrefix, logger)
 			err = etcdInitializer.Initialize()
 			if err != nil {
 				logger.Fatalf("initializer failed. %v", err)
