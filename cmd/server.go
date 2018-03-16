@@ -12,11 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package server
+package cmd
 
 import (
 	"context"
-	"fmt"
 	"path"
 	"time"
 
@@ -28,46 +27,12 @@ import (
 	"github.com/gardener/etcd-backup-restore/pkg/snapshot/restorer"
 	"github.com/gardener/etcd-backup-restore/pkg/snapshot/snapshotter"
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
-	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
-)
-
-const (
-	backupFormatVersion             = "v1"
-	defaultServerPort               = 8080
-	defaultName                     = "default"
-	defaultInitialAdvertisePeerURLs = "http://localhost:2380"
-)
-
-var logger = logrus.New()
-
-// configuration is struct to hold configuration for utility
-type configuration struct {
-	schedule              string
-	etcdEndpoints         string
-	storageProvider       string
-	maxBackups            int
-	etcdConnectionTimeout int
-}
-
-var (
-	port int
-
-	//restore flags
-	restoreCluster      string
-	restoreClusterToken string
-	restoreDataDir      string
-	restorePeerURLs     []string
-	restoreName         string
-	skipHashCheck       bool
-	storageProvider     string
-	storePrefix         string
 )
 
 // NewServerCommand create cobra command for snapshot
 func NewServerCommand(stopCh <-chan struct{}) *cobra.Command {
-	config := &configuration{}
-	var command = &cobra.Command{
+	var serverCmd = &cobra.Command{
 		Use:   "server",
 		Short: "start the http server with backup scheduler.",
 		Long:  `Server will keep listening for http request to deliver its functionality through http endpoins.`,
@@ -91,7 +56,16 @@ func NewServerCommand(stopCh <-chan struct{}) *cobra.Command {
 				SkipHashCheck:  skipHashCheck,
 			}
 
-			etcdInitializer := initializer.NewInitializer(options, storageProvider, storePrefix, logger)
+			var snapstoreConfig *snapstore.Config
+			if storageProvider != "" {
+				snapstoreConfig = &snapstore.Config{
+					Provider:  storageProvider,
+					Container: storageContainer,
+					Prefix:    path.Join(storagePrefix, backupFormatVersion),
+				}
+			}
+
+			etcdInitializer := initializer.NewInitializer(options, snapstoreConfig, logger)
 			handler := &server.HTTPHandler{
 				Port:            port,
 				EtcdInitializer: *etcdInitializer,
@@ -101,21 +75,24 @@ func NewServerCommand(stopCh <-chan struct{}) *cobra.Command {
 			handler.RegisterHandler()
 			logger.Info("Starting the http server...")
 			go handler.Start()
-
 			defer handler.Stop()
-
-			ss, err := snapstore.GetSnapstore(storageProvider, path.Join(storePrefix, backupFormatVersion))
+			if snapstoreConfig == nil {
+				logger.Warnf("No snapstore storage provider configured. Will not start backup schedule.")
+				<-stopCh
+				return
+			}
+			ss, err := snapstore.GetSnapstore(snapstoreConfig)
 			if err != nil {
 				logger.Fatalf("Failed to create snapstore from configured storage provider: %v", err)
 			}
 			logger.Info("Created snapstore from provider: %s", storageProvider)
 			ssr, err := snapshotter.NewSnapshotter(
-				config.etcdEndpoints,
-				config.schedule,
+				etcdEndpoints,
+				schedule,
 				ss,
 				logger,
-				config.maxBackups,
-				time.Duration(config.etcdConnectionTimeout))
+				maxBackups,
+				time.Duration(etcdConnectionTimeout))
 			if err != nil {
 				logger.Fatalf("Failed to create snapshotter: %v", err)
 			}
@@ -127,7 +104,7 @@ func NewServerCommand(stopCh <-chan struct{}) *cobra.Command {
 						logger.Info("Shutting down...")
 						return
 					default:
-						err = probeEtcd(config.etcdEndpoints, time.Duration(config.etcdConnectionTimeout))
+						err = probeEtcd(etcdEndpoints, time.Duration(etcdConnectionTimeout))
 					}
 					if err == nil {
 						break
@@ -144,8 +121,11 @@ func NewServerCommand(stopCh <-chan struct{}) *cobra.Command {
 			}
 		},
 	}
-	initializeFlags(config, command)
-	return command
+	initializeServerFlags(serverCmd)
+	initializeSnapshotterFlags(serverCmd)
+	initializeSnapstoreFlags(serverCmd)
+	initializeEtcdFlags(serverCmd)
+	return serverCmd
 }
 
 func probeEtcd(endPoints string, etcdConnectionTimeout time.Duration) error {
@@ -165,27 +145,7 @@ func probeEtcd(endPoints string, etcdConnectionTimeout time.Duration) error {
 	return nil
 }
 
-// initializeFlags adds the flags to <cmd>
-func initializeFlags(config *configuration, cmd *cobra.Command) {
-	cmd.Flags().IntVarP(&port, "server-port", "p", defaultServerPort, "port on which server should listen")
-	cmd.Flags().StringVarP(&config.etcdEndpoints, "etcd-endpoints", "e", "http://localhost:2379", "comma separated list of etcd endpoints")
-	cmd.Flags().StringVarP(&config.schedule, "schedule", "s", "* */1 * * *", "schedule for snapshots")
-	cmd.Flags().IntVarP(&config.maxBackups, "max-backups", "m", 7, "maximum number of previous backups to keep")
-	cmd.Flags().IntVar(&config.etcdConnectionTimeout, "etcd-connection-timeout", 30, "etcd client connection timeout")
-	cmd.Flags().StringVar(&storageProvider, "storage-provider", snapstore.SnapstoreProviderLocal, "snapshot storage provider")
-	cmd.Flags().StringVar(&storePrefix, "store-prefix", "", "prefix or directory under which snapstore is created")
-	cmd.Flags().StringVarP(&restoreDataDir, "data-dir", "d", fmt.Sprintf("%s.etcd", defaultName), "path to the data directory")
-	cmd.Flags().StringVar(&restoreCluster, "initial-cluster", initialClusterFromName(defaultName), "initial cluster configuration for restore bootstrap")
-	cmd.Flags().StringVar(&restoreClusterToken, "initial-cluster-token", "etcd-cluster", "initial cluster token for the etcd cluster during restore bootstrap")
-	cmd.Flags().StringArrayVar(&restorePeerURLs, "initial-advertise-peer-urls", []string{defaultInitialAdvertisePeerURLs}, "list of this member's peer URLs to advertise to the rest of the cluster")
-	cmd.Flags().StringVar(&restoreName, "name", defaultName, "human-readable name for this member")
-	cmd.Flags().BoolVar(&skipHashCheck, "skip-hash-check", false, "ignore snapshot integrity hash value (required if copied from data directory)")
-}
-
-func initialClusterFromName(name string) string {
-	n := name
-	if name == "" {
-		n = defaultName
-	}
-	return fmt.Sprintf("%s=http://localhost:2380", n)
+// initializeServerFlags adds the flags to <cmd>
+func initializeServerFlags(serverCmd *cobra.Command) {
+	serverCmd.Flags().IntVarP(&port, "server-port", "p", defaultServerPort, "port on which server should listen")
 }
