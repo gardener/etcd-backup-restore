@@ -37,8 +37,7 @@ func GetSnapstore(config *Config) (SnapStore, error) {
 		}
 		return NewLocalSnapStore(path.Join(config.Container, config.Prefix))
 	case SnapstoreProviderS3:
-		container := os.Getenv(envStorageContainer)
-		if container == "" {
+		if config.Container == "" {
 			return nil, fmt.Errorf("storage container name not specified")
 		}
 		return NewS3SnapStore(config.Container, config.Prefix)
