@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package snapshot
+package cmd
 
 import (
 	"path"
@@ -20,46 +20,33 @@ import (
 
 	"github.com/gardener/etcd-backup-restore/pkg/snapshot/snapshotter"
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
-	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )
 
-const (
-	backupFormatVersion = "v1"
-)
-
-var logger = logrus.New()
-
-// configuration is struct to hold configuration for utility
-type configuration struct {
-	schedule              string
-	etcdEndpoints         string
-	storageProvider       string
-	storePrefix           string
-	maxBackups            int
-	etcdConnectionTimeout int
-}
-
 // NewSnapshotCommand create cobra command for snapshot
 func NewSnapshotCommand(stopCh <-chan struct{}) *cobra.Command {
-	config := &configuration{}
 	var command = &cobra.Command{
 		Use:   "snapshot",
 		Short: "takes the snapshot of etcd periodically.",
 		Long: `Snapshot utility will backup the etcd at regular interval. It supports
 storing snapshots on various cloud storage providers as well as local disk location.`,
 		Run: func(cmd *cobra.Command, args []string) {
-			ss, err := snapstore.GetSnapstore(config.storageProvider, path.Join(config.storePrefix, backupFormatVersion))
+			snapstoreConfig := &snapstore.Config{
+				Provider:  storageProvider,
+				Container: storageContainer,
+				Prefix:    path.Join(storagePrefix, backupFormatVersion),
+			}
+			ss, err := snapstore.GetSnapstore(snapstoreConfig)
 			if err != nil {
 				logger.Fatalf("Failed to create snapstore from configured storage provider: %v", err)
 			}
 			ssr, err := snapshotter.NewSnapshotter(
-				config.etcdEndpoints,
-				config.schedule,
+				etcdEndpoints,
+				schedule,
 				ss,
 				logger,
-				config.maxBackups,
-				time.Duration(config.etcdConnectionTimeout))
+				maxBackups,
+				time.Duration(etcdConnectionTimeout))
 			if err != nil {
 				logger.Fatalf("Failed to create snapshotter: %v", err)
 			}
@@ -72,16 +59,15 @@ storing snapshots on various cloud storage providers as well as local disk locat
 			return
 		},
 	}
-	initializeFlags(config, command)
+	initializeSnapstoreFlags(command)
+	initializeSnapshotterFlags(command)
 	return command
 }
 
-// initializeFlags adds the flags to <cmd>
-func initializeFlags(config *configuration, cmd *cobra.Command) {
-	cmd.Flags().StringVarP(&config.etcdEndpoints, "etcd-endpoints", "e", "http://localhost:2379", "comma separated list of etcd endpoints")
-	cmd.Flags().StringVar(&config.storageProvider, "storage-provider", snapstore.SnapstoreProviderLocal, "snapshot storage provider")
-	cmd.Flags().StringVar(&config.storePrefix, "store-prefix", "", "prefix or directory under which snapstore is created")
-	cmd.Flags().StringVarP(&config.schedule, "schedule", "s", "* */1 * * *", "schedule for snapshots")
-	cmd.Flags().IntVarP(&config.maxBackups, "max-backups", "m", 7, "maximum number of previous backups to keep")
-	cmd.Flags().IntVar(&config.etcdConnectionTimeout, "etcd-connection-timeout", 30, "etcd client connection timeout")
+// initializeSnapshotterFlags adds snapshotter related flags to <cmd>
+func initializeSnapshotterFlags(cmd *cobra.Command) {
+	cmd.Flags().StringVarP(&etcdEndpoints, "etcd-endpoints", "e", "http://localhost:2379", "comma separated list of etcd endpoints")
+	cmd.Flags().StringVarP(&schedule, "schedule", "s", "* */1 * * *", "schedule for snapshots")
+	cmd.Flags().IntVarP(&maxBackups, "max-backups", "m", 7, "maximum number of previous backups to keep")
+	cmd.Flags().IntVar(&etcdConnectionTimeout, "etcd-connection-timeout", 30, "etcd client connection timeout")
 }
