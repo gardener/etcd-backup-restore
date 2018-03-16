@@ -15,9 +15,6 @@
 package cmd
 
 import (
-	"github.com/gardener/etcd-backup-restore/cmd/initializer"
-	"github.com/gardener/etcd-backup-restore/cmd/server"
-	"github.com/gardener/etcd-backup-restore/cmd/snapshot"
 	"github.com/spf13/cobra"
 )
 
@@ -31,9 +28,9 @@ related functionality. Sub-command for this root command will support features
 like scheduled snapshot of etcd, etcd data directory validation and restore etcd
 from previously taken snapshot.`,
 	}
-	RootCmd.AddCommand(snapshot.NewSnapshotCommand(stopCh),
-		initializer.NewRestoreCommand(stopCh),
-		initializer.NewInitializeCommand(stopCh),
-		server.NewServerCommand(stopCh))
+	RootCmd.AddCommand(NewSnapshotCommand(stopCh),
+		NewRestoreCommand(stopCh),
+		NewInitializeCommand(stopCh),
+		NewServerCommand(stopCh))
 	return RootCmd
 }

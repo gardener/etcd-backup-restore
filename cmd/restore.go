@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package initializer
+package cmd
 
 import (
 	"fmt"
@@ -25,24 +25,6 @@ import (
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
-)
-
-const (
-	defaultName                     = "default"
-	backupFormatVersion             = "v1"
-	defaultInitialAdvertisePeerURLs = "http://localhost:2380"
-)
-
-var (
-	//restore flags
-	restoreCluster      string
-	restoreClusterToken string
-	restoreDataDir      string
-	restorePeerURLs     []string
-	restoreName         string
-	skipHashCheck       bool
-	storageProvider     string
-	storePrefix         string
 )
 
 // NewRestoreCommand returns the command to restore
@@ -68,7 +50,12 @@ func NewRestoreCommand(stopCh <-chan struct{}) *cobra.Command {
 			if err != nil {
 				logger.Fatalf("failed parsing peers urls for restore cluster: %v", err)
 			}
-			store, err := snapstore.GetSnapstore(storageProvider, path.Join(storePrefix, backupFormatVersion))
+			snapstoreConfig := &snapstore.Config{
+				Provider:  storageProvider,
+				Container: storageContainer,
+				Prefix:    path.Join(storagePrefix, backupFormatVersion),
+			}
+			store, err := snapstore.GetSnapstore(snapstoreConfig)
 			if err != nil {
 				logger.Fatalf("failed to create snapstore from configured storage provider: %v", err)
 			}
@@ -103,13 +90,14 @@ func NewRestoreCommand(stopCh <-chan struct{}) *cobra.Command {
 			logger.Infoln("Successfully restored the etcd data directory.")
 		},
 	}
-	initializeFlags(restoreCmd)
+
+	initializeSnapstoreFlags(restoreCmd)
+	initializeEtcdFlags(restoreCmd)
 	return restoreCmd
 }
 
-func initializeFlags(cmd *cobra.Command) {
-	cmd.Flags().StringVar(&storageProvider, "storage-provider", snapstore.SnapstoreProviderLocal, "snapshot storage provider")
-	cmd.Flags().StringVar(&storePrefix, "store-prefix", "", "prefix or directory under which snapstore is created")
+// initializeEtcdFlags adds the etcd related flags to <cmd>
+func initializeEtcdFlags(cmd *cobra.Command) {
 	cmd.Flags().StringVarP(&restoreDataDir, "data-dir", "d", fmt.Sprintf("%s.etcd", defaultName), "path to the data directory")
 	cmd.Flags().StringVar(&restoreCluster, "initial-cluster", initialClusterFromName(defaultName), "initial cluster configuration for restore bootstrap")
 	cmd.Flags().StringVar(&restoreClusterToken, "initial-cluster-token", "etcd-cluster", "initial cluster token for the etcd cluster during restore bootstrap")

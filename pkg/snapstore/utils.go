@@ -26,28 +26,28 @@ const (
 )
 
 // GetSnapstore returns the snapstore object for give storageProvider with specified container
-func GetSnapstore(storageProvider, prefix string) (SnapStore, error) {
-	switch storageProvider {
+func GetSnapstore(config *Config) (SnapStore, error) {
+	if config.Container == "" {
+		config.Container = os.Getenv(envStorageContainer)
+	}
+	switch config.Provider {
 	case SnapstoreProviderLocal, "":
-		container := os.Getenv(envStorageContainer)
-		if container == "" {
-			container = defaultLocalStore
+		if config.Container == "" {
+			config.Container = defaultLocalStore
 		}
-		return NewLocalSnapStore(path.Join(container, prefix))
+		return NewLocalSnapStore(path.Join(config.Container, config.Prefix))
 	case SnapstoreProviderS3:
-		container := os.Getenv(envStorageContainer)
-		if container == "" {
+		if config.Container == "" {
 			return nil, fmt.Errorf("storage container name not specified")
 		}
-		return NewS3SnapStore(container, prefix)
+		return NewS3SnapStore(config.Container, config.Prefix)
 	case SnapstoreProviderGCS:
-		container := os.Getenv(envStorageContainer)
-		if container == "" {
+		if config.Container == "" {
 			return nil, fmt.Errorf("storage container name not specified")
 		}
-		return NewGCSSnapStore(container, prefix)
+		return NewGCSSnapStore(config.Container, config.Prefix)
 	default:
-		return nil, fmt.Errorf("unsupported storage provider : %s", storageProvider)
+		return nil, fmt.Errorf("unsupported storage provider : %s", config.Provider)
 
 	}
 }

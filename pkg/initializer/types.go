@@ -17,14 +17,14 @@ package initializer
 import (
 	"github.com/gardener/etcd-backup-restore/pkg/initializer/validator"
 	"github.com/gardener/etcd-backup-restore/pkg/snapshot/restorer"
+	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	"github.com/sirupsen/logrus"
 )
 
 // Config holds etcd related configuration required for initialization
 // checks and snapshot restoration in case of corruption.
 type Config struct {
-	StorageProvider string
-	StorePrefix     string
+	SnapstoreConfig *snapstore.Config
 	RestoreOptions  *restorer.RestoreOptions
 }
 

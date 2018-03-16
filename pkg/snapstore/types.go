@@ -61,3 +61,13 @@ type Snapshot struct {
 
 // SnapList is list of snapshots
 type SnapList []*Snapshot
+
+// Config defines the configuration to create snapshot store
+type Config struct {
+	// Provider indicated the cloud provider
+	Provider string
+	// Container holds the name of bucket or container to which snapshot will be stored
+	Container string
+	// Prefix holds the prefix or directory under StorageContainer under which snapshot will be stored
+	Prefix string
+}

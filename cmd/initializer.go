@@ -12,14 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package initializer
+package cmd
 
 import (
 	"fmt"
+	"path"
 
 	"github.com/coreos/etcd/pkg/types"
 	"github.com/gardener/etcd-backup-restore/pkg/initializer"
 	"github.com/gardener/etcd-backup-restore/pkg/snapshot/restorer"
+	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )
@@ -55,13 +57,22 @@ func NewInitializeCommand(stopCh <-chan struct{}) *cobra.Command {
 				SkipHashCheck:  skipHashCheck,
 			}
 
-			etcdInitializer := initializer.NewInitializer(options, storageProvider, storePrefix, logger)
+			var snapstoreConfig *snapstore.Config
+			if storageProvider != "" {
+				snapstoreConfig = &snapstore.Config{
+					Provider:  storageProvider,
+					Container: storageContainer,
+					Prefix:    path.Join(storagePrefix, backupFormatVersion),
+				}
+			}
+			etcdInitializer := initializer.NewInitializer(options, snapstoreConfig, logger)
 			err = etcdInitializer.Initialize()
 			if err != nil {
 				logger.Fatalf("initializer failed. %v", err)
 			}
 		},
 	}
-	initializeFlags(initializeCmd)
+	initializeEtcdFlags(initializeCmd)
+	initializeSnapstoreFlags(initializeCmd)
 	return initializeCmd
 }

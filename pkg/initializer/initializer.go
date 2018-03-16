@@ -17,7 +17,6 @@ package initializer
 import (
 	"fmt"
 	"os"
-	"path"
 	"path/filepath"
 
 	"github.com/gardener/etcd-backup-restore/pkg/initializer/validator"
@@ -54,12 +53,11 @@ func (e *EtcdInitializer) Initialize() error {
 }
 
 //NewInitializer creates an etcd initializer object.
-func NewInitializer(options *restorer.RestoreOptions, storageProvider, storePrefix string, logger *logrus.Logger) *EtcdInitializer {
+func NewInitializer(options *restorer.RestoreOptions, snapstoreConfig *snapstore.Config, logger *logrus.Logger) *EtcdInitializer {
 
 	etcdInit := &EtcdInitializer{
 		Config: &Config{
-			StorageProvider: storageProvider,
-			StorePrefix:     storePrefix,
+			SnapstoreConfig: snapstoreConfig,
 			RestoreOptions:  options,
 		},
 		Validator: &validator.DataValidator{
@@ -77,15 +75,17 @@ func NewInitializer(options *restorer.RestoreOptions, storageProvider, storePref
 func (e *EtcdInitializer) restoreCorruptData() error {
 	logger := e.Logger
 	dataDir := e.Config.RestoreOptions.RestoreDataDir
-	storageProvider := e.Config.StorageProvider
 	logger.Infof("Removing data directory(%s) for snapshot restoration.", dataDir)
 	err := os.RemoveAll(filepath.Join(dataDir))
 	if err != nil {
 		err = fmt.Errorf("failed to delete the Data directory: %v", err)
 		return err
 	}
-
-	store, err := snapstore.GetSnapstore(storageProvider, path.Join(e.Config.StorePrefix, backupFormatVersion))
+	if e.Config.SnapstoreConfig == nil {
+		logger.Warnf("No snapstore storage provider configured. Will only clean the directory.")
+		return nil
+	}
+	store, err := snapstore.GetSnapstore(e.Config.SnapstoreConfig)
 	if err != nil {
 		err = fmt.Errorf("failed to create snapstore from configured storage provider: %v", err)
 		return err
