@@ -1,3 +1,4 @@
+```
                                  Apache License
                            Version 2.0, January 2004
                         http://www.apache.org/licenses/
@@ -199,3 +200,97 @@
    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
    See the License for the specific language governing permissions and
    limitations under the License.
+```
+
+## APIs
+
+This project may include APIs to SAP or third party products or services. The use of these APIs,
+products and services may be subject to additional agreements. In no event shall the application
+of the Apache Software License, v.2 to this project grant any rights in or to these APIs, products
+or services that would alter, expand, be inconsistent with, or supersede any terms of these additional
+agreements. API means application programming interfaces, as well as their respective specifications
+and implementing code that allows other software products to communicate with or call on SAP or
+third party products or services (for example, SAP Enterprise Services, BAPIs, Idocs, RFCs and
+ABAP calls or other user exits) and may be made available through SAP or third party products,
+SDKs, documentation or other media.
+
+## Subcomponents
+
+This project includes the following subcomponents that are subject to separate license terms. 
+Your use of these subcomponents is subject to the separate license terms applicable to
+each subcomponent.
+
+Cobra.  
+https://github.com/spf13/cobra.  
+Copyright 2015 Steve Francia.  
+Apache 2 license (https://github.com/spf13/cobra/blob/master/LICENSE.txt)
+
+Etcd.  
+https://github.com/coreos/etcd.  
+Copyright 2017 The etcd Authors.  
+Apache 2 license (https://github.com/coreos/etcd/blob/master/LICENSE).
+
+Cron.  
+https://github.com/robfig/cron.  
+Copyright (C) 2012 Rob Figueiredo.  
+MIT license (https://github.com/robfig/cron/blob/master/LICENSE)
+
+Logrus.  
+https://github.com/sirupsen/logrus.  
+Copyright (c) 2014 Simon Eskildsen.  
+MIT license (https://github.com/sirupsen/logrus/blob/master/LICENSE)
+
+AWS SDK for Go.  
+https://github.com/aws/aws-sdk-go.  
+Copyright 2015 Amazon.com, Inc. or its affiliates. All Rights Reserved.  
+Apache 2 license (https://github.com/aws/aws-sdk-go/blob/master/LICENSE.txt)
+
+Ginkgo.  
+https://github.com/onsi/ginkgo.  
+Copyright (c) 2013-2014 Onsi Fakhouri.  
+MIT License (https://github.com/onsi/ginkgo/blob/master/LICENSE)
+
+Gomega.  
+https://github.com/onsi/gomega.  
+Copyright (c) 2013-2014 Onsi Fakhouri.  
+MIT License (https://github.com/onsi/gomega/blob/master/LICENSE)
+
+Microsoft Azure SDK for Go.
+https://github.com/Azure/azure-sdk-for-go
+Copyright 2014-2017 Microsoft
+Apache 2 license (https://github.com/Azure/azure-sdk-for-go/blob/master/LICENSE)
+
+Google Cloud Client Libraries for Go
+https://github.com/GoogleCloudPlatform/google-cloud-go
+Copyright 2017 Google Inc. All Rights Reserved.
+Apache 2 license (https://github.com/GoogleCloudPlatform/google-cloud-go/blob/master/LICENSE)
+
+Gophercloud: an OpenStack SDK for Go
+https://github.com/gophercloud/gophercloud
+Copyright 2012-2013 Rackspace, Inc.
+Apache 2 license (https://github.com/gophercloud/gophercloud/blob/master/LICENSE)
+
+------
+## MIT License
+
+    The MIT License (MIT)
+
+    Copyright (c) <year> <owner>
+
+    Permission is hereby granted, free of charge, to any person obtaining a copy
+    of this software and associated documentation files (the "Software"), to deal
+    in the Software without restriction, including without limitation the rights
+    to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+    copies of the Software, and to permit persons to whom the Software is
+    furnished to do so, subject to the following conditions:
+
+    The above copyright notice and this permission notice shall be included in
+    all copies or substantial portions of the Software.
+
+    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+    THE SOFTWARE.
