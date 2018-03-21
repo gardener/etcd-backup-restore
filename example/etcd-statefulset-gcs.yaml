@@ -1,0 +1,110 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: etcd-client
+  labels:
+    app: etcd
+spec:
+  ports:
+  - port: 2379
+    name: client
+    protocol: TCP
+  clusterIP: None
+  selector:
+    app: etcd
+---
+apiVersion: apps/v1beta1
+kind: StatefulSet
+metadata:
+  name: etcd
+spec:
+  selector:
+    matchLabels:
+      app: etcd
+  serviceName: "etcd"
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: etcd 
+    spec:
+      containers:
+      - name: etcd
+        command:
+        - /bin/sh
+        - -ec
+        - 'while true; do wget http://localhost:8080/initialization/status -S -O status; STATUS=`cat status`; case $STATUS in "New") wget http://localhost:8080/initialization/start -S -O - ;; "Progress") sleep 1; continue;; "Failed") continue;; "Successful") exec etcd --data-dir=/var/etcd/data ;; esac; done'
+        image: quay.io/coreos/etcd:v3.3.1
+        imagePullPolicy: IfNotPresent
+        livenessProbe:
+          httpGet:
+            path: /metrics
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        readinessProbe:
+          exec:
+            command:
+            - /bin/sh
+            - -ec
+            - ETCDCTL_API=3 etcdctl get foo
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        ports:
+        - containerPort: 2380
+          name: server
+          protocol: TCP
+        - containerPort: 2379
+          name: client
+          protocol: TCP
+        volumeMounts:
+        - mountPath: /var/etcd
+          name: etcd-data
+      - name: backup
+        command:
+        - etcdbrctl
+        - server
+        - --schedule=*/5 * * * *
+        - --max-backups=5
+        - --data-dir=/var/etcd/data
+        - --storage-provider=GCS      # change provider details here. (S3/Local)
+        image: <docker.io/gardener/etcdbr/etcdbrctl:0.1.0>    # change image here
+        imagePullPolicy: Always
+        livenessProbe:
+          httpGet:
+            path: /metrics
+            port: server
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        ports:
+        - containerPort: 8080
+          name: server
+          protocol: TCP
+        env:
+            - name: STORAGE_CONTAINER
+              value: <Container Name>      # change storage container name here
+            - name: GOOGLE_APPLICATION_CREDENTIALS
+              value: /root/.gcp/service-account-file.json
+            - name: PROJECT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: etcd-gcp-backup 
+                  key: project_id
+        volumeMounts:
+          - mountPath: /root/.gcp/
+            name: gcp-secret
+          - mountPath: /var/etcd
+            name: etcd-data
+      volumes:
+        - name: gcp-secret
+          secret:
+            secretName: etcd-gcp-backup 
+            defaultMode: 0420
+  volumeClaimTemplates:
+  - metadata:
+      name: etcd-data
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      resources:
+        requests:
+          storage: 1Gi

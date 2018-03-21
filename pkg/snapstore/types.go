@@ -43,6 +43,8 @@ const (
 	SnapstoreProviderLocal = "Local"
 	// SnapstoreProviderS3 is constant for aws S3 storage provider
 	SnapstoreProviderS3 = "S3"
+	// SnapstoreProviderGCS is constant for GCS object storage provider
+	SnapstoreProviderGCS = "GCS"
 
 	// SnapshotKindFull is constant for full snapshot kind
 	SnapshotKindFull = "Full"
