@@ -32,8 +32,6 @@ type SnapStore interface {
 	Save(Snapshot, io.Reader) error
 	// Delete should delete the snapshot file from store
 	Delete(Snapshot) error
-	// Size returns the size of snapshot
-	Size(Snapshot) (int64, error)
 	// GetLates resturns the latet snapshot
 	GetLatest() (*Snapshot, error)
 }
@@ -43,6 +41,8 @@ const (
 	SnapstoreProviderLocal = "Local"
 	// SnapstoreProviderS3 is constant for aws S3 storage provider
 	SnapstoreProviderS3 = "S3"
+	// SnapstoreProviderABS is constant for azure blob storage provider
+	SnapstoreProviderABS = "ABS"
 
 	// SnapshotKindFull is constant for full snapshot kind
 	SnapshotKindFull = "Full"

@@ -47,15 +47,6 @@ func (s *LocalSnapStore) Fetch(snap Snapshot) (io.ReadCloser, error) {
 	return os.Open(path.Join(s.prefix, snap.SnapPath))
 }
 
-// Size returns the size of snapshot
-func (s *LocalSnapStore) Size(snap Snapshot) (int64, error) {
-	fi, err := os.Stat(path.Join(s.prefix, snap.SnapPath))
-	if err != nil {
-		return 0, err
-	}
-	return fi.Size(), nil
-}
-
 // GetLatest returns the latest snapshot in snapstore
 func (s *LocalSnapStore) GetLatest() (*Snapshot, error) {
 	snapList, err := s.List()
