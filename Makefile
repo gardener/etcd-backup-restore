@@ -16,7 +16,7 @@ VCS                 := github.com
 ORGANIZATION        := gardener
 PROJECT             := etcd-backup-restore
 REPOSITORY          := $(VCS)/$(ORGANIZATION)/$(PROJECT)
-VERSION             := 0.1.0
+VERSION             := 0.1.0-dev
 LD_FLAGS            := "-w -X $(REPOSITORY)/pkg/version.Version=$(VERSION)"
 PACKAGES            := $(shell go list ./... | grep -vE '/vendor/')
 LINT_FOLDERS        := $(shell echo $(PACKAGES) | sed "s|$(REPOSITORY)|.|g")

@@ -43,7 +43,8 @@ const (
 	SnapstoreProviderS3 = "S3"
 	// SnapstoreProviderABS is constant for azure blob storage provider
 	SnapstoreProviderABS = "ABS"
-
+	// SnapstoreProviderGCS is constant for GCS object storage provider
+	SnapstoreProviderGCS = "GCS"
 	// SnapshotKindFull is constant for full snapshot kind
 	SnapshotKindFull = "Full"
 )
