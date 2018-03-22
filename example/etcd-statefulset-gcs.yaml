@@ -85,11 +85,6 @@ spec:
               value: <Container Name>      # change storage container name here
             - name: GOOGLE_APPLICATION_CREDENTIALS
               value: /root/.gcp/service-account-file.json
-            - name: PROJECT_ID
-              valueFrom:
-                secretKeyRef:
-                  name: etcd-gcp-backup 
-                  key: project_id
         volumeMounts:
           - mountPath: /root/.gcp/
             name: gcp-secret

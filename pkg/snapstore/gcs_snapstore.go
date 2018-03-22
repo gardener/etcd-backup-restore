@@ -18,7 +18,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"os"
 	"path"
 	"sort"
 	"strings"
@@ -27,35 +26,28 @@ import (
 	"google.golang.org/api/iterator"
 )
 
-const (
-	projectid = "PROJECT-ID"
-)
-
 // GCSSnapStore is snapstore with local disk as backend
 type GCSSnapStore struct {
 	SnapStore
-	projectID string
-	prefix    string
-	client    *storage.Client
-	bucket    string
-	ctx       context.Context
+	prefix string
+	client *storage.Client
+	bucket string
+	ctx    context.Context
 }
 
 // NewGCSSnapStore create new S3SnapStore from shared configuration with specified bucket
 func NewGCSSnapStore(bucket, prefix string) (*GCSSnapStore, error) {
 	ctx := context.Background()
-	projectID := os.Getenv(projectid)
 	gcsClient, err := storage.NewClient(ctx)
 	if err != nil {
 		return nil, err
 	}
 
 	return &GCSSnapStore{
-		projectID: projectID,
-		prefix:    prefix,
-		client:    gcsClient,
-		bucket:    bucket,
-		ctx:       ctx,
+		prefix: prefix,
+		client: gcsClient,
+		bucket: bucket,
+		ctx:    ctx,
 	}, nil
 
 }
