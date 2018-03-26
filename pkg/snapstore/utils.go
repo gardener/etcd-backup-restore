@@ -41,6 +41,11 @@ func GetSnapstore(config *Config) (SnapStore, error) {
 			return nil, fmt.Errorf("storage container name not specified")
 		}
 		return NewS3SnapStore(config.Container, config.Prefix)
+	case SnapstoreProviderABS:
+		if config.Container == "" {
+			return nil, fmt.Errorf("storage container name not specified")
+		}
+		return NewABSSnapStore(config.Container, config.Prefix)
 	case SnapstoreProviderGCS:
 		if config.Container == "" {
 			return nil, fmt.Errorf("storage container name not specified")
@@ -50,4 +55,15 @@ func GetSnapstore(config *Config) (SnapStore, error) {
 		return nil, fmt.Errorf("unsupported storage provider : %s", config.Provider)
 
 	}
+}
+
+// GetEnvVarOrError returns the value of specified environment variable or terminates if it's not defined.
+func GetEnvVarOrError(varName string) (string, error) {
+	value := os.Getenv(varName)
+	if value == "" {
+		err := fmt.Errorf("missing environment variable %s", varName)
+		return value, err
+	}
+
+	return value, nil
 }

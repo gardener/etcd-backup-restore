@@ -95,20 +95,6 @@ func (s *S3SnapStore) GetLatest() (*Snapshot, error) {
 	return snapList[snapList.Len()-1], nil
 }
 
-// Size returns the size of snapshot
-func (s *S3SnapStore) Size(snap Snapshot) (int64, error) {
-	fmt.Printf("requesting size of key %v on bucket %v", path.Join(s.prefix, snap.SnapPath), s.bucket)
-	resp, err := s.client.HeadObject(&s3.HeadObjectInput{
-		Bucket: aws.String(s.bucket),
-		Key:    aws.String(path.Join(s.prefix, snap.SnapPath)),
-	})
-	if err != nil {
-		return 0, err
-	}
-
-	return *resp.ContentLength, nil
-}
-
 // Save will write the snapshot to store
 func (s *S3SnapStore) Save(snap Snapshot, r io.Reader) error {
 	// since s3 requires io.ReadSeeker, this is the required hack.
