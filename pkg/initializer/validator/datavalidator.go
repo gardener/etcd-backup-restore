@@ -292,16 +292,15 @@ func verifyWALDir(waldir string, snap walpb.Snapshot) error {
 	for {
 		w, err = wal.Open(waldir, snap)
 		if err != nil {
-			fmt.Printf("open wal error: %v", err)
+			return fmt.Errorf("open wal error: %v", err)
 		}
-		defer w.Close()
 		if _, _, _, err = w.ReadAll(); err != nil {
+			w.Close()
 			// we can only repair ErrUnexpectedEOF and we never repair twice.
 			if repaired || err != io.ErrUnexpectedEOF {
 				fmt.Printf("read wal error (%v) and cannot be repaired.\n", err)
 				return err
 			}
-			w.Close()
 			if !wal.Repair(waldir) {
 				fmt.Printf("WAL error (%v) cannot be repaired.\n", err)
 				return err
@@ -311,6 +310,7 @@ func verifyWALDir(waldir string, snap walpb.Snapshot) error {
 
 			continue
 		}
+		w.Close()
 		break
 	}
 	return err
@@ -326,10 +326,10 @@ func verifyDB(path string) error {
 
 	// Open database.
 	db, err := bolt.Open(path, 0666, nil)
-	defer db.Close()
 	if err != nil {
 		return err
 	}
+	defer db.Close()
 
 	// Perform consistency check.
 	return db.View(func(tx *bolt.Tx) error {

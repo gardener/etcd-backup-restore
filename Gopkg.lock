@@ -8,12 +8,31 @@
     "iam",
     "internal",
     "internal/optional",
-    "internal/trace",
     "internal/version",
     "storage"
   ]
-  revision = "4b98a6370e36d7a85192e7bad08a4ebd82eac2a8"
-  version = "v0.20.0"
+  revision = "20d4028b8a750c2aca76bf9fefa8ed2d0109b573"
+  version = "v0.19.0"
+
+[[projects]]
+  name = "github.com/Azure/azure-sdk-for-go"
+  packages = [
+    "storage",
+    "version"
+  ]
+  revision = "56a0b1d2af3b65d5f1f7a330e02faaf48b473c5a"
+  version = "v14.6.0"
+
+[[projects]]
+  name = "github.com/Azure/go-autorest"
+  packages = [
+    "autorest",
+    "autorest/adal",
+    "autorest/azure",
+    "autorest/date"
+  ]
+  revision = "7909b98056dd6f6a9fc9b7745af1810c93c15939"
+  version = "v10.3.0"
 
 [[projects]]
   name = "github.com/aws/aws-sdk-go"
@@ -223,6 +242,12 @@
   version = "v0.1.0"
 
 [[projects]]
+  name = "github.com/marstr/guid"
+  packages = ["."]
+  revision = "8bd9a64bf37eb297b492a4101fb28e80ac0b290f"
+  version = "v1.1.0"
+
+[[projects]]
   name = "github.com/matttproud/golang_protobuf_extensions"
   packages = ["pbutil"]
   revision = "3247c84500bff8d9fb6d579d800f20b3e091582c"
@@ -315,6 +340,12 @@
   name = "github.com/robfig/cron"
   packages = ["."]
   revision = "2315d5715e36303a941d907f038da7f7c44c773b"
+
+[[projects]]
+  name = "github.com/satori/go.uuid"
+  packages = ["."]
+  revision = "f58768cc1a7a7e77a3bd49e98cdd21419399b6a3"
+  version = "v1.2.0"
 
 [[projects]]
   name = "github.com/sirupsen/logrus"
@@ -491,7 +522,6 @@
   packages = [
     "googleapis/api/annotations",
     "googleapis/iam/v1",
-    "googleapis/rpc/code",
     "googleapis/rpc/status"
   ]
   revision = "ab0870e398d5dd054b868c0db1481ab029b9a9f2"
@@ -536,6 +566,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "0212955a51d7c896252c648a4c116d20b9b667492e875d22ab3dc02359b5dcc3"
+  inputs-digest = "f42cfd20a37c58771746a7ef28bc9883988e30ccf891b45c12851133fefd91a6"
   solver-name = "gps-cdcl"
   solver-version = 1
