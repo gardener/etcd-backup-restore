@@ -8,11 +8,12 @@
     "iam",
     "internal",
     "internal/optional",
+    "internal/trace",
     "internal/version",
     "storage"
   ]
-  revision = "20d4028b8a750c2aca76bf9fefa8ed2d0109b573"
-  version = "v0.19.0"
+  revision = "4b98a6370e36d7a85192e7bad08a4ebd82eac2a8"
+  version = "v0.20.0"
 
 [[projects]]
   name = "github.com/aws/aws-sdk-go"
@@ -46,14 +47,14 @@
     "service/s3/s3iface",
     "service/sts"
   ]
-  revision = "4c9c8e98642a1a5e7c27d7a644cf9140809d49ee"
-  version = "v1.13.13"
+  revision = "c8c4e0c0514d87f930c1342fef390db5329928b7"
+  version = "v1.13.20"
 
 [[projects]]
   branch = "master"
   name = "github.com/beorn7/perks"
   packages = ["quantile"]
-  revision = "4c0e84591b9aa9e6dcfdf3e020114cd81f89d5f9"
+  revision = "3a771d992973f24aa725d07868b467d1ddfceafb"
 
 [[projects]]
   name = "github.com/coreos/bbolt"
@@ -189,6 +190,22 @@
   version = "v2.0.0"
 
 [[projects]]
+  branch = "master"
+  name = "github.com/gophercloud/gophercloud"
+  packages = [
+    ".",
+    "openstack",
+    "openstack/identity/v2/tenants",
+    "openstack/identity/v2/tokens",
+    "openstack/identity/v3/tokens",
+    "openstack/objectstorage/v1/accounts",
+    "openstack/objectstorage/v1/objects",
+    "openstack/utils",
+    "pagination"
+  ]
+  revision = "c7ca48da8eafab13e1835090a1147e64cfc10174"
+
+[[projects]]
   name = "github.com/inconshreveable/mousetrap"
   packages = ["."]
   revision = "76626ae9c91c4f2a10f34cad8ce83ea42c93bb75"
@@ -292,7 +309,7 @@
     "nfs",
     "xfs"
   ]
-  revision = "54d17b57dd7d4a3aa092476596b3f8a933bde349"
+  revision = "780932d4fbbe0e69b84c34c20f5c8d0981e109ea"
 
 [[projects]]
   name = "github.com/robfig/cron"
@@ -332,11 +349,11 @@
 [[projects]]
   name = "go.opencensus.io"
   packages = [
+    "exporter/stackdriver/propagation",
     "internal",
     "internal/tagencoding",
     "plugin/ochttp",
     "plugin/ochttp/propagation/b3",
-    "plugin/ochttp/propagation/google",
     "stats",
     "stats/internal",
     "stats/view",
@@ -344,8 +361,8 @@
     "trace",
     "trace/propagation"
   ]
-  revision = "52b12e1eb8fdf769ad0bf5fd73a2af9484e6b196"
-  version = "v0.4.0"
+  revision = "6e3f034057826b530038d93267906ec3c012183f"
+  version = "v0.6.0"
 
 [[projects]]
   branch = "master"
@@ -355,7 +372,7 @@
     "blowfish",
     "ssh/terminal"
   ]
-  revision = "c4a91bd4f524f10d064139674cf55852e055ad01"
+  revision = "88942b9c40a4c9d203b82b3731787b672d6e809b"
 
 [[projects]]
   branch = "master"
@@ -373,7 +390,7 @@
     "lex/httplex",
     "trace"
   ]
-  revision = "892bf7b0c6e2f93b51166bf3882e50277fa5afc6"
+  revision = "6078986fec03a1dcc236c34816c71b0e05018fda"
 
 [[projects]]
   branch = "master"
@@ -385,7 +402,7 @@
     "jws",
     "jwt"
   ]
-  revision = "7af32f14d0a25aec7873e0683e8e48dcead159a8"
+  revision = "fdc9e635145ae97e6c2cb777c48305600cf515cb"
 
 [[projects]]
   branch = "master"
@@ -394,7 +411,7 @@
     "unix",
     "windows"
   ]
-  revision = "8c0ece68c28377f4c326d85b94f8df0dace46f80"
+  revision = "91ee8cde435411ca3f1cd365e8f20131aed4d0a1"
 
 [[projects]]
   name = "golang.org/x/text"
@@ -433,7 +450,7 @@
   branch = "master"
   name = "golang.org/x/time"
   packages = ["rate"]
-  revision = "6dc17368e09b0e8634d71cac8168d853e869a0c7"
+  revision = "26559e0f760e39c24d730d3224364aef164ee23f"
 
 [[projects]]
   branch = "master"
@@ -449,7 +466,7 @@
     "storage/v1",
     "transport/http"
   ]
-  revision = "c24aa0e5ed34558ea50c016e4fb92c5e9aa69f2c"
+  revision = "e4126357c891acdef6dcd7805daa4c6533be6544"
 
 [[projects]]
   name = "google.golang.org/appengine"
@@ -474,9 +491,10 @@
   packages = [
     "googleapis/api/annotations",
     "googleapis/iam/v1",
+    "googleapis/rpc/code",
     "googleapis/rpc/status"
   ]
-  revision = "df60624c1e9b9d2973e889c7a1cff73155da81c4"
+  revision = "ab0870e398d5dd054b868c0db1481ab029b9a9f2"
 
 [[projects]]
   name = "google.golang.org/grpc"
@@ -512,12 +530,12 @@
 [[projects]]
   name = "gopkg.in/yaml.v2"
   packages = ["."]
-  revision = "7f97868eec74b32b0982dd158a51a446d1da7eb5"
-  version = "v2.1.1"
+  revision = "86f5ed62f8a0ee96bd888d2efdfd6d4fb100a4eb"
+  version = "v2.2.0"
 
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "c9c3fe04a48a303bc2de66a57b688abd0969503121ba775f1f64a55dfa118fc0"
+  inputs-digest = "0212955a51d7c896252c648a4c116d20b9b667492e875d22ab3dc02359b5dcc3"
   solver-name = "gps-cdcl"
   solver-version = 1
