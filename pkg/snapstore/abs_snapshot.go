@@ -24,8 +24,8 @@ import (
 )
 
 const (
-	ABSStorageAccount = "STORAGE_ACCOUNT"
-	ABSStorageKey     = "STORAGE_KEY"
+	absStorageAccount = "STORAGE_ACCOUNT"
+	absStorageKey     = "STORAGE_KEY"
 )
 
 // ABSSnapStore is an ABS backed snapstore.
@@ -37,12 +37,12 @@ type ABSSnapStore struct {
 
 // NewABSSnapStore create new ABSSnapStore from shared configuration with specified bucket
 func NewABSSnapStore(container, prefix string) (*ABSSnapStore, error) {
-	storageAccount, err := GetEnvVarOrError(ABSStorageAccount)
+	storageAccount, err := GetEnvVarOrError(absStorageAccount)
 	if err != nil {
 		return nil, err
 	}
 
-	storageKey, err := GetEnvVarOrError(ABSStorageKey)
+	storageKey, err := GetEnvVarOrError(absStorageKey)
 	if err != nil {
 		return nil, err
 	}

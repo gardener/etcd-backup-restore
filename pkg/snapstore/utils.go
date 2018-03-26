@@ -57,7 +57,7 @@ func GetSnapstore(config *Config) (SnapStore, error) {
 	}
 }
 
-// GetEnvVarOrExit returns the value of specified environment variable or terminates if it's not defined.
+// GetEnvVarOrError returns the value of specified environment variable or terminates if it's not defined.
 func GetEnvVarOrError(varName string) (string, error) {
 	value := os.Getenv(varName)
 	if value == "" {
