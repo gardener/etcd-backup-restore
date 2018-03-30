@@ -45,6 +45,8 @@ const (
 	SnapstoreProviderABS = "ABS"
 	// SnapstoreProviderGCS is constant for GCS object storage provider
 	SnapstoreProviderGCS = "GCS"
+	// SnapstoreProviderSwift is constant for Swift object storage
+	SnapstoreProviderSwift = "Swift"
 	// SnapshotKindFull is constant for full snapshot kind
 	SnapshotKindFull = "Full"
 )

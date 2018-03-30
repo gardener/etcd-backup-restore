@@ -65,3 +65,8 @@ Google Cloud Client Libraries for Go
 https://github.com/GoogleCloudPlatform/google-cloud-go
 Copyright 2017 Google Inc. All Rights Reserved.
 Apache 2 license (https://github.com/GoogleCloudPlatform/google-cloud-go/blob/master/LICENSE)
+
+Gophercloud: an OpenStack SDK for Go
+https://github.com/gophercloud/gophercloud
+Copyright 2012-2013 Rackspace, Inc.
+Apache 2 license (https://github.com/gophercloud/gophercloud/blob/master/LICENSE)

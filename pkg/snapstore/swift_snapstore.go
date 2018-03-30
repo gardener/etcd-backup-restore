@@ -78,7 +78,7 @@ func (s *SwiftSnapStore) Save(snap Snapshot, r io.Reader) error {
 func (s *SwiftSnapStore) List() (SnapList, error) {
 
 	opts := &objects.ListOpts{
-		Full:   true,
+		Full:   false,
 		Prefix: s.prefix,
 	}
 	// Retrieve a pager (i.e. a paginated collection)
@@ -87,12 +87,12 @@ func (s *SwiftSnapStore) List() (SnapList, error) {
 	// Define an anonymous function to be executed on each page's iteration
 	err := pager.EachPage(func(page pagination.Page) (bool, error) {
 
-		objectList, err := objects.ExtractInfo(page)
+		objectList, err := objects.ExtractNames(page)
 		if err != nil {
 			return false, err
 		}
 		for _, object := range objectList {
-			name := strings.Replace(object.Name, s.prefix+"/", "", 1)
+			name := strings.Replace(object, s.prefix+"/", "", 1)
 			s, err := ParseSnapshot(name)
 			if err != nil {
 				// Warning: the file can be a non snapshot file. Donot return error.
