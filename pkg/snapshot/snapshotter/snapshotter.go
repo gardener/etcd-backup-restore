@@ -81,7 +81,7 @@ func (ssr *Snapshotter) Run(stopCh <-chan struct{}) error {
 
 // takeFullSnapshot will store full snapshot of etcd to snapstore.
 // It basically will connect to etcd. Then ask for snapshot. And finally
-// move store it underlying snapstore on the fly.
+// store it to underlying snapstore on the fly.
 func (ssr *Snapshotter) takeFullSnapshot() error {
 	var err error
 	client, err := clientv3.NewFromURL(ssr.endpoints)
@@ -100,7 +100,6 @@ func (ssr *Snapshotter) takeFullSnapshot() error {
 		}
 	}
 	lastRevision := resp.Header.Revision
-
 	rc, err := client.Snapshot(ctx)
 	if err != nil {
 		return &errors.EtcdError{
