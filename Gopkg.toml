@@ -65,3 +65,7 @@ required = ["github.com/coreos/bbolt"]
 [[constraint]]
   name = "cloud.google.com/go"
   version = "0.19.0"
+
+[[constraint]]
+  name = "github.com/gophercloud/gophercloud"
+  revision = "c7ca48da8eafab13e1835090a1147e64cfc10174"

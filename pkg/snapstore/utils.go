@@ -51,6 +51,11 @@ func GetSnapstore(config *Config) (SnapStore, error) {
 			return nil, fmt.Errorf("storage container name not specified")
 		}
 		return NewGCSSnapStore(config.Container, config.Prefix)
+	case SnapstoreProviderSwift:
+		if config.Container == "" {
+			return nil, fmt.Errorf("storage container name not specified")
+		}
+		return NewSwiftSnapStore(config.Container, config.Prefix)
 	default:
 		return nil, fmt.Errorf("unsupported storage provider : %s", config.Provider)
 

@@ -66,8 +66,8 @@
     "service/s3/s3iface",
     "service/sts"
   ]
-  revision = "0a302e6abb548c4a4d22cde8eab1693ee498f202"
-  version = "v1.13.18"
+  revision = "c8c4e0c0514d87f930c1342fef390db5329928b7"
+  version = "v1.13.20"
 
 [[projects]]
   branch = "master"
@@ -207,6 +207,22 @@
   packages = ["."]
   revision = "317e0006254c44a0ac427cc52a0e083ff0b9622f"
   version = "v2.0.0"
+
+[[projects]]
+  branch = "master"
+  name = "github.com/gophercloud/gophercloud"
+  packages = [
+    ".",
+    "openstack",
+    "openstack/identity/v2/tenants",
+    "openstack/identity/v2/tokens",
+    "openstack/identity/v3/tokens",
+    "openstack/objectstorage/v1/accounts",
+    "openstack/objectstorage/v1/objects",
+    "openstack/utils",
+    "pagination"
+  ]
+  revision = "c7ca48da8eafab13e1835090a1147e64cfc10174"
 
 [[projects]]
   name = "github.com/inconshreveable/mousetrap"
@@ -387,7 +403,7 @@
     "blowfish",
     "ssh/terminal"
   ]
-  revision = "80db560fac1fb3e6ac81dbc7f8ae4c061f5257bd"
+  revision = "88942b9c40a4c9d203b82b3731787b672d6e809b"
 
 [[projects]]
   branch = "master"
@@ -426,7 +442,7 @@
     "unix",
     "windows"
   ]
-  revision = "c488ab1dd8481ef762f96a79a9577c27825be697"
+  revision = "91ee8cde435411ca3f1cd365e8f20131aed4d0a1"
 
 [[projects]]
   name = "golang.org/x/text"
@@ -481,7 +497,7 @@
     "storage/v1",
     "transport/http"
   ]
-  revision = "24928b980e6919be4c72647aacd53ebcbb8c4bab"
+  revision = "e4126357c891acdef6dcd7805daa4c6533be6544"
 
 [[projects]]
   name = "google.golang.org/appengine"
@@ -508,7 +524,7 @@
     "googleapis/iam/v1",
     "googleapis/rpc/status"
   ]
-  revision = "f8c8703595236ae70fdf8789ecb656ea0bcdcf46"
+  revision = "ab0870e398d5dd054b868c0db1481ab029b9a9f2"
 
 [[projects]]
   name = "google.golang.org/grpc"
@@ -544,12 +560,12 @@
 [[projects]]
   name = "gopkg.in/yaml.v2"
   packages = ["."]
-  revision = "7f97868eec74b32b0982dd158a51a446d1da7eb5"
-  version = "v2.1.1"
+  revision = "86f5ed62f8a0ee96bd888d2efdfd6d4fb100a4eb"
+  version = "v2.2.0"
 
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "c3644e0eb07f1832dba27d102b6b5a5f6431a203da86e40aadf1963d2b1c8940"
+  inputs-digest = "f42cfd20a37c58771746a7ef28bc9883988e30ccf891b45c12851133fefd91a6"
   solver-name = "gps-cdcl"
   solver-version = 1
