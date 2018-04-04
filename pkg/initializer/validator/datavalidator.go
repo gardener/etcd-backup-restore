@@ -334,7 +334,7 @@ func verifyDB(path string) error {
 	// Perform consistency check.
 	return db.View(func(tx *bolt.Tx) error {
 		var count int
-		for _ = range tx.Check() {
+		for range tx.Check() {
 			count++
 		}
 

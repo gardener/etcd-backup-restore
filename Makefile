@@ -16,7 +16,7 @@ VCS                 := github.com
 ORGANIZATION        := gardener
 PROJECT             := etcd-backup-restore
 REPOSITORY          := $(VCS)/$(ORGANIZATION)/$(PROJECT)
-VERSION             := 0.1.0-dev
+VERSION             := $(shell cat VERSION)
 LD_FLAGS            := "-w -X $(REPOSITORY)/pkg/version.Version=$(VERSION)"
 PACKAGES            := $(shell go list ./... | grep -vE '/vendor/')
 LINT_FOLDERS        := $(shell echo $(PACKAGES) | sed "s|$(REPOSITORY)|.|g")
@@ -28,7 +28,7 @@ IMAGE_TAG           := $(VERSION)
 BUILD_DIR        := build
 BIN_DIR          := bin
 GOBIN            := $(PWD)/$(BIN_DIR)
-GO_EXTRA_FLAGS   := -v
+GO_EXTRA_FLAGS   := -v -a
 PATH             := $(GOBIN):$(PATH)
 USER             := $(shell id -u -n)
 
@@ -48,7 +48,7 @@ revendor:
 
 .PHONY: build
 build: 
-	@env GOOS=linux GOARCH=amd64 go build -o $(BIN_DIR)/linux-amd64/etcdbrctl $(GO_EXTRA_FLAGS) -ldflags $(LD_FLAGS) main.go
+	@env GOOS=linux GOARCH=amd64 go build  -o $(BIN_DIR)/linux-amd64/etcdbrctl $(GO_EXTRA_FLAGS) -ldflags $(LD_FLAGS) main.go
 
 .PHONY: docker-image
 docker-image: 
