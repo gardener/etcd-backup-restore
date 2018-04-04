@@ -12,35 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-VCS                 := github.com
-ORGANIZATION        := gardener
-PROJECT             := etcd-backup-restore
-REPOSITORY          := $(VCS)/$(ORGANIZATION)/$(PROJECT)
 VERSION             := $(shell cat VERSION)
-LD_FLAGS            := "-w -X $(REPOSITORY)/pkg/version.Version=$(VERSION)"
-PACKAGES            := $(shell go list ./... | grep -vE '/vendor/')
-LINT_FOLDERS        := $(shell echo $(PACKAGES) | sed "s|$(REPOSITORY)|.|g")
 TEST_FOLDERS        := cmd pkg
-REGISTRY            := docker.io/gardener/etcdbr
+REGISTRY            := eu.gcr.io/gardener-project/gardener
 IMAGE_REPOSITORY    := $(REGISTRY)/etcdbrctl
 IMAGE_TAG           := $(VERSION)
-
-BUILD_DIR        := build
-BIN_DIR          := bin
-GOBIN            := $(PWD)/$(BIN_DIR)
-GO_EXTRA_FLAGS   := -v -a
-PATH             := $(GOBIN):$(PATH)
-USER             := $(shell id -u -n)
-
-export PATH
-export GOBIN
-
-.PHONY: dev
-dev: 
-	@go build -o $(BIN_DIR)/etcdbrctl $(GO_EXTRA_FLAGS) -ldflags $(LD_FLAGS) main.go
-	
-.PHONY: verify
-verify: vet fmt lint test
+BUILD_DIR           := build
+BIN_DIR             := bin
 
 .PHONY: revendor
 revendor:
@@ -48,7 +26,11 @@ revendor:
 
 .PHONY: build
 build: 
-	@env GOOS=linux GOARCH=amd64 go build  -o $(BIN_DIR)/linux-amd64/etcdbrctl $(GO_EXTRA_FLAGS) -ldflags $(LD_FLAGS) main.go
+	@.ci/build
+
+.PHONY: build-local
+build-local:
+	@env LOCAL_BUILD=1 .ci/build
 
 .PHONY: docker-image
 docker-image: 
@@ -64,18 +46,13 @@ docker-push:
 clean:
 	@rm -rf $(BIN_DIR)/
 
-.PHONY: fmt
-fmt:
-	@go fmt $(PACKAGES)
+.PHONY: verify
+verify: check test
 
-.PHONY: vet
-vet:
-	@go vet $(PACKAGES)
-
-.PHONY: lint
-lint:
-	@golint  --set_exit_status $(LINT_FOLDERS)
+.PHONY: check
+check:
+	@.ci/check
 
 .PHONY: test
 test:
-	@ginkgo -r $(TEST_FOLDERS)
+	@.ci/test
