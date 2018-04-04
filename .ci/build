@@ -48,7 +48,7 @@ VERSION="$(cat "${VERSION_FILE}")"
 # If no LOCAL_BUILD environment variable is set, we configure the `go build` command
 # to build for linux OS, amd64 architectures and without CGO enablement.
 if [[ -z "$LOCAL_BUILD" ]]; then
-  make build
+  make build BIN_DIR=${BINARY_PATH}
 # If the LOCAL_BUILD environment variable is set, we simply run `go build`.
 else
   make dev
