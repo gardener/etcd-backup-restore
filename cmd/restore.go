@@ -81,7 +81,7 @@ func NewRestoreCommand(stopCh <-chan struct{}) *cobra.Command {
 				SkipHashCheck:  skipHashCheck,
 			}
 
-			logger.Infof("Restoring from latest snapshot: %s...", snap.SnapPath)
+			logger.Infof("Restoring from latest snapshot: %s...", path.Join(snap.SnapDir, snap.SnapName))
 			err = rs.Restore(*options)
 			if err != nil {
 				logger.Fatalf("Failed to restore snapshot: %v", err)

@@ -74,7 +74,7 @@ func NewS3FromClient(bucket, prefix string, cli s3iface.S3API) *S3SnapStore {
 func (s *S3SnapStore) Fetch(snap Snapshot) (io.ReadCloser, error) {
 	resp, err := s.client.GetObject(&s3.GetObjectInput{
 		Bucket: aws.String(s.bucket),
-		Key:    aws.String(path.Join(s.prefix, snap.SnapPath)),
+		Key:    aws.String(path.Join(s.prefix, snap.SnapDir, snap.SnapName)),
 	})
 	if err != nil {
 		return nil, err
@@ -118,7 +118,7 @@ func (s *S3SnapStore) Save(snap Snapshot, r io.Reader) error {
 	// S3 put is atomic, so let's go ahead and put the key directly.
 	_, err = s.client.PutObject(&s3.PutObjectInput{
 		Bucket: aws.String(s.bucket),
-		Key:    aws.String(path.Join(s.prefix, snap.SnapPath)),
+		Key:    aws.String(path.Join(s.prefix, snap.SnapDir, snap.SnapName)),
 		Body:   tmpfile,
 	})
 
@@ -138,12 +138,12 @@ func (s *S3SnapStore) List() (SnapList, error) {
 	var snapList SnapList
 	for _, key := range resp.Contents {
 		k := (*key.Key)[len(*resp.Prefix):]
-		s, err := ParseSnapshot(k)
+		snap, err := ParseSnapshot(k)
 		if err != nil {
 			// Warning
 			fmt.Printf("Invalid snapshot found. Ignoring it:%s\n", k)
 		} else {
-			snapList = append(snapList, s)
+			snapList = append(snapList, snap)
 		}
 	}
 	sort.Sort(snapList)
@@ -154,7 +154,7 @@ func (s *S3SnapStore) List() (SnapList, error) {
 func (s *S3SnapStore) Delete(snap Snapshot) error {
 	_, err := s.client.DeleteObject(&s3.DeleteObjectInput{
 		Bucket: aws.String(s.bucket),
-		Key:    aws.String(path.Join(s.prefix, snap.SnapPath)),
+		Key:    aws.String(path.Join(s.prefix, snap.SnapDir, snap.SnapName)),
 	})
 	return err
 }

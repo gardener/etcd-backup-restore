@@ -17,6 +17,7 @@ package snapshotter
 import (
 	"context"
 	"fmt"
+	"path"
 	"time"
 
 	"github.com/coreos/etcd/clientv3"
@@ -113,14 +114,16 @@ func (ssr *Snapshotter) takeFullSnapshot() error {
 		StartRevision: 0,
 		LastRevision:  lastRevision,
 	}
+	s.GenerateSnapshotDirectory()
 	s.GenerateSnapshotName()
+
 	err = ssr.store.Save(s, rc)
 	if err != nil {
 		return &errors.SnapstoreError{
 			Message: fmt.Sprintf("failed to save snapshot: %v", err),
 		}
 	}
-	ssr.logger.Infof("Successfully saved full snapshot at: %s", s.SnapPath)
+	ssr.logger.Infof("Successfully saved full snapshot at: %s", path.Join(s.SnapDir, s.SnapName))
 	return nil
 }
 
@@ -134,10 +137,10 @@ func (ssr *Snapshotter) garbageCollector() {
 	}
 	snapLen := len(snapList)
 	for i := 0; i < (snapLen - ssr.maxBackups); i++ {
-		ssr.logger.Infof("Deleting old snapshot: %s", snapList[i].SnapPath)
+		ssr.logger.Infof("Deleting old snapshot: %s", path.Join(snapList[i].SnapDir, snapList[i].SnapName))
 		err = ssr.store.Delete(*snapList[i])
 		if err != nil {
-			ssr.logger.Warnf("Failed to delete snapshot: %s", snapList[i].SnapPath)
+			ssr.logger.Warnf("Failed to delete snapshot: %s", path.Join(snapList[i].SnapDir, snapList[i].SnapName))
 		}
 	}
 }

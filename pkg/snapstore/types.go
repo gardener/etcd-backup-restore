@@ -57,7 +57,8 @@ type Snapshot struct {
 	StartRevision int64
 	LastRevision  int64 //latest revision on snapshot
 	CreatedOn     time.Time
-	SnapPath      string
+	SnapDir       string
+	SnapName      string
 }
 
 // SnapList is list of snapshots

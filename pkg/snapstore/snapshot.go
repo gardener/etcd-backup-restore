@@ -23,14 +23,25 @@ import (
 
 // GenerateSnapshotName preapres the snapshot name from metadata
 func (s *Snapshot) GenerateSnapshotName() {
-	s.SnapPath = fmt.Sprintf("%s-%08d-%08d-%08d", s.Kind, s.StartRevision, s.LastRevision, s.CreatedOn.Unix())
+	s.SnapName = fmt.Sprintf("%s-%08d-%08d-%d", s.Kind, s.StartRevision, s.LastRevision, s.CreatedOn.Unix())
 }
 
-// ParseSnapshot parse <snapName> to create snapshot structure
-func ParseSnapshot(snapName string) (*Snapshot, error) {
+// GenerateSnapshotDirectory prepares the snapshot directory name from metadata
+func (s *Snapshot) GenerateSnapshotDirectory() {
+	s.SnapDir = fmt.Sprintf("%s-%d", SnapshotKindFull, s.CreatedOn.Unix())
+}
+
+// ParseSnapshot parse <snapPath> to create snapshot structure
+func ParseSnapshot(snapPath string) (*Snapshot, error) {
 	var err error
 	s := &Snapshot{}
-	tokens := strings.Split(snapName, "-")
+	tokens := strings.Split(snapPath, "/")
+	if len(tokens) <= 1 {
+		return nil, fmt.Errorf("invalid snapshot name: %s", snapPath)
+	}
+	snapName := tokens[len(tokens)-1]
+	snapDir := snapPath[:len(snapPath)-len(snapName)-1]
+	tokens = strings.Split(snapName, "-")
 	if len(tokens) != 4 {
 		return nil, fmt.Errorf("invalid snapshot name: %s", snapName)
 	}
@@ -61,7 +72,8 @@ func ParseSnapshot(snapName string) (*Snapshot, error) {
 		return nil, fmt.Errorf("invalid creation time: %s", tokens[3])
 	}
 	s.CreatedOn = time.Unix(unixTime, 0)
-	s.SnapPath = snapName
+	s.SnapName = snapName
+	s.SnapDir = snapDir
 	return s, nil
 }
 

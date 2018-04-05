@@ -17,6 +17,7 @@ package initializer
 import (
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 
 	"github.com/gardener/etcd-backup-restore/pkg/initializer/validator"
@@ -101,7 +102,7 @@ func (e *EtcdInitializer) restoreCorruptData() error {
 		return err
 	}
 
-	logger.Infof("Restoring from latest snapshot: %s...", snap.SnapPath)
+	logger.Infof("Restoring from latest snapshot: %s...", path.Join(snap.SnapDir, snap.SnapName))
 
 	e.Config.RestoreOptions.Snapshot = *snap
 
