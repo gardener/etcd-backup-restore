@@ -15,6 +15,7 @@
 
 # Build Binaries
 bin
+test/output
 default.bkp
 default.etcd
 

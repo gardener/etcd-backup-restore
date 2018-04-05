@@ -13,7 +13,6 @@
 # limitations under the License.
 
 VERSION             := $(shell cat VERSION)
-TEST_FOLDERS        := cmd pkg
 REGISTRY            := eu.gcr.io/gardener-project/gardener
 IMAGE_REPOSITORY    := $(REGISTRY)/etcdbrctl
 IMAGE_TAG           := $(VERSION)
