@@ -54,14 +54,14 @@ func NewGCSSnapStore(bucket, prefix string) (*GCSSnapStore, error) {
 
 // Fetch should open reader for the snapshot file from store
 func (s *GCSSnapStore) Fetch(snap Snapshot) (io.ReadCloser, error) {
-	objectName := path.Join(s.prefix, snap.SnapPath)
+	objectName := path.Join(s.prefix, snap.SnapDir, snap.SnapName)
 	return s.client.Bucket(s.bucket).Object(objectName).NewReader(s.ctx)
 }
 
 // Size returns the size of snapshot
 func (s *GCSSnapStore) Size(snap Snapshot) (int64, error) {
 	// recursively list all "files", not directory
-	it := s.client.Bucket(s.bucket).Objects(s.ctx, &storage.Query{Prefix: path.Join(s.prefix, snap.SnapPath)})
+	it := s.client.Bucket(s.bucket).Objects(s.ctx, &storage.Query{Prefix: path.Join(s.prefix, snap.SnapDir, snap.SnapName)})
 
 	var attrs []*storage.ObjectAttrs
 	var err error
@@ -93,7 +93,7 @@ func (s *GCSSnapStore) Save(snap Snapshot, r io.Reader) error {
 		return err
 	}
 
-	name := path.Join(s.prefix, snap.SnapPath)
+	name := path.Join(s.prefix, snap.SnapDir, snap.SnapName)
 	obj := bh.Object(name)
 	w := obj.NewWriter(s.ctx)
 	defer w.Close()
@@ -134,12 +134,12 @@ func (s *GCSSnapStore) List() (SnapList, error) {
 	for _, v := range attrs {
 		name := strings.Replace(v.Name, s.prefix+"/", "", 1)
 		//name := v.Name[len(s.prefix):]
-		s, err := ParseSnapshot(name)
+		snap, err := ParseSnapshot(name)
 		if err != nil {
 			// Warning
 			fmt.Printf("Invalid snapshot found. Ignoring it:%s\n", name)
 		} else {
-			snapList = append(snapList, s)
+			snapList = append(snapList, snap)
 		}
 	}
 
@@ -149,7 +149,7 @@ func (s *GCSSnapStore) List() (SnapList, error) {
 
 // Delete should delete the snapshot file from store
 func (s *GCSSnapStore) Delete(snap Snapshot) error {
-	objectName := path.Join(s.prefix, snap.SnapPath)
+	objectName := path.Join(s.prefix, snap.SnapDir, snap.SnapName)
 	return s.client.Bucket(s.bucket).Object(objectName).Delete(s.ctx)
 }
 

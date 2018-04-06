@@ -35,7 +35,7 @@ type SwiftSnapStore struct {
 	bucket string
 }
 
-// NewSwiftSnapStore create new S3SnapStore from shared configuration with specified bucket
+// NewSwiftSnapStore create new SwiftSnapStore from shared configuration with specified bucket
 func NewSwiftSnapStore(bucket, prefix string) (*SwiftSnapStore, error) {
 	authOpts, err := openstack.AuthOptionsFromEnv()
 	if err != nil {
@@ -61,7 +61,7 @@ func NewSwiftSnapStore(bucket, prefix string) (*SwiftSnapStore, error) {
 
 // Fetch should open reader for the snapshot file from store
 func (s *SwiftSnapStore) Fetch(snap Snapshot) (io.ReadCloser, error) {
-	resp := objects.Download(s.client, s.bucket, path.Join(s.prefix, snap.SnapPath), nil)
+	resp := objects.Download(s.client, s.bucket, path.Join(s.prefix, snap.SnapDir, snap.SnapName), nil)
 	return resp.Body, resp.Err
 }
 
@@ -70,7 +70,7 @@ func (s *SwiftSnapStore) Save(snap Snapshot, r io.Reader) error {
 	opts := objects.CreateOpts{
 		Content: r,
 	}
-	res := objects.Create(s.client, s.bucket, path.Join(s.prefix, snap.SnapPath), opts)
+	res := objects.Create(s.client, s.bucket, path.Join(s.prefix, snap.SnapDir, snap.SnapName), opts)
 	return res.Err
 }
 
@@ -93,12 +93,12 @@ func (s *SwiftSnapStore) List() (SnapList, error) {
 		}
 		for _, object := range objectList {
 			name := strings.Replace(object, s.prefix+"/", "", 1)
-			s, err := ParseSnapshot(name)
+			snap, err := ParseSnapshot(name)
 			if err != nil {
 				// Warning: the file can be a non snapshot file. Donot return error.
 				fmt.Printf("Invalid snapshot found. Ignoring it:%s\n", name)
 			} else {
-				snapList = append(snapList, s)
+				snapList = append(snapList, snap)
 			}
 		}
 		return true, nil
@@ -115,7 +115,7 @@ func (s *SwiftSnapStore) List() (SnapList, error) {
 
 // Delete should delete the snapshot file from store
 func (s *SwiftSnapStore) Delete(snap Snapshot) error {
-	result := objects.Delete(s.client, s.bucket, path.Join(s.prefix, snap.SnapPath), nil)
+	result := objects.Delete(s.client, s.bucket, path.Join(s.prefix, snap.SnapDir, snap.SnapName), nil)
 	return result.Err
 }
 

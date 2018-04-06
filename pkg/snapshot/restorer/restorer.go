@@ -21,6 +21,7 @@ import (
 	"io"
 	"math"
 	"os"
+	"path"
 	"path/filepath"
 	"reflect"
 
@@ -52,7 +53,7 @@ func NewRestorer(store snapstore.SnapStore, logger *logrus.Logger) *Restorer {
 // Restore restore the etcd data directory as per specified restore options
 func (r *Restorer) Restore(ro RestoreOptions) error {
 	var err error
-	if ro.Snapshot.SnapPath == "" {
+	if path.Join(ro.Snapshot.SnapDir, ro.Snapshot.SnapName) == "" {
 		r.logger.Warnf("Base snapshot path not provided. Will do nothing.")
 		return nil
 	}
@@ -78,9 +79,11 @@ func (r *Restorer) Restore(ro RestoreOptions) error {
 
 	walDir := filepath.Join(ro.RestoreDataDir, "member", "wal")
 	snapdir := filepath.Join(ro.RestoreDataDir, "member", "snap")
-	makeDB(snapdir, ro.Snapshot, len(cl.Members()), r.store, false)
-	makeWALAndSnap(walDir, snapdir, cl, ro.Name)
-	return err
+	err = makeDB(snapdir, ro.Snapshot, len(cl.Members()), r.store, false)
+	if err != nil {
+		return err
+	}
+	return makeWALAndSnap(walDir, snapdir, cl, ro.Name)
 }
 
 // makeDB copies the database snapshot to the snapshot directory

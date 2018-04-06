@@ -78,7 +78,7 @@ func GetSnapstoreFromClient(container, prefix string, storageClient *storage.Cli
 
 // Fetch should open reader for the snapshot file from store
 func (a *ABSSnapStore) Fetch(snap Snapshot) (io.ReadCloser, error) {
-	blobName := path.Join(a.prefix, snap.SnapPath)
+	blobName := path.Join(a.prefix, snap.SnapDir, snap.SnapName)
 	blob := a.container.GetBlobReference(blobName)
 
 	opts := &storage.GetBlobOptions{}
@@ -110,7 +110,7 @@ func (a *ABSSnapStore) List() (SnapList, error) {
 
 // Save will write the snapshot to store
 func (a *ABSSnapStore) Save(snap Snapshot, r io.Reader) error {
-	blobName := path.Join(a.prefix, snap.SnapPath)
+	blobName := path.Join(a.prefix, snap.SnapDir, snap.SnapName)
 	blob := a.container.GetBlobReference(blobName)
 
 	putBlobOpts := storage.PutBlobOptions{}
@@ -123,7 +123,7 @@ func (a *ABSSnapStore) Save(snap Snapshot, r io.Reader) error {
 
 // Delete should delete the snapshot file from store
 func (a *ABSSnapStore) Delete(snap Snapshot) error {
-	blobName := path.Join(a.prefix, snap.SnapPath)
+	blobName := path.Join(a.prefix, snap.SnapDir, snap.SnapName)
 	blob := a.container.GetBlobReference(blobName)
 
 	opts := &storage.DeleteBlobOptions{}

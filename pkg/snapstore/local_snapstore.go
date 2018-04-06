@@ -44,7 +44,7 @@ func NewLocalSnapStore(prefix string) (*LocalSnapStore, error) {
 
 // Fetch should open reader for the snapshot file from store
 func (s *LocalSnapStore) Fetch(snap Snapshot) (io.ReadCloser, error) {
-	return os.Open(path.Join(s.prefix, snap.SnapPath))
+	return os.Open(path.Join(s.prefix, snap.SnapDir, snap.SnapName))
 }
 
 // GetLatest returns the latest snapshot in snapstore
@@ -61,7 +61,11 @@ func (s *LocalSnapStore) GetLatest() (*Snapshot, error) {
 
 // Save will write the snapshot to store
 func (s *LocalSnapStore) Save(snap Snapshot, r io.Reader) error {
-	f, err := os.Create(path.Join(s.prefix, snap.SnapPath))
+	err := os.MkdirAll(path.Join(s.prefix, snap.SnapDir), 0700)
+	if err != nil && !os.IsExist(err) {
+		return err
+	}
+	f, err := os.Create(path.Join(s.prefix, snap.SnapDir, snap.SnapName))
 	if err != nil {
 		return err
 	}
@@ -76,18 +80,25 @@ func (s *LocalSnapStore) Save(snap Snapshot, r io.Reader) error {
 // List will list the snapshots from store
 func (s *LocalSnapStore) List() (SnapList, error) {
 	snapList := SnapList{}
-	files, err := ioutil.ReadDir(s.prefix)
+	directories, err := ioutil.ReadDir(s.prefix)
 	if err != nil {
 		return nil, err
 	}
-	for _, f := range files {
-		if !f.IsDir() {
-			s, err := ParseSnapshot(f.Name())
+	for _, dir := range directories {
+		if dir.IsDir() {
+			files, err := ioutil.ReadDir(path.Join(s.prefix, dir.Name()))
 			if err != nil {
-				// Warning
-				fmt.Printf("Invalid snapshot %s found:%v\nIngonring it.", f.Name(), err)
-			} else {
-				snapList = append(snapList, s)
+				return nil, err
+			}
+
+			for _, f := range files {
+				snap, err := ParseSnapshot(path.Join(dir.Name(), f.Name()))
+				if err != nil {
+					// Warning
+					fmt.Printf("Invalid snapshot %s found:%v\nIgnoring it.", path.Join(dir.Name(), f.Name()), err)
+				} else {
+					snapList = append(snapList, snap)
+				}
 			}
 		}
 	}
@@ -97,6 +108,10 @@ func (s *LocalSnapStore) List() (SnapList, error) {
 
 // Delete should delete the snapshot file from store
 func (s *LocalSnapStore) Delete(snap Snapshot) error {
-	err := os.Remove(path.Join(s.prefix, snap.SnapPath))
+	err := os.Remove(path.Join(s.prefix, snap.SnapDir, snap.SnapName))
+	if err != nil {
+		return err
+	}
+	err = os.Remove(path.Join(s.prefix, snap.SnapDir))
 	return err
 }
