@@ -28,7 +28,7 @@ func (s *Snapshot) GenerateSnapshotName() {
 
 // GenerateSnapshotDirectory prepares the snapshot directory name from metadata
 func (s *Snapshot) GenerateSnapshotDirectory() {
-	s.SnapDir = fmt.Sprintf("%s-%d", SnapshotKindFull, s.CreatedOn.Unix())
+	s.SnapDir = fmt.Sprintf("%s-%d", "Backup", s.CreatedOn.Unix())
 }
 
 // ParseSnapshot parse <snapPath> to create snapshot structure

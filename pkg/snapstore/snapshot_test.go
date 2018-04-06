@@ -90,7 +90,7 @@ var _ = Describe("Snapshot", func() {
 			})
 			It("generates snapshot directory name ", func() {
 				snap1.GenerateSnapshotDirectory()
-				Expect(snap1.SnapDir).Should(Equal(fmt.Sprintf("Full-%08d", now)))
+				Expect(snap1.SnapDir).Should(Equal(fmt.Sprintf("Backup-%08d", now)))
 			})
 		})
 	})
@@ -98,7 +98,7 @@ var _ = Describe("Snapshot", func() {
 	Describe("Parse Snapshot name", func() {
 		Context("when valid snapshot name provided", func() {
 			It("does not return error", func() {
-				snapName := "Full-1518427675/Full-00000000-00030009-1518427675"
+				snapName := "Backup-1518427675/Full-00000000-00030009-1518427675"
 				_, err := ParseSnapshot(snapName)
 				Expect(err).ShouldNot(HaveOccurred())
 			})
@@ -106,7 +106,7 @@ var _ = Describe("Snapshot", func() {
 
 		Context("when number of separated tokens not equal to 4", func() {
 			It("returns error", func() {
-				snapName := "Full-2387428/Full-00000000-00002088-2387428-43"
+				snapName := "Backup-2387428/Full-00000000-00002088-2387428-43"
 				_, err := ParseSnapshot(snapName)
 				Expect(err).Should(HaveOccurred())
 			})
@@ -114,35 +114,35 @@ var _ = Describe("Snapshot", func() {
 
 		Context("when non integer start revision specified", func() {
 			It("returns error", func() {
-				snapName := "Full-2387428/Full-00h000000-00002088-2387428"
+				snapName := "Backup-2387428/Full-00h000000-00002088-2387428"
 				_, err := ParseSnapshot(snapName)
 				Expect(err).Should(HaveOccurred())
 			})
 		})
 		Context("when not integer last revision specified", func() {
 			It("returns error", func() {
-				snapName := "Full-2387428/Full-00000000-00sdf002088-2387428"
+				snapName := "Backup-2387428/Full-00000000-00sdf002088-2387428"
 				_, err := ParseSnapshot(snapName)
 				Expect(err).Should(HaveOccurred())
 			})
 		})
 		Context("when start revision is more than last revision", func() {
 			It("returns error", func() {
-				snapName := "Full-2387428/Full-00012345-00002088-2387428"
+				snapName := "Backup-2387428/Full-00012345-00002088-2387428"
 				_, err := ParseSnapshot(snapName)
 				Expect(err).Should(HaveOccurred())
 			})
 		})
 		Context("when non integer unix time specified", func() {
 			It("returns error", func() {
-				snapName := "Full-23874sdf43/Full-00000000-00002088-23874sdf43"
+				snapName := "Backup-23874sdf43/Full-00000000-00002088-23874sdf43"
 				_, err := ParseSnapshot(snapName)
 				Expect(err).Should(HaveOccurred())
 			})
 		})
 		Context("when invalid kind is specified", func() {
 			It("returns error", func() {
-				snapName := "Full-2387428/meta-00000000-00002088-2387428"
+				snapName := "Backup-2387428/meta-00000000-00002088-2387428"
 				_, err := ParseSnapshot(snapName)
 				Expect(err).Should(HaveOccurred())
 			})
