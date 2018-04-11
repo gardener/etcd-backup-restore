@@ -13,6 +13,32 @@ spec:
   selector:
     app: etcd
 ---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: etcd-bootstrap
+  labels:
+    app: etcd
+data:
+  bootstrap.sh: |-
+    #!/bin/sh
+    while true;
+    do
+      wget http://localhost:8080/initialization/status -S -O status;
+      STATUS=`cat status`;
+      case $STATUS in
+      "New")
+            wget http://localhost:8080/initialization/start -S -O - ;;
+      "Progress")
+            sleep 1;
+            continue;;
+      "Failed")
+            continue;;
+      "Successful")
+            exec etcd --data-dir=/var/etcd/data ;;
+      esac;
+    done
+---
 apiVersion: apps/v1beta1
 kind: StatefulSet
 metadata:
@@ -31,9 +57,7 @@ spec:
       containers:
       - name: etcd
         command:
-        - /bin/sh
-        - -ec
-        - 'while true; do wget http://localhost:8080/initialization/status -S -O status; STATUS=`cat status`; case $STATUS in "New") wget http://localhost:8080/initialization/start -S -O - ;; "Progress") sleep 1; continue;; "Failed") continue;; "Successful") exec etcd --data-dir=/var/etcd/data ;; esac; done'
+        - /bootstrap/bootstrap.sh
         image: quay.io/coreos/etcd:v3.3.1
         imagePullPolicy: IfNotPresent
         livenessProbe:
@@ -58,8 +82,10 @@ spec:
           name: client
           protocol: TCP
         volumeMounts:
-        - mountPath: /var/etcd
+        - mountPath: /var/etcd/data
           name: etcd-data
+        - name: etcd-bootstrap
+          mountPath: /bootstrap
       - name: backup
         command:
         - etcdbrctl
@@ -68,7 +94,7 @@ spec:
         - --max-backups=5
         - --data-dir=/var/etcd/data
         - --storage-provider=S3      # change provider details here. (S3/Local)
-        image: <docker.io/gardener/etcdbr/etcdbrctl:0.1.0>    # change image here
+        image: <docker.io/gardener/etcdbr/etcdbrctl:0.2.0>    # change image here
         imagePullPolicy: Always
         livenessProbe:
           httpGet:
@@ -86,13 +112,17 @@ spec:
         volumeMounts:
           - mountPath: /root/.aws/
             name: aws-secret
-          - mountPath: /var/etcd
+          - mountPath: /var/etcd/data
             name: etcd-data
       volumes:
         - name: aws-secret
           secret:
             secretName: <backup provider secret> # change provider credential secret name here
             defaultMode: 0420
+        - name: etcd-bootstrap
+          configMap:
+            name: etcd-bootstrap
+            defaultMode: 356
   volumeClaimTemplates:
   - metadata:
       name: etcd-data

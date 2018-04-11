@@ -77,7 +77,7 @@ func (e *EtcdInitializer) restoreCorruptData() error {
 	logger := e.Logger
 	dataDir := e.Config.RestoreOptions.RestoreDataDir
 	logger.Infof("Removing data directory(%s) for snapshot restoration.", dataDir)
-	err := os.RemoveAll(filepath.Join(dataDir))
+	err := removeContents(filepath.Join(dataDir))
 	if err != nil {
 		err = fmt.Errorf("failed to delete the Data directory: %v", err)
 		return err
@@ -115,4 +115,23 @@ func (e *EtcdInitializer) restoreCorruptData() error {
 	}
 	logger.Infoln("Successfully restored the etcd data directory.")
 	return err
+}
+
+func removeContents(dir string) error {
+	d, err := os.Open(dir)
+	if err != nil {
+		return err
+	}
+	defer d.Close()
+	names, err := d.Readdirnames(-1)
+	if err != nil {
+		return err
+	}
+	for _, name := range names {
+		err = os.RemoveAll(filepath.Join(dir, name))
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
