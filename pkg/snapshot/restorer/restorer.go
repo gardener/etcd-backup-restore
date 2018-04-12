@@ -73,8 +73,9 @@ func (r *Restorer) Restore(ro RestoreOptions) error {
 		return err
 	}
 
-	if _, err := os.Stat(ro.RestoreDataDir); err == nil {
-		return fmt.Errorf("data-dir %q exists", ro.RestoreDataDir)
+	memberDir := filepath.Join(ro.RestoreDataDir, "member")
+	if _, err := os.Stat(memberDir); err == nil {
+		return fmt.Errorf("member directory in data directory(%q) exists", memberDir)
 	}
 
 	walDir := filepath.Join(ro.RestoreDataDir, "member", "wal")
