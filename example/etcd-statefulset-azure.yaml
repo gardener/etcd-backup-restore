@@ -35,7 +35,13 @@ data:
       "Failed")
             continue;;
       "Successful")
-            exec etcd --data-dir=/var/etcd/data ;;
+            exec etcd --data-dir=/var/etcd/data \
+                      --name=etcd \
+                      --advertise-client-urls=http://0.0.0.0:2379 \
+                      --listen-client-urls=http://0.0.0.0:2379 \
+                      --initial-cluster-state=new \
+                      --initial-cluster-token=new
+            ;;
       esac;
     done
 ---
@@ -60,13 +66,13 @@ spec:
         - /bootstrap/bootstrap.sh
         image: quay.io/coreos/etcd:v3.3.1
         imagePullPolicy: IfNotPresent
-        livenessProbe:
+        readinessProbe:
           httpGet:
-            path: /metrics
+            path: /healthz
             port: 8080
           initialDelaySeconds: 5
           periodSeconds: 10
-        readinessProbe:
+        livenessProbe:
           exec:
             command:
             - /bin/sh
@@ -96,12 +102,6 @@ spec:
         - --storage-provider=S3      # change provider details here. (S3/Local)
         image: <docker.io/gardener/etcdbr/etcdbrctl:0.2.0>    # change image here
         imagePullPolicy: Always
-        livenessProbe:
-          httpGet:
-            path: /metrics
-            port: server
-          initialDelaySeconds: 5
-          periodSeconds: 10
         ports:
         - containerPort: 8080
           name: server

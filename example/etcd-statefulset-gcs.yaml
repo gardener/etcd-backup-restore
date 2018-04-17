@@ -13,6 +13,38 @@ spec:
   selector:
     app: etcd
 ---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: etcd-bootstrap
+  labels:
+    app: etcd
+data:
+  bootstrap.sh: |-
+    #!/bin/sh
+    while true;
+    do
+      wget http://localhost:8080/initialization/status -S -O status;
+      STATUS=`cat status`;
+      case $STATUS in
+      "New")
+            wget http://localhost:8080/initialization/start -S -O - ;;
+      "Progress")
+            sleep 1;
+            continue;;
+      "Failed")
+            continue;;
+      "Successful")
+            exec etcd --data-dir=/var/etcd/data \
+                      --name=etcd \
+                      --advertise-client-urls=http://0.0.0.0:2379 \
+                      --listen-client-urls=http://0.0.0.0:2379 \
+                      --initial-cluster-state=new \
+                      --initial-cluster-token=new
+            ;;
+      esac;
+    done
+---
 apiVersion: apps/v1beta1
 kind: StatefulSet
 metadata:
@@ -31,18 +63,16 @@ spec:
       containers:
       - name: etcd
         command:
-        - /bin/sh
-        - -ec
-        - 'while true; do wget http://localhost:8080/initialization/status -S -O status; STATUS=`cat status`; case $STATUS in "New") wget http://localhost:8080/initialization/start -S -O - ;; "Progress") sleep 1; continue;; "Failed") continue;; "Successful") exec etcd --data-dir=/var/etcd/data ;; esac; done'
+        - /bootstrap/bootstrap.sh
         image: quay.io/coreos/etcd:v3.3.1
         imagePullPolicy: IfNotPresent
-        livenessProbe:
+        readinessProbe:
           httpGet:
-            path: /metrics
+            path: /healthz
             port: 8080
           initialDelaySeconds: 5
           periodSeconds: 10
-        readinessProbe:
+        livenessProbe:
           exec:
             command:
             - /bin/sh
@@ -60,6 +90,8 @@ spec:
         volumeMounts:
         - mountPath: /var/etcd
           name: etcd-data
+        - name: etcd-bootstrap
+          mountPath: /bootstrap
       - name: backup
         command:
         - etcdbrctl
@@ -70,12 +102,6 @@ spec:
         - --storage-provider=GCS      # change provider details here. (S3/Local)
         image: <docker.io/gardener/etcdbr/etcdbrctl:0.1.0>    # change image here
         imagePullPolicy: Always
-        livenessProbe:
-          httpGet:
-            path: /metrics
-            port: server
-          initialDelaySeconds: 5
-          periodSeconds: 10
         ports:
         - containerPort: 8080
           name: server
@@ -95,6 +121,10 @@ spec:
           secret:
             secretName: etcd-gcp-backup 
             defaultMode: 0420
+        - name: etcd-bootstrap
+          configMap:
+            name: etcd-bootstrap
+            defaultMode: 356
   volumeClaimTemplates:
   - metadata:
       name: etcd-data
