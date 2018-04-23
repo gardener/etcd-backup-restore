@@ -13,19 +13,23 @@ import (
 
 var _ = Describe("Snapshotter", func() {
 	var (
-		endpoints             string
+		endpoints             []string
 		store                 snapstore.SnapStore
 		logger                *logrus.Logger
 		etcdConnectionTimeout time.Duration
 		schedule              string
+		certFile              string
+		keyFile               string
+		caFile                string
+		insecureTransport     bool
+		insecureSkipVerify    bool
 		err                   error
 	)
 	BeforeEach(func() {
-		endpoints = "http://localhost:2379"
+		endpoints = []string{"http://localhost:2379"}
 		logger = logrus.New()
 		etcdConnectionTimeout = 10
 		schedule = "*/1 * * * *"
-
 	})
 
 	Describe("creating Snapshotter", func() {
@@ -37,7 +41,7 @@ var _ = Describe("Snapshotter", func() {
 		Context("With invalid schedule", func() {
 			It("should return error", func() {
 				schedule = "65 * * * 5"
-				ssr, err = NewSnapshotter(endpoints, schedule, store, logger, 1, etcdConnectionTimeout)
+				ssr, err = NewSnapshotter(endpoints, schedule, store, logger, 1, etcdConnectionTimeout, certFile, keyFile, caFile, insecureTransport, insecureSkipVerify)
 				Expect(err).Should(HaveOccurred())
 				Expect(ssr).Should(BeNil())
 			})
@@ -46,7 +50,7 @@ var _ = Describe("Snapshotter", func() {
 		Context("With valid schedule", func() {
 			It("should create snapshotter", func() {
 				schedule = "*/5 * * * *"
-				ssr, err = NewSnapshotter(endpoints, schedule, store, logger, 1, etcdConnectionTimeout)
+				ssr, err = NewSnapshotter(endpoints, schedule, store, logger, 1, etcdConnectionTimeout, certFile, keyFile, caFile, insecureTransport, insecureSkipVerify)
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(ssr).ShouldNot(BeNil())
 			})
@@ -57,13 +61,13 @@ var _ = Describe("Snapshotter", func() {
 		Context("with etcd not running at configured endpoint", func() {
 			It("should timeout & not take any snapshot", func() {
 				stopCh := make(chan struct{})
-				endpoints = "http://localhost:5000"
+				endpoints = []string{"http://localhost:5000"}
 				etcdConnectionTimeout = 5
 				maxBackups := 2
 				testTimeout := time.Duration(time.Minute * time.Duration(maxBackups+1))
 				store, err = snapstore.GetSnapstore(&snapstore.Config{Container: path.Join(outputDir, "snapshotter_2.bkp")})
 				Expect(err).ShouldNot(HaveOccurred())
-				ssr, err := NewSnapshotter(endpoints, schedule, store, logger, maxBackups, etcdConnectionTimeout)
+				ssr, err := NewSnapshotter(endpoints, schedule, store, logger, maxBackups, etcdConnectionTimeout, certFile, keyFile, caFile, insecureTransport, insecureSkipVerify)
 				Expect(err).ShouldNot(HaveOccurred())
 				go func() {
 					<-time.After(testTimeout)
@@ -78,7 +82,7 @@ var _ = Describe("Snapshotter", func() {
 		})
 		Context("with etcd running at configured endpoint", func() {
 			BeforeEach(func() {
-				endpoints = "http://localhost:2379"
+				endpoints = []string{"http://localhost:2379"}
 			})
 			Context("with unreachable schedule", func() {
 				var ssr *Snapshotter
@@ -90,7 +94,7 @@ var _ = Describe("Snapshotter", func() {
 					testTimeout := time.Duration(time.Minute * time.Duration(maxBackups+1))
 					store, err = snapstore.GetSnapstore(&snapstore.Config{Container: path.Join(outputDir, "snapshotter_3.bkp")})
 					Expect(err).ShouldNot(HaveOccurred())
-					ssr, err = NewSnapshotter(endpoints, schedule, store, logger, maxBackups, etcdConnectionTimeout)
+					ssr, err = NewSnapshotter(endpoints, schedule, store, logger, maxBackups, etcdConnectionTimeout, certFile, keyFile, caFile, insecureTransport, insecureSkipVerify)
 					Expect(err).ShouldNot(HaveOccurred())
 					go func() {
 						<-time.After(testTimeout)
@@ -114,7 +118,7 @@ var _ = Describe("Snapshotter", func() {
 				)
 				It("take periodic backups and garbage collect backups over maxBackups configured", func() {
 					stopCh := make(chan struct{})
-					endpoints = "http://localhost:2379"
+					endpoints = []string{"http://localhost:2379"}
 					//We will wait for maxBackups+1 times schedule period
 					schedule = "*/1 * * * *"
 					maxBackups = 2
@@ -122,7 +126,7 @@ var _ = Describe("Snapshotter", func() {
 					etcdConnectionTimeout = 5
 					store, err = snapstore.GetSnapstore(&snapstore.Config{Container: path.Join(outputDir, "snapshotter_4.bkp")})
 					Expect(err).ShouldNot(HaveOccurred())
-					ssr, err = NewSnapshotter(endpoints, schedule, store, logger, maxBackups, etcdConnectionTimeout)
+					ssr, err = NewSnapshotter(endpoints, schedule, store, logger, maxBackups, etcdConnectionTimeout, certFile, keyFile, caFile, insecureTransport, insecureSkipVerify)
 					Expect(err).ShouldNot(HaveOccurred())
 					go func() {
 						<-time.After(testTimeout)

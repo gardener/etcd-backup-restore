@@ -15,11 +15,9 @@
 package cmd
 
 import (
-	"context"
 	"path"
 	"time"
 
-	"github.com/coreos/etcd/clientv3"
 	"github.com/coreos/etcd/pkg/types"
 	"github.com/gardener/etcd-backup-restore/pkg/errors"
 	"github.com/gardener/etcd-backup-restore/pkg/initializer"
@@ -92,7 +90,12 @@ func NewServerCommand(stopCh <-chan struct{}) *cobra.Command {
 				ss,
 				logger,
 				maxBackups,
-				time.Duration(etcdConnectionTimeout))
+				time.Duration(etcdConnectionTimeout),
+				certFile,
+				keyFile,
+				caFile,
+				insecureTransport,
+				insecureSkipVerify)
 			if err != nil {
 				logger.Fatalf("Failed to create snapshotter: %v", err)
 			}
@@ -104,7 +107,7 @@ func NewServerCommand(stopCh <-chan struct{}) *cobra.Command {
 						logger.Info("Shutting down...")
 						return
 					default:
-						err = probeEtcd(etcdEndpoints, time.Duration(etcdConnectionTimeout))
+						err = ssr.ProbeEtcd()
 					}
 					if err == nil {
 						break
@@ -126,23 +129,6 @@ func NewServerCommand(stopCh <-chan struct{}) *cobra.Command {
 	initializeSnapstoreFlags(serverCmd)
 	initializeEtcdFlags(serverCmd)
 	return serverCmd
-}
-
-func probeEtcd(endPoints string, etcdConnectionTimeout time.Duration) error {
-	client, err := clientv3.NewFromURL(endPoints)
-	if err != nil {
-		logger.Errorf("Failed to create etcd client: %v", err)
-		return err
-	}
-
-	ctx, cancel := context.WithTimeout(context.TODO(), time.Second*etcdConnectionTimeout)
-	defer cancel()
-	_, err = client.Get(ctx, "foo")
-	if err != nil {
-		logger.Errorf("Failed to connect to client: %v", err)
-		return err
-	}
-	return nil
 }
 
 // initializeServerFlags adds the flags to <cmd>
