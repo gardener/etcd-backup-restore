@@ -29,15 +29,16 @@ var (
 	logger = logrus.New()
 
 	//snapshotter flags
-	schedule              string
-	etcdEndpoints         []string
-	maxBackups            int
-	etcdConnectionTimeout int
-	insecureTransport     bool
-	insecureSkipVerify    bool
-	certFile              string
-	keyFile               string
-	caFile                string
+	schedule                     string
+	etcdEndpoints                []string
+	deltaSnapshotIntervalSeconds int
+	maxBackups                   int
+	etcdConnectionTimeout        int
+	insecureTransport            bool
+	insecureSkipVerify           bool
+	certFile                     string
+	keyFile                      string
+	caFile                       string
 
 	//server flags
 	port int

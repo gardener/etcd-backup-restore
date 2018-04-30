@@ -40,6 +40,7 @@ storing snapshots on various cloud storage providers as well as local disk locat
 			if err != nil {
 				logger.Fatalf("Failed to create snapstore from configured storage provider: %v", err)
 			}
+
 			tlsConfig := snapshotter.NewTLSConfig(
 				certFile,
 				keyFile,
@@ -52,17 +53,17 @@ storing snapshots on various cloud storage providers as well as local disk locat
 				ss,
 				logger,
 				maxBackups,
+				deltaSnapshotIntervalSeconds,
 				time.Duration(etcdConnectionTimeout),
 				tlsConfig)
 			if err != nil {
 				logger.Fatalf("Failed to create snapshotter: %v", err)
 			}
-			err = ssr.Run(stopCh)
-			if err != nil {
+
+			if err := ssr.Run(stopCh); err != nil {
 				logger.Fatalf("Snapshotter failed with error: %v", err)
 			}
 			logger.Info("Shutting down...")
-			//TODO: do cleanup work here.
 			return
 		},
 	}
@@ -75,6 +76,7 @@ storing snapshots on various cloud storage providers as well as local disk locat
 func initializeSnapshotterFlags(cmd *cobra.Command) {
 	cmd.Flags().StringSliceVarP(&etcdEndpoints, "endpoints", "e", []string{"127.0.0.1:2379"}, "comma separated list of etcd endpoints")
 	cmd.Flags().StringVarP(&schedule, "schedule", "s", "* */1 * * *", "schedule for snapshots")
+	cmd.Flags().IntVarP(&deltaSnapshotIntervalSeconds, "delta-snapshot-interval-seconds", "i", 10, "Interval in no. of seconds after which delta snapshot will be persisted")
 	cmd.Flags().IntVarP(&maxBackups, "max-backups", "m", 7, "maximum number of previous backups to keep")
 	cmd.Flags().IntVar(&etcdConnectionTimeout, "etcd-connection-timeout", 30, "etcd client connection timeout")
 	cmd.Flags().BoolVar(&insecureTransport, "insecure-transport", true, "disable transport security for client connections")

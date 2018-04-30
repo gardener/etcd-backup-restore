@@ -17,6 +17,7 @@ package snapshotter
 import (
 	"time"
 
+	"github.com/coreos/etcd/clientv3"
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	"github.com/robfig/cron"
 	"github.com/sirupsen/logrus"
@@ -24,21 +25,30 @@ import (
 
 // Snapshotter is a struct for etcd snapshot taker
 type Snapshotter struct {
-	logger                   *logrus.Logger
-	schedule                 cron.Schedule
-	store                    snapstore.SnapStore
-	maxBackups               int
-	etcdConnectionTimeout    time.Duration
-	garbageCollectionTimeout time.Duration
-	tlsConfig                *TLSConfig
+	logger                       *logrus.Logger
+	schedule                     cron.Schedule
+	store                        snapstore.SnapStore
+	maxBackups                   int
+	etcdConnectionTimeout        time.Duration
+	garbageCollectionTimeout     time.Duration
+	tlsConfig                    *TLSConfig
+	deltaSnapshotIntervalSeconds int
+	deltaEventCount              int
+	prevSnapshot                 snapstore.Snapshot
 }
 
 // TLSConfig holds cert information and settings for TLS.
 type TLSConfig struct {
 	cert       string
 	key        string
-	cacert     string
+	caCert     string
 	insecureTr bool
 	skipVerify bool
 	endpoints  []string
+}
+
+// event is wrapper over etcd event to keep track of time of event
+type event struct {
+	EtcdEvent *clientv3.Event `json:"etcdEvent"`
+	Time      time.Time       `json:"time"`
 }

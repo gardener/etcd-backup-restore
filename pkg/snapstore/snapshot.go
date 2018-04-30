@@ -47,8 +47,10 @@ func ParseSnapshot(snapPath string) (*Snapshot, error) {
 	}
 	//parse kind
 	switch tokens[0] {
-	case SnapshotKindFull, "full":
+	case SnapshotKindFull:
 		s.Kind = SnapshotKindFull
+	case SnapshotKindDelta:
+		s.Kind = SnapshotKindDelta
 	default:
 		return nil, fmt.Errorf("unknown snapshot kind: %s", tokens[0])
 	}

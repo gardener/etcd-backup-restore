@@ -81,12 +81,14 @@ func NewServerCommand(stopCh <-chan struct{}) *cobra.Command {
 			logger.Info("Starting the http server...")
 			go handler.Start()
 			defer handler.Stop()
+
 			if snapstoreConfig == nil {
 				logger.Warnf("No snapstore storage provider configured. Will not start backup schedule.")
 				handler.Status = http.StatusOK
 				<-stopCh
 				return
 			}
+
 			for {
 				ss, err := snapstore.GetSnapstore(snapstoreConfig)
 				if err != nil {
@@ -106,6 +108,7 @@ func NewServerCommand(stopCh <-chan struct{}) *cobra.Command {
 					ss,
 					logger,
 					maxBackups,
+					deltaSnapshotIntervalSeconds,
 					time.Duration(etcdConnectionTimeout),
 					tlsConfig)
 				if err != nil {
@@ -126,36 +129,20 @@ func NewServerCommand(stopCh <-chan struct{}) *cobra.Command {
 					continue
 				}
 
-				err = ssr.TakeFullSnapshot()
-				if err != nil {
-					if etcdErr, ok := err.(*errors.EtcdError); ok == true {
-						logger.Errorf("Snapshotter failed with etcd error: %v", etcdErr)
-
-					} else {
-						logger.Fatalf("Snapshotter failed with error: %v", err)
-					}
-					handler.Status = http.StatusServiceUnavailable
-					continue
-				} else {
-					handler.Status = http.StatusOK
-				}
-
-				err = ssr.Run(stopCh)
-				if err != nil {
+				if err := ssr.Run(stopCh); err != nil {
 					handler.Status = http.StatusServiceUnavailable
 					if etcdErr, ok := err.(*errors.EtcdError); ok == true {
 						logger.Errorf("Snapshotter failed with etcd error: %v", etcdErr)
-
 					} else {
 						logger.Fatalf("Snapshotter failed with error: %v", err)
 					}
 				} else {
 					handler.Status = http.StatusOK
 				}
-
 			}
 		},
 	}
+
 	initializeServerFlags(serverCmd)
 	initializeSnapshotterFlags(serverCmd)
 	initializeSnapstoreFlags(serverCmd)
@@ -180,8 +167,7 @@ func ProbeEtcd(tlsConfig *snapshotter.TLSConfig) error {
 
 	ctx, cancel := context.WithTimeout(context.TODO(), time.Duration(etcdConnectionTimeout)*time.Second)
 	defer cancel()
-	_, err = client.Get(ctx, "foo")
-	if err != nil {
+	if _, err := client.Get(ctx, "foo"); err != nil {
 		logger.Errorf("Failed to connect to client: %v", err)
 		return err
 	}

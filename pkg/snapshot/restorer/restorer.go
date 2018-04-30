@@ -80,8 +80,7 @@ func (r *Restorer) Restore(ro RestoreOptions) error {
 
 	walDir := filepath.Join(ro.RestoreDataDir, "member", "wal")
 	snapdir := filepath.Join(ro.RestoreDataDir, "member", "snap")
-	err = makeDB(snapdir, ro.Snapshot, len(cl.Members()), r.store, false)
-	if err != nil {
+	if err = makeDB(snapdir, ro.Snapshot, len(cl.Members()), r.store, false); err != nil {
 		return err
 	}
 	return makeWALAndSnap(walDir, snapdir, cl, ro.Name)
