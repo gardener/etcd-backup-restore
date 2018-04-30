@@ -16,11 +16,13 @@ package snapshotter
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"path"
 	"time"
 
 	"github.com/coreos/etcd/clientv3"
+	"github.com/coreos/etcd/pkg/transport"
 	"github.com/gardener/etcd-backup-restore/pkg/errors"
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	"github.com/robfig/cron"
@@ -28,7 +30,18 @@ import (
 )
 
 // NewSnapshotter returns the snapshotter object.
-func NewSnapshotter(endpoints string, schedule string, store snapstore.SnapStore, logger *logrus.Logger, maxBackups int, etcdConnectionTimeout time.Duration) (*Snapshotter, error) {
+func NewSnapshotter(
+	endpoints []string,
+	schedule string,
+	store snapstore.SnapStore,
+	logger *logrus.Logger,
+	maxBackups int,
+	etcdConnectionTimeout time.Duration,
+	cert string,
+	key string,
+	cacert string,
+	insecureTr bool,
+	skipVerify bool) (*Snapshotter, error) {
 	logger.Printf("Validating schedule...")
 	sdl, err := cron.ParseStandard(schedule)
 	if err != nil {
@@ -41,6 +54,11 @@ func NewSnapshotter(endpoints string, schedule string, store snapstore.SnapStore
 		store:                 store,
 		maxBackups:            maxBackups,
 		etcdConnectionTimeout: etcdConnectionTimeout,
+		cert:       cert,
+		key:        key,
+		cacert:     cacert,
+		insecureTr: insecureTr,
+		skipVerify: skipVerify,
 	}, nil
 }
 
@@ -85,7 +103,7 @@ func (ssr *Snapshotter) Run(stopCh <-chan struct{}) error {
 // store it to underlying snapstore on the fly.
 func (ssr *Snapshotter) takeFullSnapshot() error {
 	var err error
-	client, err := clientv3.NewFromURL(ssr.endpoints)
+	client, err := ssr.getClientForSnapshots()
 	if err != nil {
 		return &errors.EtcdError{
 			Message: fmt.Sprintf("failed to create etcd client: %v", err),
@@ -125,6 +143,73 @@ func (ssr *Snapshotter) takeFullSnapshot() error {
 	}
 	ssr.logger.Infof("Successfully saved full snapshot at: %s", path.Join(s.SnapDir, s.SnapName))
 	return nil
+}
+
+// ProbeEtcd will make the snapshotter probe for etcd endpoint to be available
+// before it starts taking regular snapshots.
+func (ssr *Snapshotter) ProbeEtcd() error {
+	client, err := ssr.getClientForSnapshots()
+	if err != nil {
+		return &errors.EtcdError{
+			Message: fmt.Sprintf("failed to create etcd client: %v", err),
+		}
+	}
+
+	ctx, cancel := context.WithTimeout(context.TODO(), ssr.etcdConnectionTimeout*time.Second)
+	defer cancel()
+	_, err = client.Get(ctx, "foo")
+	if err != nil {
+		ssr.logger.Errorf("Failed to connect to client: %v", err)
+		return err
+	}
+	return nil
+}
+
+func (ssr *Snapshotter) getClientForSnapshots() (*clientv3.Client, error) {
+	// set tls if any one tls option set
+	var cfgtls *transport.TLSInfo
+	tlsinfo := transport.TLSInfo{}
+	if ssr.cert != "" {
+		tlsinfo.CertFile = ssr.cert
+		cfgtls = &tlsinfo
+	}
+
+	if ssr.key != "" {
+		tlsinfo.KeyFile = ssr.key
+		cfgtls = &tlsinfo
+	}
+
+	if ssr.cacert != "" {
+		tlsinfo.CAFile = ssr.cacert
+		cfgtls = &tlsinfo
+	}
+
+	cfg := &clientv3.Config{
+		Endpoints: ssr.endpoints,
+	}
+
+	if cfgtls != nil {
+		clientTLS, err := cfgtls.ClientConfig()
+		if err != nil {
+			return nil, err
+		}
+		cfg.TLS = clientTLS
+	}
+
+	// if key/cert is not given but user wants secure connection, we
+	// should still setup an empty tls configuration for gRPC to setup
+	// secure connection.
+	if cfg.TLS == nil && !ssr.insecureTr {
+		cfg.TLS = &tls.Config{}
+	}
+
+	// If the user wants to skip TLS verification then we should set
+	// the InsecureSkipVerify flag in tls configuration.
+	if ssr.skipVerify && cfg.TLS != nil {
+		cfg.TLS.InsecureSkipVerify = true
+	}
+
+	return clientv3.New(*cfg)
 }
 
 // garbageCollector basically consider the older backups as garbage and deletes it

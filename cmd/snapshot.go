@@ -46,7 +46,12 @@ storing snapshots on various cloud storage providers as well as local disk locat
 				ss,
 				logger,
 				maxBackups,
-				time.Duration(etcdConnectionTimeout))
+				time.Duration(etcdConnectionTimeout),
+				certFile,
+				keyFile,
+				caFile,
+				insecureTransport,
+				insecureSkipVerify)
 			if err != nil {
 				logger.Fatalf("Failed to create snapshotter: %v", err)
 			}
@@ -66,8 +71,13 @@ storing snapshots on various cloud storage providers as well as local disk locat
 
 // initializeSnapshotterFlags adds snapshotter related flags to <cmd>
 func initializeSnapshotterFlags(cmd *cobra.Command) {
-	cmd.Flags().StringVarP(&etcdEndpoints, "etcd-endpoints", "e", "http://localhost:2379", "comma separated list of etcd endpoints")
+	cmd.Flags().StringSliceVarP(&etcdEndpoints, "endpoints", "e", []string{"127.0.0.1:2379"}, "comma separated list of etcd endpoints")
 	cmd.Flags().StringVarP(&schedule, "schedule", "s", "* */1 * * *", "schedule for snapshots")
 	cmd.Flags().IntVarP(&maxBackups, "max-backups", "m", 7, "maximum number of previous backups to keep")
 	cmd.Flags().IntVar(&etcdConnectionTimeout, "etcd-connection-timeout", 30, "etcd client connection timeout")
+	cmd.Flags().BoolVar(&insecureTransport, "insecure-transport", false, "disable transport security for client connections")
+	cmd.Flags().BoolVar(&insecureSkipVerify, "insecure-skip-tls-verify", false, "skip server certificate verification")
+	cmd.Flags().StringVar(&certFile, "cert", "", "identify secure client using this TLS certificate file")
+	cmd.Flags().StringVar(&keyFile, "key", "", "identify secure client using this TLS key file")
+	cmd.Flags().StringVar(&caFile, "cacert", "", "verify certificates of TLS-enabled secure servers using this CA bundle")
 }

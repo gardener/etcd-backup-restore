@@ -118,7 +118,7 @@ spec:
         - name: aws-secret
           secret:
             secretName: <backup provider secret> # change provider credential secret name here
-            defaultMode: 0420
+            defaultMode: 420
         - name: etcd-bootstrap
           configMap:
             name: etcd-bootstrap
