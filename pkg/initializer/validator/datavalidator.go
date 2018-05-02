@@ -37,7 +37,7 @@ import (
 const (
 	// DataDirectoryValid indicates data directory is valid.
 	DataDirectoryValid = iota
-	// DataDirectoryNotExist indicates data directory is non-existant.
+	// DataDirectoryNotExist indicates data directory is non-existent.
 	DataDirectoryNotExist
 	// DataDirectoryInvStruct indicates data directory has invalid structure.
 	DataDirectoryInvStruct

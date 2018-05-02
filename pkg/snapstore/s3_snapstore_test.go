@@ -54,7 +54,7 @@ func (m *mockS3Client) PutObject(in *s3.PutObjectInput) (*s3.PutObjectOutput, er
 // ListObject returns the objects from map for mock test
 func (m *mockS3Client) ListObjects(in *s3.ListObjectsInput) (*s3.ListObjectsOutput, error) {
 	var contents []*s3.Object
-	for key, _ := range m.objects {
+	for key := range m.objects {
 		if strings.HasPrefix(key, *in.Prefix) {
 			keyPtr := new(string)
 			*keyPtr = key
