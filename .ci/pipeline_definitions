@@ -22,10 +22,11 @@ etcd-backup-restore:
       check:
         image: 'golang:1.9.4'
       test:
-        image: 'golang:1.9.4'
+        image: 'eu.gcr.io/gardener-project/cc/job-image-golang-1-9-4:0.24.0'
       build:
         image: 'golang:1.9.4'
         output_dir: 'binary'
+
   variants:
     head-update: ~
     pull-request:

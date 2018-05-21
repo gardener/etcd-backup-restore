@@ -140,9 +140,16 @@ var _ = Describe("Snapshot", func() {
 				Expect(err).Should(HaveOccurred())
 			})
 		})
-		Context("when invalid kind is specified", func() {
+		Context("when invalid kind specified", func() {
 			It("returns error", func() {
 				snapName := "Backup-2387428/meta-00000000-00002088-2387428"
+				_, err := ParseSnapshot(snapName)
+				Expect(err).Should(HaveOccurred())
+			})
+		})
+		Context("when invalid path specified", func() {
+			It("returns error", func() {
+				snapName := "Backup--00000000-00002088-2387428"
 				_, err := ParseSnapshot(snapName)
 				Expect(err).Should(HaveOccurred())
 			})
