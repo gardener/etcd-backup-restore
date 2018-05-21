@@ -41,7 +41,20 @@ var _ = Describe("Snapshotter", func() {
 		Context("With invalid schedule", func() {
 			It("should return error", func() {
 				schedule = "65 * * * 5"
-				ssr, err = NewSnapshotter(endpoints, schedule, store, logger, 1, etcdConnectionTimeout, certFile, keyFile, caFile, insecureTransport, insecureSkipVerify)
+				tlsConfig := NewTLSConfig(
+					certFile,
+					keyFile,
+					caFile,
+					insecureTransport,
+					insecureSkipVerify,
+					endpoints)
+				ssr, err = NewSnapshotter(
+					schedule,
+					store,
+					logger,
+					1,
+					etcdConnectionTimeout,
+					tlsConfig)
 				Expect(err).Should(HaveOccurred())
 				Expect(ssr).Should(BeNil())
 			})
@@ -50,7 +63,20 @@ var _ = Describe("Snapshotter", func() {
 		Context("With valid schedule", func() {
 			It("should create snapshotter", func() {
 				schedule = "*/5 * * * *"
-				ssr, err = NewSnapshotter(endpoints, schedule, store, logger, 1, etcdConnectionTimeout, certFile, keyFile, caFile, insecureTransport, insecureSkipVerify)
+				tlsConfig := NewTLSConfig(
+					certFile,
+					keyFile,
+					caFile,
+					insecureTransport,
+					insecureSkipVerify,
+					endpoints)
+				ssr, err = NewSnapshotter(
+					schedule,
+					store,
+					logger,
+					1,
+					etcdConnectionTimeout,
+					tlsConfig)
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(ssr).ShouldNot(BeNil())
 			})
@@ -67,7 +93,20 @@ var _ = Describe("Snapshotter", func() {
 				testTimeout := time.Duration(time.Minute * time.Duration(maxBackups+1))
 				store, err = snapstore.GetSnapstore(&snapstore.Config{Container: path.Join(outputDir, "snapshotter_2.bkp")})
 				Expect(err).ShouldNot(HaveOccurred())
-				ssr, err := NewSnapshotter(endpoints, schedule, store, logger, maxBackups, etcdConnectionTimeout, certFile, keyFile, caFile, insecureTransport, insecureSkipVerify)
+				tlsConfig := NewTLSConfig(
+					certFile,
+					keyFile,
+					caFile,
+					insecureTransport,
+					insecureSkipVerify,
+					endpoints)
+				ssr, err := NewSnapshotter(
+					schedule,
+					store,
+					logger,
+					maxBackups,
+					etcdConnectionTimeout,
+					tlsConfig)
 				Expect(err).ShouldNot(HaveOccurred())
 				go func() {
 					<-time.After(testTimeout)
@@ -94,7 +133,20 @@ var _ = Describe("Snapshotter", func() {
 					testTimeout := time.Duration(time.Minute * time.Duration(maxBackups+1))
 					store, err = snapstore.GetSnapstore(&snapstore.Config{Container: path.Join(outputDir, "snapshotter_3.bkp")})
 					Expect(err).ShouldNot(HaveOccurred())
-					ssr, err = NewSnapshotter(endpoints, schedule, store, logger, maxBackups, etcdConnectionTimeout, certFile, keyFile, caFile, insecureTransport, insecureSkipVerify)
+					tlsConfig := NewTLSConfig(
+						certFile,
+						keyFile,
+						caFile,
+						insecureTransport,
+						insecureSkipVerify,
+						endpoints)
+					ssr, err = NewSnapshotter(
+						schedule,
+						store,
+						logger,
+						maxBackups,
+						etcdConnectionTimeout,
+						tlsConfig)
 					Expect(err).ShouldNot(HaveOccurred())
 					go func() {
 						<-time.After(testTimeout)
@@ -126,7 +178,20 @@ var _ = Describe("Snapshotter", func() {
 					etcdConnectionTimeout = 5
 					store, err = snapstore.GetSnapstore(&snapstore.Config{Container: path.Join(outputDir, "snapshotter_4.bkp")})
 					Expect(err).ShouldNot(HaveOccurred())
-					ssr, err = NewSnapshotter(endpoints, schedule, store, logger, maxBackups, etcdConnectionTimeout, certFile, keyFile, caFile, insecureTransport, insecureSkipVerify)
+					tlsConfig := NewTLSConfig(
+						certFile,
+						keyFile,
+						caFile,
+						insecureTransport,
+						insecureSkipVerify,
+						endpoints)
+					ssr, err = NewSnapshotter(
+						schedule,
+						store,
+						logger,
+						maxBackups,
+						etcdConnectionTimeout,
+						tlsConfig)
 					Expect(err).ShouldNot(HaveOccurred())
 					go func() {
 						<-time.After(testTimeout)

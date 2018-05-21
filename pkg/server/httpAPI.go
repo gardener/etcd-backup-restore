@@ -38,6 +38,7 @@ type HTTPHandler struct {
 	Logger                    *logrus.Logger
 	initializationStatusMutex sync.Mutex
 	initializationStatus      string
+	Status                    int
 }
 
 // RegisterHandler registers the handler for different requests
@@ -45,7 +46,7 @@ func (h *HTTPHandler) RegisterHandler() {
 	h.initializationStatus = "New"
 	http.HandleFunc("/initialization/start", h.serveInitialize)
 	http.HandleFunc("/initialization/status", h.serveInitializationStatus)
-	http.HandleFunc("/metrics", h.serveMetrics)
+	http.HandleFunc("/healthz", h.serveHealthz)
 	return
 }
 
@@ -66,11 +67,10 @@ func (h *HTTPHandler) Stop() error {
 }
 
 // ServeHTTP serves the http re
-func (h *HTTPHandler) serveMetrics(rw http.ResponseWriter, req *http.Request) {
+func (h *HTTPHandler) serveHealthz(rw http.ResponseWriter, req *http.Request) {
 
-	rw.WriteHeader(http.StatusOK)
-	rw.Write([]byte("{\"health\":\"true\"}"))
-	//h.Logger.Infof("Received call for metrics.")
+	rw.WriteHeader(h.Status)
+	rw.Write([]byte(fmt.Sprintf("{\"health\":\"%v\"}", h.Status == http.StatusOK)))
 }
 
 // ServeInitialize serves the http re
@@ -100,13 +100,14 @@ func (h *HTTPHandler) serveInitialize(rw http.ResponseWriter, req *http.Request)
 
 // ServeInitializationStatus serves the etcd initialization progress status
 func (h *HTTPHandler) serveInitializationStatus(rw http.ResponseWriter, req *http.Request) {
-	//fmt.Fprintf(rw, "initialization request received.")
 	h.initializationStatusMutex.Lock()
 	defer h.initializationStatusMutex.Unlock()
 	h.Logger.Infof("Responding to status request with: %s", h.initializationStatus)
 
 	rw.WriteHeader(http.StatusOK)
+
 	rw.Write([]byte(h.initializationStatus))
+
 	if h.initializationStatus == initializationStatusSuccessful || h.initializationStatus == initializationStatusFailed {
 		h.Logger.Infof("Updating status from %s to %s", h.initializationStatus, initializationStatusNew)
 		h.initializationStatus = initializationStatusNew

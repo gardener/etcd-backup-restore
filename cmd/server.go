@@ -15,6 +15,9 @@
 package cmd
 
 import (
+	"context"
+	"fmt"
+	"net/http"
 	"path"
 	"time"
 
@@ -64,10 +67,14 @@ func NewServerCommand(stopCh <-chan struct{}) *cobra.Command {
 			}
 
 			etcdInitializer := initializer.NewInitializer(options, snapstoreConfig, logger)
+			// Start http handler with Error state and wait till snapshotter is up
+			// and running before setting the state to OK.
+
 			handler := &server.HTTPHandler{
 				Port:            port,
 				EtcdInitializer: *etcdInitializer,
 				Logger:          logger,
+				Status:          http.StatusServiceUnavailable,
 			}
 			logger.Info("Regsitering the http request handlers...")
 			handler.RegisterHandler()
@@ -76,51 +83,76 @@ func NewServerCommand(stopCh <-chan struct{}) *cobra.Command {
 			defer handler.Stop()
 			if snapstoreConfig == nil {
 				logger.Warnf("No snapstore storage provider configured. Will not start backup schedule.")
+				handler.Status = http.StatusOK
 				<-stopCh
 				return
 			}
-			ss, err := snapstore.GetSnapstore(snapstoreConfig)
-			if err != nil {
-				logger.Fatalf("Failed to create snapstore from configured storage provider: %v", err)
-			}
-			logger.Info("Created snapstore from provider: %s", storageProvider)
-			ssr, err := snapshotter.NewSnapshotter(
-				etcdEndpoints,
-				schedule,
-				ss,
-				logger,
-				maxBackups,
-				time.Duration(etcdConnectionTimeout),
-				certFile,
-				keyFile,
-				caFile,
-				insecureTransport,
-				insecureSkipVerify)
-			if err != nil {
-				logger.Fatalf("Failed to create snapshotter: %v", err)
-			}
 			for {
-				for {
-					logger.Infof("Probing etcd...")
-					select {
-					case <-stopCh:
-						logger.Info("Shutting down...")
-						return
-					default:
-						err = ssr.ProbeEtcd()
-					}
-					if err == nil {
-						break
-					}
+				ss, err := snapstore.GetSnapstore(snapstoreConfig)
+				if err != nil {
+					logger.Fatalf("Failed to create snapstore from configured storage provider: %v", err)
 				}
-				err = ssr.Run(stopCh)
+				logger.Infof("Created snapstore from provider: %s", storageProvider)
+
+				tlsConfig := snapshotter.NewTLSConfig(
+					certFile,
+					keyFile,
+					caFile,
+					insecureTransport,
+					insecureSkipVerify,
+					etcdEndpoints)
+				ssr, err := snapshotter.NewSnapshotter(
+					schedule,
+					ss,
+					logger,
+					maxBackups,
+					time.Duration(etcdConnectionTimeout),
+					tlsConfig)
+				if err != nil {
+					logger.Fatalf("Failed to create snapshotter from configured storage provider: %v", err)
+				}
+
+				logger.Infof("Probing etcd...")
+				select {
+				case <-stopCh:
+					logger.Info("Shutting down...")
+					return
+				default:
+					err = ProbeEtcd(tlsConfig)
+				}
+				if err != nil {
+					logger.Errorf("Failed to probe etcd: %v", err)
+					handler.Status = http.StatusServiceUnavailable
+					continue
+				}
+
+				err = ssr.TakeFullSnapshot()
 				if err != nil {
 					if etcdErr, ok := err.(*errors.EtcdError); ok == true {
-						logger.Errorf("Snapshotter failed with error: %v", etcdErr)
+						logger.Errorf("Snapshotter failed with etcd error: %v", etcdErr)
+
 					} else {
 						logger.Fatalf("Snapshotter failed with error: %v", err)
 					}
+					handler.Status = http.StatusServiceUnavailable
+					continue
+				} else {
+					handler.Status = http.StatusOK
 				}
+
+				err = ssr.Run(stopCh)
+				if err != nil {
+					handler.Status = http.StatusServiceUnavailable
+					if etcdErr, ok := err.(*errors.EtcdError); ok == true {
+						logger.Errorf("Snapshotter failed with etcd error: %v", etcdErr)
+
+					} else {
+						logger.Fatalf("Snapshotter failed with error: %v", err)
+					}
+				} else {
+					handler.Status = http.StatusOK
+				}
+
 			}
 		},
 	}
@@ -134,4 +166,24 @@ func NewServerCommand(stopCh <-chan struct{}) *cobra.Command {
 // initializeServerFlags adds the flags to <cmd>
 func initializeServerFlags(serverCmd *cobra.Command) {
 	serverCmd.Flags().IntVarP(&port, "server-port", "p", defaultServerPort, "port on which server should listen")
+}
+
+// ProbeEtcd will make the snapshotter probe for etcd endpoint to be available
+// before it starts taking regular snapshots.
+func ProbeEtcd(tlsConfig *snapshotter.TLSConfig) error {
+	client, err := snapshotter.GetTLSClientForEtcd(tlsConfig)
+	if err != nil {
+		return &errors.EtcdError{
+			Message: fmt.Sprintf("failed to create etcd client: %v", err),
+		}
+	}
+
+	ctx, cancel := context.WithTimeout(context.TODO(), time.Duration(etcdConnectionTimeout)*time.Second)
+	defer cancel()
+	_, err = client.Get(ctx, "foo")
+	if err != nil {
+		logger.Errorf("Failed to connect to client: %v", err)
+		return err
+	}
+	return nil
 }

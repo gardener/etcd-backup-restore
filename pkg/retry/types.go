@@ -12,33 +12,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package snapshotter
+package retry
 
 import (
 	"time"
 
-	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
-	"github.com/robfig/cron"
 	"github.com/sirupsen/logrus"
 )
 
-// Snapshotter is a struct for etcd snapshot taker
-type Snapshotter struct {
-	logger                   *logrus.Logger
-	schedule                 cron.Schedule
-	store                    snapstore.SnapStore
-	maxBackups               int
-	etcdConnectionTimeout    time.Duration
-	garbageCollectionTimeout time.Duration
-	tlsConfig                *TLSConfig
-}
-
-// TLSConfig holds cert information and settings for TLS.
-type TLSConfig struct {
-	cert       string
-	key        string
-	cacert     string
-	insecureTr bool
-	skipVerify bool
-	endpoints  []string
+// Config is the list of config parameters that is provided
+// to the retry.Do function.
+type Config struct {
+	Attempts uint
+	Delay    time.Duration
+	Units    time.Duration
+	Logger   *logrus.Logger
 }
