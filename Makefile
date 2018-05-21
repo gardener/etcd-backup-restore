@@ -41,6 +41,9 @@ docker-push:
 	@if ! docker images $(IMAGE_REPOSITORY) | awk '{ print $$2 }' | grep -q -F $(IMAGE_TAG); then echo "$(IMAGE_REPOSITORY) version $(IMAGE_TAG) is not yet built. Please run 'make docker-image'"; false; fi
 	@docker push $(IMAGE_REPOSITORY):$(IMAGE_TAG)
 
+.PHONY: examples
+examples:
+	@hack/generate-examples
 .PHONY: clean
 clean:
 	@rm -rf $(BIN_DIR)/

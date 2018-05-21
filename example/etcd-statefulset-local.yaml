@@ -1,7 +1,8 @@
+---
 apiVersion: v1
 kind: Service
 metadata:
-  name: etcd-client
+  name: etcd-client-local
   labels:
     app: etcd
 spec:
@@ -16,7 +17,7 @@ spec:
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: etcd-bootstrap
+  name: etcd-bootstrap-local
   labels:
     app: etcd
 data:
@@ -35,12 +36,7 @@ data:
       "Failed")
             continue;;
       "Successful")
-            exec etcd --data-dir=/var/etcd/data \
-                      --name=etcd \
-                      --advertise-client-urls=http://0.0.0.0:2379 \
-                      --listen-client-urls=http://0.0.0.0:2379 \
-                      --initial-cluster-state=new \
-                      --initial-cluster-token=new
+            exec etcd --data-dir=/var/etcd/data --name=etcd --advertise-client-urls=http://0.0.0.0:2379 --listen-client-urls=http://0.0.0.0:2379 --initial-cluster-state=new --initial-cluster-token=new
             ;;
       esac;
     done
@@ -48,17 +44,17 @@ data:
 apiVersion: apps/v1beta1
 kind: StatefulSet
 metadata:
-  name: etcd
+  name: etcd-local
 spec:
   selector:
     matchLabels:
-      app: etcd
-  serviceName: "etcd"
+      app: etcd-local
+  serviceName: "etcd-local"
   replicas: 1
   template:
     metadata:
       labels:
-        app: etcd 
+        app: etcd-local 
     spec:
       containers:
       - name: etcd
@@ -66,12 +62,6 @@ spec:
         - /bootstrap/bootstrap.sh
         image: quay.io/coreos/etcd:v3.3.1
         imagePullPolicy: IfNotPresent
-        readinessProbe:
-          httpGet:
-            path: /healthz
-            port: 8080
-          initialDelaySeconds: 5
-          periodSeconds: 10
         livenessProbe:
           exec:
             command:
@@ -80,6 +70,12 @@ spec:
             - ETCDCTL_API=3 etcdctl get foo
           initialDelaySeconds: 5
           periodSeconds: 5
+        readinessProbe:
+          httpGet:
+            path: /healthz
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 10
         ports:
         - containerPort: 2380
           name: server
@@ -88,48 +84,42 @@ spec:
           name: client
           protocol: TCP
         volumeMounts:
-        - mountPath: /var/etcd
-          name: etcd-data
-        - name: etcd-bootstrap
-          mountPath: /bootstrap
+        - mountPath: /var/etcd/data
+          name: etcd-data-local
+        - mountPath: /bootstrap
+          name: etcd-bootstrap
       - name: backup
         command:
         - etcdbrctl
         - server
-        - --schedule=*/5 * * * *
+        - --schedule=*/1 * * * *
         - --max-backups=5
         - --data-dir=/var/etcd/data
-        - --storage-provider=GCS      # change provider details here. (S3/Local)
-        image: <docker.io/gardener/etcdbr/etcdbrctl:0.1.0>    # change image here
+        - --insecure-transport=true
+        - --storage-provider=
+        image: eu.gcr.io/gardener-project/gardener/etcdbrctl:0.2.2
         imagePullPolicy: Always
         ports:
         - containerPort: 8080
           name: server
           protocol: TCP
         env:
-            - name: STORAGE_CONTAINER
-              value: <Container Name>      # change storage container name here
-            - name: GOOGLE_APPLICATION_CREDENTIALS
-              value: /root/.gcp/service-account-file.json
+        - name: STORAGE_CONTAINER
+          value: etcd-store  # Change the container name here
         volumeMounts:
-          - mountPath: /root/.gcp/
-            name: gcp-secret
-          - mountPath: /var/etcd
-            name: etcd-data
+        - mountPath: /var/etcd/data
+          name: etcd-data-local
       volumes:
-        - name: gcp-secret
-          secret:
-            secretName: etcd-gcp-backup 
-            defaultMode: 0420
         - name: etcd-bootstrap
           configMap:
-            name: etcd-bootstrap
-            defaultMode: 356
+            name: etcd-bootstrap-local
+            defaultMode: 0356
   volumeClaimTemplates:
   - metadata:
-      name: etcd-data
+      name: etcd-data-local
     spec:
-      accessModes: [ "ReadWriteOnce" ]
+      accessModes:
+      - "ReadWriteOnce"
       resources:
         requests:
           storage: 1Gi

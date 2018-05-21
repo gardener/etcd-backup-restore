@@ -2,7 +2,7 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: etcd-client-azure
+  name: etcd-client-openstack
   labels:
     app: etcd
 spec:
@@ -17,7 +17,7 @@ spec:
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: etcd-bootstrap-azure
+  name: etcd-bootstrap-openstack
   labels:
     app: etcd
 data:
@@ -44,17 +44,17 @@ data:
 apiVersion: apps/v1beta1
 kind: StatefulSet
 metadata:
-  name: etcd-azure
+  name: etcd-openstack
 spec:
   selector:
     matchLabels:
-      app: etcd-azure
-  serviceName: "etcd-azure"
+      app: etcd-openstack
+  serviceName: "etcd-openstack"
   replicas: 1
   template:
     metadata:
       labels:
-        app: etcd-azure 
+        app: etcd-openstack 
     spec:
       containers:
       - name: etcd
@@ -85,7 +85,7 @@ spec:
           protocol: TCP
         volumeMounts:
         - mountPath: /var/etcd/data
-          name: etcd-data-azure
+          name: etcd-data-openstack
         - mountPath: /bootstrap
           name: etcd-bootstrap
       - name: backup
@@ -96,7 +96,7 @@ spec:
         - --max-backups=5
         - --data-dir=/var/etcd/data
         - --insecure-transport=true
-        - --storage-provider=ABS
+        - --storage-provider=Swift
         image: eu.gcr.io/gardener-project/gardener/etcdbrctl:0.2.2
         imagePullPolicy: Always
         ports:
@@ -106,31 +106,46 @@ spec:
         env:
         - name: STORAGE_CONTAINER
           value: etcd-store  # Change the container name here
-        - name: STORAGE_ACCOUNT
+        - name: OS_AUTH_URL
           valueFrom:
             secretKeyRef:
-              name: secret-azure
-              key: storageaccount
-        - name: STORAGE_KEY
+              name: secret-openstack
+              key: authURL
+        - name: OS_DOMAIN_NAME
           valueFrom:
             secretKeyRef:
-              name: secret-azure
-              key: storage-key
+              name: secret-openstack
+              key: domainName
+        - name: OS_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: secret-openstack
+              key: username
+        - name: OS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: secret-openstack
+              key: password
+        - name: OS_TENANT_NAME
+          valueFrom:
+            secretKeyRef:
+              name: secret-openstack
+              key: tenantName
         volumeMounts:
         - mountPath: /var/etcd/data
-          name: etcd-data-azure
+          name: etcd-data-openstack
       volumes:
         - name: etcd-bootstrap
           configMap:
-            name: etcd-bootstrap-azure
+            name: etcd-bootstrap-openstack
             defaultMode: 0356
-        - name: secret-azure
+        - name: secret-openstack
           secret:
-            secretName: secret-azure # change the secret name here
+            secretName: secret-openstack # change the secret name here
             defaultMode: 0420
   volumeClaimTemplates:
   - metadata:
-      name: etcd-data-azure
+      name: etcd-data-openstack
     spec:
       accessModes:
       - "ReadWriteOnce"

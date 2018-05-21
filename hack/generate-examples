@@ -1,0 +1,22 @@
+#!/bin/bash -eu
+
+# install python requirements if needed
+if ! pip list 2>&1 | grep Mako &>/dev/null; then
+  pip install Mako
+fi
+
+CONTAINER=${1:-etcd-store}
+PATH_TEMPLATES="$(dirname $0)/templates"
+PATH_EXAMPLES="$(dirname $0)/../example"
+
+mkdir -p "$PATH_EXAMPLES"
+
+# render cloud-specific templates
+for cloud in aws azure gcp openstack local; do
+  echo "* Rendering manifests for cloud '$cloud':"
+  for resource in etcd-statefulset; do
+    echo "  * Template '$resource' rendered."
+    mako-render --var cloud="$cloud" --var container="$CONTAINER" "$PATH_TEMPLATES/$resource.yaml.tpl" > "$PATH_EXAMPLES/$resource-$cloud.yaml"
+  done
+  echo
+done
