@@ -1,7 +1,8 @@
+---
 apiVersion: v1
 kind: Service
 metadata:
-  name: etcd-client
+  name: etcd-client-azure
   labels:
     app: etcd
 spec:
@@ -16,7 +17,7 @@ spec:
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: etcd-bootstrap
+  name: etcd-bootstrap-azure
   labels:
     app: etcd
 data:
@@ -35,12 +36,7 @@ data:
       "Failed")
             continue;;
       "Successful")
-            exec etcd --data-dir=/var/etcd/data \
-                      --name=etcd \
-                      --advertise-client-urls=http://0.0.0.0:2379 \
-                      --listen-client-urls=http://0.0.0.0:2379 \
-                      --initial-cluster-state=new \
-                      --initial-cluster-token=new
+            exec etcd --data-dir=/var/etcd/data --name=etcd --advertise-client-urls=http://0.0.0.0:2379 --listen-client-urls=http://0.0.0.0:2379 --initial-cluster-state=new --initial-cluster-token=new
             ;;
       esac;
     done
@@ -48,17 +44,17 @@ data:
 apiVersion: apps/v1beta1
 kind: StatefulSet
 metadata:
-  name: etcd
+  name: etcd-azure
 spec:
   selector:
     matchLabels:
-      app: etcd
-  serviceName: "etcd"
+      app: etcd-azure
+  serviceName: "etcd-azure"
   replicas: 1
   template:
     metadata:
       labels:
-        app: etcd 
+        app: etcd-azure 
     spec:
       containers:
       - name: etcd
@@ -66,12 +62,6 @@ spec:
         - /bootstrap/bootstrap.sh
         image: quay.io/coreos/etcd:v3.3.1
         imagePullPolicy: IfNotPresent
-        readinessProbe:
-          httpGet:
-            path: /healthz
-            port: 8080
-          initialDelaySeconds: 5
-          periodSeconds: 10
         livenessProbe:
           exec:
             command:
@@ -80,6 +70,12 @@ spec:
             - ETCDCTL_API=3 etcdctl get foo
           initialDelaySeconds: 5
           periodSeconds: 5
+        readinessProbe:
+          httpGet:
+            path: /healthz
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 10
         ports:
         - containerPort: 2380
           name: server
@@ -89,49 +85,55 @@ spec:
           protocol: TCP
         volumeMounts:
         - mountPath: /var/etcd/data
-          name: etcd-data
-        - name: etcd-bootstrap
-          mountPath: /bootstrap
+          name: etcd-data-azure
+        - mountPath: /bootstrap
+          name: etcd-bootstrap
       - name: backup
         command:
         - etcdbrctl
         - server
-        - --schedule=*/5 * * * *
+        - --schedule=*/1 * * * *
         - --max-backups=5
         - --data-dir=/var/etcd/data
-        - --storage-provider=S3      # change provider details here. (S3/Local)
-        image: <docker.io/gardener/etcdbr/etcdbrctl:0.2.0>    # change image here
+        - --insecure-transport=true
+        - --storage-provider=ABS
+        image: eu.gcr.io/gardener-project/gardener/etcdbrctl:0.2.3
         imagePullPolicy: Always
         ports:
         - containerPort: 8080
           name: server
           protocol: TCP
         env:
-          - name: STORAGE_CONTAINER
-            value: <Container Name>      # change storage container name here
-          - name: STORAGE_ACCOUNT
-            valueFrom:
-              secretKeyRef:
-                name: azure-secret
-                key: storage-account
-          - name: STORAGE_KEY
-            valueFrom:
-              secretKeyRef:
-                name: azure-secret
-                key: storage-key
+        - name: STORAGE_CONTAINER
+          value: etcd-store  # Change the container name here
+        - name: STORAGE_ACCOUNT
+          valueFrom:
+            secretKeyRef:
+              name: secret-azure
+              key: storageaccount
+        - name: STORAGE_KEY
+          valueFrom:
+            secretKeyRef:
+              name: secret-azure
+              key: storage-key
         volumeMounts:
-          - mountPath: /var/etcd/data
-            name: etcd-data
+        - mountPath: /var/etcd/data
+          name: etcd-data-azure
       volumes:
         - name: etcd-bootstrap
           configMap:
-            name: etcd-bootstrap
-            defaultMode: 356
+            name: etcd-bootstrap-azure
+            defaultMode: 0356
+        - name: secret-azure
+          secret:
+            secretName: secret-azure # change the secret name here
+            defaultMode: 0420
   volumeClaimTemplates:
   - metadata:
-      name: etcd-data
+      name: etcd-data-azure
     spec:
-      accessModes: [ "ReadWriteOnce" ]
+      accessModes:
+      - "ReadWriteOnce"
       resources:
         requests:
           storage: 1Gi

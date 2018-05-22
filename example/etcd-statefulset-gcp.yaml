@@ -2,7 +2,7 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: etcd-client-aws
+  name: etcd-client-gcp
   labels:
     app: etcd
 spec:
@@ -17,7 +17,7 @@ spec:
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: etcd-bootstrap-aws
+  name: etcd-bootstrap-gcp
   labels:
     app: etcd
 data:
@@ -44,17 +44,17 @@ data:
 apiVersion: apps/v1beta1
 kind: StatefulSet
 metadata:
-  name: etcd-aws
+  name: etcd-gcp
 spec:
   selector:
     matchLabels:
-      app: etcd-aws
-  serviceName: "etcd-aws"
+      app: etcd-gcp
+  serviceName: "etcd-gcp"
   replicas: 1
   template:
     metadata:
       labels:
-        app: etcd-aws 
+        app: etcd-gcp 
     spec:
       containers:
       - name: etcd
@@ -85,7 +85,7 @@ spec:
           protocol: TCP
         volumeMounts:
         - mountPath: /var/etcd/data
-          name: etcd-data-aws
+          name: etcd-data-gcp
         - mountPath: /bootstrap
           name: etcd-bootstrap
       - name: backup
@@ -96,7 +96,7 @@ spec:
         - --max-backups=5
         - --data-dir=/var/etcd/data
         - --insecure-transport=true
-        - --storage-provider=S3
+        - --storage-provider=GCS
         image: eu.gcr.io/gardener-project/gardener/etcdbrctl:0.2.3
         imagePullPolicy: Always
         ports:
@@ -106,36 +106,25 @@ spec:
         env:
         - name: STORAGE_CONTAINER
           value: etcd-store  # Change the container name here
-        - name: AWS_REGION
-          valueFrom:
-            secretKeyRef:
-              name: secret-aws
-              key: region
-        - name: AWS_SECRET_ACCESS_KEY
-          valueFrom:
-            secretKeyRef:
-              name: secret-aws
-              key: secretAccessKey
-        - name: AWS_ACCESS_KEY_ID
-          valueFrom:
-            secretKeyRef:
-              name: secret-aws
-              key: accessKeyID
+        - name:  GOOGLE_APPLICATION_CREDENTIALS
+          value: /root/.gcp/serviceaccount.json
         volumeMounts:
         - mountPath: /var/etcd/data
-          name: etcd-data-aws
+          name: etcd-data-gcp
+        - mountPath: /root/.gcp/
+          name: secret-gcp
       volumes:
         - name: etcd-bootstrap
           configMap:
-            name: etcd-bootstrap-aws
+            name: etcd-bootstrap-gcp
             defaultMode: 0356
-        - name: secret-aws
+        - name: secret-gcp
           secret:
-            secretName: secret-aws # change the secret name here
+            secretName: secret-gcp # change the secret name here
             defaultMode: 0420
   volumeClaimTemplates:
   - metadata:
-      name: etcd-data-aws
+      name: etcd-data-gcp
     spec:
       accessModes:
       - "ReadWriteOnce"

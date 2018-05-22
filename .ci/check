@@ -16,16 +16,11 @@ set -e
 
 # For the check step concourse will set the following environment variables:
 # SOURCE_PATH - path to component repository root directory.
-if [[ $(uname) == 'Darwin' ]]; then
-  READLINK_BIN="greadlink"
-else
-  READLINK_BIN="readlink"
-fi
 
 if [[ -z "${SOURCE_PATH}" ]]; then
-  export SOURCE_PATH="$(${READLINK_BIN} -f "$(dirname ${0})/..")"
+  export SOURCE_PATH="$(readlink -f "$(dirname ${0})/..")"
 else
-  export SOURCE_PATH="$(${READLINK_BIN} -f ${SOURCE_PATH})"
+  export SOURCE_PATH="$(readlink -f ${SOURCE_PATH})"
 fi
 
 VCS="github.com"

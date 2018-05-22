@@ -1,8 +1,29 @@
----
+<%
+  import os
+
+  if context.get("cloud", "") == "":
+    raise Exception("missing --var cloud={aws azure gcp openstack local} flag")
+
+  if context.get("container", "") == "":
+   raise Exception("missing --var container=ContainerName flag")  
+  provider=""
+  imageTag="0.2.3"
+  if cloud == "aws":
+    provider="S3"
+  elif cloud == "azure" or cloud == "az":
+    provider="ABS"
+  elif cloud == "gcp":
+    provider="GCS"
+  elif cloud == "openstack" or cloud == "os":
+    provider="Swift"
+  elif cloud == "local":
+    provider=""
+    region="local"
+%>---
 apiVersion: v1
 kind: Service
 metadata:
-  name: etcd-client-aws
+  name: etcd-client-${cloud}
   labels:
     app: etcd
 spec:
@@ -17,7 +38,7 @@ spec:
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: etcd-bootstrap-aws
+  name: etcd-bootstrap-${cloud}
   labels:
     app: etcd
 data:
@@ -44,17 +65,17 @@ data:
 apiVersion: apps/v1beta1
 kind: StatefulSet
 metadata:
-  name: etcd-aws
+  name: etcd-${cloud}
 spec:
   selector:
     matchLabels:
-      app: etcd-aws
-  serviceName: "etcd-aws"
+      app: etcd-${cloud}
+  serviceName: "etcd-${cloud}"
   replicas: 1
   template:
     metadata:
       labels:
-        app: etcd-aws 
+        app: etcd-${cloud} 
     spec:
       containers:
       - name: etcd
@@ -85,7 +106,7 @@ spec:
           protocol: TCP
         volumeMounts:
         - mountPath: /var/etcd/data
-          name: etcd-data-aws
+          name: etcd-data-${cloud}
         - mountPath: /bootstrap
           name: etcd-bootstrap
       - name: backup
@@ -96,8 +117,8 @@ spec:
         - --max-backups=5
         - --data-dir=/var/etcd/data
         - --insecure-transport=true
-        - --storage-provider=S3
-        image: eu.gcr.io/gardener-project/gardener/etcdbrctl:0.2.3
+        - --storage-provider=${provider}
+        image: eu.gcr.io/gardener-project/gardener/etcdbrctl:${imageTag}
         imagePullPolicy: Always
         ports:
         - containerPort: 8080
@@ -105,37 +126,85 @@ spec:
           protocol: TCP
         env:
         - name: STORAGE_CONTAINER
-          value: etcd-store  # Change the container name here
+          value: ${container}  # Change the container name here
+        % if cloud == "aws" :
         - name: AWS_REGION
           valueFrom:
             secretKeyRef:
-              name: secret-aws
+              name: secret-${cloud}
               key: region
         - name: AWS_SECRET_ACCESS_KEY
           valueFrom:
             secretKeyRef:
-              name: secret-aws
+              name: secret-${cloud}
               key: secretAccessKey
         - name: AWS_ACCESS_KEY_ID
           valueFrom:
             secretKeyRef:
-              name: secret-aws
+              name: secret-${cloud}
               key: accessKeyID
+        % elif cloud == "azure" or cloud == "az" :
+        - name: STORAGE_ACCOUNT
+          valueFrom:
+            secretKeyRef:
+              name: secret-${cloud}
+              key: storageaccount
+        - name: STORAGE_KEY
+          valueFrom:
+            secretKeyRef:
+              name: secret-${cloud}
+              key: storage-key
+        % elif cloud == "gcp" :
+        - name:  GOOGLE_APPLICATION_CREDENTIALS
+          value: /root/.gcp/serviceaccount.json
+        % elif cloud == "openstack" or cloud == "os" :
+        - name: OS_AUTH_URL
+          valueFrom:
+            secretKeyRef:
+              name: secret-${cloud}
+              key: authURL
+        - name: OS_DOMAIN_NAME
+          valueFrom:
+            secretKeyRef:
+              name: secret-${cloud}
+              key: domainName
+        - name: OS_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: secret-${cloud}
+              key: username
+        - name: OS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: secret-${cloud}
+              key: password
+        - name: OS_TENANT_NAME
+          valueFrom:
+            secretKeyRef:
+              name: secret-${cloud}
+              key: tenantName
+        % endif
         volumeMounts:
         - mountPath: /var/etcd/data
-          name: etcd-data-aws
+          name: etcd-data-${cloud}
+        % if cloud == "gcp" :
+        - mountPath: /root/.gcp/
+          name: secret-${cloud}
+        % endif
       volumes:
         - name: etcd-bootstrap
           configMap:
-            name: etcd-bootstrap-aws
+            name: etcd-bootstrap-${cloud}
             defaultMode: 0356
-        - name: secret-aws
+        % if cloud != "local" :
+        - name: secret-${cloud}
           secret:
-            secretName: secret-aws # change the secret name here
+            secretName: secret-${cloud} # change the secret name here
             defaultMode: 0420
+        % endif
   volumeClaimTemplates:
   - metadata:
-      name: etcd-data-aws
+      name: etcd-data-${cloud}
     spec:
       accessModes:
       - "ReadWriteOnce"
