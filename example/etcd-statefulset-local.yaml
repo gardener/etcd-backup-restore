@@ -97,7 +97,7 @@ spec:
         - --data-dir=/var/etcd/data
         - --insecure-transport=true
         - --storage-provider=
-        image: eu.gcr.io/gardener-project/gardener/etcdbrctl:0.2.2
+        image: eu.gcr.io/gardener-project/gardener/etcdbrctl:0.2.3
         imagePullPolicy: Always
         ports:
         - containerPort: 8080

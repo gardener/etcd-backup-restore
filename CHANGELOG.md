@@ -1,6 +1,8 @@
 # Changelog
 
-## [Unreleased]
+## 0.2.3 - 2018-05-22
+
+### Docker Image: eu.gcr.io/gardener-project/gardener/etcdbrctl:0.2.3
 
 ### Fixed
 
@@ -11,7 +13,7 @@
 
 - Readiness probe renamed to `/healthz`.
 
-## 0.2.2 - 2018-05-30
+## 0.2.2 - 2018-04-30
 
 ### Docker Image: eu.gcr.io/gardener-project/gardener/etcdbrctl:0.2.2 
 
