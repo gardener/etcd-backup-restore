@@ -5,6 +5,21 @@
 
 Etcd-backup-restore is collection of components to backup and restore the [etcd]. It also, provides the ability to validate the data directory, so that we could know the data directory is in good shape to bootstrap etcd successfully.
 
+## Table of Contents
+
+- [Getting started](#getting-started)
+  - [Prerequisites](#prerequisites)
+  - [Build](#build)
+- [Design](#design)
+- [Usage](#usage)
+  - [Cloud Provider Credentials](#cloud-provider-credentials)
+  - [Taking scheduled snapshot](#taking-scheduled-snapshot)
+  - [Etcd data directory initialization](#etcd-data-directory-initialization)
+  - [Etcdbrctl server](#etcdbrctl-server)
+- [Dependency management](#dependency-management)
+  - [Updating dependencies](#updating-dependencies)
+- [Testing](#testing)
+
 ## Getting started
 
 Currently there are no binary build available, but it is pretty straight forward to build it by following the steps mentioned below.
@@ -168,7 +183,7 @@ The dependencies are installed into the `vendor` folder which **should be added*
 
 :warning: Make sure you test the code after you have updated the dependencies!
 
-### Testing
+## Testing
 
 We have created `make` target `verify` which will internally run different rule like `fmt` for formatting, `lint` for linting check and most importantly `test` which will check the code against predefined tests. Although, currently there are not enough test cases written to cover entire code, hence one should check for failure cases manually before raising pull request. We will eventually add the test cases for complete code coverage.
 
