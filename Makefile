@@ -18,6 +18,7 @@ IMAGE_REPOSITORY    := $(REGISTRY)/etcdbrctl
 IMAGE_TAG           := $(VERSION)
 BUILD_DIR           := build
 BIN_DIR             := bin
+COVERPROFILE        := test/output/coverprofile.out
 
 .PHONY: revendor
 revendor:
@@ -58,3 +59,8 @@ check:
 .PHONY: test
 test:
 	@.ci/test
+
+.PHONY: show-coverage
+show-coverage:
+	@if [ ! -f $(COVERPROFILE) ]; then echo "$(COVERPROFILE) is not yet built. Please run 'COVER=true make test'"; false; fi
+	@go tool cover -html $(COVERPROFILE)

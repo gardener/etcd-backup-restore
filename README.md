@@ -191,7 +191,7 @@ We have created `make` target `verify` which will internally run different rule 
 make verify
 ```
 
-By default, we try to run test in parallel without computing code coverage. To get the code coverage, you will have to set environment variable `COVER` to `true`. This will log the code coverage percentage at the end of test logs. Also, all cover profile files will accumulated under `test/output/coverprofile.out` directory.
+By default, we try to run test in parallel without computing code coverage. To get the code coverage, you will have to set environment variable `COVER` to `true`. This will log the code coverage percentage at the end of test logs. Also, all cover profile files will accumulated under `test/output/coverprofile.out` directory. You can visualize exact code coverage using `make show-coverage`.
 
 Similarly, we use environment variable `INTEGRATION` to determine whether to execute integration test or not. By default, integration tests are executed. So, to disable integration test locally, you will have to set `INTEGRATION=false`.
 
