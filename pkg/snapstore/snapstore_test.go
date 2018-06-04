@@ -121,4 +121,13 @@ var _ = Describe("Snapstore", func() {
 			}
 		})
 	})
+	Describe("Size of snapshot", func() {
+		It("returns the size", func() {
+			for _, snapStore := range snapstores {
+				size, err := snapStore.Size(snap2)
+				Expect(err).ShouldNot(HaveOccurred())
+				Expect(size).To(Equal(len(expectedVal2)))
+			}
+		})
+	})
 })

@@ -17,8 +17,8 @@ package initializer
 import (
 	"fmt"
 	"os"
-	"path"
 	"path/filepath"
+	"sort"
 
 	"github.com/gardener/etcd-backup-restore/pkg/initializer/validator"
 	"github.com/gardener/etcd-backup-restore/pkg/snapshot/restorer"
@@ -91,25 +91,23 @@ func (e *EtcdInitializer) restoreCorruptData() error {
 		err = fmt.Errorf("failed to create snapstore from configured storage provider: %v", err)
 		return err
 	}
-	logger.Infoln("Finding latest snapshot...")
-	snap, err := store.GetLatest()
+	logger.Infoln("Finding latest set of snapshot to recover from...")
+	baseSnap, deltaSnapList, err := getLatestFullSnapshotAndDeltaSnapList(store)
 	if err != nil {
-		err = fmt.Errorf("failed to get latest snapshot: %v", err)
+		logger.Errorf("failed to get latest set of snapshot: %v", err)
 		return err
 	}
-	if snap == nil {
+	if baseSnap == nil {
 		logger.Infof("No snapshot found. Will do nothing.")
-		return err
+		return nil
 	}
 
-	logger.Infof("Restoring from latest snapshot: %s...", path.Join(snap.SnapDir, snap.SnapName))
-
-	e.Config.RestoreOptions.Snapshot = *snap
+	e.Config.RestoreOptions.BaseSnapshot = *baseSnap
+	e.Config.RestoreOptions.DeltaSnapList = deltaSnapList
 
 	rs := restorer.NewRestorer(store, logger)
 
-	err = rs.Restore(*e.Config.RestoreOptions)
-	if err != nil {
+	if err := rs.Restore(*e.Config.RestoreOptions); err != nil {
 		err = fmt.Errorf("Failed to restore snapshot: %v", err)
 		return err
 	}
@@ -134,4 +132,22 @@ func removeContents(dir string) error {
 		}
 	}
 	return nil
+}
+
+// getLatestFullSnapshotAndDeltaSnapList resturns the latest snapshot
+func getLatestFullSnapshotAndDeltaSnapList(store snapstore.SnapStore) (*snapstore.Snapshot, snapstore.SnapList, error) {
+	var deltaSnapList snapstore.SnapList
+	snapList, err := store.List()
+	if err != nil {
+		return nil, nil, err
+	}
+
+	for index := len(snapList); index > 0; index-- {
+		if snapList[index-1].Kind == snapstore.SnapshotKindFull {
+			sort.Sort(deltaSnapList)
+			return snapList[index-1], deltaSnapList, nil
+		}
+		deltaSnapList = append(deltaSnapList, snapList[index-1])
+	}
+	return nil, deltaSnapList, nil
 }

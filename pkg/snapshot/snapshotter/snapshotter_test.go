@@ -67,6 +67,7 @@ var _ = Describe("Snapshotter", func() {
 					store,
 					logger,
 					1,
+					10,
 					etcdConnectionTimeout,
 					tlsConfig)
 				Expect(err).Should(HaveOccurred())
@@ -89,6 +90,7 @@ var _ = Describe("Snapshotter", func() {
 					store,
 					logger,
 					1,
+					10,
 					etcdConnectionTimeout,
 					tlsConfig)
 				Expect(err).ShouldNot(HaveOccurred())
@@ -119,6 +121,7 @@ var _ = Describe("Snapshotter", func() {
 					store,
 					logger,
 					maxBackups,
+					10,
 					etcdConnectionTimeout,
 					tlsConfig)
 				Expect(err).ShouldNot(HaveOccurred())
@@ -159,6 +162,7 @@ var _ = Describe("Snapshotter", func() {
 						store,
 						logger,
 						maxBackups,
+						10,
 						etcdConnectionTimeout,
 						tlsConfig)
 					Expect(err).ShouldNot(HaveOccurred())
@@ -204,6 +208,7 @@ var _ = Describe("Snapshotter", func() {
 						store,
 						logger,
 						maxBackups,
+						10,
 						etcdConnectionTimeout,
 						tlsConfig)
 					Expect(err).ShouldNot(HaveOccurred())

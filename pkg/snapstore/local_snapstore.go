@@ -47,18 +47,6 @@ func (s *LocalSnapStore) Fetch(snap Snapshot) (io.ReadCloser, error) {
 	return os.Open(path.Join(s.prefix, snap.SnapDir, snap.SnapName))
 }
 
-// GetLatest returns the latest snapshot in snapstore
-func (s *LocalSnapStore) GetLatest() (*Snapshot, error) {
-	snapList, err := s.List()
-	if err != nil {
-		return nil, err
-	}
-	if snapList.Len() == 0 {
-		return nil, nil
-	}
-	return snapList[snapList.Len()-1], nil
-}
-
 // Save will write the snapshot to store
 func (s *LocalSnapStore) Save(snap Snapshot, r io.Reader) error {
 	err := os.MkdirAll(path.Join(s.prefix, snap.SnapDir), 0700)
@@ -114,4 +102,13 @@ func (s *LocalSnapStore) Delete(snap Snapshot) error {
 	}
 	err = os.Remove(path.Join(s.prefix, snap.SnapDir))
 	return err
+}
+
+// Size should return size of the snapshot file from store
+func (s *LocalSnapStore) Size(snap Snapshot) (int64, error) {
+	fileInfo, err := os.Stat(path.Join(s.prefix, snap.SnapDir, snap.SnapName))
+	if err != nil {
+		return -1, err
+	}
+	return fileInfo.Size(), nil
 }

@@ -118,15 +118,3 @@ func (s *SwiftSnapStore) Delete(snap Snapshot) error {
 	result := objects.Delete(s.client, s.bucket, path.Join(s.prefix, snap.SnapDir, snap.SnapName), nil)
 	return result.Err
 }
-
-// GetLatest returns the latest snapshot in snapstore
-func (s *SwiftSnapStore) GetLatest() (*Snapshot, error) {
-	snapList, err := s.List()
-	if err != nil {
-		return nil, err
-	}
-	if snapList.Len() == 0 {
-		return nil, nil
-	}
-	return snapList[snapList.Len()-1], nil
-}

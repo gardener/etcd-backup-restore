@@ -83,18 +83,6 @@ func (s *S3SnapStore) Fetch(snap Snapshot) (io.ReadCloser, error) {
 	return resp.Body, nil
 }
 
-// GetLatest returns the latest snapshot in snapstore
-func (s *S3SnapStore) GetLatest() (*Snapshot, error) {
-	snapList, err := s.List()
-	if err != nil {
-		return nil, err
-	}
-	if snapList.Len() == 0 {
-		return nil, nil
-	}
-	return snapList[snapList.Len()-1], nil
-}
-
 // Save will write the snapshot to store
 func (s *S3SnapStore) Save(snap Snapshot, r io.Reader) error {
 	// since s3 requires io.ReadSeeker, this is the required hack.
@@ -157,4 +145,17 @@ func (s *S3SnapStore) Delete(snap Snapshot) error {
 		Key:    aws.String(path.Join(s.prefix, snap.SnapDir, snap.SnapName)),
 	})
 	return err
+}
+
+// Size should return size of the snapshot file from store
+func (s *S3SnapStore) Size(snap Snapshot) (int64, error) {
+	resp, err := s.client.HeadObject(&s3.HeadObjectInput{
+		Bucket: aws.String(s.bucket),
+		Key:    aws.String(path.Join(s.prefix, snap.SnapDir, snap.SnapName)),
+	})
+	if err != nil {
+		return -1, err
+	}
+
+	return *resp.ContentLength, nil
 }

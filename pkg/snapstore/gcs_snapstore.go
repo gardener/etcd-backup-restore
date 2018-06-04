@@ -152,15 +152,3 @@ func (s *GCSSnapStore) Delete(snap Snapshot) error {
 	objectName := path.Join(s.prefix, snap.SnapDir, snap.SnapName)
 	return s.client.Bucket(s.bucket).Object(objectName).Delete(s.ctx)
 }
-
-// GetLatest returns the latest snapshot in snapstore
-func (s *GCSSnapStore) GetLatest() (*Snapshot, error) {
-	snapList, err := s.List()
-	if err != nil {
-		return nil, err
-	}
-	if snapList.Len() == 0 {
-		return nil, nil
-	}
-	return snapList[snapList.Len()-1], nil
-}
