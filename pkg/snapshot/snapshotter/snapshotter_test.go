@@ -27,22 +27,24 @@ import (
 
 var _ = Describe("Snapshotter", func() {
 	var (
-		endpoints             []string
-		store                 snapstore.SnapStore
-		logger                *logrus.Logger
-		etcdConnectionTimeout time.Duration
-		schedule              string
-		certFile              string
-		keyFile               string
-		caFile                string
-		insecureTransport     bool
-		insecureSkipVerify    bool
-		err                   error
+		endpoints                      []string
+		store                          snapstore.SnapStore
+		logger                         *logrus.Logger
+		etcdConnectionTimeout          time.Duration
+		garbageCollectionPeriodSeconds time.Duration
+		schedule                       string
+		certFile                       string
+		keyFile                        string
+		caFile                         string
+		insecureTransport              bool
+		insecureSkipVerify             bool
+		err                            error
 	)
 	BeforeEach(func() {
 		endpoints = []string{"http://localhost:2379"}
 		logger = logrus.New()
 		etcdConnectionTimeout = 10
+		garbageCollectionPeriodSeconds = 30
 		schedule = "*/1 * * * *"
 	})
 
@@ -69,6 +71,7 @@ var _ = Describe("Snapshotter", func() {
 					1,
 					10,
 					etcdConnectionTimeout,
+					garbageCollectionPeriodSeconds,
 					tlsConfig)
 				Expect(err).Should(HaveOccurred())
 				Expect(ssr).Should(BeNil())
@@ -92,6 +95,7 @@ var _ = Describe("Snapshotter", func() {
 					1,
 					10,
 					etcdConnectionTimeout,
+					garbageCollectionPeriodSeconds,
 					tlsConfig)
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(ssr).ShouldNot(BeNil())
@@ -123,6 +127,7 @@ var _ = Describe("Snapshotter", func() {
 					maxBackups,
 					10,
 					etcdConnectionTimeout,
+					garbageCollectionPeriodSeconds,
 					tlsConfig)
 				Expect(err).ShouldNot(HaveOccurred())
 				go func() {
@@ -164,6 +169,7 @@ var _ = Describe("Snapshotter", func() {
 						maxBackups,
 						10,
 						etcdConnectionTimeout,
+						garbageCollectionPeriodSeconds,
 						tlsConfig)
 					Expect(err).ShouldNot(HaveOccurred())
 					go func() {
@@ -210,6 +216,7 @@ var _ = Describe("Snapshotter", func() {
 						maxBackups,
 						10,
 						etcdConnectionTimeout,
+						garbageCollectionPeriodSeconds,
 						tlsConfig)
 					Expect(err).ShouldNot(HaveOccurred())
 					go func() {

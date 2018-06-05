@@ -4,7 +4,9 @@
 
 ### Added
 
-- Integration test for AWS
+- Incremental backup of etcd, where full snapshot is taken first and then we apply watch and persist the logs accumulated over certain period to snapshot store. Restore process, restores from the full snapshot, start the embedded etcd and apply the logged events one by one.
+ 
+- Initial setup for Integration test for AWS
 
 ## 0.2.3 - 2018-05-22
 

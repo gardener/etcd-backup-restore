@@ -110,6 +110,7 @@ func NewServerCommand(stopCh <-chan struct{}) *cobra.Command {
 					maxBackups,
 					deltaSnapshotIntervalSeconds,
 					time.Duration(etcdConnectionTimeout),
+					time.Duration(garbageCollectionPeriodSeconds),
 					tlsConfig)
 				if err != nil {
 					logger.Fatalf("Failed to create snapshotter from configured storage provider: %v", err)
@@ -128,7 +129,8 @@ func NewServerCommand(stopCh <-chan struct{}) *cobra.Command {
 					handler.Status = http.StatusServiceUnavailable
 					continue
 				}
-
+				gcStopCh := make(chan bool)
+				go ssr.GarbageCollector(gcStopCh)
 				if err := ssr.Run(stopCh); err != nil {
 					handler.Status = http.StatusServiceUnavailable
 					if etcdErr, ok := err.(*errors.EtcdError); ok == true {
@@ -139,6 +141,7 @@ func NewServerCommand(stopCh <-chan struct{}) *cobra.Command {
 				} else {
 					handler.Status = http.StatusOK
 				}
+				gcStopCh <- true
 			}
 		},
 	}

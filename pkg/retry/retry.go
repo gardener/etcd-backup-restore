@@ -27,7 +27,7 @@ func Do(retryFunc func() error, config *Config) error {
 	for n < config.Attempts {
 		delayTime := config.Delay * (1 << (n - 1))
 		time.Sleep((time.Duration)(delayTime) * config.Units)
-		config.Logger.Infof("Job attempt: %d", n)
+		config.Logger.Infof("Job attempt: %d", n+1)
 		err = retryFunc()
 		if err == nil {
 			return nil

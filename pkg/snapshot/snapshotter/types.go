@@ -25,16 +25,16 @@ import (
 
 // Snapshotter is a struct for etcd snapshot taker
 type Snapshotter struct {
-	logger                       *logrus.Logger
-	schedule                     cron.Schedule
-	store                        snapstore.SnapStore
-	maxBackups                   int
-	etcdConnectionTimeout        time.Duration
-	garbageCollectionTimeout     time.Duration
-	tlsConfig                    *TLSConfig
-	deltaSnapshotIntervalSeconds int
-	deltaEventCount              int
-	prevSnapshot                 snapstore.Snapshot
+	logger                         *logrus.Logger
+	schedule                       cron.Schedule
+	store                          snapstore.SnapStore
+	maxBackups                     int
+	etcdConnectionTimeout          time.Duration
+	garbageCollectionPeriodSeconds time.Duration
+	tlsConfig                      *TLSConfig
+	deltaSnapshotIntervalSeconds   int
+	deltaEventCount                int
+	prevSnapshot                   snapstore.Snapshot
 }
 
 // TLSConfig holds cert information and settings for TLS.

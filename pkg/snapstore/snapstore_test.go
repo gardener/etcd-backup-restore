@@ -126,7 +126,7 @@ var _ = Describe("Snapstore", func() {
 			for _, snapStore := range snapstores {
 				size, err := snapStore.Size(snap2)
 				Expect(err).ShouldNot(HaveOccurred())
-				Expect(size).To(Equal(len(expectedVal2)))
+				Expect(size).To(Equal(int64(len(expectedVal2))))
 			}
 		})
 	})

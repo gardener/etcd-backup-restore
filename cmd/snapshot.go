@@ -55,14 +55,17 @@ storing snapshots on various cloud storage providers as well as local disk locat
 				maxBackups,
 				deltaSnapshotIntervalSeconds,
 				time.Duration(etcdConnectionTimeout),
+				time.Duration(garbageCollectionPeriodSeconds),
 				tlsConfig)
 			if err != nil {
 				logger.Fatalf("Failed to create snapshotter: %v", err)
 			}
-
+			gcStopCh := make(chan bool)
+			go ssr.GarbageCollector(gcStopCh)
 			if err := ssr.Run(stopCh); err != nil {
 				logger.Fatalf("Snapshotter failed with error: %v", err)
 			}
+			gcStopCh <- true
 			logger.Info("Shutting down...")
 			return
 		},
@@ -79,6 +82,7 @@ func initializeSnapshotterFlags(cmd *cobra.Command) {
 	cmd.Flags().IntVarP(&deltaSnapshotIntervalSeconds, "delta-snapshot-interval-seconds", "i", 10, "Interval in no. of seconds after which delta snapshot will be persisted")
 	cmd.Flags().IntVarP(&maxBackups, "max-backups", "m", 7, "maximum number of previous backups to keep")
 	cmd.Flags().IntVar(&etcdConnectionTimeout, "etcd-connection-timeout", 30, "etcd client connection timeout")
+	cmd.Flags().IntVar(&garbageCollectionPeriodSeconds, "garbage-collection-period-seconds", 30, "Period in seconds for garbage collecting old backups")
 	cmd.Flags().BoolVar(&insecureTransport, "insecure-transport", true, "disable transport security for client connections")
 	cmd.Flags().BoolVar(&insecureSkipVerify, "insecure-skip-tls-verify", false, "skip server certificate verification")
 	cmd.Flags().StringVar(&certFile, "cert", "", "identify secure client using this TLS certificate file")

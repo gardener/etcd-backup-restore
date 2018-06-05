@@ -34,22 +34,25 @@ import (
 )
 
 // NewSnapshotter returns the snapshotter object.
-func NewSnapshotter(schedule string, store snapstore.SnapStore, logger *logrus.Logger, maxBackups, deltaSnapshotIntervalSeconds int, etcdConnectionTimeout time.Duration, tlsConfig *TLSConfig) (*Snapshotter, error) {
+func NewSnapshotter(schedule string, store snapstore.SnapStore, logger *logrus.Logger, maxBackups, deltaSnapshotIntervalSeconds int, etcdConnectionTimeout, garbageCollectionPeriodSeconds time.Duration, tlsConfig *TLSConfig) (*Snapshotter, error) {
 	logger.Printf("Validating schedule...")
 	sdl, err := cron.ParseStandard(schedule)
 	if err != nil {
 		return nil, fmt.Errorf("invalid schedule provied %s : %v", schedule, err)
 	}
+	if maxBackups < 1 {
+		return nil, fmt.Errorf("maximum backups limit should be greater than zero. Input MaxBackups: %d", maxBackups)
+	}
 
 	return &Snapshotter{
-		logger:                       logger,
-		schedule:                     sdl,
-		store:                        store,
-		maxBackups:                   maxBackups,
-		etcdConnectionTimeout:        etcdConnectionTimeout,
-		tlsConfig:                    tlsConfig,
-		deltaSnapshotIntervalSeconds: deltaSnapshotIntervalSeconds,
-		//currentDeltaSnapshotCount:    0,
+		logger:                         logger,
+		schedule:                       sdl,
+		store:                          store,
+		maxBackups:                     maxBackups,
+		etcdConnectionTimeout:          etcdConnectionTimeout,
+		garbageCollectionPeriodSeconds: garbageCollectionPeriodSeconds,
+		tlsConfig:                      tlsConfig,
+		deltaSnapshotIntervalSeconds:   deltaSnapshotIntervalSeconds,
 	}, nil
 }
 
@@ -135,9 +138,6 @@ func (ssr *Snapshotter) Run(stopCh <-chan struct{}) error {
 
 			now = time.Now()
 			effective = ssr.schedule.Next(now)
-
-			// TODO: move this garbage collector to paraller thread
-			ssr.garbageCollector()
 			if effective.IsZero() {
 				ssr.logger.Infoln("There are no backup scheduled for future. Stopping now.")
 				return nil
@@ -166,6 +166,9 @@ func (ssr *Snapshotter) TakeFullSnapshot() error {
 
 	ctx, cancel := context.WithTimeout(context.TODO(), ssr.etcdConnectionTimeout*time.Second)
 	defer cancel()
+	// Note: Although Get and snapshot call are not atomic, so revision number in snapshot file
+	// may be ahead of the revision found from GET call. But currently this is the only workaround available
+	// Refer: https://github.com/coreos/etcd/issues/9037
 	resp, err := client.Get(ctx, "", clientv3.WithLastRev()...)
 	if err != nil {
 		return &errors.EtcdError{
@@ -197,23 +200,6 @@ func (ssr *Snapshotter) TakeFullSnapshot() error {
 	ssr.prevSnapshot = s
 	ssr.logger.Infof("Successfully saved full snapshot at: %s", path.Join(s.SnapDir, s.SnapName))
 	return nil
-}
-
-// garbageCollector basically consider the older backups as garbage and deletes it
-func (ssr *Snapshotter) garbageCollector() {
-	ssr.logger.Infoln("Executing garbage collection...")
-	snapList, err := ssr.store.List()
-	if err != nil {
-		ssr.logger.Warnf("Failed to list snapshots: %v", err)
-		return
-	}
-	snapLen := len(snapList)
-	for i := 0; i < (snapLen - ssr.maxBackups); i++ {
-		ssr.logger.Infof("Deleting old snapshot: %s", path.Join(snapList[i].SnapDir, snapList[i].SnapName))
-		if err := ssr.store.Delete(*snapList[i]); err != nil {
-			ssr.logger.Warnf("Failed to delete snapshot: %s", path.Join(snapList[i].SnapDir, snapList[i].SnapName))
-		}
-	}
 }
 
 // GetTLSClientForEtcd creates an etcd client using the TLS config params.
@@ -272,13 +258,14 @@ func (ssr *Snapshotter) applyWatch(wg *sync.WaitGroup, fullSnapshotCh chan<- tim
 			Message: fmt.Sprintf("failed to create etcd client: %v", err),
 		}
 	}
-	go ssr.processWatch(wg, client, fullSnapshotCh, stopCh)
 	wg.Add(1)
+	go ssr.processWatch(wg, client, fullSnapshotCh, stopCh)
 	return nil
 }
 
 // processWatch processess watch to take delta snapshot periodically by collecting set of events within period
 func (ssr *Snapshotter) processWatch(wg *sync.WaitGroup, client *clientv3.Client, fullSnapshotCh chan<- time.Time, stopCh <-chan bool) {
+	defer wg.Done()
 	ctx := context.TODO()
 	watchCh := client.Watch(ctx, "", clientv3.WithPrefix(), clientv3.WithRev(ssr.prevSnapshot.LastRevision+1))
 	ssr.logger.Infof("Applied watch on etcd from revision: %8d", ssr.prevSnapshot.LastRevision+1)
@@ -292,7 +279,6 @@ func (ssr *Snapshotter) processWatch(wg *sync.WaitGroup, client *clientv3.Client
 		select {
 		case <-stopCh:
 			ssr.logger.Infoln("Received stop signal. Terminating current watch...")
-			wg.Done()
 			return
 
 		case wr, ok := <-watchCh:

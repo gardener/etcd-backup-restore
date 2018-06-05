@@ -21,6 +21,7 @@ import (
 	"os"
 	"path"
 	"sort"
+	"syscall"
 )
 
 // LocalSnapStore is snapstore with local disk as backend
@@ -96,12 +97,14 @@ func (s *LocalSnapStore) List() (SnapList, error) {
 
 // Delete should delete the snapshot file from store
 func (s *LocalSnapStore) Delete(snap Snapshot) error {
-	err := os.Remove(path.Join(s.prefix, snap.SnapDir, snap.SnapName))
-	if err != nil {
+	if err := os.Remove(path.Join(s.prefix, snap.SnapDir, snap.SnapName)); err != nil {
 		return err
 	}
-	err = os.Remove(path.Join(s.prefix, snap.SnapDir))
-	return err
+	err := os.Remove(path.Join(s.prefix, snap.SnapDir))
+	if pathErr, ok := err.(*os.PathError); ok == true && pathErr.Err != syscall.ENOTEMPTY {
+		return err
+	}
+	return nil
 }
 
 // Size should return size of the snapshot file from store
