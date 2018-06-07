@@ -370,21 +370,29 @@ func (r *Restorer) applyDeltaSnapshot(client *clientv3.Client, snap snapstore.Sn
 
 // getEventsFromDeltaSnapshot decodes the events from snapshot file.
 func getEventsFromDeltaSnapshot(store snapstore.SnapStore, snap snapstore.Snapshot) ([]event, error) {
-	size, err := store.Size(snap)
-	if err != nil {
-		return nil, err
-	}
 	rc, err := store.Fetch(snap)
 	if err != nil {
 		return nil, err
 	}
 	defer rc.Close()
-	b := make([]byte, size)
-	if _, err = rc.Read(b); err != nil && err != io.EOF {
+	events := []event{}
+	dec := json.NewDecoder(rc)
+	// read open bracket
+	if _, err := dec.Token(); err != nil {
 		return nil, err
 	}
-	events := []event{}
-	err = json.Unmarshal(b, &events)
+	// while the array contains values read events
+	for dec.More() {
+		var e event
+		if err := dec.Decode(&e); err != nil {
+			return nil, err
+		}
+		events = append(events, e)
+	}
+	// read closing bracket
+	if _, err := dec.Token(); err != nil {
+		return nil, err
+	}
 	return events, err
 }
 

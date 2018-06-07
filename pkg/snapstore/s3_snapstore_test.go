@@ -40,15 +40,6 @@ func (m *mockS3Client) GetObject(in *s3.GetObjectInput) (*s3.GetObjectOutput, er
 	return &out, nil
 }
 
-// GetObject returns the object from map for mock test
-func (m *mockS3Client) HeadObject(in *s3.HeadObjectInput) (*s3.HeadObjectOutput, error) {
-	size := int64(len(m.objects[*in.Key]))
-	out := s3.HeadObjectOutput{
-		ContentLength: &size,
-	}
-	return &out, nil
-}
-
 // PutObject adds the object to the map for mock test
 func (m *mockS3Client) PutObject(in *s3.PutObjectInput) (*s3.PutObjectOutput, error) {
 	off, _ := in.Body.Seek(0, io.SeekEnd)

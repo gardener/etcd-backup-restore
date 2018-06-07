@@ -21,6 +21,6 @@ import (
 // initializeSnapstoreFlags adds the snapstore related flags to <cmd>
 func initializeSnapstoreFlags(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&storageProvider, "storage-provider", "", "snapshot storage provider")
-	cmd.Flags().StringVar(&storageContainer, "store-container", "", "prefix or directory inside container under which snapstore is created")
-	cmd.Flags().StringVar(&storagePrefix, "store-prefix", "", "container which will be used as snapstore")
+	cmd.Flags().StringVar(&storageContainer, "store-container", "", "container which will be used as snapstore")
+	cmd.Flags().StringVar(&storagePrefix, "store-prefix", "", "prefix or directory inside container under which snapstore is created")
 }

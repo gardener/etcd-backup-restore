@@ -32,8 +32,6 @@ type SnapStore interface {
 	Save(Snapshot, io.Reader) error
 	// Delete should delete the snapshot file from store
 	Delete(Snapshot) error
-	// Size should return the size of snapshot file
-	Size(Snapshot) (int64, error)
 }
 
 const (

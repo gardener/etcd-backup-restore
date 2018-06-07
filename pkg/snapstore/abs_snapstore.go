@@ -80,7 +80,6 @@ func GetSnapstoreFromClient(container, prefix string, storageClient *storage.Cli
 func (a *ABSSnapStore) Fetch(snap Snapshot) (io.ReadCloser, error) {
 	blobName := path.Join(a.prefix, snap.SnapDir, snap.SnapName)
 	blob := a.container.GetBlobReference(blobName)
-
 	opts := &storage.GetBlobOptions{}
 	return blob.Get(opts)
 }

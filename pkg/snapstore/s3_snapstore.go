@@ -146,16 +146,3 @@ func (s *S3SnapStore) Delete(snap Snapshot) error {
 	})
 	return err
 }
-
-// Size should return size of the snapshot file from store
-func (s *S3SnapStore) Size(snap Snapshot) (int64, error) {
-	resp, err := s.client.HeadObject(&s3.HeadObjectInput{
-		Bucket: aws.String(s.bucket),
-		Key:    aws.String(path.Join(s.prefix, snap.SnapDir, snap.SnapName)),
-	})
-	if err != nil {
-		return -1, err
-	}
-
-	return *resp.ContentLength, nil
-}

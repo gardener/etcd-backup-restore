@@ -58,33 +58,6 @@ func (s *GCSSnapStore) Fetch(snap Snapshot) (io.ReadCloser, error) {
 	return s.client.Bucket(s.bucket).Object(objectName).NewReader(s.ctx)
 }
 
-// Size returns the size of snapshot
-func (s *GCSSnapStore) Size(snap Snapshot) (int64, error) {
-	// recursively list all "files", not directory
-	it := s.client.Bucket(s.bucket).Objects(s.ctx, &storage.Query{Prefix: path.Join(s.prefix, snap.SnapDir, snap.SnapName)})
-
-	var attrs []*storage.ObjectAttrs
-	var err error
-	for {
-		var attr *storage.ObjectAttrs
-		attr, err = it.Next()
-		if err == iterator.Done {
-			err = nil
-			break
-		}
-		if err != nil {
-			return 0, err
-		}
-		attrs = append(attrs, attr)
-	}
-
-	var size int64
-	for _, v := range attrs {
-		size += v.Size
-	}
-	return size, nil
-}
-
 // Save will write the snapshot to store
 func (s *GCSSnapStore) Save(snap Snapshot, r io.Reader) error {
 	bh := s.client.Bucket(s.bucket)
