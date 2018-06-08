@@ -104,9 +104,17 @@ func (ssr *Snapshotter) Run(stopCh <-chan struct{}) error {
 		}
 	}(stopCh)
 
-	if err := ssr.TakeFullSnapshot(); err != nil {
+	if err := retry.Do(func() error {
+		ssr.logger.Infof("Taking initial snapshot at time: %s", time.Now().Local())
+		err := ssr.TakeFullSnapshot()
+		if err != nil {
+			ssr.logger.Infof("Taking initial snapshot failed: %v", err)
+		}
+		return err
+	}, config); err != nil {
 		return err
 	}
+
 	if err := ssr.applyWatch(wg, fullSnapshotCh, deltaStopCh); err != nil {
 		return err
 	}

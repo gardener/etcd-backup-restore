@@ -70,7 +70,7 @@ func (h *HTTPHandler) Stop() error {
 func (h *HTTPHandler) serveHealthz(rw http.ResponseWriter, req *http.Request) {
 
 	rw.WriteHeader(h.Status)
-	rw.Write([]byte(fmt.Sprintf("{\"health\":\"%v\"}", h.Status == http.StatusOK)))
+	rw.Write([]byte(fmt.Sprintf("{\"health\":%v}", h.Status == http.StatusOK)))
 }
 
 // ServeInitialize serves the http re

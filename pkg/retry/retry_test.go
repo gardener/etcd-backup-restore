@@ -15,27 +15,31 @@
 package retry
 
 import (
+	"fmt"
+	"testing"
 	"time"
+
+	"github.com/sirupsen/logrus"
 )
 
-// Do retries the retryFunc exponentially with backoff.
-// It is mutated from `retry.Do` function in package
-// [retry-go](https://github.com/avast/retry-go)
-func Do(retryFunc func() error, config *Config) error {
-	var err error
-	config.Logger.Infof("Job attempt: %d", 1)
-	err = retryFunc()
-	if err == nil {
+func TestDO(t *testing.T) {
+	config := &Config{
+		Attempts: 4,
+		Delay:    time.Duration(1),
+		Units:    time.Duration(time.Second),
+		Logger:   logrus.New(),
+	}
+
+	badRetryFunc := func() error {
+		return fmt.Errorf("I'm bad func")
+	}
+	if err := Do(badRetryFunc, config); err == nil {
+		t.Fatal(err)
+	}
+	goodRetryFunc := func() error {
 		return nil
 	}
-	for n := uint(1); n < config.Attempts; n++ {
-		delayTime := config.Delay * (1 << (n - 1))
-		time.Sleep((time.Duration)(delayTime) * config.Units)
-		config.Logger.Infof("Job attempt: %d", n+1)
-		err = retryFunc()
-		if err == nil {
-			return nil
-		}
+	if err := Do(goodRetryFunc, config); err != nil {
+		t.Fatal(err)
 	}
-	return err
 }
