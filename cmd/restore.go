@@ -17,9 +17,9 @@ package cmd
 import (
 	"fmt"
 	"path"
-	"sort"
 
 	"github.com/coreos/etcd/pkg/types"
+	"github.com/gardener/etcd-backup-restore/pkg/miscellaneous"
 	"github.com/gardener/etcd-backup-restore/pkg/snapshot/restorer"
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	"github.com/sirupsen/logrus"
@@ -59,7 +59,7 @@ func NewRestoreCommand(stopCh <-chan struct{}) *cobra.Command {
 				logger.Fatalf("failed to create snapstore from configured storage provider: %v", err)
 			}
 			logger.Infoln("Finding latest set of snapshot to recover from...")
-			baseSnap, deltaSnapList, err := getLatestFullSnapshotAndDeltaSnapList(store)
+			baseSnap, deltaSnapList, err := miscellaneous.GetLatestFullSnapshotAndDeltaSnapList(store)
 			if err != nil {
 				logger.Fatalf("failed to get latest snapshot: %v", err)
 			}
@@ -111,22 +111,4 @@ func initialClusterFromName(name string) string {
 		n = defaultName
 	}
 	return fmt.Sprintf("%s=http://localhost:2380", n)
-}
-
-// getLatestFullSnapshotAndDeltaSnapList resturns the latest snapshot
-func getLatestFullSnapshotAndDeltaSnapList(store snapstore.SnapStore) (*snapstore.Snapshot, snapstore.SnapList, error) {
-	var deltaSnapList snapstore.SnapList
-	snapList, err := store.List()
-	if err != nil {
-		return nil, nil, err
-	}
-
-	for index := len(snapList); index > 0; index-- {
-		if snapList[index-1].Kind == snapstore.SnapshotKindFull {
-			sort.Sort(deltaSnapList)
-			return snapList[index-1], deltaSnapList, nil
-		}
-		deltaSnapList = append(deltaSnapList, snapList[index-1])
-	}
-	return nil, deltaSnapList, nil
 }

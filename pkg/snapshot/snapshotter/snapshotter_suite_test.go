@@ -49,7 +49,10 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 	return data
 }, func(data []byte) {})
 
-var _ = SynchronizedAfterSuite(func() {}, func() { etcd.Close() })
+var _ = SynchronizedAfterSuite(func() {}, func() {
+	etcd.Server.Stop()
+	etcd.Close()
+})
 
 func startEmbeddedEtcd() (*embed.Etcd, error) {
 	logger := logrus.New()

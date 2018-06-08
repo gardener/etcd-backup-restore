@@ -12,19 +12,28 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package retry
+package miscellaneous
 
 import (
-	"time"
+	"sort"
 
-	"github.com/sirupsen/logrus"
+	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 )
 
-// Config is the list of config parameters that is provided
-// to the retry.Do function.
-type Config struct {
-	Attempts uint
-	Delay    time.Duration
-	Units    time.Duration
-	Logger   *logrus.Logger
+// GetLatestFullSnapshotAndDeltaSnapList returns the latest snapshot
+func GetLatestFullSnapshotAndDeltaSnapList(store snapstore.SnapStore) (*snapstore.Snapshot, snapstore.SnapList, error) {
+	var deltaSnapList snapstore.SnapList
+	snapList, err := store.List()
+	if err != nil {
+		return nil, nil, err
+	}
+
+	for index := len(snapList); index > 0; index-- {
+		if snapList[index-1].Kind == snapstore.SnapshotKindFull {
+			sort.Sort(deltaSnapList)
+			return snapList[index-1], deltaSnapList, nil
+		}
+		deltaSnapList = append(deltaSnapList, snapList[index-1])
+	}
+	return nil, deltaSnapList, nil
 }

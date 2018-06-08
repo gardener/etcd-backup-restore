@@ -18,9 +18,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
 
 	"github.com/gardener/etcd-backup-restore/pkg/initializer/validator"
+	"github.com/gardener/etcd-backup-restore/pkg/miscellaneous"
 	"github.com/gardener/etcd-backup-restore/pkg/snapshot/restorer"
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	"github.com/sirupsen/logrus"
@@ -92,7 +92,7 @@ func (e *EtcdInitializer) restoreCorruptData() error {
 		return err
 	}
 	logger.Infoln("Finding latest set of snapshot to recover from...")
-	baseSnap, deltaSnapList, err := getLatestFullSnapshotAndDeltaSnapList(store)
+	baseSnap, deltaSnapList, err := miscellaneous.GetLatestFullSnapshotAndDeltaSnapList(store)
 	if err != nil {
 		logger.Errorf("failed to get latest set of snapshot: %v", err)
 		return err
@@ -132,22 +132,4 @@ func removeContents(dir string) error {
 		}
 	}
 	return nil
-}
-
-// getLatestFullSnapshotAndDeltaSnapList resturns the latest snapshot
-func getLatestFullSnapshotAndDeltaSnapList(store snapstore.SnapStore) (*snapstore.Snapshot, snapstore.SnapList, error) {
-	var deltaSnapList snapstore.SnapList
-	snapList, err := store.List()
-	if err != nil {
-		return nil, nil, err
-	}
-
-	for index := len(snapList); index > 0; index-- {
-		if snapList[index-1].Kind == snapstore.SnapshotKindFull {
-			sort.Sort(deltaSnapList)
-			return snapList[index-1], deltaSnapList, nil
-		}
-		deltaSnapList = append(deltaSnapList, snapList[index-1])
-	}
-	return nil, deltaSnapList, nil
 }

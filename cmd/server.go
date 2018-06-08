@@ -24,6 +24,7 @@ import (
 	"github.com/coreos/etcd/pkg/types"
 	"github.com/gardener/etcd-backup-restore/pkg/errors"
 	"github.com/gardener/etcd-backup-restore/pkg/initializer"
+	"github.com/gardener/etcd-backup-restore/pkg/miscellaneous"
 	"github.com/gardener/etcd-backup-restore/pkg/server"
 	"github.com/gardener/etcd-backup-restore/pkg/snapshot/restorer"
 	"github.com/gardener/etcd-backup-restore/pkg/snapshot/snapshotter"
@@ -129,9 +130,36 @@ func NewServerCommand(stopCh <-chan struct{}) *cobra.Command {
 					handler.Status = http.StatusServiceUnavailable
 					continue
 				}
+
+				// Try to take snapshot before setting
+				config := &miscellaneous.Config{
+					Attempts: 6,
+					Delay:    1,
+					Units:    time.Second,
+					Logger:   logger,
+				}
+				if err := miscellaneous.Do(func() error {
+					logger.Infof("Taking initial snapshot at time: %s", time.Now().Local())
+					err := ssr.TakeFullSnapshot()
+					if err != nil {
+						logger.Infof("Taking initial snapshot failed: %v", err)
+					}
+					return err
+				}, config); err != nil {
+					if etcdErr, ok := err.(*errors.EtcdError); ok == true {
+						logger.Errorf("Snapshotter failed with etcd error: %v", etcdErr)
+					} else {
+						logger.Fatalf("Snapshotter failed with error: %v", err)
+					}
+					handler.Status = http.StatusServiceUnavailable
+					continue
+				} else {
+					handler.Status = http.StatusOK
+				}
+
 				gcStopCh := make(chan bool)
 				go ssr.GarbageCollector(gcStopCh)
-				if err := ssr.Run(stopCh); err != nil {
+				if err := ssr.Run(true, stopCh); err != nil {
 					handler.Status = http.StatusServiceUnavailable
 					if etcdErr, ok := err.(*errors.EtcdError); ok == true {
 						logger.Errorf("Snapshotter failed with etcd error: %v", etcdErr)

@@ -134,7 +134,7 @@ var _ = Describe("Snapshotter", func() {
 					<-time.After(testTimeout)
 					close(stopCh)
 				}()
-				err = ssr.Run(stopCh)
+				err = ssr.Run(false, stopCh)
 				Expect(err).Should(HaveOccurred())
 				list, err := store.List()
 				Expect(err).ShouldNot(HaveOccurred())
@@ -176,9 +176,9 @@ var _ = Describe("Snapshotter", func() {
 						<-time.After(testTimeout)
 						close(stopCh)
 					}()
-					err = ssr.Run(stopCh)
+					err = ssr.Run(false, stopCh)
 				})
-				It("should return immediately without errorand any snapshot", func() {
+				It("should return immediately without error and any snapshot", func() {
 					Expect(err).ShouldNot(HaveOccurred())
 				})
 				It("should not take any snapshot", func() {
@@ -223,7 +223,7 @@ var _ = Describe("Snapshotter", func() {
 						<-time.After(testTimeout)
 						close(stopCh)
 					}()
-					err = ssr.Run(stopCh)
+					err = ssr.Run(false, stopCh)
 					Expect(err).ShouldNot(HaveOccurred())
 					list, err := store.List()
 					Expect(err).ShouldNot(HaveOccurred())

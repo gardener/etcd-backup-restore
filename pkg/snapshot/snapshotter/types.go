@@ -15,6 +15,7 @@
 package snapshotter
 
 import (
+	"sync"
 	"time"
 
 	"github.com/coreos/etcd/clientv3"
@@ -34,7 +35,11 @@ type Snapshotter struct {
 	tlsConfig                      *TLSConfig
 	deltaSnapshotIntervalSeconds   int
 	deltaEventCount                int
-	prevSnapshot                   snapstore.Snapshot
+	prevSnapshot                   *snapstore.Snapshot
+	wg                             *sync.WaitGroup
+	fullSnapshotCh                 chan time.Time
+	deltaStopCh                    chan bool
+	isWatchActive                  bool
 }
 
 // TLSConfig holds cert information and settings for TLS.

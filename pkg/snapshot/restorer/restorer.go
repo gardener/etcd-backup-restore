@@ -69,7 +69,10 @@ func (r *Restorer) Restore(ro RestoreOptions) error {
 	if err != nil {
 		return err
 	}
-	defer e.Close()
+	defer func() {
+		e.Server.Stop()
+		e.Close()
+	}()
 
 	client, err := clientv3.NewFromURL(e.Clients[0].Addr().String())
 	if err != nil {

@@ -62,7 +62,7 @@ storing snapshots on various cloud storage providers as well as local disk locat
 			}
 			gcStopCh := make(chan bool)
 			go ssr.GarbageCollector(gcStopCh)
-			if err := ssr.Run(stopCh); err != nil {
+			if err := ssr.Run(false, stopCh); err != nil {
 				logger.Fatalf("Snapshotter failed with error: %v", err)
 			}
 			gcStopCh <- true
