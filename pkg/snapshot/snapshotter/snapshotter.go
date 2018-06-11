@@ -318,13 +318,8 @@ func (ssr *Snapshotter) processWatch(client *clientv3.Client) {
 				ssr.fullSnapshotCh <- time.Now()
 				return
 			}
-			if wr.Canceled {
-				ssr.logger.Warnln("watch canceled")
-				ssr.fullSnapshotCh <- time.Now()
-				return
-			}
-			if wr.CompactRevision != 0 {
-				ssr.logger.Warnln("failed to keep watch. etcd server has compacted required revision")
+			if err := wr.Err(); err != nil {
+				ssr.logger.Warnln("watch channel responded with err: %v", err)
 				ssr.fullSnapshotCh <- time.Now()
 				return
 			}
