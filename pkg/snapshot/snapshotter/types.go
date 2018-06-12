@@ -24,6 +24,13 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+const (
+	// GarbageCollectionPolicyExponential defines the exponential policy for garbage collecting old backups
+	GarbageCollectionPolicyExponential = "Exponential"
+	// GarbageCollectionPolicyLimitBased defines the limit based policy for garbage collecting old backups
+	GarbageCollectionPolicyLimitBased = "LimitBased"
+)
+
 // Snapshotter is a struct for etcd snapshot taker
 type Snapshotter struct {
 	logger                         *logrus.Logger
@@ -32,6 +39,7 @@ type Snapshotter struct {
 	maxBackups                     int
 	etcdConnectionTimeout          time.Duration
 	garbageCollectionPeriodSeconds time.Duration
+	garbageCollectionPolicy        string
 	tlsConfig                      *TLSConfig
 	deltaSnapshotIntervalSeconds   int
 	deltaEventCount                int

@@ -45,16 +45,120 @@ func (ssr *Snapshotter) GarbageCollector(stopCh <-chan bool) {
 				}
 			}
 
-			// Delete delta snapshots in all snapStream but the latest one
-			for snapStreamIndex := 0; snapStreamIndex < len(snapStreamIndexList)-1; snapStreamIndex++ {
-				if err := ssr.garbageCollectDeltaSnapshots(snapList[snapStreamIndexList[snapStreamIndex]:snapStreamIndexList[snapStreamIndex+1]]); err != nil {
-					continue
-				}
-				if snapStreamIndex < len(snapStreamIndexList)-ssr.maxBackups {
+			switch ssr.garbageCollectionPolicy {
+			case GarbageCollectionPolicyExponential:
+				// Delete delta snapshots in all snapStream but the latest one.
+				// Keep only the last 24 hourly backups and of all other backups only the last backup in a day.
+				// Keep only the last 7 daily backups and of all other backups only the last backup in a week.
+				// Keep only the last 4 weekly backups.
+
+				now := time.Now()
+				var (
+					deleteSnap  = true
+					backupMode  = "None"
+					backupCount = -1
+				)
+				for snapStreamIndex := len(snapStreamIndexList) - 1; snapStreamIndex >= 0; snapStreamIndex-- {
 					snap := snapList[snapStreamIndexList[snapStreamIndex]]
-					ssr.logger.Infof("GC: Deleting old full snapshot: %s", path.Join(snap.SnapDir, snap.SnapName))
-					if err := ssr.store.Delete(*snap); err != nil {
-						ssr.logger.Warnf("GC: Failed to delete snapshot %s: %v", path.Join(snap.SnapDir, snap.SnapName), err)
+					if err := ssr.garbageCollectDeltaSnapshots(snapList[snapStreamIndexList[snapStreamIndex]:snapStreamIndexList[snapStreamIndex+1]]); err != nil {
+						continue
+					}
+
+					switch backupMode {
+					case "None":
+						deleteSnap = false
+						if !now.Truncate(time.Hour).Equal(snap.CreatedOn.Truncate(time.Hour)) {
+							break
+						}
+						backupMode = "Hour"
+						backupCount = 23
+						fallthrough
+
+					case "Hour":
+						for backupCount >= 0 {
+							rounded := time.Date(snap.CreatedOn.Year(), snap.CreatedOn.Month(), snap.CreatedOn.Day(), backupCount, 0, 0, 0, snap.CreatedOn.Location())
+							diff := rounded.Sub(snap.CreatedOn)
+							if diff == 0 {
+								deleteSnap = false
+								backupCount--
+								break
+							} else if diff < 0 {
+								deleteSnap = true
+								break
+							} else {
+								backupCount--
+							}
+						}
+						if backupCount >= 0 {
+							break
+						}
+						backupMode = "Day"
+						backupCount = 6
+						fallthrough
+
+					case "Day":
+						for backupCount >= 0 {
+							rounded := time.Date(snap.CreatedOn.Year(), snap.CreatedOn.Month(), snap.CreatedOn.Day()-7+backupCount, 0, 0, 0, 0, snap.CreatedOn.Location())
+							diff := rounded.Sub(snap.CreatedOn)
+							if diff == 0 {
+								deleteSnap = false
+								backupCount--
+								break
+							} else if diff < 0 {
+								deleteSnap = true
+								break
+							} else {
+								backupCount--
+							}
+						}
+						if backupCount >= 0 {
+							break
+						}
+						backupMode = "Week"
+						backupCount = 5
+						fallthrough
+
+					case "Week":
+						week := 2
+						for week <= backupCount {
+							rounded := time.Date(snap.CreatedOn.Year(), snap.CreatedOn.Month(), snap.CreatedOn.Day()-7*week, 0, 0, 0, 0, snap.CreatedOn.Location())
+							diff := rounded.Sub(snap.CreatedOn)
+							if diff == 0 {
+								deleteSnap = false
+								week++
+								break
+							} else if diff < 0 {
+								deleteSnap = true
+								break
+							} else {
+								week++
+							}
+						}
+						if week > backupCount {
+							deleteSnap = true
+						}
+
+					}
+					if deleteSnap {
+						ssr.logger.Infof("GC: Deleting old full snapshot: %s", path.Join(snap.SnapDir, snap.SnapName))
+						if err := ssr.store.Delete(*snap); err != nil {
+							ssr.logger.Warnf("GC: Failed to delete snapshot %s: %v", path.Join(snap.SnapDir, snap.SnapName), err)
+						}
+					}
+				}
+			case GarbageCollectionPolicyLimitBased:
+				// Delete delta snapshots in all snapStream but the latest one.
+				// Delete all snapshots beyond limit set by ssr.maxBackups.
+				for snapStreamIndex := 0; snapStreamIndex < len(snapStreamIndexList)-1; snapStreamIndex++ {
+					if err := ssr.garbageCollectDeltaSnapshots(snapList[snapStreamIndexList[snapStreamIndex]:snapStreamIndexList[snapStreamIndex+1]]); err != nil {
+						continue
+					}
+					if snapStreamIndex < len(snapStreamIndexList)-ssr.maxBackups {
+						snap := snapList[snapStreamIndexList[snapStreamIndex]]
+						ssr.logger.Infof("GC: Deleting old full snapshot: %s", path.Join(snap.SnapDir, snap.SnapName))
+						if err := ssr.store.Delete(*snap); err != nil {
+							ssr.logger.Warnf("GC: Failed to delete snapshot %s: %v", path.Join(snap.SnapDir, snap.SnapName), err)
+						}
 					}
 				}
 			}
