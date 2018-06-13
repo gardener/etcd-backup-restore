@@ -80,7 +80,6 @@ func GetSnapstoreFromClient(container, prefix string, storageClient *storage.Cli
 func (a *ABSSnapStore) Fetch(snap Snapshot) (io.ReadCloser, error) {
 	blobName := path.Join(a.prefix, snap.SnapDir, snap.SnapName)
 	blob := a.container.GetBlobReference(blobName)
-
 	opts := &storage.GetBlobOptions{}
 	return blob.Get(opts)
 }
@@ -128,16 +127,4 @@ func (a *ABSSnapStore) Delete(snap Snapshot) error {
 
 	opts := &storage.DeleteBlobOptions{}
 	return blob.Delete(opts)
-}
-
-// GetLatest resturns the latest snapshot
-func (a *ABSSnapStore) GetLatest() (*Snapshot, error) {
-	snapList, err := a.List()
-	if err != nil {
-		return nil, err
-	}
-	if snapList.Len() == 0 {
-		return nil, nil
-	}
-	return snapList[snapList.Len()-1], nil
 }

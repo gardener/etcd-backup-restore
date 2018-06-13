@@ -83,6 +83,7 @@ brew install git
 In case you have to create a new release or a new hotfix, you have to push the resulting Docker image into a Docker registry. Currently, we are using the Google Container Registry (this could change in the future). Please follow the official [installation instructions from Google](https://cloud.google.com/sdk/downloads).
 
 ### Installing `Docker` (Optional)
+
 In case you want to build Docker images, you have to install Docker itself. We recommend using [Docker for Mac OS X](https://docs.docker.com/docker-for-mac/) which can be downloaded from [here](https://download.docker.com/mac/stable/Docker.dmg).
 
 ### Build
@@ -173,6 +174,7 @@ With sub-command `server` you can start a http server which exposes an endpoint 
 We use [Dep](https://github.com/golang/dep) to manage golang dependencies.. In order to add a new package dependency to the project, you can perform `dep ensure -add <PACKAGE>` or edit the `Gopkg.toml` file and append the package along with the version you want to use as a new `[[constraint]]`.
 
 ### Updating dependencies
+
 The `Makefile` contains a rule called `revendor` which performs a `dep ensure -update` and a `dep prune` command. This updates all the dependencies to its latest versions (respecting the constraints specified in the `Gopkg.toml` file). The command also installs the packages which do not already exist in the `vendor` folder but are specified in the `Gopkg.toml` (in case you have added new ones).
 
 ```sh
@@ -195,4 +197,4 @@ By default, we try to run test in parallel without computing code coverage. To g
 
 Similarly, we use environment variable `INTEGRATION` to determine whether to execute integration test or not. By default, integration tests are executed. So, to disable integration test locally, you will have to set `INTEGRATION=false`.
 
-[etcd]: https://github.com/coreos/etcd 
+[etcd]: https://github.com/coreos/etcd

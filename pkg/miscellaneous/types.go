@@ -12,29 +12,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package retry
+package miscellaneous
 
 import (
 	"time"
+
+	"github.com/sirupsen/logrus"
 )
 
-// Do retries the retryFunc exponentially with backoff.
-// It is mutated from `retry.Do` function in package
-// [retry-go](https://github.com/avast/retry-go)
-func Do(retryFunc func() error, config *Config) error {
-	var n uint
-	var err error
-	for n < config.Attempts {
-		delayTime := config.Delay * (1 << (n - 1))
-		time.Sleep((time.Duration)(delayTime) * config.Units)
-		config.Logger.Infof("Job attempt: %d", n)
-		err = retryFunc()
-		if err == nil {
-			return nil
-		}
-
-		n++
-	}
-
-	return err
+// Config is the list of config parameters that is provided
+// to the retry.Do function.
+type Config struct {
+	Attempts uint
+	Delay    time.Duration
+	Units    time.Duration
+	Logger   *logrus.Logger
 }

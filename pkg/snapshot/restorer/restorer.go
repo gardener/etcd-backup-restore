@@ -15,6 +15,7 @@
 package restorer
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
@@ -24,13 +25,17 @@ import (
 	"path"
 	"path/filepath"
 	"reflect"
+	"time"
 
+	"github.com/coreos/etcd/clientv3"
+	"github.com/coreos/etcd/embed"
 	"github.com/coreos/etcd/etcdserver"
 	"github.com/coreos/etcd/etcdserver/etcdserverpb"
 	"github.com/coreos/etcd/etcdserver/membership"
 	"github.com/coreos/etcd/lease"
 	"github.com/coreos/etcd/mvcc"
 	"github.com/coreos/etcd/mvcc/backend"
+	"github.com/coreos/etcd/mvcc/mvccpb"
 	"github.com/coreos/etcd/pkg/fileutil"
 	"github.com/coreos/etcd/raft"
 	"github.com/coreos/etcd/raft/raftpb"
@@ -52,12 +57,41 @@ func NewRestorer(store snapstore.SnapStore, logger *logrus.Logger) *Restorer {
 
 // Restore restore the etcd data directory as per specified restore options
 func (r *Restorer) Restore(ro RestoreOptions) error {
+	if err := r.restoreFromBaseSnapshot(ro); err != nil {
+		return fmt.Errorf("failed to restore from the base snapshot :%v", err)
+	}
+	if len(ro.DeltaSnapList) == 0 {
+		r.logger.Infof("No delta snapshots present over base snapshot.")
+		return nil
+	}
+	r.logger.Infof("Starting embedded etcd server...")
+	e, err := startEmbeddedEtcd(ro)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		e.Server.Stop()
+		e.Close()
+	}()
+
+	client, err := clientv3.NewFromURL(e.Clients[0].Addr().String())
+	if err != nil {
+		return err
+	}
+	defer client.Close()
+
+	r.logger.Infof("Applying delta snapshots...")
+	return r.applyDeltaSnapshots(client, ro.DeltaSnapList)
+}
+
+// restoreFromBaseSnapshot restore the etcd data directory from base snapshot
+func (r *Restorer) restoreFromBaseSnapshot(ro RestoreOptions) error {
 	var err error
-	if path.Join(ro.Snapshot.SnapDir, ro.Snapshot.SnapName) == "" {
+	if path.Join(ro.BaseSnapshot.SnapDir, ro.BaseSnapshot.SnapName) == "" {
 		r.logger.Warnf("Base snapshot path not provided. Will do nothing.")
 		return nil
 	}
-
+	r.logger.Infof("Restoring from base snapshot: %s", path.Join(ro.BaseSnapshot.SnapDir, ro.BaseSnapshot.SnapName))
 	cfg := etcdserver.ServerConfig{
 		InitialClusterToken: ro.ClusterToken,
 		InitialPeerURLsMap:  ro.ClusterURLs,
@@ -80,8 +114,7 @@ func (r *Restorer) Restore(ro RestoreOptions) error {
 
 	walDir := filepath.Join(ro.RestoreDataDir, "member", "wal")
 	snapdir := filepath.Join(ro.RestoreDataDir, "member", "snap")
-	err = makeDB(snapdir, ro.Snapshot, len(cl.Members()), r.store, false)
-	if err != nil {
+	if err = makeDB(snapdir, ro.BaseSnapshot, len(cl.Members()), r.store, false); err != nil {
 		return err
 	}
 	return makeWALAndSnap(walDir, snapdir, cl, ro.Name)
@@ -262,4 +295,138 @@ func makeWALAndSnap(waldir, snapdir string, cl *membership.RaftCluster, restoreN
 	}
 
 	return w.SaveSnapshot(walpb.Snapshot{Index: commit, Term: term})
+}
+
+// startEmbeddedEtcd starts the embedded etcd server
+func startEmbeddedEtcd(ro RestoreOptions) (*embed.Etcd, error) {
+	cfg := embed.NewConfig()
+	cfg.Dir = ro.RestoreDataDir
+	e, err := embed.StartEtcd(cfg)
+	if err != nil {
+		return nil, err
+	}
+	select {
+	case <-e.Server.ReadyNotify():
+		fmt.Printf("Embedded server is ready!\n")
+	case <-time.After(60 * time.Second):
+		e.Server.Stop() // trigger a shutdown
+		e.Close()
+		return nil, fmt.Errorf("server took too long to start")
+	}
+	return e, nil
+}
+
+// applyDeltaSnapshot applies thw events from time sorted list of delta snapshot to etcd sequentially
+func (r *Restorer) applyDeltaSnapshots(client *clientv3.Client, snapList snapstore.SnapList) error {
+	firstDeltaSnap := snapList[0]
+	if err := r.applyFirstDeltaSnapshot(client, *firstDeltaSnap); err != nil {
+		return err
+	}
+	for _, snap := range snapList[1:] {
+		if err := r.applyDeltaSnapshot(client, *snap); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// applyFirstDeltaSnapshot applies thw events from first delta snapshot to etcd
+func (r *Restorer) applyFirstDeltaSnapshot(client *clientv3.Client, snap snapstore.Snapshot) error {
+	r.logger.Infof("Applying first delta snapshot %s", path.Join(snap.SnapDir, snap.SnapName))
+	events, err := getEventsFromDeltaSnapshot(r.store, snap)
+	if err != nil {
+		return fmt.Errorf("failed to read events from delta snapshot %s : %v", snap.SnapName, err)
+	}
+
+	// Note: Since revision in full snapshot file name might be lower than actual revision stored in snapshot.
+	// This is because of issue refereed below. So, as per workaround used in our logic of taking delta snapshot,
+	// latest revision from full snapshot may overlap with first few revision on first delta snapshot
+	// Hence, we have to additionally take care of that.
+	// Refer: https://github.com/coreos/etcd/issues/9037
+	ctx := context.TODO()
+	resp, err := client.Get(ctx, "", clientv3.WithLastRev()...)
+	if err != nil {
+		return fmt.Errorf("failed to get etcd latest revision: %v", err)
+	}
+	lastRevision := resp.Header.Revision
+
+	var newRevisionIndex int
+	for index, event := range events {
+		if event.EtcdEvent.Kv.ModRevision > lastRevision {
+			newRevisionIndex = index
+			break
+		}
+	}
+
+	return applyEventsToEtcd(client, events[newRevisionIndex:])
+}
+
+// applyDeltaSnapshot applies thw events from delta snapshot to etcd
+func (r *Restorer) applyDeltaSnapshot(client *clientv3.Client, snap snapstore.Snapshot) error {
+	r.logger.Infof("Applying delta snapshot %s", path.Join(snap.SnapDir, snap.SnapName))
+	events, err := getEventsFromDeltaSnapshot(r.store, snap)
+	if err != nil {
+		return fmt.Errorf("failed to read events from delta snapshot %s : %v", snap.SnapName, err)
+	}
+	return applyEventsToEtcd(client, events)
+}
+
+// getEventsFromDeltaSnapshot decodes the events from snapshot file.
+func getEventsFromDeltaSnapshot(store snapstore.SnapStore, snap snapstore.Snapshot) ([]event, error) {
+	rc, err := store.Fetch(snap)
+	if err != nil {
+		return nil, err
+	}
+	defer rc.Close()
+	events := []event{}
+	dec := json.NewDecoder(rc)
+	// read open bracket
+	if _, err := dec.Token(); err != nil {
+		return nil, err
+	}
+	// while the array contains values read events
+	for dec.More() {
+		var e event
+		if err := dec.Decode(&e); err != nil {
+			return nil, err
+		}
+		events = append(events, e)
+	}
+	// read closing bracket
+	if _, err := dec.Token(); err != nil {
+		return nil, err
+	}
+	return events, err
+}
+
+// applyEventsToEtcd performss operations in events sequentially
+func applyEventsToEtcd(client *clientv3.Client, events []event) error {
+	var (
+		lastRev int64
+		ops     = []clientv3.Op{}
+		ctx     = context.TODO()
+	)
+
+	for _, e := range events {
+		ev := e.EtcdEvent
+		nextRev := ev.Kv.ModRevision
+		if lastRev != 0 && nextRev > lastRev {
+			if _, err := client.Txn(ctx).Then(ops...).Commit(); err != nil {
+				return err
+			}
+			ops = []clientv3.Op{}
+		}
+		lastRev = nextRev
+		switch ev.Type {
+		case mvccpb.PUT:
+			ops = append(ops, clientv3.OpPut(string(ev.Kv.Key), string(ev.Kv.Value))) //, clientv3.WithLease(clientv3.LeaseID(ev.Kv.Lease))))
+
+		case mvccpb.DELETE:
+			ops = append(ops, clientv3.OpDelete(string(ev.Kv.Key)))
+		default:
+			return fmt.Errorf("Unexpected event type")
+		}
+	}
+	_, err := client.Txn(ctx).Then(ops...).Commit()
+	return err
 }

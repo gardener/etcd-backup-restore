@@ -113,11 +113,13 @@ spec:
         command:
         - etcdbrctl
         - server
-        - --schedule=*/1 * * * *
+        - --schedule=*/5 * * * *
         - --max-backups=5
         - --data-dir=/var/etcd/data
         - --insecure-transport=true
         - --storage-provider=${provider}
+        - --delta-snapshot-period-seconds=10
+        - --garbage-collection-period-seconds=60
         image: eu.gcr.io/gardener-project/gardener/etcdbrctl:${imageTag}
         imagePullPolicy: Always
         ports:

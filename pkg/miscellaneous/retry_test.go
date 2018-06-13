@@ -12,19 +12,34 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package retry
+package miscellaneous
 
 import (
+	"fmt"
+	"testing"
 	"time"
 
 	"github.com/sirupsen/logrus"
 )
 
-// Config is the list of config parameters that is provided
-// to the retry.Do function.
-type Config struct {
-	Attempts uint
-	Delay    time.Duration
-	Units    time.Duration
-	Logger   *logrus.Logger
+func TestDO(t *testing.T) {
+	config := &Config{
+		Attempts: 4,
+		Delay:    time.Duration(1),
+		Units:    time.Duration(time.Second),
+		Logger:   logrus.New(),
+	}
+
+	badRetryFunc := func() error {
+		return fmt.Errorf("I'm bad func")
+	}
+	if err := Do(badRetryFunc, config); err == nil {
+		t.Fatal(err)
+	}
+	goodRetryFunc := func() error {
+		return nil
+	}
+	if err := Do(goodRetryFunc, config); err != nil {
+		t.Fatal(err)
+	}
 }

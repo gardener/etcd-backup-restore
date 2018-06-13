@@ -24,6 +24,7 @@ import (
 	"github.com/coreos/etcd/pkg/types"
 	"github.com/gardener/etcd-backup-restore/pkg/errors"
 	"github.com/gardener/etcd-backup-restore/pkg/initializer"
+	"github.com/gardener/etcd-backup-restore/pkg/miscellaneous"
 	"github.com/gardener/etcd-backup-restore/pkg/server"
 	"github.com/gardener/etcd-backup-restore/pkg/snapshot/restorer"
 	"github.com/gardener/etcd-backup-restore/pkg/snapshot/snapshotter"
@@ -81,12 +82,14 @@ func NewServerCommand(stopCh <-chan struct{}) *cobra.Command {
 			logger.Info("Starting the http server...")
 			go handler.Start()
 			defer handler.Stop()
+
 			if snapstoreConfig == nil {
 				logger.Warnf("No snapstore storage provider configured. Will not start backup schedule.")
 				handler.Status = http.StatusOK
 				<-stopCh
 				return
 			}
+
 			for {
 				ss, err := snapstore.GetSnapstore(snapstoreConfig)
 				if err != nil {
@@ -106,7 +109,9 @@ func NewServerCommand(stopCh <-chan struct{}) *cobra.Command {
 					ss,
 					logger,
 					maxBackups,
+					deltaSnapshotIntervalSeconds,
 					time.Duration(etcdConnectionTimeout),
+					time.Duration(garbageCollectionPeriodSeconds),
 					tlsConfig)
 				if err != nil {
 					logger.Fatalf("Failed to create snapshotter from configured storage provider: %v", err)
@@ -126,11 +131,23 @@ func NewServerCommand(stopCh <-chan struct{}) *cobra.Command {
 					continue
 				}
 
-				err = ssr.TakeFullSnapshot()
-				if err != nil {
+				// Try to take snapshot before setting
+				config := &miscellaneous.Config{
+					Attempts: 6,
+					Delay:    1,
+					Units:    time.Second,
+					Logger:   logger,
+				}
+				if err := miscellaneous.Do(func() error {
+					logger.Infof("Taking initial snapshot at time: %s", time.Now().Local())
+					err := ssr.TakeFullSnapshot()
+					if err != nil {
+						logger.Infof("Taking initial snapshot failed: %v", err)
+					}
+					return err
+				}, config); err != nil {
 					if etcdErr, ok := err.(*errors.EtcdError); ok == true {
 						logger.Errorf("Snapshotter failed with etcd error: %v", etcdErr)
-
 					} else {
 						logger.Fatalf("Snapshotter failed with error: %v", err)
 					}
@@ -140,22 +157,23 @@ func NewServerCommand(stopCh <-chan struct{}) *cobra.Command {
 					handler.Status = http.StatusOK
 				}
 
-				err = ssr.Run(stopCh)
-				if err != nil {
+				gcStopCh := make(chan bool)
+				go ssr.GarbageCollector(gcStopCh)
+				if err := ssr.Run(true, stopCh); err != nil {
 					handler.Status = http.StatusServiceUnavailable
 					if etcdErr, ok := err.(*errors.EtcdError); ok == true {
 						logger.Errorf("Snapshotter failed with etcd error: %v", etcdErr)
-
 					} else {
 						logger.Fatalf("Snapshotter failed with error: %v", err)
 					}
 				} else {
 					handler.Status = http.StatusOK
 				}
-
+				gcStopCh <- true
 			}
 		},
 	}
+
 	initializeServerFlags(serverCmd)
 	initializeSnapshotterFlags(serverCmd)
 	initializeSnapstoreFlags(serverCmd)
@@ -180,8 +198,7 @@ func ProbeEtcd(tlsConfig *snapshotter.TLSConfig) error {
 
 	ctx, cancel := context.WithTimeout(context.TODO(), time.Duration(etcdConnectionTimeout)*time.Second)
 	defer cancel()
-	_, err = client.Get(ctx, "foo")
-	if err != nil {
+	if _, err := client.Get(ctx, "foo"); err != nil {
 		logger.Errorf("Failed to connect to client: %v", err)
 		return err
 	}

@@ -12,15 +12,28 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package cmd
+package miscellaneous
 
 import (
-	"github.com/spf13/cobra"
+	"sort"
+
+	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 )
 
-// initializeSnapstoreFlags adds the snapstore related flags to <cmd>
-func initializeSnapstoreFlags(cmd *cobra.Command) {
-	cmd.Flags().StringVar(&storageProvider, "storage-provider", "", "snapshot storage provider")
-	cmd.Flags().StringVar(&storageContainer, "store-container", "", "container which will be used as snapstore")
-	cmd.Flags().StringVar(&storagePrefix, "store-prefix", "", "prefix or directory inside container under which snapstore is created")
+// GetLatestFullSnapshotAndDeltaSnapList returns the latest snapshot
+func GetLatestFullSnapshotAndDeltaSnapList(store snapstore.SnapStore) (*snapstore.Snapshot, snapstore.SnapList, error) {
+	var deltaSnapList snapstore.SnapList
+	snapList, err := store.List()
+	if err != nil {
+		return nil, nil, err
+	}
+
+	for index := len(snapList); index > 0; index-- {
+		if snapList[index-1].Kind == snapstore.SnapshotKindFull {
+			sort.Sort(deltaSnapList)
+			return snapList[index-1], deltaSnapList, nil
+		}
+		deltaSnapList = append(deltaSnapList, snapList[index-1])
+	}
+	return nil, deltaSnapList, nil
 }

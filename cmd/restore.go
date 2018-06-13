@@ -16,11 +16,10 @@ package cmd
 
 import (
 	"fmt"
-
-	"github.com/coreos/etcd/pkg/types"
-
 	"path"
 
+	"github.com/coreos/etcd/pkg/types"
+	"github.com/gardener/etcd-backup-restore/pkg/miscellaneous"
 	"github.com/gardener/etcd-backup-restore/pkg/snapshot/restorer"
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	"github.com/sirupsen/logrus"
@@ -59,12 +58,12 @@ func NewRestoreCommand(stopCh <-chan struct{}) *cobra.Command {
 			if err != nil {
 				logger.Fatalf("failed to create snapstore from configured storage provider: %v", err)
 			}
-			logger.Infoln("Finding latest snapshot...")
-			snap, err := store.GetLatest()
+			logger.Infoln("Finding latest set of snapshot to recover from...")
+			baseSnap, deltaSnapList, err := miscellaneous.GetLatestFullSnapshotAndDeltaSnapList(store)
 			if err != nil {
 				logger.Fatalf("failed to get latest snapshot: %v", err)
 			}
-			if snap == nil {
+			if baseSnap == nil {
 				logger.Infof("No snapshot found. Will do nothing.")
 				return
 			}
@@ -74,14 +73,14 @@ func NewRestoreCommand(stopCh <-chan struct{}) *cobra.Command {
 			options := &restorer.RestoreOptions{
 				RestoreDataDir: restoreDataDir,
 				Name:           restoreName,
-				Snapshot:       *snap,
+				BaseSnapshot:   *baseSnap,
+				DeltaSnapList:  deltaSnapList,
 				ClusterURLs:    clusterUrlsMap,
 				PeerURLs:       peerUrls,
 				ClusterToken:   restoreClusterToken,
 				SkipHashCheck:  skipHashCheck,
 			}
 
-			logger.Infof("Restoring from latest snapshot: %s...", path.Join(snap.SnapDir, snap.SnapName))
 			err = rs.Restore(*options)
 			if err != nil {
 				logger.Fatalf("Failed to restore snapshot: %v", err)

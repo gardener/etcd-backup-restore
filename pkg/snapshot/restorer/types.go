@@ -15,6 +15,9 @@
 package restorer
 
 import (
+	"time"
+
+	"github.com/coreos/etcd/clientv3"
 	"github.com/coreos/etcd/pkg/types"
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	"github.com/sirupsen/logrus"
@@ -34,11 +37,19 @@ type RestoreOptions struct {
 	PeerURLs       types.URLs
 	SkipHashCheck  bool
 	Name           string
-	Snapshot       snapstore.Snapshot
+	// Base full snapshot + delta snapshots to restore from
+	BaseSnapshot  snapstore.Snapshot
+	DeltaSnapList snapstore.SnapList
 }
 
 type initIndex int
 
 func (i *initIndex) ConsistentIndex() uint64 {
 	return uint64(*i)
+}
+
+// event is wrapper over etcd event to keep track of time of event
+type event struct {
+	EtcdEvent *clientv3.Event `json:"etcdEvent"`
+	Time      time.Time       `json:"time"`
 }
