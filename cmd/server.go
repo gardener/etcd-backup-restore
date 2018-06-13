@@ -76,12 +76,25 @@ func NewServerCommand(stopCh <-chan struct{}) *cobra.Command {
 				EtcdInitializer: *etcdInitializer,
 				Logger:          logger,
 				Status:          http.StatusServiceUnavailable,
+				StopCh:          make(chan struct{}),
 			}
 			logger.Info("Regsitering the http request handlers...")
 			handler.RegisterHandler()
 			logger.Info("Starting the http server...")
 			go handler.Start()
 			defer handler.Stop()
+
+			ssrStopCh := make(chan struct{})
+			go func() {
+				for {
+					var s struct{}
+					select {
+					case <-handler.StopCh:
+					case <-stopCh:
+					}
+					ssrStopCh <- s
+				}
+			}()
 
 			if snapstoreConfig == nil {
 				logger.Warnf("No snapstore storage provider configured. Will not start backup schedule.")
@@ -112,6 +125,7 @@ func NewServerCommand(stopCh <-chan struct{}) *cobra.Command {
 					deltaSnapshotIntervalSeconds,
 					time.Duration(etcdConnectionTimeout),
 					time.Duration(garbageCollectionPeriodSeconds),
+					garbageCollectionPolicy,
 					tlsConfig)
 				if err != nil {
 					logger.Fatalf("Failed to create snapshotter from configured storage provider: %v", err)
@@ -158,8 +172,10 @@ func NewServerCommand(stopCh <-chan struct{}) *cobra.Command {
 				}
 
 				gcStopCh := make(chan bool)
+
 				go ssr.GarbageCollector(gcStopCh)
-				if err := ssr.Run(true, stopCh); err != nil {
+
+				if err := ssr.Run(true, ssrStopCh); err != nil {
 					handler.Status = http.StatusServiceUnavailable
 					if etcdErr, ok := err.(*errors.EtcdError); ok == true {
 						logger.Errorf("Snapshotter failed with etcd error: %v", etcdErr)

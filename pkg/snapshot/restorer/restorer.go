@@ -317,7 +317,7 @@ func startEmbeddedEtcd(ro RestoreOptions) (*embed.Etcd, error) {
 	return e, nil
 }
 
-// applyDeltaSnapshot applies thw events from time sorted list of delta snapshot to etcd sequentially
+// applyDeltaSnapshot applies the events from time sorted list of delta snapshot to etcd sequentially
 func (r *Restorer) applyDeltaSnapshots(client *clientv3.Client, snapList snapstore.SnapList) error {
 	firstDeltaSnap := snapList[0]
 	if err := r.applyFirstDeltaSnapshot(client, *firstDeltaSnap); err != nil {
@@ -338,7 +338,7 @@ func (r *Restorer) applyDeltaSnapshots(client *clientv3.Client, snapList snapsto
 	return nil
 }
 
-// applyFirstDeltaSnapshot applies thw events from first delta snapshot to etcd
+// applyFirstDeltaSnapshot applies the events from first delta snapshot to etcd
 func (r *Restorer) applyFirstDeltaSnapshot(client *clientv3.Client, snap snapstore.Snapshot) error {
 	r.logger.Infof("Applying first delta snapshot %s", path.Join(snap.SnapDir, snap.SnapName))
 	events, err := getEventsFromDeltaSnapshot(r.store, snap)
@@ -369,7 +369,7 @@ func (r *Restorer) applyFirstDeltaSnapshot(client *clientv3.Client, snap snapsto
 	return applyEventsToEtcd(client, events[newRevisionIndex:])
 }
 
-// applyDeltaSnapshot applies thw events from delta snapshot to etcd
+// applyDeltaSnapshot applies the events from delta snapshot to etcd
 func (r *Restorer) applyDeltaSnapshot(client *clientv3.Client, snap snapstore.Snapshot) error {
 	r.logger.Infof("Applying delta snapshot %s", path.Join(snap.SnapDir, snap.SnapName))
 	events, err := getEventsFromDeltaSnapshot(r.store, snap)

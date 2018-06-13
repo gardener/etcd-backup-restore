@@ -41,19 +41,19 @@ var _ = Describe("Snapstore", func() {
 		prefix := "v1"
 		now := time.Now().Unix()
 		snap1 = Snapshot{
-			CreatedOn:     time.Unix(now, 0),
+			CreatedOn:     time.Unix(now, 0).UTC(),
 			StartRevision: 0,
 			LastRevision:  2088,
 			Kind:          SnapshotKindFull,
 		}
 		snap2 = Snapshot{
-			CreatedOn:     time.Unix(now+100, 0),
+			CreatedOn:     time.Unix(now+100, 0).UTC(),
 			StartRevision: 0,
 			LastRevision:  1988,
 			Kind:          SnapshotKindFull,
 		}
 		snap3 = Snapshot{
-			CreatedOn:     time.Unix(now+200, 0),
+			CreatedOn:     time.Unix(now+200, 0).UTC(),
 			StartRevision: 0,
 			LastRevision:  1958,
 			Kind:          SnapshotKindFull,

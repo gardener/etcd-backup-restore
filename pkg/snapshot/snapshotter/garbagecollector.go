@@ -52,13 +52,16 @@ func (ssr *Snapshotter) GarbageCollector(stopCh <-chan bool) {
 				// Keep only the last 7 daily backups and of all other backups only the last backup in a week.
 				// Keep only the last 4 weekly backups.
 
-				now := time.Now()
+				now := time.Now().UTC()
 				var (
-					deleteSnap  = true
-					backupMode  = "None"
-					backupCount = -1
+					deleteSnap    = true
+					backupMode    = "None"
+					backupCount   = -1
+					hourModeLimit = 24
+					dayModeLimit  = 7
+					weekModeLimit = 5
 				)
-				for snapStreamIndex := len(snapStreamIndexList) - 1; snapStreamIndex >= 0; snapStreamIndex-- {
+				for snapStreamIndex := len(snapStreamIndexList) - 2; snapStreamIndex >= 0; snapStreamIndex-- {
 					snap := snapList[snapStreamIndexList[snapStreamIndex]]
 					if err := ssr.garbageCollectDeltaSnapshots(snapList[snapStreamIndexList[snapStreamIndex]:snapStreamIndexList[snapStreamIndex+1]]); err != nil {
 						continue
@@ -67,42 +70,87 @@ func (ssr *Snapshotter) GarbageCollector(stopCh <-chan bool) {
 					switch backupMode {
 					case "None":
 						deleteSnap = false
-						if !now.Truncate(time.Hour).Equal(snap.CreatedOn.Truncate(time.Hour)) {
+						if now.Truncate(time.Hour).Equal(snap.CreatedOn.Truncate(time.Hour)) {
 							break
 						}
 						backupMode = "Hour"
-						backupCount = 23
+						backupCount = hourModeLimit - 1
+						ssr.logger.Infof("GC: Switching to Hour mode for snapshot %s", snap.CreatedOn.UTC())
 						fallthrough
 
 					case "Hour":
 						for backupCount >= 0 {
-							rounded := time.Date(snap.CreatedOn.Year(), snap.CreatedOn.Month(), snap.CreatedOn.Day(), backupCount, 0, 0, 0, snap.CreatedOn.Location())
-							diff := rounded.Sub(snap.CreatedOn)
+							rounded := time.Date(now.Year(), now.Month(), now.Day(), backupCount, 0, 0, 0, now.Location())
+							diff := rounded.Sub(snap.CreatedOn.Truncate(time.Hour))
 							if diff == 0 {
 								deleteSnap = false
 								backupCount--
+								if backupCount == -1 {
+									ssr.logger.Infof("GC: Switching to Day mode for snapshot %s", snap.CreatedOn.UTC())
+									backupMode = "Day"
+									backupCount = dayModeLimit - 1
+								}
 								break
-							} else if diff < 0 {
+							} else if diff > 0 {
+								backupCount--
+							} else {
 								deleteSnap = true
 								break
-							} else {
-								backupCount--
 							}
 						}
 						if backupCount >= 0 {
 							break
 						}
+						if backupMode == "Day" {
+							break
+						}
+						ssr.logger.Infof("GC: Switching to Day mode for snapshot %s", snap.CreatedOn.UTC())
 						backupMode = "Day"
-						backupCount = 6
+						backupCount = dayModeLimit - 1
 						fallthrough
 
 					case "Day":
 						for backupCount >= 0 {
-							rounded := time.Date(snap.CreatedOn.Year(), snap.CreatedOn.Month(), snap.CreatedOn.Day()-7+backupCount, 0, 0, 0, 0, snap.CreatedOn.Location())
-							diff := rounded.Sub(snap.CreatedOn)
+							rounded := time.Date(now.Year(), now.Month(), now.Day()-7+backupCount, 0, 0, 0, 0, now.Location())
+							diff := rounded.Sub(snap.CreatedOn.Truncate(time.Hour * 24))
 							if diff == 0 {
 								deleteSnap = false
 								backupCount--
+								if backupCount == -1 {
+									ssr.logger.Infof("GC: Switching to Week mode for snapshot %s", snap.CreatedOn.UTC())
+									backupMode = "Week"
+									backupCount = weekModeLimit - 2
+								}
+								break
+							} else if diff > 0 {
+								backupCount--
+							} else {
+								deleteSnap = true
+								break
+							}
+						}
+						if backupCount >= 0 {
+							break
+						}
+						if backupMode == "Week" {
+							break
+						}
+						ssr.logger.Infof("GC: Switching to Week mode for snapshot %s", snap.CreatedOn.UTC())
+						backupMode = "Week"
+						backupCount = weekModeLimit - 2
+						fallthrough
+
+					case "Week":
+						for backupCount >= 0 {
+							rounded := time.Date(now.Year(), now.Month(), now.Day()-7*(weekModeLimit-backupCount), 0, 0, 0, 0, now.Location())
+							diff := int(rounded.Sub(snap.CreatedOn.Truncate(time.Hour)).Hours()/24) / 7
+							if diff == 0 {
+								deleteSnap = false
+								backupCount--
+								if backupCount == -1 {
+									ssr.logger.Infof("GC: Switching to Month mode for snapshot %s", snap.CreatedOn.UTC())
+									backupMode = "Month"
+								}
 								break
 							} else if diff < 0 {
 								deleteSnap = true
@@ -114,38 +162,26 @@ func (ssr *Snapshotter) GarbageCollector(stopCh <-chan bool) {
 						if backupCount >= 0 {
 							break
 						}
-						backupMode = "Week"
-						backupCount = 5
+						if backupMode == "Month" {
+							break
+						}
+						ssr.logger.Infof("GC: Switching to Month mode for snapshot %s", snap.CreatedOn.UTC())
+						backupMode = "Month"
 						fallthrough
 
-					case "Week":
-						week := 2
-						for week <= backupCount {
-							rounded := time.Date(snap.CreatedOn.Year(), snap.CreatedOn.Month(), snap.CreatedOn.Day()-7*week, 0, 0, 0, 0, snap.CreatedOn.Location())
-							diff := rounded.Sub(snap.CreatedOn)
-							if diff == 0 {
-								deleteSnap = false
-								week++
-								break
-							} else if diff < 0 {
-								deleteSnap = true
-								break
-							} else {
-								week++
-							}
-						}
-						if week > backupCount {
-							deleteSnap = true
-						}
+					case "Month":
+						deleteSnap = true
 
 					}
+
 					if deleteSnap {
-						ssr.logger.Infof("GC: Deleting old full snapshot: %s", path.Join(snap.SnapDir, snap.SnapName))
+						ssr.logger.Infof("GC: Deleting old full snapshot: %s %v", snap.CreatedOn.UTC(), deleteSnap)
 						if err := ssr.store.Delete(*snap); err != nil {
 							ssr.logger.Warnf("GC: Failed to delete snapshot %s: %v", path.Join(snap.SnapDir, snap.SnapName), err)
 						}
 					}
 				}
+
 			case GarbageCollectionPolicyLimitBased:
 				// Delete delta snapshots in all snapStream but the latest one.
 				// Delete all snapshots beyond limit set by ssr.maxBackups.

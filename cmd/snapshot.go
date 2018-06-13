@@ -56,6 +56,7 @@ storing snapshots on various cloud storage providers as well as local disk locat
 				deltaSnapshotIntervalSeconds,
 				time.Duration(etcdConnectionTimeout),
 				time.Duration(garbageCollectionPeriodSeconds),
+				garbageCollectionPolicy,
 				tlsConfig)
 			if err != nil {
 				logger.Fatalf("Failed to create snapshotter: %v", err)

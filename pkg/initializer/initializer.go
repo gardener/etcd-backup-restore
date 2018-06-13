@@ -46,7 +46,7 @@ func (e *EtcdInitializer) Initialize() error {
 		return err
 	}
 	if dataDirStatus != validator.DataDirectoryValid {
-		if err = e.restoreCorruptData(); err != nil {
+		if err := e.restoreCorruptData(); err != nil {
 			err = fmt.Errorf("error while restoring corrupt data: %v", err)
 		}
 	}
