@@ -15,6 +15,7 @@
 package restorer
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/json"
@@ -322,11 +323,18 @@ func (r *Restorer) applyDeltaSnapshots(client *clientv3.Client, snapList snapsto
 	if err := r.applyFirstDeltaSnapshot(client, *firstDeltaSnap); err != nil {
 		return err
 	}
+	if err := verifySnapshotRevision(client, snapList[0]); err != nil {
+		return err
+	}
 	for _, snap := range snapList[1:] {
 		if err := r.applyDeltaSnapshot(client, *snap); err != nil {
 			return err
 		}
+		if err := verifySnapshotRevision(client, snap); err != nil {
+			return err
+		}
 	}
+
 	return nil
 }
 
@@ -378,25 +386,33 @@ func getEventsFromDeltaSnapshot(store snapstore.SnapStore, snap snapstore.Snapsh
 		return nil, err
 	}
 	defer rc.Close()
+	buf := new(bytes.Buffer)
+	bufSize, err := buf.ReadFrom(rc)
+	if err != nil {
+		return nil, err
+	}
+	sha := buf.Bytes()
+
+	if bufSize <= sha256.Size {
+		return nil, fmt.Errorf("delta snapshot is missing hash")
+	}
+	data := sha[:bufSize-sha256.Size]
+	snapHash := sha[bufSize-sha256.Size:]
+
+	// check for match
+	h := sha256.New()
+	if _, err := h.Write(data); err != nil {
+		return nil, err
+	}
+	copmutedSha := h.Sum(nil)
+	if !reflect.DeepEqual(snapHash, copmutedSha) {
+		return nil, fmt.Errorf("expected sha256 %v, got %v", snapHash, copmutedSha)
+	}
 	events := []event{}
-	dec := json.NewDecoder(rc)
-	// read open bracket
-	if _, err := dec.Token(); err != nil {
+	if err := json.Unmarshal(data, &events); err != nil {
 		return nil, err
 	}
-	// while the array contains values read events
-	for dec.More() {
-		var e event
-		if err := dec.Decode(&e); err != nil {
-			return nil, err
-		}
-		events = append(events, e)
-	}
-	// read closing bracket
-	if _, err := dec.Token(); err != nil {
-		return nil, err
-	}
-	return events, err
+	return events, nil
 }
 
 // applyEventsToEtcd performss operations in events sequentially
@@ -429,4 +445,17 @@ func applyEventsToEtcd(client *clientv3.Client, events []event) error {
 	}
 	_, err := client.Txn(ctx).Then(ops...).Commit()
 	return err
+}
+
+func verifySnapshotRevision(client *clientv3.Client, snap *snapstore.Snapshot) error {
+	ctx := context.TODO()
+	getResponse, err := client.Get(ctx, "foo")
+	if err != nil {
+		return fmt.Errorf("failed to connect to client: %v", err)
+	}
+	etcdRevision := getResponse.Header.GetRevision()
+	if snap.LastRevision != etcdRevision {
+		return fmt.Errorf("mismatched event revision while applying delta snapshot, expected %d but applied %d ", snap.LastRevision, etcdRevision)
+	}
+	return nil
 }

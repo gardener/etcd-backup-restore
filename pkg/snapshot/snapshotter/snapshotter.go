@@ -17,6 +17,7 @@ package snapshotter
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
@@ -358,11 +359,16 @@ func (ssr *Snapshotter) saveDeltaSnapshot(ops []*event, lastRevision int64) erro
 	}
 	snap.GenerateSnapshotName()
 
-	//TODO Append hash
 	data, err := json.Marshal(ops)
 	if err != nil {
 		return err
 	}
+
+	// compute hash
+	hash := sha256.New()
+	hash.Write(data)
+	data = hash.Sum(data)
+
 	dataReader := bytes.NewReader(data)
 
 	if err := ssr.store.Save(*snap, dataReader); err != nil {
