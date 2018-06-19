@@ -60,15 +60,15 @@ func (ssr *Snapshotter) GarbageCollector(stopCh <-chan bool) {
 
 				now := time.Now().UTC()
 				var (
-					deleteSnap    = true
-					backupMode    = "None"
-					backupCount   = -1
-					// Limit here indicates the number of snapshot to retain in perticular mode.
+					deleteSnap  = true
+					backupMode  = "None"
+					backupCount = -1
+					// Limit here indicates the number of snapshot to retain in particular mode.
 					hourModeLimit = 24
 					dayModeLimit  = 7
-					weekModeLimit = 5
+					weekModeLimit = 4
 				)
-				// Here we start loop from len(snapStreamIndexList) - 2, because we want to keep last snapstream 
+				// Here we start loop from len(snapStreamIndexList) - 2, because we want to keep last snapstream
 				// including delta snapshots in it.
 				for snapStreamIndex := len(snapStreamIndexList) - 2; snapStreamIndex >= 0; snapStreamIndex-- {
 					snap := snapList[snapStreamIndexList[snapStreamIndex]]
@@ -76,7 +76,7 @@ func (ssr *Snapshotter) GarbageCollector(stopCh <-chan bool) {
 					if err := ssr.garbageCollectDeltaSnapshots(snapList[snapStreamIndexList[snapStreamIndex]:snapStreamIndexList[snapStreamIndex+1]]); err != nil {
 						continue
 					}
-					
+
 					// Depending upon the backup mode decide which full snapshots to retain.
 					switch backupMode {
 					case "None":
@@ -94,7 +94,7 @@ func (ssr *Snapshotter) GarbageCollector(stopCh <-chan bool) {
 
 					case "Hour":
 						// backupMode "Hour" indicates we are processing backup in current day. As per policy
-						// we should retain only latest snapshots in an hour. For hour mode, we consider hours till 
+						// we should retain only latest snapshots in an hour. For hour mode, we consider hours till
 						// 00:00am of the same day. Instead of running algorithm for 24 hours before relative to
 						// current time.
 						//
@@ -145,7 +145,7 @@ func (ssr *Snapshotter) GarbageCollector(stopCh <-chan bool) {
 								if backupCount == -1 {
 									ssr.logger.Infof("GC: Switching to Week mode for snapshot %s", snap.CreatedOn.UTC())
 									backupMode = "Week"
-									backupCount = weekModeLimit - 2
+									backupCount = weekModeLimit - 1
 								}
 								break
 							} else if diff > 0 {
@@ -163,12 +163,12 @@ func (ssr *Snapshotter) GarbageCollector(stopCh <-chan bool) {
 						}
 						ssr.logger.Infof("GC: Switching to Week mode for snapshot %s", snap.CreatedOn.UTC())
 						backupMode = "Week"
-						backupCount = weekModeLimit - 2
+						backupCount = weekModeLimit - 1
 						fallthrough
 
 					case "Week":
 						for backupCount >= 0 {
-							rounded := time.Date(now.Year(), now.Month(), now.Day()-7*(weekModeLimit-backupCount), 0, 0, 0, 0, now.Location())
+							rounded := time.Date(now.Year(), now.Month(), now.Day()-dayModeLimit-7*(weekModeLimit-backupCount), 0, 0, 0, 0, now.Location())
 							diff := int(rounded.Sub(snap.CreatedOn.Truncate(time.Hour)).Hours()/24) / 7
 							if diff == 0 {
 								deleteSnap = false
@@ -178,11 +178,11 @@ func (ssr *Snapshotter) GarbageCollector(stopCh <-chan bool) {
 									backupMode = "Month"
 								}
 								break
-							} else if diff < 0 {
+							} else if diff > 0 {
+								backupCount--
+							} else {
 								deleteSnap = true
 								break
-							} else {
-								backupCount--
 							}
 						}
 						if backupCount >= 0 {
