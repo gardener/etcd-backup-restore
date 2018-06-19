@@ -294,7 +294,7 @@ var _ = Describe("Snapshotter", func() {
 
 				// hourly snapshot
 				snapTime = snapTime.Add(time.Duration(time.Hour))
-				for now.Truncate(time.Hour).Sub(snapTime) >= 0 {
+				for now.Truncate(time.Hour).Sub(snapTime) > 0 {
 					snap := &snapstore.Snapshot{
 						Kind:          snapstore.SnapshotKindFull,
 						CreatedOn:     snapTime,
