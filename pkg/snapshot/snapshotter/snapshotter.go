@@ -35,7 +35,7 @@ import (
 )
 
 // NewSnapshotter returns the snapshotter object.
-func NewSnapshotter(schedule string, store snapstore.SnapStore, logger *logrus.Logger, maxBackups, deltaSnapshotIntervalSeconds int, etcdConnectionTimeout, garbageCollectionPeriodSeconds time.Duration, tlsConfig *TLSConfig) (*Snapshotter, error) {
+func NewSnapshotter(schedule string, store snapstore.SnapStore, logger *logrus.Logger, maxBackups, deltaSnapshotIntervalSeconds int, etcdConnectionTimeout, garbageCollectionPeriodSeconds time.Duration, garbageCollectionPolicy string, tlsConfig *TLSConfig) (*Snapshotter, error) {
 	logger.Printf("Validating schedule...")
 	sdl, err := cron.ParseStandard(schedule)
 	if err != nil {
@@ -50,7 +50,7 @@ func NewSnapshotter(schedule string, store snapstore.SnapStore, logger *logrus.L
 		Kind:          snapstore.SnapshotKindFull,
 		StartRevision: 0,
 		LastRevision:  0,
-		CreatedOn:     time.Now(),
+		CreatedOn:     time.Now().UTC(),
 	}
 	prevSnapshot.GenerateSnapshotDirectory()
 	prevSnapshot.GenerateSnapshotName()
@@ -62,6 +62,7 @@ func NewSnapshotter(schedule string, store snapstore.SnapStore, logger *logrus.L
 		maxBackups:                     maxBackups,
 		etcdConnectionTimeout:          etcdConnectionTimeout,
 		garbageCollectionPeriodSeconds: garbageCollectionPeriodSeconds,
+		garbageCollectionPolicy:        garbageCollectionPolicy,
 		tlsConfig:                      tlsConfig,
 		deltaSnapshotIntervalSeconds:   deltaSnapshotIntervalSeconds,
 		prevSnapshot:                   prevSnapshot,
@@ -207,7 +208,7 @@ func (ssr *Snapshotter) TakeFullSnapshot() error {
 	ssr.logger.Infof("Successfully opened snapshot reader on etcd")
 	s := &snapstore.Snapshot{
 		Kind:          snapstore.SnapshotKindFull,
-		CreatedOn:     time.Now(),
+		CreatedOn:     time.Now().UTC(),
 		StartRevision: 0,
 		LastRevision:  lastRevision,
 	}
@@ -301,16 +302,6 @@ func (ssr *Snapshotter) processWatch(client *clientv3.Client) {
 		select {
 		case <-ssr.deltaStopCh:
 			ssr.logger.Infoln("Received stop signal. Terminating watch and Saving aggregated events if any...")
-			if len(events) != 0 {
-				if err := ssr.saveDeltaSnapshot(events, currentRev); err != nil {
-					ssr.logger.Errorf("failed to take new delta snapshot: %s", err)
-					ssr.fullSnapshotCh <- time.Now()
-					return
-				}
-				events = []*event{}
-			} else {
-				ssr.logger.Infof("No events received to save snapshot.")
-			}
 			return
 
 		case wr, ok := <-watchCh:
@@ -352,7 +343,7 @@ func (ssr *Snapshotter) processWatch(client *clientv3.Client) {
 func (ssr *Snapshotter) saveDeltaSnapshot(ops []*event, lastRevision int64) error {
 	snap := &snapstore.Snapshot{
 		Kind:          snapstore.SnapshotKindDelta,
-		CreatedOn:     time.Now(),
+		CreatedOn:     time.Now().UTC(),
 		StartRevision: ssr.prevSnapshot.LastRevision + 1,
 		LastRevision:  lastRevision,
 		SnapDir:       ssr.prevSnapshot.SnapDir,

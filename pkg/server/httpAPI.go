@@ -39,6 +39,7 @@ type HTTPHandler struct {
 	initializationStatusMutex sync.Mutex
 	initializationStatus      string
 	Status                    int
+	StopCh                    chan struct{}
 }
 
 // RegisterHandler registers the handler for different requests
@@ -82,6 +83,9 @@ func (h *HTTPHandler) serveInitialize(rw http.ResponseWriter, req *http.Request)
 		h.Logger.Infof("Updating status from %s to %s", h.initializationStatus, initializationStatusProgress)
 		h.initializationStatus = initializationStatusProgress
 		go func() {
+			// This is needed to stop snapshotter.
+			var s struct{}
+			h.StopCh <- s
 			err := h.EtcdInitializer.Initialize()
 			h.initializationStatusMutex.Lock()
 			defer h.initializationStatusMutex.Unlock()

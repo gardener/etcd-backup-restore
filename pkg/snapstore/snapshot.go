@@ -73,7 +73,7 @@ func ParseSnapshot(snapPath string) (*Snapshot, error) {
 	if err != nil {
 		return nil, fmt.Errorf("invalid creation time: %s", tokens[3])
 	}
-	s.CreatedOn = time.Unix(unixTime, 0)
+	s.CreatedOn = time.Unix(unixTime, 0).UTC()
 	s.SnapName = snapName
 	s.SnapDir = snapDir
 	return s, nil

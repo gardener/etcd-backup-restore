@@ -35,6 +35,7 @@ var (
 	maxBackups                     int
 	etcdConnectionTimeout          int
 	garbageCollectionPeriodSeconds int
+	garbageCollectionPolicy        string
 	insecureTransport              bool
 	insecureSkipVerify             bool
 	certFile                       string

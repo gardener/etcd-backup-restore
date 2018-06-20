@@ -33,37 +33,37 @@ var _ = Describe("Snapshot", func() {
 				interval := int64(5)
 				now := time.Now().Unix()
 				snap1 := Snapshot{
-					CreatedOn:     time.Unix(now, 0),
+					CreatedOn:     time.Unix(now, 0).UTC(),
 					StartRevision: 0,
 					LastRevision:  2088,
 					Kind:          SnapshotKindFull,
 				}
 				snap2 := Snapshot{
-					CreatedOn:     time.Unix(now+1*interval, 0),
+					CreatedOn:     time.Unix(now+1*interval, 0).UTC(),
 					StartRevision: 0,
 					LastRevision:  1988,
 					Kind:          SnapshotKindFull,
 				}
 				snap3 := Snapshot{
-					CreatedOn:     time.Unix(now+2*interval, 0),
+					CreatedOn:     time.Unix(now+2*interval, 0).UTC(),
 					StartRevision: 0,
 					LastRevision:  1888,
 					Kind:          SnapshotKindFull,
 				}
 				snap4 := Snapshot{
-					CreatedOn:     time.Unix(now+3*interval, 0),
+					CreatedOn:     time.Unix(now+3*interval, 0).UTC(),
 					StartRevision: 0,
 					LastRevision:  1788,
 					Kind:          SnapshotKindFull,
 				}
 				snap5 := Snapshot{
-					CreatedOn:     time.Unix(now+4*interval, 0),
+					CreatedOn:     time.Unix(now+4*interval, 0).UTC(),
 					StartRevision: 0,
 					LastRevision:  1688,
 					Kind:          SnapshotKindFull,
 				}
 				snap6 := Snapshot{
-					CreatedOn:     time.Unix(now+5*interval, 0),
+					CreatedOn:     time.Unix(now+5*interval, 0).UTC(),
 					StartRevision: 0,
 					LastRevision:  1588,
 					Kind:          SnapshotKindFull,
@@ -79,7 +79,7 @@ var _ = Describe("Snapshot", func() {
 		Context("given a snapshot", func() {
 			now := time.Now().Unix()
 			snap1 := Snapshot{
-				CreatedOn:     time.Unix(now, 0),
+				CreatedOn:     time.Unix(now, 0).UTC(),
 				StartRevision: 0,
 				LastRevision:  2088,
 				Kind:          SnapshotKindFull,
