@@ -13,100 +13,132 @@ import (
 	. "github.com/onsi/gomega"
 	"github.com/sirupsen/logrus"
 
-	. "github.com/gardener/etcd-backup-restore/tests/e2e/integration"
+	. "github.com/gardener/etcd-backup-restore/test/e2e/integration"
 )
 
+func startEtcd() (*Cmd, *chan error) {
+	errChan := make(chan error)
+	logger := logrus.New()
+	etcdArgs := []string{"--name=etcd",
+		"--advertise-client-urls=http://0.0.0.0:2379",
+		"--listen-client-urls=http://0.0.0.0:2379",
+		"--initial-cluster-state=new",
+		"--initial-cluster-token=new",
+		"--log-output=stdout",
+		"--data-dir=" + os.Getenv("ETCD_DATA_DIR")}
+	cmdEtcd := &Cmd{
+		Task:    "etcd",
+		Flags:   etcdArgs,
+		Logger:  logger,
+		Logfile: filepath.Join(os.Getenv("TEST_DIR"), "etcd.log"),
+	}
+	logger.Info("Starting etcd..")
+	go func(errCh chan error) {
+		err := cmdEtcd.RunCmdWithFlags()
+		errCh <- err
+	}(errChan)
+	return cmdEtcd, &errChan
+}
+
+func startSnapshotter() (*Cmd, *chan error) {
+	errChan := make(chan error)
+	logger := logrus.New()
+	etcdbrctlArgs := []string{
+		"snapshot",
+		"--max-backups=1",
+		"--garbage-collection-policy=LimitBased",
+		"--schedule=*/1 * * * *",
+		"--storage-provider=S3",
+		"--store-container=" + os.Getenv("TEST_ID"),
+	}
+	logger.Info(etcdbrctlArgs)
+	cmdEtcdbrctl := &Cmd{
+		Task:    "etcdbrctl",
+		Flags:   etcdbrctlArgs,
+		Logger:  logger,
+		Logfile: filepath.Join(os.Getenv("TEST_DIR"), "etcdbrctl.log"),
+	}
+	go func(errCh chan error) {
+		err := cmdEtcdbrctl.RunCmdWithFlags()
+		errCh <- err
+	}(errChan)
+
+	return cmdEtcdbrctl, &errChan
+}
+
 var _ = Describe("CloudBackup", func() {
-	var cmdEtcd, cmdEtcdbrctl *Cmd
-	var logger *logrus.Logger
-	var s3Snapstore snapstore.SnapStore
-	var err error
+
+	var store snapstore.SnapStore
 
 	Describe("Regular backups", func() {
+		var (
+			cmdEtcd, cmdEtcdbrctl      *Cmd
+			etcdErrChan, etcdbrErrChan *chan error
+			err                        error
+		)
+
 		BeforeEach(func() {
-			logger := logrus.New()
-			etcdArgs := []string{"--name=etcd",
-				"--advertise-client-urls=http://0.0.0.0:2379",
-				"--listen-client-urls=http://0.0.0.0:2379",
-				"--initial-cluster-state=new",
-				"--initial-cluster-token=new",
-				"--log-output=stdout",
-				"--data-dir=" + os.Getenv("ETCD_DATA_DIR")}
-			cmdEtcd = &Cmd{
-				Task:    "etcd",
-				Flags:   etcdArgs,
-				Logger:  logger,
-				Logfile: filepath.Join(os.Getenv("ETCD_DATA_DIR"), "etcd.log"),
-			}
-			logger.Info("Starting etcd..")
-			go cmdEtcd.RunCmdWithFlags()
-		})
-		BeforeEach(func() {
-			logger = logrus.New()
-			etcdbrctlArgs := []string{
-				"snapshot",
-				"--max-backups=1",
-				"--schedule=*/1 * * * *",
-				"--storage-provider=S3",
-				"--store-container=" + os.Getenv("NAMESPACE"),
-			}
-			logger.Info(etcdbrctlArgs)
-			cmdEtcdbrctl = &Cmd{
-				Task:    "etcdbrctl",
-				Flags:   etcdbrctlArgs,
-				Logger:  logger,
-				Logfile: filepath.Join(os.Getenv("ETCD_DATA_DIR"), "etcdbrctl.log"),
-			}
-			go cmdEtcdbrctl.RunCmdWithFlags()
-			s3SnapstoreConfig := &snapstore.Config{
+			cmdEtcd, etcdErrChan = startEtcd()
+			cmdEtcdbrctl, etcdbrErrChan = startSnapshotter()
+			go func() {
+				select {
+				case err := <-*etcdErrChan:
+					Expect(err).ShouldNot(HaveOccurred())
+				case err := <-*etcdbrErrChan:
+					Expect(err).ShouldNot(HaveOccurred())
+				}
+			}()
+
+			snapstoreConfig := &snapstore.Config{
 				Provider:  "S3",
-				Container: os.Getenv("NAMESPACE"),
+				Container: os.Getenv("TEST_ID"),
 				Prefix:    path.Join("v1"),
 			}
-			s3Snapstore, err = snapstore.GetSnapstore(s3SnapstoreConfig)
+			store, err = snapstore.GetSnapstore(snapstoreConfig)
 			Expect(err).ShouldNot(HaveOccurred())
-		})
 
-		BeforeEach(func() {
-			snapList, err := s3Snapstore.List()
+			snapList, err := store.List()
 			Expect(err).ShouldNot(HaveOccurred())
 			for _, snap := range snapList {
-				s3Snapstore.Delete(*snap)
+				store.Delete(*snap)
 			}
 
 		})
+
 		Context("taken at 1 minute interval", func() {
 			It("should take periodic backups.", func() {
-				snap, err := s3Snapstore.GetLatest()
+				snaplist, err := store.List()
+				Expect(snaplist).Should(BeEmpty())
 				Expect(err).ShouldNot(HaveOccurred())
-				Expect(snap).Should(BeNil())
 
 				time.Sleep(1 * time.Minute)
 
-				latestSnap, err := s3Snapstore.GetLatest()
+				snaplist, err = store.List()
+				Expect(snaplist).ShouldNot(BeEmpty())
 				Expect(err).ShouldNot(HaveOccurred())
-				Expect(latestSnap).ShouldNot(BeNil())
 			})
 		})
+
 		Context("taken at 1 minute interval", func() {
 			It("should take periodic backups and garbage collect backups over maxBackups configured", func() {
-				snap, err := s3Snapstore.GetLatest()
+				snaplist, err := store.List()
+				Expect(snaplist).Should(BeEmpty())
 				Expect(err).ShouldNot(HaveOccurred())
-				Expect(snap).Should(BeNil())
 
 				time.Sleep(1 * time.Minute)
 
-				firstSnap, err := s3Snapstore.GetLatest()
+				snaplist, err = store.List()
 				Expect(err).ShouldNot(HaveOccurred())
-				Expect(firstSnap).ShouldNot(BeNil())
+				Expect(len(snaplist)).To(Equal(1))
 
 				time.Sleep(1 * time.Minute)
 
-				snaps, err := s3Snapstore.List()
+				snaplist, err = store.List()
 				Expect(err).ShouldNot(HaveOccurred())
-				Expect(len(snaps)).To(Equal(1))
+				Expect(len(snaplist)).To(Equal(1))
 			})
 		})
+
 		AfterEach(func() {
 			cmdEtcd.StopProcess()
 			cmdEtcdbrctl.StopProcess()
@@ -164,6 +196,7 @@ var _ = Describe("CloudBackup", func() {
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(dataDirStatus).Should(Equal(validator.DataDirStatus(validator.DataDirectoryCorrupt)))
 			})
+
 			AfterEach(func() {
 				dataDir := os.Getenv("ETCD_DATA_DIR")
 				dbFilePath := filepath.Join(dataDir, "member", "snap", "db")
@@ -181,6 +214,7 @@ var _ = Describe("CloudBackup", func() {
 				err := os.Rename(dbFilePath, dbFileBakPath)
 				Expect(err).ShouldNot(HaveOccurred())
 			})
+
 			It("restores corrupt data directory", func() {
 				logger = logrus.New()
 				dataDir := os.Getenv("ETCD_DATA_DIR")
@@ -195,20 +229,18 @@ var _ = Describe("CloudBackup", func() {
 				etcdbrctlArgs := []string{
 					"initialize",
 					"--storage-provider=S3",
-					"--store-container=" + os.Getenv("NAMESPACE"),
+					"--store-container=" + os.Getenv("TEST_ID"),
 					"--data-dir=" + dataDir,
 				}
 				cmd = &Cmd{
 					Task:    "etcdbrctl",
 					Flags:   etcdbrctlArgs,
 					Logger:  logger,
-					Logfile: filepath.Join(os.Getenv("ETCD_DATA_DIR"), "etcdbrctl.log"),
+					Logfile: filepath.Join(os.Getenv("TEST_DIR"), "etcdbrctl.log"),
 				}
-				cmd.RunCmdWithFlags()
-
+				err = cmd.RunCmdWithFlags()
+				Expect(err).ShouldNot(HaveOccurred())
 			})
-
 		})
 	})
-
 })
