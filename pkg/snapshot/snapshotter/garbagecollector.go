@@ -61,7 +61,8 @@ func (ssr *Snapshotter) GarbageCollector(stopCh <-chan bool) {
 
 				now := time.Now().UTC()
 				// Round off current time to EOD
-				eod := now.Truncate(24 * time.Hour).Add(24 * time.Hour)
+				eod := now.Truncate(24 * time.Hour).Add(23 * time.Hour).Add(59 * time.Minute).Add(59 * time.Second)
+				trackingWeek := 0
 				var (
 					deleteSnap = true
 					threshold  = 1
@@ -83,16 +84,22 @@ func (ssr *Snapshotter) GarbageCollector(stopCh <-chan bool) {
 					case delta < time.Duration(24)*time.Hour:
 						// Snapshot of current day
 						if nextSnap.CreatedOn.Hour() == now.Hour() {
-							// Snapshot of current hour
+							// Save snapshot of current hour
 							threshold = 0
 							break
 						}
 						threshold = 1
-					case delta < time.Duration(7*24)*time.Hour:
-						// Snapshot of current week
+					case delta < time.Duration(8*24)*time.Hour:
+						// Snapshot of week ending with previous day
 						threshold = 24
-					case delta < time.Duration(4*7*24)*time.Hour:
-						// Snapshot of current month
+					case delta < time.Duration(5*7*24)*time.Hour:
+						// Snapshot of month ending 8 days back (i.e., lesser than 5 weeks old)
+						if trackingWeek == 0 {
+							// As The week ends previous day, to keep track of change in week
+							// we shift eod to previous day's EOD when start tracking week
+							eod = eod.Add(-24 * time.Hour)
+							trackingWeek = 1
+						}
 						threshold = 24 * 7
 					default:
 						// Delete snapshots older than 4 weeks
@@ -107,8 +114,10 @@ func (ssr *Snapshotter) GarbageCollector(stopCh <-chan bool) {
 					weekChange := int(eod.Sub(nextSnap.CreatedOn).Hours()/(24*7)) - int(eod.Sub(snap.CreatedOn).Hours()/(24*7))
 
 					if threshold == 0 || hourChange/threshold != 0 || dayChange*24/threshold != 0 || weekChange*24*7/threshold != 0 {
+						// The change in parameter was more than the threshold, so don't delete the snapshot
 						deleteSnap = false
 					} else {
+						// The change in parameter was less than the threshold, so delete the snapshot
 						deleteSnap = true
 					}
 

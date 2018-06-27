@@ -30,7 +30,6 @@ import (
 var _ = Describe("Snapshotter", func() {
 	var (
 		endpoints                      []string
-		store                          snapstore.SnapStore
 		logger                         *logrus.Logger
 		etcdConnectionTimeout          time.Duration
 		garbageCollectionPeriodSeconds time.Duration
@@ -40,7 +39,6 @@ var _ = Describe("Snapshotter", func() {
 		caFile                         string
 		insecureTransport              bool
 		insecureSkipVerify             bool
-		err                            error
 	)
 	BeforeEach(func() {
 		endpoints = []string{"http://localhost:2379"}
@@ -50,197 +48,7 @@ var _ = Describe("Snapshotter", func() {
 		schedule = "*/1 * * * *"
 	})
 
-	Describe("creating Snapshotter", func() {
-		var ssr *Snapshotter
-		BeforeEach(func() {
-			store, err = snapstore.GetSnapstore(&snapstore.Config{Container: path.Join(outputDir, "snapshotter_1.bkp")})
-			Expect(err).ShouldNot(HaveOccurred())
-		})
-		Context("With invalid schedule", func() {
-			It("should return error", func() {
-				schedule = "65 * * * 5"
-				tlsConfig := NewTLSConfig(
-					certFile,
-					keyFile,
-					caFile,
-					insecureTransport,
-					insecureSkipVerify,
-					endpoints)
-				ssr, err = NewSnapshotter(
-					schedule,
-					store,
-					logger,
-					1,
-					10,
-					etcdConnectionTimeout,
-					garbageCollectionPeriodSeconds,
-					GarbageCollectionPolicyExponential,
-					tlsConfig)
-				Expect(err).Should(HaveOccurred())
-				Expect(ssr).Should(BeNil())
-			})
-		})
-
-		Context("With valid schedule", func() {
-			It("should create snapshotter", func() {
-				schedule = "*/5 * * * *"
-				tlsConfig := NewTLSConfig(
-					certFile,
-					keyFile,
-					caFile,
-					insecureTransport,
-					insecureSkipVerify,
-					endpoints)
-				ssr, err = NewSnapshotter(
-					schedule,
-					store,
-					logger,
-					1,
-					10,
-					etcdConnectionTimeout,
-					garbageCollectionPeriodSeconds,
-					GarbageCollectionPolicyExponential,
-					tlsConfig)
-				Expect(err).ShouldNot(HaveOccurred())
-				Expect(ssr).ShouldNot(BeNil())
-			})
-		})
-	})
-
 	Describe("running snapshotter", func() {
-		Context("with etcd not running at configured endpoint", func() {
-			It("should timeout & not take any snapshot", func() {
-				stopCh := make(chan struct{})
-				endpoints = []string{"http://localhost:5000"}
-				etcdConnectionTimeout = 5
-				maxBackups := 2
-				testTimeout := time.Duration(time.Minute * time.Duration(maxBackups+1))
-				store, err = snapstore.GetSnapstore(&snapstore.Config{Container: path.Join(outputDir, "snapshotter_2.bkp")})
-				Expect(err).ShouldNot(HaveOccurred())
-				tlsConfig := NewTLSConfig(
-					certFile,
-					keyFile,
-					caFile,
-					insecureTransport,
-					insecureSkipVerify,
-					endpoints)
-				ssr, err := NewSnapshotter(
-					schedule,
-					store,
-					logger,
-					maxBackups,
-					10,
-					etcdConnectionTimeout,
-					garbageCollectionPeriodSeconds,
-					GarbageCollectionPolicyExponential,
-					tlsConfig)
-				Expect(err).ShouldNot(HaveOccurred())
-				go func() {
-					<-time.After(testTimeout)
-					close(stopCh)
-				}()
-				err = ssr.Run(false, stopCh)
-				Expect(err).Should(HaveOccurred())
-				list, err := store.List()
-				Expect(err).ShouldNot(HaveOccurred())
-				Expect(len(list)).Should(BeZero())
-			})
-		})
-
-		Context("with etcd running at configured endpoint", func() {
-			BeforeEach(func() {
-				endpoints = []string{"http://localhost:2379"}
-			})
-			Context("with unreachable schedule", func() {
-				var ssr *Snapshotter
-				BeforeEach(func() {
-					stopCh := make(chan struct{})
-					schedule = "* * 31 2 *"
-					etcdConnectionTimeout = 5
-					maxBackups := 2
-					testTimeout := time.Duration(time.Minute * time.Duration(maxBackups+1))
-					store, err = snapstore.GetSnapstore(&snapstore.Config{Container: path.Join(outputDir, "snapshotter_3.bkp")})
-					Expect(err).ShouldNot(HaveOccurred())
-					tlsConfig := NewTLSConfig(
-						certFile,
-						keyFile,
-						caFile,
-						insecureTransport,
-						insecureSkipVerify,
-						endpoints)
-					ssr, err = NewSnapshotter(
-						schedule,
-						store,
-						logger,
-						maxBackups,
-						10,
-						etcdConnectionTimeout,
-						garbageCollectionPeriodSeconds,
-						GarbageCollectionPolicyExponential,
-						tlsConfig)
-					Expect(err).ShouldNot(HaveOccurred())
-					go func() {
-						<-time.After(testTimeout)
-						close(stopCh)
-					}()
-					err = ssr.Run(false, stopCh)
-				})
-				It("should return immediately without error and any snapshot", func() {
-					Expect(err).ShouldNot(HaveOccurred())
-				})
-				It("should not take any snapshot", func() {
-					list, err := store.List()
-					Expect(err).ShouldNot(HaveOccurred())
-					Expect(len(list)).Should(BeZero())
-				})
-			})
-			Context("with valid schedule", func() {
-				var (
-					ssr        *Snapshotter
-					maxBackups int
-				)
-				It("take periodic backups", func() {
-					stopCh := make(chan struct{})
-					endpoints = []string{"http://localhost:2379"}
-					//We will wait for maxBackups+1 times schedule period
-					schedule = "*/1 * * * *"
-					maxBackups = 2
-					testTimeout := time.Duration(time.Minute * time.Duration(maxBackups+1))
-					etcdConnectionTimeout = 5
-					store, err = snapstore.GetSnapstore(&snapstore.Config{Container: path.Join(outputDir, "snapshotter_4.bkp")})
-					Expect(err).ShouldNot(HaveOccurred())
-					tlsConfig := NewTLSConfig(
-						certFile,
-						keyFile,
-						caFile,
-						insecureTransport,
-						insecureSkipVerify,
-						endpoints)
-					ssr, err = NewSnapshotter(
-						schedule,
-						store,
-						logger,
-						maxBackups,
-						10,
-						etcdConnectionTimeout,
-						garbageCollectionPeriodSeconds,
-						GarbageCollectionPolicyExponential,
-						tlsConfig)
-					Expect(err).ShouldNot(HaveOccurred())
-					go func() {
-						<-time.After(testTimeout)
-						close(stopCh)
-					}()
-					err = ssr.Run(false, stopCh)
-					Expect(err).ShouldNot(HaveOccurred())
-					list, err := store.List()
-					Expect(err).ShouldNot(HaveOccurred())
-					Expect(len(list)).ShouldNot(BeZero())
-
-				})
-			})
-		})
-
 		Context("##GarbageCollector", func() {
 
 			It("should garbage collect exponentially", func() {
