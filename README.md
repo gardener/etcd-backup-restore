@@ -1,5 +1,6 @@
 # Etcd-Backup-Restore
 
+[![CI Build status](https://concourse.ingress.ci-2.infra.gardener.cloud/api/v1/teams/gardener/pipelines/etcd-backup-restore-master/jobs/etcd-backup-restore-master-master-head-update-job/badge)](https://concourse.ci.infra.gardener.cloud/teams/gardener/pipelines/etcd-backup-restore-master/jobs/etcd-backup-restore-master-master-head-update-job)
 [![Go Report Card](https://goreportcard.com/badge/github.com/gardener/etcd-backup-restore)](https://goreportcard.com/report/github.com/gardener/etcd-backup-restore)
 [![GoDoc](https://godoc.org/github.com/gardener/etcd-backup-restore?status.svg)](https://godoc.org/github.com/gardener/etcd-backup-restore)
 

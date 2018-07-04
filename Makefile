@@ -58,7 +58,7 @@ check:
 
 .PHONY: test
 test:
-	@.ci/test
+	@.ci/unit_test
 
 .PHONY: show-coverage
 show-coverage:
