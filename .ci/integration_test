@@ -27,6 +27,8 @@ VCS="github.com"
 ORGANIZATION="gardener"
 PROJECT="etcd-backup-restore"
 REPOSITORY=${VCS}/${ORGANIZATION}/${PROJECT}
+VERSION_FILE="$(readlink  -f "${SOURCE_PATH}/VERSION")"
+VERSION="$(cat "${VERSION_FILE}")"
 
 # The `go <cmd>` commands requires to see the target repository to be part of a
 # Go workspace. Thus, if we are not yet in a Go workspace, let's create one
@@ -48,20 +50,48 @@ fi
 ##############################################################################
 
 # Declare global variables
-KUBECONFIG=
-NAMESPACE=
+TEST_ID=
+ETCD_VER=
+ETCD_DATA_DIR=
+TEST_DIR=
 
 function setup_test_enviornment() {
-   echo "Downloading and installing kubectl..."
-    curl -LO https://storage.googleapis.com/kubernetes-release/release/v1.10.0/bin/linux/amd64/kubectl
-    chmod +x ./kubectl
-    mv ./kubectl /usr/local/bin/kubectl
-    echo "Successfully installed kubectl."
+
+    echo "Installing Ginkgo..."
+    go get -u github.com/onsi/ginkgo/ginkgo
+    echo "Successfully installed Ginkgo."
+
+    echo "Downloading and installing etcd..."
+    export ETCD_VER=v3.3.8
+    curl -L https://storage.googleapis.com/etcd/${ETCD_VER}/etcd-${ETCD_VER}-linux-amd64.tar.gz -o etcd-${ETCD_VER}-linux-amd64.tar.gz
+    tar xzvf etcd-${ETCD_VER}-linux-amd64.tar.gz 
+    chmod +x ./etcd-${ETCD_VER}-linux-amd64/etcd
+    chmod +x ./etcd-${ETCD_VER}-linux-amd64/etcdctl
+    mv ./etcd-${ETCD_VER}-linux-amd64/etcdctl ${GOBIN}/etcdctl
+    mv ./etcd-${ETCD_VER}-linux-amd64/etcd ${GOBIN}/etcd
+    rm -rf ./etcd-${ETCD_VER}-linux-amd64
+    rm -rf /tmp/etcd-${ETCD_VER}-linux-amd64.tar.gz
+    echo "Successfully installed etcd."
+
+    echo "Installing etcdbrctl..."
+    go build \
+    -v \
+    -o ${GOBIN}/etcdbrctl \
+    -ldflags "-w -X ${REPOSITORY}/pkg/version.Version=${VERSION}" \
+    main.go
+    chmod +x ${GOBIN}/etcdbrctl
+    echo "Successfully installed etcdbrctl."
+  
+    echo "Installing awscli..."
+    apt update && apt install -y python-pip
+    pip install awscli
+    echo "Successfully installed awscli."
+
 }
 
 function get_commit_id() {
   git_branch=`cat .git/HEAD| cut -f 2 -d ' '`
-  NAMESPACE=commit`cat .git/$git_branch | cut -f 1 -d ' '`
+  export TEST_ID=etcdbr-test-`cat .git/$git_branch | cut -f 1 -d ' '`
 }
 
 #############################
@@ -70,18 +100,43 @@ function get_commit_id() {
 
 function create_aws_secret() {
   echo "Fetching aws credentials from secret server..."
-  ACCESS_KEY_ID=`/cc/utils/cli.py config attribute --cfg-type aws --cfg-name etcd-backup-restore --key aws_access_key_id`
-  SECRET_ACCESS_KEY=`/cc/utils/cli.py config attribute --cfg-type aws --cfg-name etcd-backup-restore --key aws_secret_access_key`
+  ACCESS_KEY_ID=`/cc/utils/cli.py config attribute --cfg-type aws --cfg-name etcd-backup-restore --key access_key_id`
+  SECRET_ACCESS_KEY=`/cc/utils/cli.py config attribute --cfg-type aws --cfg-name etcd-backup-restore --key secret_access_key`
   REGION=`/cc/utils/cli.py config attribute --cfg-type aws --cfg-name etcd-backup-restore --key region`
   echo "Successfully fetched aws credentials from secret server."
+  
+  echo "Creating aws credentials for API access..."
+  mkdir $HOME/.aws
+  cat << EOF > $HOME/.aws/credentials
+[default]
+aws_access_key_id = $ACCESS_KEY_ID
+aws_secret_access_key = $SECRET_ACCESS_KEY
+EOF
+cat << EOF > $HOME/.aws/config
+[default]
+region = $REGION
+EOF
+  echo "Successfully created aws credentials."
+}
 
-  echo "Creating secret for etcd backup on aws..."
-  kubectl create -n $NAMESPACE secret generic secret-aws --from-literal=region=$REGION --from-literal=accessKeyID=$ACCESS_KEY_ID --from-literal=secretAccessKey=$SECRET_ACCESS_KEY
-   echo "Successfully created secret for etcd backup on aws."
+function delete_aws_secret() {
+  rm -rf $HOME/.aws
+}
+
+function create_etcd_data_directory() {
+  TEST_DIR='$PWD/test/e2e_test_data'
+  export ETCD_DATA_DIR='$TEST_DIR/etcd-data'
+  mkdir -p $ETCD_DATA_DIR
+}
+
+function create_s3_bucket(){
+    aws s3api create-bucket --bucket $TEST_ID --region $REGION --create-bucket-configuration LocationConstraint=$REGION
 }
 
 function setup-aws-infrastructure() {
   create_aws_secret
+  create_s3_bucket
+  create_etcd_data_directory
 }
 
 #############################
@@ -107,37 +162,38 @@ echo "Creating Openstack secret"
 
 ##############################################################################
 function setup_test_cluster() {
-  # create namespace unique to commit
-  echo "Creating namespace specific for current test..."
+  echo "Creating bucket specific for current test..."
   get_commit_id
-  kubectl create namespace $NAMESPACE
-  echo "Successfully created namespace for current test for commit: $NAMESPACE"
-  # setup secrets
   setup-aws-infrastructure
   create_gcp_secret
   create_azure_secret
   create_openstack_secret
-  #test_aws_integration
-
 }
 
-function delete_test_cluster(){
-  kubectl delete namespace $NAMESPACE
+function cleanup_test_environment() {
+  aws s3 rb s3://${TEST_ID} --force
+  delete_aws_secret
 }
 
 ###############################################################################
 
 # Get kubeconfig from secret server
-echo "Fetching kubeconfig from secret server ..."
-mkdir -p dev
-export KUBECONFIG=./dev/test-cluster-kubeconfig.yaml 
-/cc/utils/cli.py config attribute --cfg-type kubernetes --cfg-name etcd-backup-restore --key kubeconfig > $KUBECONFIG
-echo "Successfully fetched kubeconfig from secret server at $KUBECONFIG."
-
 setup_test_enviornment
 echo "Setting up test cluster..."
 setup_test_cluster
 
-echo "Deleting test enviornmant..."
-delete_test_cluster
-echo "Successfully completed all tests. Cheers!!."
+echo "Starting integration tests..."
+cd test/e2e/integration 
+
+set +e
+ginkgo
+TEST_RESULT=$?
+set -e
+
+echo "Done with integration tests."
+
+echo "Deleting test enviornment..."
+cleanup_test_environment
+echo "Successfully completed all tests."
+
+exit $TEST_RESULT

@@ -76,12 +76,6 @@
   revision = "3a771d992973f24aa725d07868b467d1ddfceafb"
 
 [[projects]]
-  name = "github.com/bgentry/speakeasy"
-  packages = ["."]
-  revision = "4aabc24848ce5fd31929f7d1e4ea74d3709c14cd"
-  version = "v0.1.0"
-
-[[projects]]
   name = "github.com/coreos/bbolt"
   packages = ["."]
   revision = "48ea1b39c25fc1bab3506fbc712ecbaa842c4d2d"
@@ -133,7 +127,6 @@
     "pkg/crc",
     "pkg/debugutil",
     "pkg/fileutil",
-    "pkg/flags",
     "pkg/httputil",
     "pkg/idutil",
     "pkg/ioutil",
@@ -159,8 +152,8 @@
     "wal",
     "wal/walpb"
   ]
-  revision = "e348b1aedd9167360c466ae98f7343d3e22281f8"
-  version = "v3.3.3"
+  revision = "33245c6b5b49130ca99280408fadfab01aac0e48"
+  version = "v3.3.8"
 
 [[projects]]
   name = "github.com/coreos/go-semver"
@@ -185,12 +178,6 @@
   packages = ["."]
   revision = "06ea1031745cb8b3dab3f6a236daf2b0aa468b7e"
   version = "v3.2.0"
-
-[[projects]]
-  branch = "master"
-  name = "github.com/dustin/go-humanize"
-  packages = ["."]
-  revision = "02af3965c54e8cacf948b97fef38925c4120652c"
 
 [[projects]]
   name = "github.com/ghodss/yaml"
@@ -638,6 +625,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "a2b65f8e6929b544db2aa0e47754f07c7c247df6d2aeab842836f0217a512cf3"
+  inputs-digest = "e5e4ffa28fee31320f63ffa0245c193be2548c816df57f941ba6eccf06d40117"
   solver-name = "gps-cdcl"
   solver-version = 1
