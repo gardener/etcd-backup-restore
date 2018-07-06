@@ -188,14 +188,12 @@ The dependencies are installed into the `vendor` folder which **should be added*
 
 ## Testing
 
-We have created `make` target `verify` which will internally run different rule like `fmt` for formatting, `lint` for linting check and most importantly `test` which will check the code against predefined tests. Although, currently there are not enough test cases written to cover entire code, hence one should check for failure cases manually before raising pull request. We will eventually add the test cases for complete code coverage.
+We have created `make` target `verify` which will internally run different rule like `fmt` for formatting, `lint` for linting check and most importantly `test` which will check the code against predefined unit tests. Although, currently there are not enough test cases written to cover entire code, hence one should check for failure cases manually before raising pull request. We will eventually add the test cases for complete code coverage.
 
 ```sh
 make verify
 ```
 
 By default, we try to run test in parallel without computing code coverage. To get the code coverage, you will have to set environment variable `COVER` to `true`. This will log the code coverage percentage at the end of test logs. Also, all cover profile files will accumulated under `test/output/coverprofile.out` directory. You can visualize exact code coverage using `make show-coverage`.
-
-Similarly, we use environment variable `INTEGRATION` to determine whether to execute integration test or not. By default, integration tests are executed. So, to disable integration test locally, you will have to set `INTEGRATION=false`.
 
 [etcd]: https://github.com/coreos/etcd

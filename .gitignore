@@ -16,6 +16,7 @@
 # Build Binaries
 bin
 test/output
+test/e2e_test_data
 default.bkp
 default.etcd
 

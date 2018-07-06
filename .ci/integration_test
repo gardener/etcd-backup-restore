@@ -70,7 +70,7 @@ function setup_test_enviornment() {
     mv ./etcd-${ETCD_VER}-linux-amd64/etcdctl ${GOBIN}/etcdctl
     mv ./etcd-${ETCD_VER}-linux-amd64/etcd ${GOBIN}/etcd
     rm -rf ./etcd-${ETCD_VER}-linux-amd64
-    rm -rf /tmp/etcd-${ETCD_VER}-linux-amd64.tar.gz
+    rm -rf etcd-${ETCD_VER}-linux-amd64.tar.gz
     echo "Successfully installed etcd."
 
     echo "Installing etcdbrctl..."
@@ -89,11 +89,17 @@ function setup_test_enviornment() {
 
 }
 
-function get_commit_id() {
-  git_branch=`cat .git/HEAD| cut -f 2 -d ' '`
-  export TEST_ID=etcdbr-test-`cat .git/$git_branch | cut -f 1 -d ' '`
+function get_test_id() {
+  git_commit=`git show -s --format="%H"`
+  export TEST_ID=etcdbr-test-${git_commit}
+  echo "Test id: ${TEST_ID}"
 }
 
+function create_etcd_data_directory() {
+  export TEST_DIR=${PWD}/test/e2e_test_data
+  export ETCD_DATA_DIR=${TEST_DIR}/etcd-data
+  mkdir -p ${ETCD_DATA_DIR}
+}
 #############################
 #        AWS Setup          #
 #############################
@@ -106,13 +112,13 @@ function create_aws_secret() {
   echo "Successfully fetched aws credentials from secret server."
   
   echo "Creating aws credentials for API access..."
-  mkdir $HOME/.aws
-  cat << EOF > $HOME/.aws/credentials
+  mkdir ${HOME}/.aws
+  cat << EOF > ${HOME}/.aws/credentials
 [default]
-aws_access_key_id = $ACCESS_KEY_ID
-aws_secret_access_key = $SECRET_ACCESS_KEY
+aws_access_key_id = ${ACCESS_KEY_ID}
+aws_secret_access_key = ${SECRET_ACCESS_KEY}
 EOF
-cat << EOF > $HOME/.aws/config
+cat << EOF > ${HOME}/.aws/config
 [default]
 region = $REGION
 EOF
@@ -120,23 +126,23 @@ EOF
 }
 
 function delete_aws_secret() {
-  rm -rf $HOME/.aws
+  rm -rf ${HOME}/.aws
 }
 
-function create_etcd_data_directory() {
-  TEST_DIR='$PWD/test/e2e_test_data'
-  export ETCD_DATA_DIR='$TEST_DIR/etcd-data'
-  mkdir -p $ETCD_DATA_DIR
-}
-
-function create_s3_bucket(){
-    aws s3api create-bucket --bucket $TEST_ID --region $REGION --create-bucket-configuration LocationConstraint=$REGION
+function create_s3_bucket() {
+    aws s3api create-bucket --bucket ${TEST_ID} --region ${REGION} --create-bucket-configuration LocationConstraint=${REGION}
 }
 
 function setup-aws-infrastructure() {
+  echo "Setting up AWS infrastructure..."
   create_aws_secret
   create_s3_bucket
-  create_etcd_data_directory
+  echo "AWS infrastructure setup completed."
+}
+
+function cleanup-aws-infrastructure() {
+  aws s3 rb s3://${TEST_ID} --force
+  delete_aws_secret
 }
 
 #############################
@@ -162,22 +168,20 @@ echo "Creating Openstack secret"
 
 ##############################################################################
 function setup_test_cluster() {
-  echo "Creating bucket specific for current test..."
-  get_commit_id
+  get_test_id
   setup-aws-infrastructure
   create_gcp_secret
   create_azure_secret
   create_openstack_secret
+  create_etcd_data_directory
 }
 
 function cleanup_test_environment() {
-  aws s3 rb s3://${TEST_ID} --force
-  delete_aws_secret
+  cleanup-aws-infrastructure
 }
 
 ###############################################################################
 
-# Get kubeconfig from secret server
 setup_test_enviornment
 echo "Setting up test cluster..."
 setup_test_cluster
