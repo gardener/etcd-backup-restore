@@ -47,6 +47,7 @@ func startSnapshotter() (*Cmd, *chan error) {
 		"snapshot",
 		"--max-backups=1",
 		"--garbage-collection-policy=LimitBased",
+		"--garbage-collection-period-seconds=30",
 		"--schedule=*/1 * * * *",
 		"--storage-provider=S3",
 		"--store-container=" + os.Getenv("TEST_ID"),
@@ -120,18 +121,12 @@ var _ = Describe("CloudBackup", func() {
 		})
 
 		Context("taken at 1 minute interval", func() {
-			It("should take periodic backups and garbage collect backups over maxBackups configured", func() {
+			It("should take periodic backups and limit based garbage collect backups over maxBackups configured", func() {
 				snaplist, err := store.List()
 				Expect(snaplist).Should(BeEmpty())
 				Expect(err).ShouldNot(HaveOccurred())
 
-				time.Sleep(1 * time.Minute)
-
-				snaplist, err = store.List()
-				Expect(err).ShouldNot(HaveOccurred())
-				Expect(len(snaplist)).To(Equal(1))
-
-				time.Sleep(1 * time.Minute)
+				time.Sleep(160 * time.Second)
 
 				snaplist, err = store.List()
 				Expect(err).ShouldNot(HaveOccurred())
