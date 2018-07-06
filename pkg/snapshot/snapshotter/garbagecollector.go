@@ -58,14 +58,13 @@ func (ssr *Snapshotter) GarbageCollector(stopCh <-chan bool) {
 				// Keep only the last 24 hourly backups and of all other backups only the last backup in a day.
 				// Keep only the last 7 daily backups and of all other backups only the last backup in a week.
 				// Keep only the last 4 weekly backups.
-
-				now := time.Now().UTC()
-				// Round off current time to EOD
-				eod := now.Truncate(24 * time.Hour).Add(23 * time.Hour).Add(59 * time.Minute).Add(59 * time.Second)
-				trackingWeek := 0
 				var (
-					deleteSnap = true
-					threshold  = 1
+					deleteSnap bool
+					threshold  int
+					now        = time.Now().UTC()
+					// Round off current time to EOD
+					eod          = now.Truncate(24 * time.Hour).Add(23 * time.Hour).Add(59 * time.Minute).Add(59 * time.Second)
+					trackingWeek = 0
 				)
 				// Here we start processing from second last snapstream, because we want to keep last snapstream
 				// including delta snapshots in it.

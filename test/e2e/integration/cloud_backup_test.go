@@ -2,6 +2,7 @@ package integration_test
 
 import (
 	"bufio"
+	"fmt"
 	"os"
 	"path"
 	"path/filepath"
@@ -130,7 +131,16 @@ var _ = Describe("CloudBackup", func() {
 
 				snaplist, err = store.List()
 				Expect(err).ShouldNot(HaveOccurred())
-				Expect(len(snaplist)).To(Equal(1))
+				count := 0
+				expectedCount := 1
+				for _, snap := range snaplist {
+					if snap.Kind == snapstore.SnapshotKindFull {
+						count++
+					}
+				}
+				if count != expectedCount {
+					Fail(fmt.Sprintf("number of full snapshots found does not match expected count: %d", expectedCount))
+				}
 			})
 		})
 
