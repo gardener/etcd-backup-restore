@@ -89,12 +89,9 @@ func (s *GCSSnapStore) List() (SnapList, error) {
 	it := s.client.Bucket(s.bucket).Objects(s.ctx, &storage.Query{Prefix: s.prefix})
 
 	var attrs []*storage.ObjectAttrs
-	var err error
 	for {
-		var attr *storage.ObjectAttrs
-		attr, err = it.Next()
+		attr, err := it.Next()
 		if err == iterator.Done {
-			err = nil
 			break
 		}
 		if err != nil {
