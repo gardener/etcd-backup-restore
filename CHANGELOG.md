@@ -1,10 +1,29 @@
 # Changelog
 
-## [Unreleased]
+## Unreleased
 
 ### Added
 
-- Incremental backup of etcd, where full snapshot is taken first and then we apply watch and persist the logs accumulated over certain period to snapshot store. Restore process, restores from the full snapshot, start the embedded etcd and apply the logged events one by one.
+- Integration test for AWS:
+  - Covers restoration, data directory validation and snpashotter code.
+
+## 0.3.0 - 2018-06-26
+
+Docker Image: __eu.gcr.io/gardener-project/gardener/etcdbrctl:0.3.0__
+
+### Added
+
+- Incremental Backup-restore (https://github.com/gardener/etcd-backup-restore/pull/29):
+  - In backup, full snapshot is taken first and then we apply watch and persist the logs accumulated over certain period to snapshot store. 
+  - Restore process, restores from the full snapshot, start the embedded etcd and apply the logged events one by one.
+  - Checksum is append in delta snapshot for verification.
+
+- Exponential garbage collection (https://github.com/gardener/etcd-backup-restore/pull/31):
+  - Introduces new argument: 
+  - Keep only the last 24 hourly backups and of all other backups only the last backup in a day
+  - Keep only the last 7 daily backups and of all other backups only the last backup in a week
+  - Keep only the last 4 weekly backups
+  - Unit tests are added for same
  
 - Initial setup for Integration test for AWS
 
