@@ -131,24 +131,53 @@ For `Openstack Swift`, `OS_USERNAME`, `OS_PASSWORD`, `OS_AUTH_URL`, `OS_TENANT_I
 
 ### Taking scheduled snapshot
 
-`etcd` should already be running. One can apply standard cron format scheduling for regular backup of etcd.
+
+
+`etcd` should already be running. One can apply standard cron format scheduling for regular backup of etcd. The cron schedule is used to take full backups. The delta snapshots are taken at regular intervals in the period in between full snapshots as indicated by the `delta-snapshot-period-seconds` flag. The default for the same is 10 seconds. 
+
+etcd-backup-restore has two garbage collection policies to collect existing backups from the cloud bucket. The flag `garbage-collection-policy` is used to indicate the correct garbage collection policy.
+1. `Exponential`
+1. `LimitBased`
+
+If using `LimitBased` policy, the `max-backups` flag should be provided to indicate the number of recent backups to persist at each garbage collection cycle.
 
 ```sh
-$ ./bin/etcdbrctl snapshot --storage-provider="S3" --etcd-endpoints http://localhost:2379 --max-backups=7 --schedule "* */1 * * *" --store-container="etcd-backup"
+$ ./bin/etcdbrctl snapshot --storage-provider="S3" --etcd-endpoints http://localhost:2379 --schedule "*/1 * * * *" --store-container="etcd-backup" --delta-snapshot-period-seconds=10 --max-backups=10 --garbage-collection-policy='LimitBased'
 INFO[0000] Validating schedule...
-INFO[0000] Will take next snapshot at time: 2018-03-27 17:36:00 +0530 IST
-INFO[0010] Taking scheduled snapshot for time: 2018-03-27 17:36:00.004816695 +0530 IST
-INFO[0010] Successfully opened snapshot reader on etcd
-INFO[0010] Successfully saved full snapshot at: Full-00000000-00040010-1522152360
-INFO[0010] Executing garbage collection...
-INFO[0010] Will take next snapshot at time: 2018-03-27 17:37:00 +0530 IST
+INFO[0000] Job attempt: 1
+INFO[0000] Taking initial full snapshot at time: 2018-07-09 12:09:04.3567024 +0000 UTC
+INFO[0000] Successfully opened snapshot reader on etcd
+INFO[0000] Successfully saved full snapshot at: Backup-1531138145/Full-00000000-00000001-1531138145
+INFO[0000] Will take next full snapshot at time: 2018-07-09 12:10:00 +0000 UTC
+INFO[0000] Applied watch on etcd from revision: 00000002
+INFO[0000] No events received to save snapshot.
 ```
 
-The command mentioned above takes hourly snapshots and pushs it to S3 bucket named "etcd-backup". It is configured to keep only last 7 backups in bucket. 
+The command mentioned above takes hourly snapshots and pushs it to S3 bucket named "etcd-backup". It is configured to keep only last 10 backups in bucket. 
+
+`Exponential` policy stores the snapshots in a condensed manner as mentioned below:
+- All full backups and delta backups for the previous hour.
+- Latest full snapshot of each previous hour for the day.
+- Latest full snapshot of each previous day for 7 days.
+- Latest full snapshot of the previous 4 weeks.
+
+```sh
+$ ./bin/etcdbrctl snapshot --storage-provider="S3" --etcd-endpoints http://localhost:2379 --schedule "*/1 * * * *" --store-container="etcd-backup" --delta-snapshot-period-seconds=10 --garbage-collection-policy='Exponential'
+INFO[0000] Validating schedule...
+INFO[0000] Job attempt: 1
+INFO[0000] Taking initial full snapshot at time: 2018-07-09 12:09:04.3567024 +0000 UTC
+INFO[0000] Successfully opened snapshot reader on etcd
+INFO[0000] Successfully saved full snapshot at: Backup-1531138145/Full-00000000-00000001-1531138145
+INFO[0000] Will take next full snapshot at time: 2018-07-09 12:10:00 +0000 UTC
+INFO[0000] Applied watch on etcd from revision: 00000002
+INFO[0000] No events received to save snapshot.
+```
+
+The command mentioned above stores etcd snapshots as per the exponential policy mentioned above. 
 
 ### Etcd data directory initialization
 
-Sub-command `initialize` does the task of data directory validation. If the data directory is found to be corrupt, the controller will restore it from the latest snapshot in the cloud store.
+Sub-command `initialize` does the task of data directory validation. If the data directory is found to be corrupt, the controller will restore it from the latest snapshot in the cloud store. It restores the full snapshot first and then incrementally applies the delta snapshots.
 
 ```sh
 $ ./bin/etcdbrctl initialize --storage-provider="S3" --store-container="etcd-backup" --data-dir="default.etcd"
