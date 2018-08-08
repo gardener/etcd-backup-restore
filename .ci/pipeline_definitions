@@ -30,7 +30,9 @@ etcd-backup-restore:
         output_dir: 'binary'
 
   variants:
-    head-update: ~
+    head-update:
+      traits:
+        draft_release: ~
     pull-request:
       traits:
         pull-request: ~
