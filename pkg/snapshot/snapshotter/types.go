@@ -15,6 +15,7 @@
 package snapshotter
 
 import (
+	"context"
 	"sync"
 	"time"
 
@@ -31,23 +32,41 @@ const (
 	GarbageCollectionPolicyLimitBased = "LimitBased"
 )
 
+// State denotes the state the snapshotter would be in.
+type State int
+
+const (
+	// SnapshotterInactive is set when the snapshotter has not started taking snapshots.
+	SnapshotterInactive State = 0
+	// SnapshotterActive is set when the snapshotter has started taking snapshots.
+	SnapshotterActive State = 1
+)
+
 // Snapshotter is a struct for etcd snapshot taker
 type Snapshotter struct {
-	logger                         *logrus.Logger
+	logger             *logrus.Logger
+	prevSnapshot       *snapstore.Snapshot
+	config             *Config
+	fullSnapshotTimer  *time.Timer
+	deltaSnapshotTimer *time.Timer
+	events             []*event
+	watchCh            clientv3.WatchChan
+	watchCtx           context.Context
+	cancelWatch        context.CancelFunc
+	SsrStateMutex      *sync.Mutex
+	SsrState           State
+}
+
+// Config stores the configuration parameters for the snapshotter.
+type Config struct {
 	schedule                       cron.Schedule
 	store                          snapstore.SnapStore
 	maxBackups                     int
+	deltaSnapshotIntervalSeconds   int
 	etcdConnectionTimeout          time.Duration
 	garbageCollectionPeriodSeconds time.Duration
 	garbageCollectionPolicy        string
 	tlsConfig                      *TLSConfig
-	deltaSnapshotIntervalSeconds   int
-	deltaEventCount                int
-	prevSnapshot                   *snapstore.Snapshot
-	wg                             *sync.WaitGroup
-	fullSnapshotCh                 chan time.Time
-	deltaStopCh                    chan bool
-	isWatchActive                  bool
 }
 
 // TLSConfig holds cert information and settings for TLS.

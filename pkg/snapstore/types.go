@@ -53,7 +53,7 @@ const (
 	// SnapshotKindDelta is constant for delta snapshot kind
 	SnapshotKindDelta = "Incr"
 	// ChunkUploadTimeout is timeout for uploading chunk
-	chunkUploadTimeout = 30 * time.Second
+	chunkUploadTimeout = 180 * time.Second
 )
 
 // Snapshot structure represents the metadata of snapshot

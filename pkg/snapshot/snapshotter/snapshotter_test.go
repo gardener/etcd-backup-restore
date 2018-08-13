@@ -51,7 +51,6 @@ var _ = Describe("Snapshotter", func() {
 	})
 
 	Describe("creating Snapshotter", func() {
-		var ssr *Snapshotter
 		BeforeEach(func() {
 			store, err = snapstore.GetSnapstore(&snapstore.Config{Container: path.Join(outputDir, "snapshotter_1.bkp")})
 			Expect(err).ShouldNot(HaveOccurred())
@@ -66,10 +65,9 @@ var _ = Describe("Snapshotter", func() {
 					insecureTransport,
 					insecureSkipVerify,
 					endpoints)
-				ssr, err = NewSnapshotter(
+				_, err := NewSnapshotterConfig(
 					schedule,
 					store,
-					logger,
 					1,
 					10,
 					etcdConnectionTimeout,
@@ -77,12 +75,11 @@ var _ = Describe("Snapshotter", func() {
 					GarbageCollectionPolicyExponential,
 					tlsConfig)
 				Expect(err).Should(HaveOccurred())
-				Expect(ssr).Should(BeNil())
 			})
 		})
 
 		Context("With valid schedule", func() {
-			It("should create snapshotter", func() {
+			It("should create snapshotter config", func() {
 				schedule = "*/5 * * * *"
 				tlsConfig := NewTLSConfig(
 					certFile,
@@ -91,10 +88,9 @@ var _ = Describe("Snapshotter", func() {
 					insecureTransport,
 					insecureSkipVerify,
 					endpoints)
-				ssr, err = NewSnapshotter(
+				_, err := NewSnapshotterConfig(
 					schedule,
 					store,
-					logger,
 					1,
 					10,
 					etcdConnectionTimeout,
@@ -102,7 +98,6 @@ var _ = Describe("Snapshotter", func() {
 					GarbageCollectionPolicyExponential,
 					tlsConfig)
 				Expect(err).ShouldNot(HaveOccurred())
-				Expect(ssr).ShouldNot(BeNil())
 			})
 		})
 	})
@@ -124,10 +119,9 @@ var _ = Describe("Snapshotter", func() {
 					insecureTransport,
 					insecureSkipVerify,
 					endpoints)
-				ssr, err := NewSnapshotter(
+				snapshotterConfig, err := NewSnapshotterConfig(
 					schedule,
 					store,
-					logger,
 					maxBackups,
 					10,
 					etcdConnectionTimeout,
@@ -135,11 +129,16 @@ var _ = Describe("Snapshotter", func() {
 					GarbageCollectionPolicyExponential,
 					tlsConfig)
 				Expect(err).ShouldNot(HaveOccurred())
+
+				ssr := NewSnapshotter(
+					logger,
+					snapshotterConfig)
+
 				go func() {
 					<-time.After(testTimeout)
 					close(stopCh)
 				}()
-				err = ssr.Run(false, stopCh)
+				err = ssr.Run(stopCh, true)
 				Expect(err).Should(HaveOccurred())
 				list, err := store.List()
 				Expect(err).ShouldNot(HaveOccurred())
@@ -151,6 +150,7 @@ var _ = Describe("Snapshotter", func() {
 			BeforeEach(func() {
 				endpoints = []string{"http://localhost:2379"}
 			})
+
 			Context("with unreachable schedule", func() {
 				var ssr *Snapshotter
 				BeforeEach(func() {
@@ -168,10 +168,9 @@ var _ = Describe("Snapshotter", func() {
 						insecureTransport,
 						insecureSkipVerify,
 						endpoints)
-					ssr, err = NewSnapshotter(
+					snapshotterConfig, err := NewSnapshotterConfig(
 						schedule,
 						store,
-						logger,
 						maxBackups,
 						10,
 						etcdConnectionTimeout,
@@ -179,21 +178,31 @@ var _ = Describe("Snapshotter", func() {
 						GarbageCollectionPolicyExponential,
 						tlsConfig)
 					Expect(err).ShouldNot(HaveOccurred())
+
+					ssr = NewSnapshotter(
+						logger,
+						snapshotterConfig)
 					go func() {
 						<-time.After(testTimeout)
 						close(stopCh)
 					}()
-					err = ssr.Run(false, stopCh)
+					err = ssr.Run(stopCh, true)
+					Expect(err).Should(HaveOccurred())
 				})
-				It("should return immediately without error and any snapshot", func() {
-					Expect(err).ShouldNot(HaveOccurred())
-				})
+
 				It("should not take any snapshot", func() {
 					list, err := store.List()
+					count := 0
+					for _, snap := range list {
+						if snap.Kind == snapstore.SnapshotKindFull {
+							count++
+						}
+					}
 					Expect(err).ShouldNot(HaveOccurred())
-					Expect(len(list)).Should(BeZero())
+					Expect(count).Should(Equal(1))
 				})
 			})
+
 			Context("with valid schedule", func() {
 				var (
 					ssr        *Snapshotter
@@ -216,10 +225,9 @@ var _ = Describe("Snapshotter", func() {
 						insecureTransport,
 						insecureSkipVerify,
 						endpoints)
-					ssr, err = NewSnapshotter(
+					snapshotterConfig, err := NewSnapshotterConfig(
 						schedule,
 						store,
-						logger,
 						maxBackups,
 						10,
 						etcdConnectionTimeout,
@@ -227,22 +235,25 @@ var _ = Describe("Snapshotter", func() {
 						GarbageCollectionPolicyExponential,
 						tlsConfig)
 					Expect(err).ShouldNot(HaveOccurred())
+
+					ssr = NewSnapshotter(
+						logger,
+						snapshotterConfig)
+
 					go func() {
 						<-time.After(testTimeout)
 						close(stopCh)
 					}()
-					err = ssr.Run(false, stopCh)
+					err = ssr.Run(stopCh, true)
 					Expect(err).ShouldNot(HaveOccurred())
 					list, err := store.List()
 					Expect(err).ShouldNot(HaveOccurred())
 					Expect(len(list)).ShouldNot(BeZero())
-
 				})
 			})
 		})
 
 		Context("##GarbageCollector", func() {
-
 			It("should garbage collect exponentially", func() {
 				fmt.Println("creating expected output")
 				endpoints = []string{"http://localhost:2379"}
@@ -359,23 +370,27 @@ var _ = Describe("Snapshotter", func() {
 					insecureTransport,
 					insecureSkipVerify,
 					endpoints)
-				ssr, err := NewSnapshotter(
+				snapshotterConfig, err := NewSnapshotterConfig(
 					schedule,
 					store,
-					logger,
 					maxBackups,
 					10,
 					etcdConnectionTimeout,
 					garbageCollectionPeriodSeconds,
 					GarbageCollectionPolicyExponential,
 					tlsConfig)
-				gcStopCh := make(chan bool)
 				Expect(err).ShouldNot(HaveOccurred())
+				ssr := NewSnapshotter(
+					logger,
+					snapshotterConfig)
+
+				gcStopCh := make(chan struct{})
+
 				go func() {
 					<-time.After(testTimeout)
 					close(gcStopCh)
 				}()
-				ssr.GarbageCollector(gcStopCh)
+				ssr.RunGarbageCollector(gcStopCh)
 
 				list, err := store.List()
 				Expect(err).ShouldNot(HaveOccurred())
@@ -405,23 +420,27 @@ var _ = Describe("Snapshotter", func() {
 					insecureTransport,
 					insecureSkipVerify,
 					endpoints)
-				ssr, err := NewSnapshotter(
+				snapshotterConfig, err := NewSnapshotterConfig(
 					schedule,
 					store,
-					logger,
 					maxBackups,
 					10,
 					etcdConnectionTimeout,
 					garbageCollectionPeriodSeconds,
 					GarbageCollectionPolicyLimitBased,
 					tlsConfig)
-				gcStopCh := make(chan bool)
 				Expect(err).ShouldNot(HaveOccurred())
+
+				ssr := NewSnapshotter(
+					logger,
+					snapshotterConfig)
+
+				gcStopCh := make(chan struct{})
 				go func() {
 					<-time.After(testTimeout)
 					close(gcStopCh)
 				}()
-				ssr.GarbageCollector(gcStopCh)
+				ssr.RunGarbageCollector(gcStopCh)
 
 				list, err := store.List()
 				Expect(err).ShouldNot(HaveOccurred())
@@ -434,9 +453,7 @@ var _ = Describe("Snapshotter", func() {
 							incr = true
 						} else {
 							fullSnapCount++
-							if fullSnapCount > maxBackups {
-								Fail("There should be only %d full snapshots", maxBackups)
-							}
+							Expect(fullSnapCount).Should(BeNumerically("<=", maxBackups))
 						}
 					} else {
 						Expect(snap.Kind).Should(Equal(snapstore.SnapshotKindDelta))

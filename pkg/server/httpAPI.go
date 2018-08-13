@@ -19,6 +19,7 @@ import (
 	"net/http"
 	"net/http/pprof"
 	"sync"
+	"sync/atomic"
 
 	"github.com/gardener/etcd-backup-restore/pkg/initializer"
 	"github.com/sirupsen/logrus"
@@ -31,6 +32,26 @@ const (
 	initializationStatusFailed     = "Failed"
 )
 
+var emptyStruct struct{}
+
+// HandlerAckState denotes the state the handler would be in after sending a stop request to the snapshotter.
+type HandlerAckState int32
+
+const (
+	// HandlerAckDone is set when handler has been acknowledged of snapshotter termination.
+	HandlerAckDone uint32 = 0
+	// HandlerAckWaiting is set when handler starts waiting of snapshotter termination.
+	HandlerAckWaiting uint32 = 1
+)
+
+// HandlerRequest represents the type of request handler makes to the snapshotter.
+type HandlerRequest int
+
+const (
+	// HandlerSsrAbort is the HandlerRequest to the snapshotter to terminate the snapshot process.
+	HandlerSsrAbort HandlerRequest = 0
+)
+
 // HTTPHandler is implementation to handle HTTP API exposed by server
 type HTTPHandler struct {
 	EtcdInitializer           initializer.EtcdInitializer
@@ -38,10 +59,13 @@ type HTTPHandler struct {
 	server                    *http.Server
 	Logger                    *logrus.Logger
 	initializationStatusMutex sync.Mutex
+	AckState                  uint32
 	initializationStatus      string
 	Status                    int
 	StopCh                    chan struct{}
 	EnableProfiling           bool
+	ReqCh                     chan struct{}
+	AckCh                     chan struct{}
 }
 
 // RegisterHandler registers the handler for different requests
@@ -110,8 +134,11 @@ func (h *HTTPHandler) serveInitialize(rw http.ResponseWriter, req *http.Request)
 		h.initializationStatus = initializationStatusProgress
 		go func() {
 			// This is needed to stop snapshotter.
-			var s struct{}
-			h.StopCh <- s
+			atomic.StoreUint32(&h.AckState, HandlerAckWaiting)
+			h.Logger.Info("Changed handler state.")
+			h.ReqCh <- emptyStruct
+			h.Logger.Info("Waiting for acknowledgment...")
+			<-h.AckCh
 			err := h.EtcdInitializer.Initialize()
 			h.initializationStatusMutex.Lock()
 			defer h.initializationStatusMutex.Unlock()
@@ -119,6 +146,8 @@ func (h *HTTPHandler) serveInitialize(rw http.ResponseWriter, req *http.Request)
 				h.Logger.Errorf("Failed initialization: %v", err)
 				rw.WriteHeader(http.StatusInternalServerError)
 				h.initializationStatus = initializationStatusFailed
+				// Optional: Event if we send start signal it wi
+				// h.ReqCh <- HandlerSsrStart
 				return
 			}
 			h.Logger.Infof("Successfully initialized data directory \"%s\" for etcd.", h.EtcdInitializer.Validator.Config.DataDir)

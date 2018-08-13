@@ -58,7 +58,7 @@ func NewRestoreCommand(stopCh <-chan struct{}) *cobra.Command {
 			if err != nil {
 				logger.Fatalf("failed to create snapstore from configured storage provider: %v", err)
 			}
-			logger.Infoln("Finding latest set of snapshot to recover from...")
+			logger.Info("Finding latest set of snapshot to recover from...")
 			baseSnap, deltaSnapList, err := miscellaneous.GetLatestFullSnapshotAndDeltaSnapList(store)
 			if err != nil {
 				logger.Fatalf("failed to get latest snapshot: %v", err)
@@ -86,7 +86,7 @@ func NewRestoreCommand(stopCh <-chan struct{}) *cobra.Command {
 				logger.Fatalf("Failed to restore snapshot: %v", err)
 				return
 			}
-			logger.Infoln("Successfully restored the etcd data directory.")
+			logger.Info("Successfully restored the etcd data directory.")
 		},
 	}
 
