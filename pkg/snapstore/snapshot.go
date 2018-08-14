@@ -19,6 +19,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/sirupsen/logrus"
 )
 
 // GenerateSnapshotName preapres the snapshot name from metadata
@@ -39,8 +41,12 @@ func ParseSnapshot(snapPath string) (*Snapshot, error) {
 	if len(tokens) <= 1 {
 		return nil, fmt.Errorf("invalid snapshot name: %s", snapPath)
 	}
-	snapName := tokens[len(tokens)-1]
-	snapDir := snapPath[:len(snapPath)-len(snapName)-1]
+	logrus.Infof("no of tokens:=%d", len(tokens))
+	snapName := tokens[1]
+	snapDir := tokens[0]
+	if len(tokens) != 2 {
+		return nil, fmt.Errorf("not manifest object")
+	}
 	tokens = strings.Split(snapName, "-")
 	if len(tokens) != 4 {
 		return nil, fmt.Errorf("invalid snapshot name: %s", snapName)

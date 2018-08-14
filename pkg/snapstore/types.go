@@ -35,6 +35,7 @@ type SnapStore interface {
 }
 
 const (
+	minChunkSize int64 = 100 * (1 << 20) //100 MiB
 	// SnapstoreProviderLocal is constant for local disk storage provider
 	SnapstoreProviderLocal = "Local"
 	// SnapstoreProviderS3 is constant for aws S3 storage provider
@@ -73,4 +74,9 @@ type Config struct {
 	Container string
 	// Prefix holds the prefix or directory under StorageContainer under which snapshot will be stored
 	Prefix string
+}
+
+type chunkUploadError struct {
+	err    error
+	offset int64
 }
