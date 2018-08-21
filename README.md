@@ -95,7 +95,7 @@ First, you need to create a target folder structure before cloning and building 
 
 mkdir -p ~/go/src/github.com/gardener
 cd ~/go/src/github.com/gardener
-git clone git@github.com:gardener/etcd-backup-restore.git
+git clone https://github.com/gardener/etcd-backup-restore.git
 cd etcd-backup-restore
 ```
 
