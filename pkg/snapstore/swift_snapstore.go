@@ -43,7 +43,7 @@ type SwiftSnapStore struct {
 }
 
 const (
-	maxNoOfChunk int64 = 1000 //Default configuration in swift installation
+	swiftNoOfChunk int64 = 1000 //Default configuration in swift installation
 )
 
 // NewSwiftSnapStore create new SwiftSnapStore from shared configuration with specified bucket
@@ -97,7 +97,7 @@ func (s *SwiftSnapStore) Save(snap Snapshot, r io.Reader) error {
 		wg          = &sync.WaitGroup{}
 		snapshotErr []chunkUploadError
 		errCh       = make(chan chunkUploadError)
-		chunkSize   = int64(math.Max(float64(minChunkSize), float64(size/maxNoOfChunk)))
+		chunkSize   = int64(math.Max(float64(minChunkSize), float64(size/swiftNoOfChunk)))
 		noOfChunks  = size / chunkSize
 	)
 	if size%chunkSize != 0 {

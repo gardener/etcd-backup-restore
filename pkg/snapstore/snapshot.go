@@ -45,7 +45,7 @@ func ParseSnapshot(snapPath string) (*Snapshot, error) {
 	snapName := tokens[1]
 	snapDir := tokens[0]
 	if len(tokens) != 2 {
-		return nil, fmt.Errorf("not manifest object")
+		return nil, fmt.Errorf("not a manifest object: %s", snapPath)
 	}
 	tokens = strings.Split(snapName, "-")
 	if len(tokens) != 4 {
