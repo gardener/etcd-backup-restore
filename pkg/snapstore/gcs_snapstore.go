@@ -25,7 +25,6 @@ import (
 	"sort"
 	"strings"
 	"sync"
-	"time"
 
 	"cloud.google.com/go/storage"
 	"github.com/sirupsen/logrus"
@@ -115,7 +114,7 @@ func (s *GCSSnapStore) Save(snap Snapshot, r io.Reader) error {
 		name := path.Join(s.prefix, snap.SnapDir, snap.SnapName)
 		obj := bh.Object(name)
 		c := obj.ComposerFrom(subObjects...)
-		ctx, cancel := context.WithTimeout(context.TODO(), 30*time.Second)
+		ctx, cancel := context.WithTimeout(context.TODO(), chunkUploadTimeout)
 		defer cancel()
 		_, err := c.Run(ctx)
 		return err
@@ -142,7 +141,7 @@ func uploadComponent(s *GCSSnapStore, snap *Snapshot, file *os.File, offset, chu
 	bh := s.client.Bucket(s.bucket)
 	name := path.Join(s.prefix, snap.SnapDir, snap.SnapName, fmt.Sprintf("%05d", offset))
 	obj := bh.Object(name)
-	ctx, cancel := context.WithTimeout(context.TODO(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.TODO(), chunkUploadTimeout)
 	defer cancel()
 	w := obj.NewWriter(ctx)
 	if _, err := io.Copy(w, sr); err != nil {

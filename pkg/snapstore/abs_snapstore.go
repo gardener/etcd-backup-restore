@@ -15,12 +15,17 @@
 package snapstore
 
 import (
+	"encoding/base64"
 	"fmt"
 	"io"
+	"io/ioutil"
+	"os"
 	"path"
 	"sort"
+	"strings"
 
 	"github.com/Azure/azure-sdk-for-go/storage"
+	"github.com/sirupsen/logrus"
 )
 
 const (
@@ -109,15 +114,116 @@ func (a *ABSSnapStore) List() (SnapList, error) {
 
 // Save will write the snapshot to store
 func (a *ABSSnapStore) Save(snap Snapshot, r io.Reader) error {
-	blobName := path.Join(a.prefix, snap.SnapDir, snap.SnapName)
-	blob := a.container.GetBlobReference(blobName)
-
-	putBlobOpts := storage.PutBlobOptions{}
-	err := blob.CreateBlockBlobFromReader(r, &putBlobOpts)
+	// Save it locally
+	tmpfile, err := ioutil.TempFile(tmpDir, tmpBackupFilePrefix)
 	if err != nil {
-		return fmt.Errorf("create block blob from reader failed: %v", err)
+		return fmt.Errorf("failed to create snapshot tempfile: %v", err)
 	}
-	return err
+	defer func() {
+		tmpfile.Close()
+		os.Remove(tmpfile.Name())
+	}()
+	size, err := io.Copy(tmpfile, r)
+	if err != nil {
+		return fmt.Errorf("failed to save snapshot to tmpfile: %v", err)
+	}
+
+	var (
+		snapshotErr []chunkUploadError
+		errCh       = make(chan chunkUploadError)
+		chunkSize   = minChunkSize
+		noOfChunks  = size / chunkSize
+	)
+	if size%chunkSize != 0 {
+		noOfChunks++
+	}
+
+	logrus.Infof("Uploading snapshot of size: %d, chunkSize: %d, noOfChunks: %d", size, chunkSize, noOfChunks)
+	for offset := int64(0); offset <= size; offset += int64(chunkSize) {
+		go uploadBlock(a, &snap, tmpfile, offset, chunkSize, errCh)
+	}
+	handleBlockUpload(a, &snap, tmpfile, errCh, snapshotErr, noOfChunks, chunkSize)
+
+	if len(snapshotErr) == 0 {
+		logrus.Info("All chunk uploaded successfully. Uploading blocklist.")
+		blobName := path.Join(a.prefix, snap.SnapDir, snap.SnapName)
+		blob := a.container.GetBlobReference(blobName)
+		var blockList []storage.Block
+		for offset := int64(0); offset <= size; offset += int64(chunkSize) {
+			block := storage.Block{
+				ID:     base64.StdEncoding.EncodeToString([]byte(fmt.Sprintf("%10d", offset))),
+				Status: storage.BlockStatusUncommitted,
+			}
+			blockList = append(blockList, block)
+		}
+		return blob.PutBlockList(blockList, &storage.PutBlockListOptions{})
+	}
+	var collectedErr []string
+	for _, chunkErr := range snapshotErr {
+		collectedErr = append(collectedErr, fmt.Sprintf("failed uploading chunk with offset %d with error %v", chunkErr.offset, chunkErr.err))
+	}
+	return fmt.Errorf(strings.Join(collectedErr, "\n"))
+}
+
+func uploadBlock(s *ABSSnapStore, snap *Snapshot, file *os.File, offset, chunkSize int64, errCh chan<- chunkUploadError) {
+	logrus.Infof("Uploading chunk with offset : %10d", offset)
+	if _, err := file.Seek(0, os.SEEK_SET); err != nil {
+		errCh <- chunkUploadError{
+			err:    fmt.Errorf("failed to set offset in temp file: %v", err),
+			offset: offset,
+		}
+		return
+	}
+
+	fileInfo, err := file.Stat()
+	if err != nil {
+		errCh <- chunkUploadError{
+			err:    fmt.Errorf("failed to get size of temp file: %v", err),
+			offset: offset,
+		}
+		return
+	}
+
+	size := fileInfo.Size() - offset
+	if size > chunkSize {
+		size = chunkSize
+	}
+
+	sr := io.NewSectionReader(file, offset, chunkSize)
+	blobName := path.Join(s.prefix, snap.SnapDir, snap.SnapName)
+	blob := s.container.GetBlobReference(blobName)
+	blockID := base64.StdEncoding.EncodeToString([]byte(fmt.Sprintf("%10d", offset)))
+	err = blob.PutBlockWithLength(blockID, uint64(size), sr, &storage.PutBlockOptions{})
+	logrus.Infof("for chunk upload of offset %10d, err %v", offset, err)
+	errCh <- chunkUploadError{
+		err:    err,
+		offset: offset,
+	}
+	return
+}
+
+func handleBlockUpload(s *ABSSnapStore, snap *Snapshot, file *os.File, errCh chan chunkUploadError, snapshotErr []chunkUploadError, noOfChunks, chunkSize int64) {
+	manifest := make([]int64, noOfChunks)
+	maxAttempts := int64(5)
+	remainingChunks := noOfChunks
+	logrus.Infof("NoOfChunks:= %d, length of Manifest %d", noOfChunks, len(manifest))
+	for {
+		chunkErr := <-errCh
+		if chunkErr.err != nil {
+			manifestIndex := chunkErr.offset / chunkSize
+			logrus.Warnf("Failed to upload chunk with offset: %d at attempt %d  with error: %v", chunkErr.offset, manifest[manifestIndex], chunkErr.err)
+			if manifest[manifestIndex] < maxAttempts {
+				manifest[manifestIndex]++
+				go uploadBlock(s, snap, file, chunkErr.offset, chunkSize, errCh)
+				continue
+			}
+			snapshotErr = append(snapshotErr, chunkErr)
+		}
+		remainingChunks--
+		if remainingChunks == 0 {
+			return
+		}
+	}
 }
 
 // Delete should delete the snapshot file from store

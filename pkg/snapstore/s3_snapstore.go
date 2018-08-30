@@ -115,7 +115,7 @@ func (s *S3SnapStore) Save(snap Snapshot, r io.Reader) error {
 	}
 	// Initiate multi part upload
 	ctx := context.TODO()
-	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, chunkUploadTimeout)
 	defer cancel()
 	uploadOutput, err := s.client.CreateMultipartUploadWithContext(ctx, &s3.CreateMultipartUploadInput{
 		Bucket: aws.String(s.bucket),
@@ -147,7 +147,7 @@ func (s *S3SnapStore) Save(snap Snapshot, r io.Reader) error {
 
 	if len(snapshotErr) != 0 {
 		ctx := context.TODO()
-		ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+		ctx, cancel := context.WithTimeout(ctx, chunkUploadTimeout)
 		defer cancel()
 		logrus.Infof("Aborting the multipart upload with upload ID : %s", *uploadOutput.UploadId)
 		_, err = s.client.AbortMultipartUploadWithContext(ctx, &s3.AbortMultipartUploadInput{
@@ -176,13 +176,11 @@ func (s *S3SnapStore) Save(snap Snapshot, r io.Reader) error {
 	if len(snapshotErr) == 0 {
 		return nil
 	}
+
 	var collectedErr []string
 	for _, chunkErr := range snapshotErr {
-		if chunkErr.err != nil {
-			collectedErr = append(collectedErr, fmt.Sprintf("failed uploading chunk with offset %d with error %v", chunkErr.offset, chunkErr.err))
-		}
+		collectedErr = append(collectedErr, fmt.Sprintf("failed uploading chunk with offset %d with error %v", chunkErr.offset, chunkErr.err))
 	}
-	//	collectedErr = append(collectedErr, res.Err.Error())
 	return fmt.Errorf(strings.Join(collectedErr, "\n"))
 }
 
