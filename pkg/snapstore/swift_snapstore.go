@@ -112,24 +112,21 @@ func (s *SwiftSnapStore) Save(snap Snapshot, r io.Reader) error {
 	}
 	wg.Wait()
 
+	if len(snapshotErr) == 0 {
+		logrus.Info("All chunk uploaded successfully. Uploading manifest.")
+		b := make([]byte, 0)
+		opts := objects.CreateOpts{
+			Content:        bytes.NewReader(b),
+			ContentLength:  chunkSize,
+			ObjectManifest: path.Join(s.bucket, s.prefix, snap.SnapDir, snap.SnapName),
+		}
+		res := objects.Create(s.client, s.bucket, path.Join(s.prefix, snap.SnapDir, snap.SnapName), opts)
+		return res.Err
+	}
 	var collectedErr []string
 	for _, chunkErr := range snapshotErr {
-		if chunkErr.err != nil {
-			collectedErr = append(collectedErr, fmt.Sprintf("failed uploading chunk with offset %d with error %v", chunkErr.offset, chunkErr.err))
-		}
+		collectedErr = append(collectedErr, fmt.Sprintf("failed uploading chunk with offset %d with error %v", chunkErr.offset, chunkErr.err))
 	}
-	b := make([]byte, 0)
-	opts := objects.CreateOpts{
-		Content:        bytes.NewReader(b),
-		ContentLength:  chunkSize,
-		ObjectManifest: path.Join(s.bucket, s.prefix, snap.SnapDir, snap.SnapName),
-	}
-	res := objects.Create(s.client, s.bucket, path.Join(s.prefix, snap.SnapDir, snap.SnapName), opts)
-	logrus.Infof("manifest upload %v", res.Err)
-	if len(snapshotErr) == 0 && res.Err == nil {
-		return nil
-	}
-	//	collectedErr = append(collectedErr, res.Err.Error())
 	return fmt.Errorf(strings.Join(collectedErr, "\n"))
 }
 
@@ -149,13 +146,12 @@ func uploadChunk(s *SwiftSnapStore, snap *Snapshot, file *os.File, offset, chunk
 		ContentLength: chunkSize,
 		//ObjectManifest: path.Join(s.prefix, snap.SnapDir, snap.SnapName),
 	}
-	res := objects.Create(s.client, s.bucket, path.Join(s.prefix, snap.SnapDir, snap.SnapName, fmt.Sprintf("s%05d", offset)), opts)
+	res := objects.Create(s.client, s.bucket, path.Join(s.prefix, snap.SnapDir, snap.SnapName, fmt.Sprintf("%05d", offset)), opts)
 	logrus.Infof("for chunk upload of offset %d, res.Err %v", offset, res.Err)
 	errCh <- chunkUploadError{
 		err:    res.Err,
 		offset: offset,
 	}
-	logrus.Infof("closing go routine for chunk upload of offset %d, ", offset)
 	return
 }
 
