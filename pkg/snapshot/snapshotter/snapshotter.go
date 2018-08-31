@@ -28,7 +28,6 @@ import (
 	"github.com/coreos/etcd/clientv3"
 	"github.com/coreos/etcd/pkg/transport"
 	"github.com/gardener/etcd-backup-restore/pkg/errors"
-	"github.com/gardener/etcd-backup-restore/pkg/miscellaneous"
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	"github.com/robfig/cron"
 	"github.com/sirupsen/logrus"
@@ -90,12 +89,6 @@ func (ssr *Snapshotter) Run(skipInitialFullSnapshot bool, stopCh <-chan struct{}
 		now               = time.Now()
 		effective         = ssr.schedule.Next(now)
 		fullSnapshotTimer = time.NewTimer(effective.Sub(now))
-		config            = &miscellaneous.Config{
-			Attempts: 6,
-			Delay:    1,
-			Units:    time.Second,
-			Logger:   ssr.logger,
-		}
 	)
 
 	if effective.IsZero() {
@@ -105,14 +98,7 @@ func (ssr *Snapshotter) Run(skipInitialFullSnapshot bool, stopCh <-chan struct{}
 	}
 
 	if !skipInitialFullSnapshot {
-		if err := miscellaneous.Do(func() error {
-			ssr.logger.Infof("Taking initial full snapshot at time: %s", time.Now().Local())
-			err := ssr.TakeFullSnapshot()
-			if err != nil {
-				ssr.logger.Infof("Taking initial full snapshot failed: %v", err)
-			}
-			return err
-		}, config); err != nil {
+		if err := ssr.TakeFullSnapshot(); err != nil {
 			return err
 		}
 	}
@@ -146,14 +132,8 @@ func (ssr *Snapshotter) Run(skipInitialFullSnapshot bool, stopCh <-chan struct{}
 		case <-ssr.fullSnapshotCh:
 			ssr.deltaStopCh <- true
 			ssr.wg.Wait()
-			if err := miscellaneous.Do(func() error {
-				ssr.logger.Infof("Taking scheduled snapshot for time: %s", time.Now().Local())
-				err := ssr.TakeFullSnapshot()
-				if err != nil {
-					ssr.logger.Infof("Taking scheduled snapshot failed: %v", err)
-				}
-				return err
-			}, config); err != nil {
+			ssr.logger.Infof("Taking scheduled snapshot for time: %s", time.Now().Local())
+			if err := ssr.TakeFullSnapshot(); err != nil {
 				// As per design principle, in business critical service if backup is not working,
 				// it's better to fail the process. So, we are quiting here.
 				return err
@@ -188,17 +168,19 @@ func (ssr *Snapshotter) TakeFullSnapshot() error {
 	}
 
 	ctx, cancel := context.WithTimeout(context.TODO(), ssr.etcdConnectionTimeout*time.Second)
-	defer cancel()
 	// Note: Although Get and snapshot call are not atomic, so revision number in snapshot file
 	// may be ahead of the revision found from GET call. But currently this is the only workaround available
 	// Refer: https://github.com/coreos/etcd/issues/9037
 	resp, err := client.Get(ctx, "", clientv3.WithLastRev()...)
+	cancel()
 	if err != nil {
 		return &errors.EtcdError{
 			Message: fmt.Sprintf("failed to get etcd latest revision: %v", err),
 		}
 	}
 	lastRevision := resp.Header.Revision
+	ctx, cancel = context.WithTimeout(context.TODO(), ssr.etcdConnectionTimeout*time.Second)
+	defer cancel()
 	rc, err := client.Snapshot(ctx)
 	if err != nil {
 		return &errors.EtcdError{
@@ -214,12 +196,13 @@ func (ssr *Snapshotter) TakeFullSnapshot() error {
 	}
 	s.GenerateSnapshotDirectory()
 	s.GenerateSnapshotName()
-
+	startTime := time.Now()
 	if err := ssr.store.Save(*s, rc); err != nil {
 		return &errors.SnapstoreError{
 			Message: fmt.Sprintf("failed to save snapshot: %v", err),
 		}
 	}
+	logrus.Infof("Total time to save snapshot: %f seconds.", time.Now().Sub(startTime).Seconds())
 	ssr.prevSnapshot = s
 	ssr.logger.Infof("Successfully saved full snapshot at: %s", path.Join(s.SnapDir, s.SnapName))
 	return nil

@@ -35,7 +35,8 @@ type SnapStore interface {
 }
 
 const (
-	minChunkSize int64 = 100 * (1 << 20) //100 MiB
+	// minChunkSize is set to 5Mib since AWS doesn't allow chunk size less than that
+	minChunkSize int64 = 5 * (1 << 20) //5 MiB
 	// SnapstoreProviderLocal is constant for local disk storage provider
 	SnapstoreProviderLocal = "Local"
 	// SnapstoreProviderS3 is constant for aws S3 storage provider

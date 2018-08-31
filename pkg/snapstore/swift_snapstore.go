@@ -24,7 +24,7 @@ import (
 	"path"
 	"sort"
 	"strings"
-	"sync"
+	"time"
 
 	"github.com/sirupsen/logrus"
 
@@ -78,7 +78,6 @@ func (s *SwiftSnapStore) Fetch(snap Snapshot) (io.ReadCloser, error) {
 
 // Save will write the snapshot to store
 func (s *SwiftSnapStore) Save(snap Snapshot, r io.Reader) error {
-
 	// Save it locally
 	tmpfile, err := ioutil.TempFile(tmpDir, tmpBackupFilePrefix)
 	if err != nil {
@@ -94,24 +93,20 @@ func (s *SwiftSnapStore) Save(snap Snapshot, r io.Reader) error {
 	}
 
 	var (
-		wg          = &sync.WaitGroup{}
-		snapshotErr []chunkUploadError
-		errCh       = make(chan chunkUploadError)
-		chunkSize   = int64(math.Max(float64(minChunkSize), float64(size/swiftNoOfChunk)))
-		noOfChunks  = size / chunkSize
+		errCh      = make(chan chunkUploadError)
+		chunkSize  = int64(math.Max(float64(minChunkSize), float64(size/swiftNoOfChunk)))
+		noOfChunks = size / chunkSize
 	)
 	if size%chunkSize != 0 {
 		noOfChunks++
 	}
 
 	logrus.Infof("Uploading snapshot of size: %d, chunkSize: %d, noOfChunks: %d", size, chunkSize, noOfChunks)
-	wg.Add(1)
-	go handleChunkUpload(wg, s, &snap, tmpfile, errCh, snapshotErr, noOfChunks, chunkSize)
 	for offset := int64(0); offset <= size; offset += int64(chunkSize) {
 		go uploadChunk(s, &snap, tmpfile, offset, chunkSize, errCh)
 	}
-	wg.Wait()
 
+	snapshotErr := handleChunkUpload(s, &snap, tmpfile, errCh, noOfChunks, chunkSize)
 	if len(snapshotErr) == 0 {
 		logrus.Info("All chunk uploaded successfully. Uploading manifest.")
 		b := make([]byte, 0)
@@ -146,8 +141,9 @@ func uploadChunk(s *SwiftSnapStore, snap *Snapshot, file *os.File, offset, chunk
 		ContentLength: chunkSize,
 		//ObjectManifest: path.Join(s.prefix, snap.SnapDir, snap.SnapName),
 	}
-	res := objects.Create(s.client, s.bucket, path.Join(s.prefix, snap.SnapDir, snap.SnapName, fmt.Sprintf("%05d", offset)), opts)
-	logrus.Infof("for chunk upload of offset %d, res.Err %v", offset, res.Err)
+	partNumber := ((offset / chunkSize) + 1)
+	res := objects.Create(s.client, s.bucket, path.Join(s.prefix, snap.SnapDir, snap.SnapName, fmt.Sprintf("%010d", partNumber)), opts)
+	logrus.Infof("For chunk upload of offset %010d, res.Err %v", offset, res.Err)
 	errCh <- chunkUploadError{
 		err:    res.Err,
 		offset: offset,
@@ -155,19 +151,22 @@ func uploadChunk(s *SwiftSnapStore, snap *Snapshot, file *os.File, offset, chunk
 	return
 }
 
-func handleChunkUpload(wg *sync.WaitGroup, s *SwiftSnapStore, snap *Snapshot, file *os.File, errCh chan chunkUploadError, snapshotErr []chunkUploadError, noOfChunks, chunkSize int64) {
-	defer wg.Done()
+func handleChunkUpload(s *SwiftSnapStore, snap *Snapshot, file *os.File, errCh chan chunkUploadError, noOfChunks, chunkSize int64) []chunkUploadError {
+	var snapshotErr []chunkUploadError
 	manifest := make([]int64, noOfChunks)
 	maxAttempts := int64(5)
 	remainingChunks := noOfChunks
-	logrus.Infof("NoOfChunks:= %d, length of Manifest %d", noOfChunks, len(manifest))
+	logrus.Infof("No of Chunks:= %d", noOfChunks)
 	for {
 		chunkErr := <-errCh
 		if chunkErr.err != nil {
 			manifestIndex := chunkErr.offset / chunkSize
-			logrus.Warnf("Failed to upload chunk with offset: %d at attempt %d  with error: %v", chunkErr.offset, manifest[manifestIndex], chunkErr.err)
+			logrus.Warnf("Failed to upload chunk with offset: %010d at attempt %d  with error: %v", chunkErr.offset, manifest[manifestIndex], chunkErr.err)
 			if manifest[manifestIndex] < maxAttempts {
 				manifest[manifestIndex]++
+				delayTime := (1 << uint(manifest[manifestIndex]))
+				logrus.Infof("Will try to upload chunk with offset: %010d at attempt %d  after %d seconds", chunkErr.offset, manifest[manifestIndex], delayTime)
+				time.Sleep((time.Duration)(delayTime) * time.Second)
 				go uploadChunk(s, snap, file, chunkErr.offset, chunkSize, errCh)
 				continue
 			}
@@ -175,7 +174,7 @@ func handleChunkUpload(wg *sync.WaitGroup, s *SwiftSnapStore, snap *Snapshot, fi
 		}
 		remainingChunks--
 		if remainingChunks == 0 {
-			return
+			return snapshotErr
 		}
 	}
 }

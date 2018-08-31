@@ -126,24 +126,20 @@ func (s *S3SnapStore) Save(snap Snapshot, r io.Reader) error {
 	}
 	logrus.Infof("Successfully initiated the multipart upload with uploadid : %s", *uploadOutput.UploadId)
 	var (
-		wg          = &sync.WaitGroup{}
-		snapshotErr []chunkUploadError
-		errCh       = make(chan chunkUploadError)
-		chunkSize   = int64(math.Max(float64(minChunkSize), float64(size/s3NoOfChunk)))
-		noOfChunks  = size / chunkSize
+		errCh      = make(chan chunkUploadError)
+		chunkSize  = int64(math.Max(float64(minChunkSize), float64(size/s3NoOfChunk)))
+		noOfChunks = size / chunkSize
 	)
 	if size%chunkSize != 0 {
 		noOfChunks++
 	}
 
-	var completedParts []*s3.CompletedPart
+	completedParts := make([]*s3.CompletedPart, noOfChunks)
 	logrus.Infof("Uploading snapshot of size: %d, chunkSize: %d, noOfChunks: %d", size, chunkSize, noOfChunks)
-	wg.Add(1)
-	go handlePartUpload(wg, s, &snap, tmpfile, uploadOutput.UploadId, &completedParts, errCh, snapshotErr, noOfChunks, chunkSize)
 	for offset := int64(0); offset <= size; offset += int64(chunkSize) {
-		go uploadPart(s, &snap, tmpfile, uploadOutput.UploadId, &completedParts, offset, chunkSize, errCh)
+		go uploadPart(s, &snap, tmpfile, uploadOutput.UploadId, completedParts, offset, chunkSize, errCh)
 	}
-	wg.Wait()
+	snapshotErr := handlePartUpload(s, &snap, tmpfile, uploadOutput.UploadId, completedParts, errCh, noOfChunks, chunkSize)
 
 	if len(snapshotErr) != 0 {
 		ctx := context.TODO()
@@ -184,7 +180,7 @@ func (s *S3SnapStore) Save(snap Snapshot, r io.Reader) error {
 	return fmt.Errorf(strings.Join(collectedErr, "\n"))
 }
 
-func uploadPart(s *S3SnapStore, snap *Snapshot, file *os.File, uploadID *string, completedParts *[]*s3.CompletedPart, offset, chunkSize int64, errCh chan<- chunkUploadError) {
+func uploadPart(s *S3SnapStore, snap *Snapshot, file *os.File, uploadID *string, completedParts []*s3.CompletedPart, offset, chunkSize int64, errCh chan<- chunkUploadError) {
 	logrus.Infof("Uploading chunk with offset : %d", offset)
 	if _, err := file.Seek(0, os.SEEK_SET); err != nil {
 		errCh <- chunkUploadError{
@@ -206,10 +202,10 @@ func uploadPart(s *S3SnapStore, snap *Snapshot, file *os.File, uploadID *string,
 	if size > chunkSize {
 		size = chunkSize
 	}
+
 	sr := io.NewSectionReader(file, offset, size)
 
-	ctx := context.TODO()
-	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.TODO(), chunkUploadTimeout)
 	defer cancel()
 	partNumber := ((offset / chunkSize) + 1)
 	in := &s3.UploadPartInput{
@@ -226,19 +222,18 @@ func uploadPart(s *S3SnapStore, snap *Snapshot, file *os.File, uploadID *string,
 			ETag:       part.ETag,
 			PartNumber: &partNumber,
 		}
-		*completedParts = append(*completedParts, completedPart)
+		completedParts[partNumber-1] = completedPart
 	}
-	logrus.Infof("for chunk upload of offset %d, part number: %d, res.Err %v", offset, partNumber, err)
+	logrus.Infof("for chunk upload of offset %010d, part number: %d, res.Err %v", offset, partNumber, err)
 	errCh <- chunkUploadError{
 		err:    err,
 		offset: offset,
 	}
-	logrus.Infof("closing go routine for chunk upload of offset %d, ", offset)
 	return
 }
 
-func handlePartUpload(wg *sync.WaitGroup, s *S3SnapStore, snap *Snapshot, file *os.File, uploadID *string, completedParts *[]*s3.CompletedPart, errCh chan chunkUploadError, snapshotErr []chunkUploadError, noOfChunks, chunkSize int64) {
-	defer wg.Done()
+func handlePartUpload(s *S3SnapStore, snap *Snapshot, file *os.File, uploadID *string, completedParts []*s3.CompletedPart, errCh chan chunkUploadError, noOfChunks, chunkSize int64) []chunkUploadError {
+	var snapshotErr []chunkUploadError
 	manifest := make([]int64, noOfChunks)
 	maxAttempts := int64(5)
 	remainingChunks := noOfChunks
@@ -246,9 +241,12 @@ func handlePartUpload(wg *sync.WaitGroup, s *S3SnapStore, snap *Snapshot, file *
 		chunkErr := <-errCh
 		if chunkErr.err != nil {
 			manifestIndex := chunkErr.offset / chunkSize
-			logrus.Warnf("Failed to upload chunk with offset: %d at attempt %d  with error: %v", chunkErr.offset, manifest[manifestIndex], chunkErr.err)
+			logrus.Warnf("Failed to upload chunk with offset: %010d at attempt %d  with error: %v", chunkErr.offset, manifest[manifestIndex], chunkErr.err)
 			if manifest[manifestIndex] < maxAttempts {
 				manifest[manifestIndex]++
+				delayTime := (1 << uint(manifest[manifestIndex]))
+				logrus.Infof("Will try to upload chunk with offset: %010d at attempt %d  after %d seconds", chunkErr.offset, manifest[manifestIndex], delayTime)
+				time.Sleep((time.Duration)(delayTime) * time.Second)
 				go uploadPart(s, snap, file, uploadID, completedParts, chunkErr.offset, chunkSize, errCh)
 				continue
 			}
@@ -256,7 +254,7 @@ func handlePartUpload(wg *sync.WaitGroup, s *S3SnapStore, snap *Snapshot, file *
 		}
 		remainingChunks--
 		if remainingChunks == 0 {
-			return
+			return snapshotErr
 		}
 	}
 }

@@ -24,7 +24,6 @@ import (
 	"github.com/coreos/etcd/pkg/types"
 	"github.com/gardener/etcd-backup-restore/pkg/errors"
 	"github.com/gardener/etcd-backup-restore/pkg/initializer"
-	"github.com/gardener/etcd-backup-restore/pkg/miscellaneous"
 	"github.com/gardener/etcd-backup-restore/pkg/server"
 	"github.com/gardener/etcd-backup-restore/pkg/snapshot/restorer"
 	"github.com/gardener/etcd-backup-restore/pkg/snapshot/snapshotter"
@@ -146,20 +145,8 @@ func NewServerCommand(stopCh <-chan struct{}) *cobra.Command {
 				}
 
 				// Try to take snapshot before setting
-				config := &miscellaneous.Config{
-					Attempts: 6,
-					Delay:    1,
-					Units:    time.Second,
-					Logger:   logger,
-				}
-				if err := miscellaneous.Do(func() error {
-					logger.Infof("Taking initial snapshot at time: %s", time.Now().Local())
-					err := ssr.TakeFullSnapshot()
-					if err != nil {
-						logger.Infof("Taking initial snapshot failed: %v", err)
-					}
-					return err
-				}, config); err != nil {
+				logger.Infof("Taking initial snapshot at time: %s", time.Now().Local())
+				if err := ssr.TakeFullSnapshot(); err != nil {
 					if etcdErr, ok := err.(*errors.EtcdError); ok == true {
 						logger.Errorf("Snapshotter failed with etcd error: %v", etcdErr)
 					} else {
