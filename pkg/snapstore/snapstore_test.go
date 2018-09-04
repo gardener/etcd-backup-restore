@@ -66,13 +66,15 @@ var _ = Describe("Snapstore", func() {
 		snap3.GenerateSnapshotDirectory()
 		expectedVal1 = "value1"
 		expectedVal2 = "value2"
-
+		expectedVal1Bytes := []byte(expectedVal1)
+		expectedVal2Bytes := []byte(expectedVal2)
 		m = mockS3Client{
-			objects: map[string][]byte{
-				path.Join(prefix, snap1.SnapDir, snap1.SnapName): []byte(expectedVal1),
-				path.Join(prefix, snap2.SnapDir, snap2.SnapName): []byte(expectedVal2),
+			objects: map[string]*[]byte{
+				path.Join(prefix, snap1.SnapDir, snap1.SnapName): &expectedVal1Bytes,
+				path.Join(prefix, snap2.SnapDir, snap2.SnapName): &expectedVal2Bytes,
 			},
-			prefix: prefix,
+			prefix:           prefix,
+			multiPartUploads: map[string]*[][]byte{},
 		}
 		snapstores = map[string]SnapStore{
 			"s3": NewS3FromClient(bucket, prefix, &m),

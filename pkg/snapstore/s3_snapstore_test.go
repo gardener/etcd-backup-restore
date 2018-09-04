@@ -16,10 +16,14 @@ package snapstore_test
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"strings"
+	"time"
 
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/request"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/aws/aws-sdk-go/service/s3/s3iface"
 )
@@ -27,15 +31,19 @@ import (
 // Define a mock struct to be used in your unit tests of myFunc.
 type mockS3Client struct {
 	s3iface.S3API
-	objects map[string][]byte
-	prefix  string
+	objects          map[string]*[]byte
+	prefix           string
+	multiPartUploads map[string]*[][]byte
 }
 
 // GetObject returns the object from map for mock test
 func (m *mockS3Client) GetObject(in *s3.GetObjectInput) (*s3.GetObjectOutput, error) {
+	if m.objects[*in.Key] == nil {
+		return nil, fmt.Errorf("object not found")
+	}
 	// Only need to return mocked response output
 	out := s3.GetObjectOutput{
-		Body: ioutil.NopCloser(bytes.NewReader(m.objects[*in.Key])),
+		Body: ioutil.NopCloser(bytes.NewReader(*m.objects[*in.Key])),
 	}
 	return &out, nil
 }
@@ -46,9 +54,78 @@ func (m *mockS3Client) PutObject(in *s3.PutObjectInput) (*s3.PutObjectOutput, er
 	in.Body.Seek(0, io.SeekStart)
 	temp := make([]byte, off)
 	in.Body.Read(temp)
-	m.objects[*in.Key] = temp
+	m.objects[*in.Key] = &temp
 	out := s3.PutObjectOutput{}
 	return &out, nil
+}
+
+func (m *mockS3Client) CreateMultipartUploadWithContext(ctx aws.Context, in *s3.CreateMultipartUploadInput, opts ...request.Option) (*s3.CreateMultipartUploadOutput, error) {
+	uploadID := time.Now().String()
+	var parts [][]byte
+	m.multiPartUploads[uploadID] = &parts
+	out := &s3.CreateMultipartUploadOutput{
+		Bucket:   in.Bucket,
+		UploadId: &uploadID,
+	}
+	return out, nil
+}
+
+func (m *mockS3Client) UploadPartWithContext(ctx aws.Context, in *s3.UploadPartInput, opts ...request.Option) (*s3.UploadPartOutput, error) {
+	if m.multiPartUploads[*in.UploadId] == nil {
+		return nil, fmt.Errorf("multipart upload not initiated")
+	}
+	if *in.PartNumber < 0 {
+		return nil, fmt.Errorf("part number should be positive integer")
+	}
+	if *in.PartNumber > int64(len(*m.multiPartUploads[*in.UploadId])) {
+		t := make([][]byte, *in.PartNumber)
+		copy(t, *m.multiPartUploads[*in.UploadId])
+		delete(m.multiPartUploads, *in.UploadId)
+		m.multiPartUploads[*in.UploadId] = &t
+	}
+	off, err := in.Body.Seek(0, io.SeekEnd)
+	if err != nil {
+		return nil, err
+	}
+	in.Body.Seek(0, io.SeekStart)
+	temp := make([]byte, off)
+	in.Body.Read(temp)
+	(*m.multiPartUploads[*in.UploadId])[*in.PartNumber-1] = temp
+	eTag := string(*in.PartNumber)
+	out := &s3.UploadPartOutput{
+		ETag: &eTag,
+	}
+	return out, nil
+}
+
+func (m *mockS3Client) CompleteMultipartUploadWithContext(ctx aws.Context, in *s3.CompleteMultipartUploadInput, opts ...request.Option) (*s3.CompleteMultipartUploadOutput, error) {
+	if m.multiPartUploads[*in.UploadId] == nil {
+		return nil, fmt.Errorf("multipart upload not initiated")
+	}
+	data := *m.multiPartUploads[*in.UploadId]
+	var prevPartId int64 = 0
+	var object []byte
+	for _, part := range in.MultipartUpload.Parts {
+		if *part.PartNumber <= prevPartId {
+			return nil, fmt.Errorf("parts should be sorted in ascending orders")
+		}
+		object = append(object, data[*part.PartNumber-1]...)
+
+	}
+	m.objects[*in.Key] = &object
+	delete(m.multiPartUploads, *in.UploadId)
+	eTag := time.Now().String()
+	out := s3.CompleteMultipartUploadOutput{
+		Bucket: in.Bucket,
+		ETag:   &eTag,
+	}
+	return &out, nil
+}
+
+func (m *mockS3Client) AbortMultipartUploadWithContext(ctx aws.Context, in *s3.AbortMultipartUploadInput, opts ...request.Option) (*s3.AbortMultipartUploadOutput, error) {
+	delete(m.multiPartUploads, *in.UploadId)
+	out := &s3.AbortMultipartUploadOutput{}
+	return out, nil
 }
 
 // ListObject returns the objects from map for mock test
