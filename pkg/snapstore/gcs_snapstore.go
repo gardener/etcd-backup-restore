@@ -94,10 +94,10 @@ func (s *GCSSnapStore) Save(snap Snapshot, r io.Reader) error {
 
 	logrus.Infof("Uploading snapshot of size: %d, chunkSize: %d, noOfChunks: %d", size, chunkSize, noOfChunks)
 	for offset := int64(0); offset <= size; offset += int64(chunkSize) {
-		go uploadComponent(s, &snap, tmpfile, offset, chunkSize, errCh)
+		go retryComponentUpload(s, &snap, tmpfile, offset, chunkSize, errCh)
 	}
 
-	snapshotErr := handleComponentUpload(s, &snap, tmpfile, errCh, noOfChunks, chunkSize)
+	snapshotErr := collectChunkUploadError(errCh, noOfChunks)
 	if len(snapshotErr) == 0 {
 		logrus.Info("All chunk uploaded successfully. Uploading composit object.")
 		bh := s.client.Bucket(s.bucket)
@@ -117,22 +117,22 @@ func (s *GCSSnapStore) Save(snap Snapshot, r io.Reader) error {
 	}
 	var collectedErr []string
 	for _, chunkErr := range snapshotErr {
-		collectedErr = append(collectedErr, fmt.Sprintf("failed uploading chunk with offset %010d with error %v", chunkErr.offset, chunkErr.err))
+		collectedErr = append(collectedErr, fmt.Sprintf("failed uploading chunk with offset %d with error %v", chunkErr.offset, chunkErr.err))
 	}
 	return fmt.Errorf(strings.Join(collectedErr, "\n"))
 }
 
-func uploadComponent(s *GCSSnapStore, snap *Snapshot, file *os.File, offset, chunkSize int64, errCh chan<- chunkUploadError) {
-	logrus.Infof("Uploading chunk with offset : %010d", offset)
-	if _, err := file.Seek(0, os.SEEK_SET); err != nil {
-		errCh <- chunkUploadError{
-			err:    fmt.Errorf("failed to set offset in temp file: %v", err),
-			offset: offset,
-		}
-		return
+func uploadComponent(s *GCSSnapStore, snap *Snapshot, file *os.File, offset, chunkSize int64) error {
+	fileInfo, err := file.Stat()
+	if err != nil {
+		return err
 	}
-	sr := io.NewSectionReader(file, offset, chunkSize)
+	size := fileInfo.Size() - offset
+	if size > chunkSize {
+		size = chunkSize
+	}
 
+	sr := io.NewSectionReader(file, offset, size)
 	bh := s.client.Bucket(s.bucket)
 	partNumber := ((offset / chunkSize) + 1)
 	name := path.Join(s.prefix, snap.SnapDir, snap.SnapName, fmt.Sprintf("%010d", partNumber))
@@ -141,52 +141,34 @@ func uploadComponent(s *GCSSnapStore, snap *Snapshot, file *os.File, offset, chu
 	defer cancel()
 	w := obj.NewWriter(ctx)
 	if _, err := io.Copy(w, sr); err != nil {
-		logrus.Infof("For chunk upload of offset %010d, err %v", offset, err)
-		errCh <- chunkUploadError{
-			err:    err,
-			offset: offset,
-		}
 		w.Close()
-		return
+		return err
+	}
+	return w.Close()
+}
+
+func retryComponentUpload(s *GCSSnapStore, snap *Snapshot, file *os.File, offset, chunkSize int64, errCh chan<- chunkUploadError) {
+	var (
+		maxAttempts uint = 5
+		curAttempt  uint = 1
+		err         error
+	)
+	for {
+		logrus.Infof("Uploading chunk with offset : %d, attempt: %d", offset, curAttempt)
+		err = uploadComponent(s, snap, file, offset, chunkSize)
+		logrus.Infof("For chunk upload of offset %d, err %v", offset, err)
+		if err == nil || curAttempt == maxAttempts {
+			break
+		}
+		delayTime := (1 << curAttempt)
+		curAttempt++
+		logrus.Warnf("Will try to upload chunk with offset: %d at attempt %d  after %d seconds", offset, curAttempt, delayTime)
+		time.Sleep((time.Duration)(delayTime) * time.Second)
 	}
 
-	err := w.Close()
-	if err != nil {
-		logrus.Infof("For chunk upload of offset %010d, err %v", offset, err)
-	}
 	errCh <- chunkUploadError{
 		err:    err,
 		offset: offset,
-	}
-
-	return
-}
-
-func handleComponentUpload(s *GCSSnapStore, snap *Snapshot, file *os.File, errCh chan chunkUploadError, noOfChunks, chunkSize int64) []chunkUploadError {
-	var snapshotErr []chunkUploadError
-	manifest := make([]int64, noOfChunks)
-	maxAttempts := int64(5)
-	remainingChunks := noOfChunks
-	logrus.Infof("No of Chunks:= %d", noOfChunks)
-	for {
-		chunkErr := <-errCh
-		if chunkErr.err != nil {
-			manifestIndex := chunkErr.offset / chunkSize
-			logrus.Warnf("Failed to upload chunk with offset: %019d at attempt %d  with error: %v", chunkErr.offset, manifest[manifestIndex], chunkErr.err)
-			if manifest[manifestIndex] < maxAttempts {
-				manifest[manifestIndex]++
-				delayTime := (1 << uint(manifest[manifestIndex]))
-				logrus.Infof("Will try to upload chunk with offset: %010d at attempt %d  after %d seconds", chunkErr.offset, manifest[manifestIndex], delayTime)
-				time.Sleep((time.Duration)(delayTime) * time.Second)
-				go uploadComponent(s, snap, file, chunkErr.offset, chunkSize, errCh)
-				continue
-			}
-			snapshotErr = append(snapshotErr, chunkErr)
-		}
-		remainingChunks--
-		if remainingChunks == 0 {
-			return snapshotErr
-		}
 	}
 }
 
@@ -215,7 +197,7 @@ func (s *GCSSnapStore) List() (SnapList, error) {
 		snap, err := ParseSnapshot(name)
 		if err != nil {
 			// Warning
-			fmt.Printf("Invalid snapshot found. Ignoring it:%s\n", name)
+			logrus.Warnf("Invalid snapshot found. Ignoring it:%s\n", name)
 		} else {
 			snapList = append(snapList, snap)
 		}

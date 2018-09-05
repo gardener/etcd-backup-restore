@@ -64,6 +64,7 @@ type Snapshot struct {
 	CreatedOn     time.Time
 	SnapDir       string
 	SnapName      string
+	IsChunk       bool
 }
 
 // SnapList is list of snapshots

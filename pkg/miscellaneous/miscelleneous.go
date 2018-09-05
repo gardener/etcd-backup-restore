@@ -29,6 +29,9 @@ func GetLatestFullSnapshotAndDeltaSnapList(store snapstore.SnapStore) (*snapstor
 	}
 
 	for index := len(snapList); index > 0; index-- {
+		if snapList[index-1].IsChunk {
+			continue
+		}
 		if snapList[index-1].Kind == snapstore.SnapshotKindFull {
 			sort.Sort(deltaSnapList)
 			return snapList[index-1], deltaSnapList, nil
