@@ -16,12 +16,15 @@ package snapstore
 
 import (
 	"fmt"
+	"path"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/sirupsen/logrus"
 )
 
-// GenerateSnapshotName preapres the snapshot name from metadata
+// GenerateSnapshotName prepares the snapshot name from metadata
 func (s *Snapshot) GenerateSnapshotName() {
 	s.SnapName = fmt.Sprintf("%s-%08d-%08d-%d", s.Kind, s.StartRevision, s.LastRevision, s.CreatedOn.Unix())
 }
@@ -35,13 +38,14 @@ func (s *Snapshot) GenerateSnapshotDirectory() {
 func ParseSnapshot(snapPath string) (*Snapshot, error) {
 	var err error
 	s := &Snapshot{}
-	tokens := strings.Split(snapPath, "/")
-	if len(tokens) <= 1 {
+	tok := strings.Split(snapPath, "/")
+	logrus.Debugf("no of tokens:=%d", len(tok))
+	if len(tok) <= 1 || len(tok) > 3 {
 		return nil, fmt.Errorf("invalid snapshot name: %s", snapPath)
 	}
-	snapName := tokens[len(tokens)-1]
-	snapDir := snapPath[:len(snapPath)-len(snapName)-1]
-	tokens = strings.Split(snapName, "-")
+	snapName := tok[1]
+	snapDir := tok[0]
+	tokens := strings.Split(snapName, "-")
 	if len(tokens) != 4 {
 		return nil, fmt.Errorf("invalid snapshot name: %s", snapName)
 	}
@@ -54,6 +58,12 @@ func ParseSnapshot(snapPath string) (*Snapshot, error) {
 	default:
 		return nil, fmt.Errorf("unknown snapshot kind: %s", tokens[0])
 	}
+
+	if len(tok) == 3 {
+		s.IsChunk = true
+		snapName = path.Join(snapName, tok[2])
+	}
+
 	//parse start revision
 	s.StartRevision, err = strconv.ParseInt(tokens[1], 10, 64)
 	if err != nil {
@@ -80,6 +90,18 @@ func ParseSnapshot(snapPath string) (*Snapshot, error) {
 }
 
 // SnapList override sorting related function
-func (s SnapList) Len() int           { return len(s) }
-func (s SnapList) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
-func (s SnapList) Less(i, j int) bool { return (s[i].CreatedOn.Unix() < s[j].CreatedOn.Unix()) }
+func (s SnapList) Len() int      { return len(s) }
+func (s SnapList) Swap(i, j int) { s[i], s[j] = s[j], s[i] }
+func (s SnapList) Less(i, j int) bool {
+	if s[i].CreatedOn.Unix() == s[j].CreatedOn.Unix() {
+		if !s[i].IsChunk && s[j].IsChunk {
+			return true
+		}
+		if s[i].IsChunk && !s[j].IsChunk {
+			return false
+		}
+		// If both are chunks, ordering doesn't matter.
+		return false
+	}
+	return (s[i].CreatedOn.Unix() < s[j].CreatedOn.Unix())
+}

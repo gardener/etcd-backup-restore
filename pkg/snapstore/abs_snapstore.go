@@ -15,12 +15,18 @@
 package snapstore
 
 import (
+	"encoding/base64"
 	"fmt"
 	"io"
+	"io/ioutil"
+	"os"
 	"path"
 	"sort"
+	"strings"
+	"time"
 
 	"github.com/Azure/azure-sdk-for-go/storage"
+	"github.com/sirupsen/logrus"
 )
 
 const (
@@ -97,8 +103,7 @@ func (a *ABSSnapStore) List() (SnapList, error) {
 		k := (blob.Name)[len(resp.Prefix):]
 		s, err := ParseSnapshot(k)
 		if err != nil {
-			// Warning
-			fmt.Printf("Invalid snapshot found. Ignoring it:%s\n", k)
+			logrus.Warnf("Invalid snapshot found. Ignoring it:%s\n", k)
 		} else {
 			snapList = append(snapList, s)
 		}
@@ -109,15 +114,100 @@ func (a *ABSSnapStore) List() (SnapList, error) {
 
 // Save will write the snapshot to store
 func (a *ABSSnapStore) Save(snap Snapshot, r io.Reader) error {
-	blobName := path.Join(a.prefix, snap.SnapDir, snap.SnapName)
-	blob := a.container.GetBlobReference(blobName)
-
-	putBlobOpts := storage.PutBlobOptions{}
-	err := blob.CreateBlockBlobFromReader(r, &putBlobOpts)
+	// Save it locally
+	tmpfile, err := ioutil.TempFile(tmpDir, tmpBackupFilePrefix)
 	if err != nil {
-		return fmt.Errorf("create block blob from reader failed: %v", err)
+		return fmt.Errorf("failed to create snapshot tempfile: %v", err)
 	}
+	defer func() {
+		tmpfile.Close()
+		os.Remove(tmpfile.Name())
+	}()
+	size, err := io.Copy(tmpfile, r)
+	if err != nil {
+		return fmt.Errorf("failed to save snapshot to tmpfile: %v", err)
+	}
+
+	var (
+		errCh      = make(chan chunkUploadError)
+		chunkSize  = minChunkSize
+		noOfChunks = size / chunkSize
+	)
+	if size%chunkSize != 0 {
+		noOfChunks++
+	}
+
+	logrus.Infof("Uploading snapshot of size: %d, chunkSize: %d, noOfChunks: %d", size, chunkSize, noOfChunks)
+	for offset := int64(0); offset <= size; offset += int64(chunkSize) {
+		go retryBlockUpload(a, &snap, tmpfile, offset, chunkSize, errCh)
+	}
+
+	snapshotErr := collectChunkUploadError(errCh, noOfChunks)
+	if len(snapshotErr) == 0 {
+		logrus.Info("All chunk uploaded successfully. Uploading blocklist.")
+		blobName := path.Join(a.prefix, snap.SnapDir, snap.SnapName)
+		blob := a.container.GetBlobReference(blobName)
+		var blockList []storage.Block
+		for partNumber := int64(1); partNumber <= noOfChunks; partNumber++ {
+			block := storage.Block{
+				ID:     base64.StdEncoding.EncodeToString([]byte(fmt.Sprintf("%010d", partNumber))),
+				Status: storage.BlockStatusUncommitted,
+			}
+			blockList = append(blockList, block)
+		}
+		return blob.PutBlockList(blockList, &storage.PutBlockListOptions{})
+	}
+	var collectedErr []string
+	for _, chunkErr := range snapshotErr {
+		collectedErr = append(collectedErr, fmt.Sprintf("failed uploading chunk with offset %d with error %v", chunkErr.offset, chunkErr.err))
+	}
+	return fmt.Errorf(strings.Join(collectedErr, "\n"))
+}
+
+func uploadBlock(s *ABSSnapStore, snap *Snapshot, file *os.File, offset, chunkSize int64) error {
+	fileInfo, err := file.Stat()
+	if err != nil {
+		return err
+	}
+
+	size := fileInfo.Size() - offset
+	if size > chunkSize {
+		size = chunkSize
+	}
+
+	sr := io.NewSectionReader(file, offset, chunkSize)
+	blobName := path.Join(s.prefix, snap.SnapDir, snap.SnapName)
+	blob := s.container.GetBlobReference(blobName)
+	partNumber := ((offset / chunkSize) + 1)
+	blockID := base64.StdEncoding.EncodeToString([]byte(fmt.Sprintf("%010d", partNumber)))
+	err = blob.PutBlockWithLength(blockID, uint64(size), sr, &storage.PutBlockOptions{})
 	return err
+}
+
+func retryBlockUpload(s *ABSSnapStore, snap *Snapshot, file *os.File, offset, chunkSize int64, errCh chan<- chunkUploadError) {
+	var (
+		maxAttempts uint = 5
+		curAttempt  uint = 1
+		err         error
+	)
+	for {
+		logrus.Infof("Uploading chunk with offset : %d, attempt: %d", offset, curAttempt)
+		err = uploadBlock(s, snap, file, offset, chunkSize)
+		logrus.Infof("For chunk upload of offset %d, err %v", offset, err)
+		if err == nil || curAttempt == maxAttempts {
+			break
+		}
+		delayTime := (1 << curAttempt)
+		curAttempt++
+		logrus.Warnf("Will try to upload chunk with offset: %d at attempt %d  after %d seconds", offset, curAttempt, delayTime)
+		time.Sleep((time.Duration)(delayTime) * time.Second)
+	}
+
+	errCh <- chunkUploadError{
+		err:    err,
+		offset: offset,
+	}
+	return
 }
 
 // Delete should delete the snapshot file from store

@@ -15,17 +15,23 @@
 package snapstore
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"io/ioutil"
+	"math"
 	"os"
 	"path"
 	"sort"
+	"strings"
+	"sync"
+	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/aws/aws-sdk-go/service/s3/s3iface"
+	"github.com/sirupsen/logrus"
 )
 
 const (
@@ -33,12 +39,17 @@ const (
 	tmpBackupFilePrefix = "etcd-backup-"
 )
 
+const (
+	s3NoOfChunk int64 = 10000 //Default configuration in swift installation
+)
+
 // S3SnapStore is snapstore with local disk as backend
 type S3SnapStore struct {
 	SnapStore
-	prefix string
-	client s3iface.S3API
-	bucket string
+	prefix    string
+	client    s3iface.S3API
+	bucket    string
+	multiPart sync.Mutex
 }
 
 // NewS3SnapStore create new S3SnapStore from shared configuration with specified bucket
@@ -57,7 +68,6 @@ func NewS3FromSessionOpt(bucket, prefix string, so session.Options) (*S3SnapStor
 		return nil, fmt.Errorf("new AWS session failed: %v", err)
 	}
 	cli := s3.New(sess)
-
 	return NewS3FromClient(bucket, prefix, cli), nil
 }
 
@@ -95,7 +105,7 @@ func (s *S3SnapStore) Save(snap Snapshot, r io.Reader) error {
 		os.Remove(tmpfile.Name())
 	}()
 
-	_, err = io.Copy(tmpfile, r)
+	size, err := io.Copy(tmpfile, r)
 	if err != nil {
 		return fmt.Errorf("failed to save snapshot to tmpfile: %v", err)
 	}
@@ -103,14 +113,130 @@ func (s *S3SnapStore) Save(snap Snapshot, r io.Reader) error {
 	if err != nil {
 		return err
 	}
-	// S3 put is atomic, so let's go ahead and put the key directly.
-	_, err = s.client.PutObject(&s3.PutObjectInput{
+	// Initiate multi part upload
+	ctx := context.TODO()
+	ctx, cancel := context.WithTimeout(ctx, chunkUploadTimeout)
+	defer cancel()
+	uploadOutput, err := s.client.CreateMultipartUploadWithContext(ctx, &s3.CreateMultipartUploadInput{
 		Bucket: aws.String(s.bucket),
 		Key:    aws.String(path.Join(s.prefix, snap.SnapDir, snap.SnapName)),
-		Body:   tmpfile,
 	})
+	if err != nil {
+		return fmt.Errorf("failed to initiate multipart upload %v", err)
+	}
+	logrus.Infof("Successfully initiated the multipart upload with upload ID : %s", *uploadOutput.UploadId)
+	var (
+		errCh      = make(chan chunkUploadError)
+		chunkSize  = int64(math.Max(float64(minChunkSize), float64(size/s3NoOfChunk)))
+		noOfChunks = size / chunkSize
+	)
+	if size%chunkSize != 0 {
+		noOfChunks++
+	}
 
+	completedParts := make([]*s3.CompletedPart, noOfChunks)
+	logrus.Infof("Uploading snapshot of size: %d, chunkSize: %d, noOfChunks: %d", size, chunkSize, noOfChunks)
+	for offset := int64(0); offset <= size; offset += int64(chunkSize) {
+		go retryPartUpload(s, &snap, tmpfile, uploadOutput.UploadId, completedParts, offset, chunkSize, errCh)
+	}
+
+	snapshotErr := collectChunkUploadError(errCh, noOfChunks)
+	if len(snapshotErr) != 0 {
+		ctx := context.TODO()
+		ctx, cancel := context.WithTimeout(ctx, chunkUploadTimeout)
+		defer cancel()
+		logrus.Infof("Aborting the multipart upload with upload ID : %s", *uploadOutput.UploadId)
+		_, err = s.client.AbortMultipartUploadWithContext(ctx, &s3.AbortMultipartUploadInput{
+			Bucket:   &s.bucket,
+			Key:      aws.String(path.Join(s.prefix, snap.SnapDir, snap.SnapName)),
+			UploadId: uploadOutput.UploadId,
+		})
+	} else {
+		ctx = context.TODO()
+		ctx, cancel = context.WithTimeout(ctx, 30*time.Second)
+		defer cancel()
+		logrus.Infof("Finishing the multipart upload with upload ID : %s", *uploadOutput.UploadId)
+		_, err = s.client.CompleteMultipartUploadWithContext(ctx, &s3.CompleteMultipartUploadInput{
+			Bucket:   &s.bucket,
+			Key:      aws.String(path.Join(s.prefix, snap.SnapDir, snap.SnapName)),
+			UploadId: uploadOutput.UploadId,
+			MultipartUpload: &s3.CompletedMultipartUpload{
+				Parts: completedParts,
+			},
+		})
+	}
+
+	if err != nil {
+		return err
+	}
+	if len(snapshotErr) == 0 {
+		return nil
+	}
+
+	var collectedErr []string
+	for _, chunkErr := range snapshotErr {
+		collectedErr = append(collectedErr, fmt.Sprintf("failed uploading chunk with offset %d with error %v", chunkErr.offset, chunkErr.err))
+	}
+	return fmt.Errorf(strings.Join(collectedErr, "\n"))
+}
+
+func uploadPart(s *S3SnapStore, snap *Snapshot, file *os.File, uploadID *string, completedParts []*s3.CompletedPart, offset, chunkSize int64) error {
+	fileInfo, err := file.Stat()
+	if err != nil {
+		return err
+	}
+	size := fileInfo.Size() - offset
+	if size > chunkSize {
+		size = chunkSize
+	}
+
+	sr := io.NewSectionReader(file, offset, size)
+	ctx, cancel := context.WithTimeout(context.TODO(), chunkUploadTimeout)
+	defer cancel()
+	partNumber := ((offset / chunkSize) + 1)
+	in := &s3.UploadPartInput{
+		Bucket:     aws.String(s.bucket),
+		Key:        aws.String(path.Join(s.prefix, snap.SnapDir, snap.SnapName)),
+		PartNumber: &partNumber,
+		UploadId:   uploadID,
+		Body:       sr,
+	}
+
+	part, err := s.client.UploadPartWithContext(ctx, in)
+	if err == nil {
+		completedPart := &s3.CompletedPart{
+			ETag:       part.ETag,
+			PartNumber: &partNumber,
+		}
+		completedParts[partNumber-1] = completedPart
+	}
 	return err
+}
+
+func retryPartUpload(s *S3SnapStore, snap *Snapshot, file *os.File, uploadID *string, completedParts []*s3.CompletedPart, offset, chunkSize int64, errCh chan<- chunkUploadError) {
+	var (
+		maxAttempts uint = 5
+		curAttempt  uint = 1
+		err         error
+	)
+	for {
+		logrus.Infof("Uploading chunk with offset : %d, attempt: %d", offset, curAttempt)
+		err = uploadPart(s, snap, file, uploadID, completedParts, offset, chunkSize)
+		logrus.Infof("For chunk upload of offset %d, err %v", offset, err)
+		if err == nil || curAttempt == maxAttempts {
+			break
+		}
+		delayTime := (1 << curAttempt)
+		curAttempt++
+		logrus.Warnf("Will try to upload chunk with offset: %d at attempt %d  after %d seconds", offset, curAttempt, delayTime)
+		time.Sleep((time.Duration)(delayTime) * time.Second)
+	}
+
+	errCh <- chunkUploadError{
+		err:    err,
+		offset: offset,
+	}
+	return
 }
 
 // List will list the snapshots from store
@@ -129,7 +255,7 @@ func (s *S3SnapStore) List() (SnapList, error) {
 		snap, err := ParseSnapshot(k)
 		if err != nil {
 			// Warning
-			fmt.Printf("Invalid snapshot found. Ignoring it:%s\n", k)
+			logrus.Warnf("Invalid snapshot found. Ignoring it:%s\n", k)
 		} else {
 			snapList = append(snapList, snap)
 		}

@@ -18,6 +18,8 @@ import (
 	"fmt"
 	"os"
 	"path"
+
+	"github.com/sirupsen/logrus"
 )
 
 const (
@@ -71,4 +73,21 @@ func GetEnvVarOrError(varName string) (string, error) {
 	}
 
 	return value, nil
+}
+
+// collectChunkUploadError collects the error from all go routine to upload individual chunks
+func collectChunkUploadError(errCh chan chunkUploadError, noOfChunks int64) []chunkUploadError {
+	var snapshotErr []chunkUploadError
+	remainingChunks := noOfChunks
+	logrus.Infof("No of Chunks:= %d", noOfChunks)
+	for {
+		chunkErr := <-errCh
+		if chunkErr.err != nil {
+			snapshotErr = append(snapshotErr, chunkErr)
+		}
+		remainingChunks--
+		if remainingChunks == 0 {
+			return snapshotErr
+		}
+	}
 }

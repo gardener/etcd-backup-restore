@@ -35,6 +35,8 @@ type SnapStore interface {
 }
 
 const (
+	// minChunkSize is set to 5Mib since AWS doesn't allow chunk size less than that
+	minChunkSize int64 = 5 * (1 << 20) //5 MiB
 	// SnapstoreProviderLocal is constant for local disk storage provider
 	SnapstoreProviderLocal = "Local"
 	// SnapstoreProviderS3 is constant for aws S3 storage provider
@@ -50,6 +52,8 @@ const (
 	SnapshotKindFull = "Full"
 	// SnapshotKindDelta is constant for delta snapshot kind
 	SnapshotKindDelta = "Incr"
+	// ChunkUploadTimeout is timeout for uploading chunk
+	chunkUploadTimeout = 30 * time.Second
 )
 
 // Snapshot structure represents the metadata of snapshot
@@ -60,6 +64,7 @@ type Snapshot struct {
 	CreatedOn     time.Time
 	SnapDir       string
 	SnapName      string
+	IsChunk       bool
 }
 
 // SnapList is list of snapshots
@@ -73,4 +78,9 @@ type Config struct {
 	Container string
 	// Prefix holds the prefix or directory under StorageContainer under which snapshot will be stored
 	Prefix string
+}
+
+type chunkUploadError struct {
+	err    error
+	offset int64
 }

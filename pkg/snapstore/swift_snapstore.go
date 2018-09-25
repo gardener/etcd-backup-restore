@@ -15,11 +15,18 @@
 package snapstore
 
 import (
+	"bytes"
 	"fmt"
 	"io"
+	"io/ioutil"
+	"math"
+	"os"
 	"path"
 	"sort"
 	"strings"
+	"time"
+
+	"github.com/sirupsen/logrus"
 
 	"github.com/gophercloud/gophercloud"
 	"github.com/gophercloud/gophercloud/openstack"
@@ -34,6 +41,10 @@ type SwiftSnapStore struct {
 	client *gophercloud.ServiceClient
 	bucket string
 }
+
+const (
+	swiftNoOfChunk int64 = 1000 //Default configuration in swift installation
+)
 
 // NewSwiftSnapStore create new SwiftSnapStore from shared configuration with specified bucket
 func NewSwiftSnapStore(bucket, prefix string) (*SwiftSnapStore, error) {
@@ -67,11 +78,98 @@ func (s *SwiftSnapStore) Fetch(snap Snapshot) (io.ReadCloser, error) {
 
 // Save will write the snapshot to store
 func (s *SwiftSnapStore) Save(snap Snapshot, r io.Reader) error {
-	opts := objects.CreateOpts{
-		Content: r,
+	// Save it locally
+	tmpfile, err := ioutil.TempFile(tmpDir, tmpBackupFilePrefix)
+	if err != nil {
+		return fmt.Errorf("failed to create snapshot tempfile: %v", err)
 	}
-	res := objects.Create(s.client, s.bucket, path.Join(s.prefix, snap.SnapDir, snap.SnapName), opts)
+	defer func() {
+		tmpfile.Close()
+		os.Remove(tmpfile.Name())
+	}()
+	size, err := io.Copy(tmpfile, r)
+	if err != nil {
+		return fmt.Errorf("failed to save snapshot to tmpfile: %v", err)
+	}
+
+	var (
+		errCh      = make(chan chunkUploadError)
+		chunkSize  = int64(math.Max(float64(minChunkSize), float64(size/swiftNoOfChunk)))
+		noOfChunks = size / chunkSize
+	)
+	if size%chunkSize != 0 {
+		noOfChunks++
+	}
+
+	logrus.Infof("Uploading snapshot of size: %d, chunkSize: %d, noOfChunks: %d", size, chunkSize, noOfChunks)
+	for offset := int64(0); offset <= size; offset += int64(chunkSize) {
+		go retryChunkUpload(s, &snap, tmpfile, offset, chunkSize, errCh)
+	}
+
+	snapshotErr := collectChunkUploadError(errCh, noOfChunks)
+	if len(snapshotErr) == 0 {
+		logrus.Info("All chunk uploaded successfully. Uploading manifest.")
+		b := make([]byte, 0)
+		opts := objects.CreateOpts{
+			Content:        bytes.NewReader(b),
+			ContentLength:  chunkSize,
+			ObjectManifest: path.Join(s.bucket, s.prefix, snap.SnapDir, snap.SnapName),
+		}
+		res := objects.Create(s.client, s.bucket, path.Join(s.prefix, snap.SnapDir, snap.SnapName), opts)
+		return res.Err
+	}
+	var collectedErr []string
+	for _, chunkErr := range snapshotErr {
+		collectedErr = append(collectedErr, fmt.Sprintf("failed uploading chunk with offset %d with error %v", chunkErr.offset, chunkErr.err))
+	}
+	return fmt.Errorf(strings.Join(collectedErr, "\n"))
+}
+
+func uploadChunk(s *SwiftSnapStore, snap *Snapshot, file *os.File, offset, chunkSize int64) error {
+	fileInfo, err := file.Stat()
+	if err != nil {
+		return err
+	}
+	size := fileInfo.Size() - offset
+	if size > chunkSize {
+		size = chunkSize
+	}
+
+	sr := io.NewSectionReader(file, offset, size)
+
+	opts := objects.CreateOpts{
+		Content:       sr,
+		ContentLength: size,
+	}
+	partNumber := ((offset / chunkSize) + 1)
+	res := objects.Create(s.client, s.bucket, path.Join(s.prefix, snap.SnapDir, snap.SnapName, fmt.Sprintf("%010d", partNumber)), opts)
 	return res.Err
+}
+
+func retryChunkUpload(s *SwiftSnapStore, snap *Snapshot, file *os.File, offset, chunkSize int64, errCh chan<- chunkUploadError) {
+	var (
+		maxAttempts uint = 5
+		curAttempt  uint = 1
+		err         error
+	)
+	for {
+		logrus.Infof("Uploading chunk with offset : %d, attempt: %d", offset, curAttempt)
+		err = uploadChunk(s, snap, file, offset, chunkSize)
+		logrus.Infof("For chunk upload of offset %d, err %v", offset, err)
+		if err == nil || curAttempt == maxAttempts {
+			break
+		}
+		delayTime := (1 << curAttempt)
+		curAttempt++
+		logrus.Warnf("Will try to upload chunk with offset: %d at attempt %d  after %d seconds", offset, curAttempt, delayTime)
+		time.Sleep((time.Duration)(delayTime) * time.Second)
+	}
+
+	errCh <- chunkUploadError{
+		err:    err,
+		offset: offset,
+	}
+	return
 }
 
 // List will list the snapshots from store
@@ -95,8 +193,8 @@ func (s *SwiftSnapStore) List() (SnapList, error) {
 			name := strings.Replace(object, s.prefix+"/", "", 1)
 			snap, err := ParseSnapshot(name)
 			if err != nil {
-				// Warning: the file can be a non snapshot file. Donot return error.
-				fmt.Printf("Invalid snapshot found. Ignoring it:%s\n", name)
+				// Warning: the file can be a non snapshot file. Do not return error.
+				logrus.Warnf("Invalid snapshot found. Ignoring it:%s, %v", name, err)
 			} else {
 				snapList = append(snapList, snap)
 			}

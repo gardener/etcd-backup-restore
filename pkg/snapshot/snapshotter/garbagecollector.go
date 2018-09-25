@@ -46,7 +46,7 @@ func (ssr *Snapshotter) GarbageCollector(stopCh <-chan bool) {
 			// which consist of collection of snapStream.
 			snapStreamIndexList = append(snapStreamIndexList, 0)
 			for index := 1; index < snapLen; index++ {
-				if snapList[index].Kind == snapstore.SnapshotKindFull {
+				if snapList[index].Kind == snapstore.SnapshotKindFull && !snapList[index].IsChunk {
 					snapStreamIndexList = append(snapStreamIndexList, index)
 				}
 			}
@@ -124,6 +124,17 @@ func (ssr *Snapshotter) GarbageCollector(stopCh <-chan bool) {
 						ssr.logger.Infof("GC: Deleting old full snapshot: %s %v", nextSnap.CreatedOn.UTC(), deleteSnap)
 						if err := ssr.store.Delete(*nextSnap); err != nil {
 							ssr.logger.Warnf("GC: Failed to delete snapshot %s: %v", path.Join(nextSnap.SnapDir, nextSnap.SnapName), err)
+							continue
+						}
+						for index := snapStreamIndexList[snapStreamIndex-1] + 1; index < snapStreamIndexList[snapStreamIndex]; index++ {
+							snap := snapList[index]
+							if snap.Kind == snapstore.SnapshotKindDelta {
+								continue
+							}
+							ssr.logger.Infof("GC: Deleting chunk for old full snapshot: %s", path.Join(snap.SnapDir, snap.SnapName))
+							if err := ssr.store.Delete(*snap); err != nil {
+								ssr.logger.Warnf("GC: Failed to delete snapshot %s: %v", path.Join(snap.SnapDir, snap.SnapName), err)
+							}
 						}
 					}
 				}
@@ -140,6 +151,17 @@ func (ssr *Snapshotter) GarbageCollector(stopCh <-chan bool) {
 						ssr.logger.Infof("GC: Deleting old full snapshot: %s", path.Join(snap.SnapDir, snap.SnapName))
 						if err := ssr.store.Delete(*snap); err != nil {
 							ssr.logger.Warnf("GC: Failed to delete snapshot %s: %v", path.Join(snap.SnapDir, snap.SnapName), err)
+							continue
+						}
+						for index := snapStreamIndexList[snapStreamIndex] + 1; index < snapStreamIndexList[snapStreamIndex+1]; index++ {
+							snap := snapList[index]
+							if snap.Kind == snapstore.SnapshotKindDelta {
+								continue
+							}
+							ssr.logger.Infof("GC: Deleting chunk for old full snapshot: %s", path.Join(snap.SnapDir, snap.SnapName))
+							if err := ssr.store.Delete(*snap); err != nil {
+								ssr.logger.Warnf("GC: Failed to delete snapshot %s: %v", path.Join(snap.SnapDir, snap.SnapName), err)
+							}
 						}
 					}
 				}
@@ -152,6 +174,9 @@ func (ssr *Snapshotter) GarbageCollector(stopCh <-chan bool) {
 // in snapstream which supposed to be at index 0 in <snapStream>.
 func (ssr *Snapshotter) garbageCollectDeltaSnapshots(snapStream snapstore.SnapList) error {
 	for i := len(snapStream) - 1; i > 0; i-- {
+		if (*snapStream[i]).Kind != snapstore.SnapshotKindDelta {
+			continue
+		}
 		ssr.logger.Infof("GC: Deleting old delta snapshot: %s", path.Join(snapStream[i].SnapDir, snapStream[i].SnapName))
 		if err := ssr.store.Delete(*snapStream[i]); err != nil {
 			ssr.logger.Warnf("GC: Failed to delete snapshot %s: %v", path.Join(snapStream[i].SnapDir, snapStream[i].SnapName), err)
