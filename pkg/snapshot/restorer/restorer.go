@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"math"
 	"os"
 	"path"
@@ -46,6 +47,14 @@ import (
 	"github.com/coreos/etcd/wal/walpb"
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	"github.com/sirupsen/logrus"
+)
+
+const (
+	numMaxFetchers          = 10
+	subsequentFetchDelay    = time.Millisecond * 500
+	waitDuration            = time.Second * 2
+	tmpDir                  = "/tmp"
+	tmpEventsDataFilePrefix = "etcd-restore-"
 )
 
 // NewRestorer returns the snapshotter object.
@@ -317,8 +326,15 @@ func startEmbeddedEtcd(ro RestoreOptions) (*embed.Etcd, error) {
 	return e, nil
 }
 
-// applyDeltaSnapshot applies the events from time sorted list of delta snapshot to etcd sequentially
+// applyDeltaSnapshots fetches the events from time sorted list of delta snapshots parallelly and applies them to etcd pseudo-sequentially
 func (r *Restorer) applyDeltaSnapshots(client *clientv3.Client, snapList snapstore.SnapList) error {
+	startTime := time.Now()
+	r.logger.Infof("--- APPLY DELTA SNAPSHOTS")
+
+	for _, snap := range snapList {
+		r.logger.Infof("--- APPLY DELTA SNAPSHOTS - snap revision = %d, %d", snap.StartRevision, snap.LastRevision)
+	}
+
 	firstDeltaSnap := snapList[0]
 	if err := r.applyFirstDeltaSnapshot(client, *firstDeltaSnap); err != nil {
 		return err
@@ -326,16 +342,176 @@ func (r *Restorer) applyDeltaSnapshots(client *clientv3.Client, snapList snapsto
 	if err := verifySnapshotRevision(client, snapList[0]); err != nil {
 		return err
 	}
-	for _, snap := range snapList[1:] {
-		if err := r.applyDeltaSnapshot(client, *snap); err != nil {
-			return err
+
+	r.logger.Infof("--- APPLY DELTA SNAPSHOTS - first delta snapshot applied")
+
+	errCh := make(chan error, 1)
+
+	remainingSnaps := snapList[1:]                // stores the snaps, excluding the first one
+	fetchedEventsInfo := make(chan eventsInfo, 1) // channel that passes fetched event data from snaps
+	restoreFinished := make(chan bool, 1)         // channel used to indicate that restoration is finished
+
+	r.logger.Infof("--- APPLY DELTA SNAPSHOTS - channels created")
+
+	// snapLocations is an array to record pointers to temp file locations to which the events objects are stored as json strings.
+	snapLocations := make([]string, len(remainingSnaps))
+
+	go r.fetchListener(snapLocations, fetchedEventsInfo, errCh)
+	r.logger.Infof("--- APPLY DELTA SNAPSHOTS - fetchListener goroutine started")
+	go r.startFetchers(remainingSnaps, snapLocations, fetchedEventsInfo, errCh)
+	r.logger.Infof("--- APPLY DELTA SNAPSHOTS - startFetchers goroutine started")
+	go r.applier(client, remainingSnaps, snapLocations, restoreFinished, errCh)
+	r.logger.Infof("--- APPLY DELTA SNAPSHOTS - applier goroutine started")
+
+	select {
+	case <-restoreFinished:
+		r.logger.Infof("--- APPLY DELTA SNAPSHOTS - select restoreFinished")
+		endTime := time.Now()
+		restorationTime := endTime.Sub(startTime)
+		r.logger.Warnf("RESTORATION TIME: %v", restorationTime)
+		return nil
+	case err := <-errCh:
+		r.logger.Infof("--- APPLY DELTA SNAPSHOTS - select errCh")
+		return err
+	}
+}
+
+// coordinator coordinates the actions of the fetcher routines and the applier routine. It ensures that events are applied in the right order, regardless of the order in which snaps are fetched
+func (r *Restorer) fetchListener(snapLocations []string, fetchedEventsInfo chan eventsInfo, errCh chan error) {
+	r.logger.Infof("--- FETCHLISTENER")
+	for {
+		eventsInfo := <-fetchedEventsInfo
+		r.logger.Infof("--- FETCHLISTENER - received on fetchedEventsInfo channel")
+
+		tmpFile, err := ioutil.TempFile(tmpDir, tmpEventsDataFilePrefix)
+		if err != nil {
+			errCh <- fmt.Errorf("failed to create temp file for delta snapshot %s : %v", eventsInfo.Snap.SnapName, err)
+			break
 		}
-		if err := verifySnapshotRevision(client, snap); err != nil {
-			return err
+		defer tmpFile.Close()
+
+		filePath := tmpFile.Name()
+
+		r.logger.Infof("--- FETCHLISTENER - created temp file at %s for delta snapshot %s", filePath, eventsInfo.Snap.SnapName)
+
+		_, err = tmpFile.Write(eventsInfo.Data)
+		if err != nil {
+			errCh <- fmt.Errorf("failed to write events data into temp file for delta snapshot %s : %v", eventsInfo.Snap.SnapName, err)
+			break
 		}
+		snapLocations[eventsInfo.SnapIndex] = filePath
+		r.logger.Infof("--- FETCHLISTENER - filePath written to snapLocations[%d]", eventsInfo.SnapIndex)
+	}
+}
+
+// startFetchers starts a number of fetcher goroutines pseudo-parallelly, with time delays between the goroutine starts
+func (r *Restorer) startFetchers(remainingSnaps snapstore.SnapList, snapLocations []string, fetchedEventsInfo chan eventsInfo, errCh chan error) {
+	r.logger.Infof("--- START FETCHERS")
+	numSnaps := len(remainingSnaps)
+
+	if numMaxFetchers < 1 {
+		errCh <- fmt.Errorf("Invalid number of fetcher routines")
 	}
 
-	return nil
+	numFetchers := numSnaps
+	if numFetchers < numMaxFetchers {
+		numFetchers = numMaxFetchers
+	}
+
+	snapsPerFetcher, snapIndicesPerFetcher := assignSnapsToFetchers(numFetchers, remainingSnaps)
+
+	for i := 0; i < numFetchers; i++ {
+		go r.fetcher(snapsPerFetcher[i], snapIndicesPerFetcher[i], fetchedEventsInfo, errCh)
+		time.Sleep(subsequentFetchDelay)
+	}
+}
+
+// assignSnapsToFetchers assigns delta snapshots to fetchers
+func assignSnapsToFetchers(numFetchers int, remainingSnaps snapstore.SnapList) ([][]snapstore.Snapshot, [][]int) {
+	snapsPerFetcher := make([][]snapstore.Snapshot, numFetchers)
+	snapIndicesPerFetcher := make([][]int, numFetchers)
+	fetcherIndex := 0
+	for i, snap := range remainingSnaps {
+		snapsPerFetcher[fetcherIndex] = append(snapsPerFetcher[fetcherIndex], *snap)
+		snapIndicesPerFetcher[fetcherIndex] = append(snapIndicesPerFetcher[fetcherIndex], i)
+		fetcherIndex++
+		if fetcherIndex == numFetchers {
+			fetcherIndex = 0
+		}
+	}
+	return snapsPerFetcher, snapIndicesPerFetcher
+}
+
+// fetcher fetches the delta snapshots assigned to it by startFetchers, and runs as a goroutine
+func (r *Restorer) fetcher(snaps []snapstore.Snapshot, snapIndices []int, fetchedEventsInfo chan eventsInfo, errCh chan error) {
+	for i, snap := range snaps {
+		r.logger.Infof("Fetching delta snapshot %s", path.Join(snap.SnapDir, snap.SnapName))
+		eventsData, err := getEventsDataFromDeltaSnapshot(r.store, snap)
+		if err != nil {
+			errCh <- fmt.Errorf("failed to read events data from delta snapshot %s : %v", snap.SnapName, err)
+			break
+		}
+		r.logger.Infof("--- FETCHER - %s - fetched events data", snap.SnapName)
+		eventsInfo := eventsInfo{
+			Data:      eventsData,
+			Snap:      snap,
+			SnapIndex: snapIndices[i],
+		}
+		r.logger.Infof("--- FETCHER - %s - eventsInfo object created", snap.SnapName)
+		fetchedEventsInfo <- eventsInfo
+		r.logger.Infof("--- FETCHER - %s - fetchedEventsInfo data sent on channel", snap.SnapName)
+	}
+}
+
+func (r *Restorer) applier(client *clientv3.Client, remainingSnaps snapstore.SnapList, snapLocations []string, restoreFinished chan bool, errCh chan error) {
+	r.logger.Infof("--- APPLIER")
+
+	currSnapIndex := 0
+	for {
+		if snapLocations[currSnapIndex] != "" {
+			r.logger.Infof("--- APPLIER - snapshot %d found", currSnapIndex)
+			filePath := snapLocations[currSnapIndex]
+			currSnap := remainingSnaps[currSnapIndex]
+			eventsData, err := ioutil.ReadFile(filePath)
+			if err != nil {
+				errCh <- fmt.Errorf("failed to read events data from file for delta snapshot %s : %v", currSnap.SnapName, err)
+				break
+			}
+			defer os.Remove(filePath)
+
+			events := []event{}
+			err = json.Unmarshal(eventsData, &events)
+			if err != nil {
+				errCh <- fmt.Errorf("failed to read events from events data for delta snapshot %s : %v", currSnap.SnapName, err)
+				break
+			}
+
+			if err := applyEventsToEtcd(client, events); err != nil {
+				errCh <- fmt.Errorf("failed to apply events to etcd for delta snapshot %s : %v", currSnap.SnapName, err)
+				break
+			}
+			r.logger.Infof("--- APPLIER - applied events to etcd")
+
+			if err := verifySnapshotRevision(client, currSnap); err != nil {
+				errCh <- fmt.Errorf("snapshot revision verification failed for delta snapshot %s : %v", currSnap.SnapName, err)
+				break
+			}
+			r.logger.Infof("--- APPLIER - verified snapshot revision")
+
+			currSnapIndex++
+			r.logger.Infof("--- APPLIER - currSnapIndex incremented to %d", currSnapIndex)
+
+			if currSnapIndex == len(remainingSnaps) {
+				r.logger.Infof("--- APPLIER - currSnapIndex = len(remainingSnaps)")
+				restoreFinished <- true
+				r.logger.Infof("--- APPLIER - true sent on restoreFinished")
+				break
+			}
+		} else {
+			r.logger.Infof("--- APPLIER - waiting for snapIndex %d", currSnapIndex)
+			time.Sleep(waitDuration)
+		}
+	}
 }
 
 // applyFirstDeltaSnapshot applies the events from first delta snapshot to etcd
@@ -413,6 +589,38 @@ func getEventsFromDeltaSnapshot(store snapstore.SnapStore, snap snapstore.Snapsh
 		return nil, err
 	}
 	return events, nil
+}
+
+// getEventsDataFromDeltaSnapshot fetches the data from snapshot file.
+func getEventsDataFromDeltaSnapshot(store snapstore.SnapStore, snap snapstore.Snapshot) ([]byte, error) {
+	rc, err := store.Fetch(snap)
+	if err != nil {
+		return nil, err
+	}
+	defer rc.Close()
+	buf := new(bytes.Buffer)
+	bufSize, err := buf.ReadFrom(rc)
+	if err != nil {
+		return nil, err
+	}
+	sha := buf.Bytes()
+
+	if bufSize <= sha256.Size {
+		return nil, fmt.Errorf("delta snapshot is missing hash")
+	}
+	data := sha[:bufSize-sha256.Size]
+	snapHash := sha[bufSize-sha256.Size:]
+
+	// check for match
+	h := sha256.New()
+	if _, err := h.Write(data); err != nil {
+		return nil, err
+	}
+	copmutedSha := h.Sum(nil)
+	if !reflect.DeepEqual(snapHash, copmutedSha) {
+		return nil, fmt.Errorf("expected sha256 %v, got %v", snapHash, copmutedSha)
+	}
+	return data, nil
 }
 
 // applyEventsToEtcd performss operations in events sequentially

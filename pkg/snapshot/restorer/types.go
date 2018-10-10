@@ -53,3 +53,10 @@ type event struct {
 	EtcdEvent *clientv3.Event `json:"etcdEvent"`
 	Time      time.Time       `json:"time"`
 }
+
+type eventsInfo struct {
+	Events    []event
+	Data      []byte
+	Snap      snapstore.Snapshot
+	SnapIndex int
+}
