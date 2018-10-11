@@ -76,12 +76,7 @@ func NewInitializer(options *restorer.RestoreOptions, snapstoreConfig *snapstore
 func (e *EtcdInitializer) restoreCorruptData() error {
 	logger := e.Logger
 	dataDir := e.Config.RestoreOptions.RestoreDataDir
-	logger.Infof("Removing data directory(%s) for snapshot restoration.", dataDir)
-	err := removeContents(filepath.Join(dataDir))
-	if err != nil {
-		err = fmt.Errorf("failed to delete the Data directory: %v", err)
-		return err
-	}
+
 	if e.Config.SnapstoreConfig == nil {
 		logger.Warnf("No snapstore storage provider configured. Will only clean the directory.")
 		return nil
@@ -111,25 +106,23 @@ func (e *EtcdInitializer) restoreCorruptData() error {
 		err = fmt.Errorf("Failed to restore snapshot: %v", err)
 		return err
 	}
+
+	if err := e.removeContents(dataDir); err != nil {
+		return fmt.Errorf("failed to remove corrupt contents with restored snapshot: %v", err)
+	}
 	logger.Infoln("Successfully restored the etcd data directory.")
-	return err
+	return nil
 }
 
-func removeContents(dir string) error {
-	d, err := os.Open(dir)
-	if err != nil {
-		return err
+func (e *EtcdInitializer) removeContents(dataDir string) error {
+	logger := e.Logger
+	logger.Infof("Removing data directory(%s) for snapshot restoration.", dataDir)
+	if err := os.RemoveAll(filepath.Join(dataDir)); err != nil {
+		return fmt.Errorf("failed to delete member directory: %v", err)
 	}
-	defer d.Close()
-	names, err := d.Readdirnames(-1)
-	if err != nil {
-		return err
-	}
-	for _, name := range names {
-		err = os.RemoveAll(filepath.Join(dir, name))
-		if err != nil {
-			return err
-		}
+
+	if err := os.Rename(filepath.Join(fmt.Sprintf("%s.%s", dataDir, "part")), filepath.Join(dataDir)); err != nil {
+		return fmt.Errorf("Failed to rename temp snap directory to member directory: %v", err)
 	}
 	return nil
 }
