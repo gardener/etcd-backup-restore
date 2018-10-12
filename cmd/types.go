@@ -43,7 +43,9 @@ var (
 	caFile                         string
 
 	//server flags
-	port int
+	port            int
+	enableProfiling bool
+
 	//restore flags
 	restoreCluster      string
 	restoreClusterToken string
