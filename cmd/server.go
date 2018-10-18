@@ -76,6 +76,7 @@ func NewServerCommand(stopCh <-chan struct{}) *cobra.Command {
 				Logger:          logger,
 				Status:          http.StatusServiceUnavailable,
 				StopCh:          make(chan struct{}),
+				EnableProfiling: enableProfiling,
 			}
 			logger.Info("Regsitering the http request handlers...")
 			handler.RegisterHandler()
@@ -187,6 +188,7 @@ func NewServerCommand(stopCh <-chan struct{}) *cobra.Command {
 // initializeServerFlags adds the flags to <cmd>
 func initializeServerFlags(serverCmd *cobra.Command) {
 	serverCmd.Flags().IntVarP(&port, "server-port", "p", defaultServerPort, "port on which server should listen")
+	serverCmd.Flags().BoolVar(&enableProfiling, "enable-profiling", false, "enable profiling")
 }
 
 // ProbeEtcd will make the snapshotter probe for etcd endpoint to be available

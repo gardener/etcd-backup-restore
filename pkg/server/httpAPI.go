@@ -17,6 +17,7 @@ package server
 import (
 	"fmt"
 	"net/http"
+	"net/http/pprof"
 	"sync"
 
 	"github.com/gardener/etcd-backup-restore/pkg/initializer"
@@ -40,25 +41,50 @@ type HTTPHandler struct {
 	initializationStatus      string
 	Status                    int
 	StopCh                    chan struct{}
+	EnableProfiling           bool
 }
 
 // RegisterHandler registers the handler for different requests
 func (h *HTTPHandler) RegisterHandler() {
+	mux := http.NewServeMux()
+	if h.EnableProfiling {
+		registerPProfHandler(mux)
+	}
+
 	h.initializationStatus = "New"
-	http.HandleFunc("/initialization/start", h.serveInitialize)
-	http.HandleFunc("/initialization/status", h.serveInitializationStatus)
-	http.HandleFunc("/healthz", h.serveHealthz)
+	mux.HandleFunc("/initialization/start", h.serveInitialize)
+	mux.HandleFunc("/initialization/status", h.serveInitializationStatus)
+	mux.HandleFunc("/healthz", h.serveHealthz)
+
+	h.server = &http.Server{
+		Addr:    fmt.Sprintf(":%d", h.Port),
+		Handler: mux,
+	}
 	return
+}
+
+// registerPProfHandler registers the PProf handler for profiling.
+func registerPProfHandler(mux *http.ServeMux) {
+	mux.HandleFunc("/debug/pprof/", pprof.Index)
+	mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
+	mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
+	mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
+	mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
+	mux.HandleFunc("/debug/pprof/heap", pprof.Handler("heap").ServeHTTP)
+	mux.HandleFunc("/debug/pprof/goroutine", pprof.Handler("goroutine").ServeHTTP)
+	mux.HandleFunc("/debug/pprof/threadcreate", pprof.Handler("threadcreate").ServeHTTP)
+	mux.HandleFunc("/debug/pprof/block", pprof.Handler("block").ServeHTTP)
+	mux.HandleFunc("/debug/pprof/mutex", pprof.Handler("mutex").ServeHTTP)
 }
 
 // Start start the http server to listen for request
 func (h *HTTPHandler) Start() {
-	h.server = &http.Server{
-		Addr:    fmt.Sprintf(":%d", h.Port),
-		Handler: nil,
-	}
+	h.Logger.Infof("Starting Http server at addr: %s", h.server.Addr)
 	err := h.server.ListenAndServe()
-	h.Logger.Fatalf("Failed to start http server: %v", err)
+	if err != nil && err != http.ErrServerClosed {
+		h.Logger.Fatalf("Failed to start http server: %v", err)
+	}
+	h.Logger.Infof("Http server closed gracefully.")
 	return
 }
 
