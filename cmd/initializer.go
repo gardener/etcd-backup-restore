@@ -55,6 +55,7 @@ func NewInitializeCommand(stopCh <-chan struct{}) *cobra.Command {
 				PeerURLs:       peerUrls,
 				ClusterToken:   restoreClusterToken,
 				SkipHashCheck:  skipHashCheck,
+				MaxFetchers:    restoreMaxFetchers,
 			}
 
 			var snapstoreConfig *snapstore.Config

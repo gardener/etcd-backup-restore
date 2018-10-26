@@ -79,6 +79,7 @@ func NewRestoreCommand(stopCh <-chan struct{}) *cobra.Command {
 				PeerURLs:       peerUrls,
 				ClusterToken:   restoreClusterToken,
 				SkipHashCheck:  skipHashCheck,
+				MaxFetchers:    restoreMaxFetchers,
 			}
 
 			err = rs.Restore(*options)
@@ -103,6 +104,7 @@ func initializeEtcdFlags(cmd *cobra.Command) {
 	cmd.Flags().StringArrayVar(&restorePeerURLs, "initial-advertise-peer-urls", []string{defaultInitialAdvertisePeerURLs}, "list of this member's peer URLs to advertise to the rest of the cluster")
 	cmd.Flags().StringVar(&restoreName, "name", defaultName, "human-readable name for this member")
 	cmd.Flags().BoolVar(&skipHashCheck, "skip-hash-check", false, "ignore snapshot integrity hash value (required if copied from data directory)")
+	cmd.Flags().IntVar(&restoreMaxFetchers, "max-fetchers", 6, "maximum number of threads that will fetch delta snapshots in parallel")
 }
 
 func initialClusterFromName(name string) string {

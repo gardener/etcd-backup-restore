@@ -37,6 +37,7 @@ type RestoreOptions struct {
 	PeerURLs       types.URLs
 	SkipHashCheck  bool
 	Name           string
+	MaxFetchers    int
 	// Base full snapshot + delta snapshots to restore from
 	BaseSnapshot  snapstore.Snapshot
 	DeltaSnapList snapstore.SnapList
@@ -59,4 +60,14 @@ type eventsInfo struct {
 	Data      []byte
 	Snap      snapstore.Snapshot
 	SnapIndex int
+}
+
+type snapInfo struct {
+	Snapshot  snapstore.Snapshot
+	SnapIndex int
+}
+
+type applyInfo struct {
+	EventsFilePath string
+	SnapIndex      int
 }
