@@ -20,6 +20,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gardener/etcd-backup-restore/pkg/etcdutil"
 	. "github.com/gardener/etcd-backup-restore/pkg/snapshot/snapshotter"
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	. "github.com/onsi/ginkgo"
@@ -58,7 +59,7 @@ var _ = Describe("Snapshotter", func() {
 		Context("With invalid schedule", func() {
 			It("should return error", func() {
 				schedule = "65 * * * 5"
-				tlsConfig := NewTLSConfig(
+				tlsConfig := etcdutil.NewTLSConfig(
 					certFile,
 					keyFile,
 					caFile,
@@ -81,7 +82,7 @@ var _ = Describe("Snapshotter", func() {
 		Context("With valid schedule", func() {
 			It("should create snapshotter config", func() {
 				schedule = "*/5 * * * *"
-				tlsConfig := NewTLSConfig(
+				tlsConfig := etcdutil.NewTLSConfig(
 					certFile,
 					keyFile,
 					caFile,
@@ -112,7 +113,7 @@ var _ = Describe("Snapshotter", func() {
 				testTimeout := time.Duration(time.Minute * time.Duration(maxBackups+1))
 				store, err = snapstore.GetSnapstore(&snapstore.Config{Container: path.Join(outputDir, "snapshotter_2.bkp")})
 				Expect(err).ShouldNot(HaveOccurred())
-				tlsConfig := NewTLSConfig(
+				tlsConfig := etcdutil.NewTLSConfig(
 					certFile,
 					keyFile,
 					caFile,
@@ -161,7 +162,7 @@ var _ = Describe("Snapshotter", func() {
 					testTimeout := time.Duration(time.Minute * time.Duration(maxBackups+1))
 					store, err = snapstore.GetSnapstore(&snapstore.Config{Container: path.Join(outputDir, "snapshotter_3.bkp")})
 					Expect(err).ShouldNot(HaveOccurred())
-					tlsConfig := NewTLSConfig(
+					tlsConfig := etcdutil.NewTLSConfig(
 						certFile,
 						keyFile,
 						caFile,
@@ -218,7 +219,7 @@ var _ = Describe("Snapshotter", func() {
 					etcdConnectionTimeout = 5
 					store, err = snapstore.GetSnapstore(&snapstore.Config{Container: path.Join(outputDir, "snapshotter_4.bkp")})
 					Expect(err).ShouldNot(HaveOccurred())
-					tlsConfig := NewTLSConfig(
+					tlsConfig := etcdutil.NewTLSConfig(
 						certFile,
 						keyFile,
 						caFile,
@@ -363,7 +364,7 @@ var _ = Describe("Snapshotter", func() {
 				fmt.Println("Incremental snapshot list prepared")
 
 				//start test
-				tlsConfig := NewTLSConfig(
+				tlsConfig := etcdutil.NewTLSConfig(
 					certFile,
 					keyFile,
 					caFile,
@@ -413,7 +414,7 @@ var _ = Describe("Snapshotter", func() {
 				testTimeout := time.Duration(time.Second * time.Duration(garbageCollectionPeriodSeconds*2))
 				etcdConnectionTimeout = 5
 				store := prepareStoreForGarbageCollection(now, "garbagecollector_limit_based.bkp")
-				tlsConfig := NewTLSConfig(
+				tlsConfig := etcdutil.NewTLSConfig(
 					certFile,
 					keyFile,
 					caFile,

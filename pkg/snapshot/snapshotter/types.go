@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/coreos/etcd/clientv3"
+	"github.com/gardener/etcd-backup-restore/pkg/etcdutil"
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	"github.com/robfig/cron"
 	"github.com/sirupsen/logrus"
@@ -31,6 +32,8 @@ const (
 	// GarbageCollectionPolicyLimitBased defines the limit based policy for garbage collecting old backups
 	GarbageCollectionPolicyLimitBased = "LimitBased"
 )
+
+var emptyStruct struct{}
 
 // State denotes the state the snapshotter would be in.
 type State int
@@ -47,6 +50,7 @@ type Snapshotter struct {
 	logger             *logrus.Logger
 	prevSnapshot       *snapstore.Snapshot
 	config             *Config
+	fullSnapshotCh     chan struct{}
 	fullSnapshotTimer  *time.Timer
 	deltaSnapshotTimer *time.Timer
 	events             []*event
@@ -65,17 +69,7 @@ type Config struct {
 	etcdConnectionTimeout          time.Duration
 	garbageCollectionPeriodSeconds time.Duration
 	garbageCollectionPolicy        string
-	tlsConfig                      *TLSConfig
-}
-
-// TLSConfig holds cert information and settings for TLS.
-type TLSConfig struct {
-	cert       string
-	key        string
-	caCert     string
-	insecureTr bool
-	skipVerify bool
-	endpoints  []string
+	tlsConfig                      *etcdutil.TLSConfig
 }
 
 // event is wrapper over etcd event to keep track of time of event

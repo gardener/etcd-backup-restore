@@ -18,6 +18,7 @@ import (
 	"path"
 	"time"
 
+	"github.com/gardener/etcd-backup-restore/pkg/etcdutil"
 	"github.com/gardener/etcd-backup-restore/pkg/snapshot/snapshotter"
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	"github.com/spf13/cobra"
@@ -41,7 +42,7 @@ storing snapshots on various cloud storage providers as well as local disk locat
 				logger.Fatalf("Failed to create snapstore from configured storage provider: %v", err)
 			}
 
-			tlsConfig := snapshotter.NewTLSConfig(
+			tlsConfig := etcdutil.NewTLSConfig(
 				certFile,
 				keyFile,
 				caFile,
@@ -63,7 +64,7 @@ storing snapshots on various cloud storage providers as well as local disk locat
 			ssr := snapshotter.NewSnapshotter(
 				logger,
 				snapshotterConfig)
-
+			go etcdutil.DefragDataPeriodically(stopCh, tlsConfig, time.Duration(defragmentationPeriodHours)*time.Hour, time.Duration(etcdConnectionTimeout)*time.Second, ssr.TriggerFullSnapshot)
 			gcStopCh := make(chan struct{})
 			go ssr.RunGarbageCollector(gcStopCh)
 			if err := ssr.Run(stopCh, true); err != nil {
@@ -93,4 +94,5 @@ func initializeSnapshotterFlags(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&certFile, "cert", "", "identify secure client using this TLS certificate file")
 	cmd.Flags().StringVar(&keyFile, "key", "", "identify secure client using this TLS key file")
 	cmd.Flags().StringVar(&caFile, "cacert", "", "verify certificates of TLS-enabled secure servers using this CA bundle")
+	cmd.Flags().IntVar(&defragmentationPeriodHours, "defragmentation-period-hours", 72, "period after which we should defragment etcd data directory")
 }

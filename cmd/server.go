@@ -24,6 +24,7 @@ import (
 
 	"github.com/coreos/etcd/pkg/types"
 	"github.com/gardener/etcd-backup-restore/pkg/errors"
+	"github.com/gardener/etcd-backup-restore/pkg/etcdutil"
 	"github.com/gardener/etcd-backup-restore/pkg/initializer"
 	"github.com/gardener/etcd-backup-restore/pkg/server"
 	"github.com/gardener/etcd-backup-restore/pkg/snapshot/restorer"
@@ -101,7 +102,7 @@ func NewServerCommand(stopCh <-chan struct{}) *cobra.Command {
 				return
 			}
 
-			tlsConfig := snapshotter.NewTLSConfig(
+			tlsConfig := etcdutil.NewTLSConfig(
 				certFile,
 				keyFile,
 				caFile,
@@ -131,10 +132,10 @@ func NewServerCommand(stopCh <-chan struct{}) *cobra.Command {
 			ssr := snapshotter.NewSnapshotter(
 				logger,
 				snapshotterConfig)
-
 			ssrStopCh = make(chan struct{})
 			go handleSsrRequest(handler, ssr, ackCh, ssrStopCh, stopCh)
 			go handleAckState(handler, ackCh)
+			go etcdutil.DefragDataPeriodically(stopCh, tlsConfig, time.Duration(defragmentationPeriodHours)*time.Hour, time.Duration(etcdConnectionTimeout)*time.Second, ssr.TriggerFullSnapshot)
 
 			for {
 				logger.Infof("Probing etcd...")
@@ -192,8 +193,8 @@ func initializeServerFlags(serverCmd *cobra.Command) {
 
 // ProbeEtcd will make the snapshotter probe for etcd endpoint to be available
 // before it starts taking regular snapshots.
-func ProbeEtcd(tlsConfig *snapshotter.TLSConfig) error {
-	client, err := snapshotter.GetTLSClientForEtcd(tlsConfig)
+func ProbeEtcd(tlsConfig *etcdutil.TLSConfig) error {
+	client, err := etcdutil.GetTLSClientForEtcd(tlsConfig)
 	if err != nil {
 		return &errors.EtcdError{
 			Message: fmt.Sprintf("failed to create etcd client: %v", err),
@@ -218,7 +219,7 @@ func handleAckState(handler *server.HTTPHandler, ackCh chan struct{}) {
 	}
 }
 
-// handleNoSsrRequest responds to handlers reqeust with acknowledgment when snapshotter is not running.
+// handleNoSsrRequest responds to handlers request with acknowledgment when snapshotter is not running.
 func handleNoSsrRequest(handler *server.HTTPHandler) {
 	for {
 		_, ok := <-handler.ReqCh
