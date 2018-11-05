@@ -23,6 +23,11 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+const (
+	tmpDir                  = "/tmp"
+	tmpEventsDataFilePrefix = "etcd-restore-"
+)
+
 // Restorer is a struct for etcd data directory restorer
 type Restorer struct {
 	logger *logrus.Logger
@@ -55,19 +60,12 @@ type event struct {
 	Time      time.Time       `json:"time"`
 }
 
-type eventsInfo struct {
-	Events    []event
-	Data      []byte
-	Snap      snapstore.Snapshot
-	SnapIndex int
-}
-
-type snapInfo struct {
+type fetcherInfo struct {
 	Snapshot  snapstore.Snapshot
 	SnapIndex int
 }
 
-type applyInfo struct {
+type applierInfo struct {
 	EventsFilePath string
 	SnapIndex      int
 }
