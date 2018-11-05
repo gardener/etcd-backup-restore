@@ -22,16 +22,17 @@ import (
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 )
 
-// GarbageCollector basically consider the older backups as garbage and deletes it
-func (ssr *Snapshotter) GarbageCollector(stopCh <-chan bool) {
+// RunGarbageCollector basically consider the older backups as garbage and deletes it
+func (ssr *Snapshotter) RunGarbageCollector(stopCh <-chan struct{}) {
 	for {
 		select {
 		case <-stopCh:
-			ssr.logger.Infoln("GC: Stop signal received. Closing garbage collector.")
+			ssr.logger.Info("GC: Stop signal received. Closing garbage collector.")
 			return
-		case <-time.After(ssr.garbageCollectionPeriodSeconds * time.Second):
-			ssr.logger.Infoln("GC: Executing garbage collection...")
-			snapList, err := ssr.store.List()
+		case <-time.After(ssr.config.garbageCollectionPeriodSeconds * time.Second):
+			total := 0
+			ssr.logger.Info("GC: Executing garbage collection...")
+			snapList, err := ssr.config.store.List()
 			if err != nil {
 				ssr.logger.Warnf("GC: Failed to list snapshots: %v", err)
 				continue
@@ -51,7 +52,7 @@ func (ssr *Snapshotter) GarbageCollector(stopCh <-chan bool) {
 				}
 			}
 
-			switch ssr.garbageCollectionPolicy {
+			switch ssr.config.garbageCollectionPolicy {
 			case GarbageCollectionPolicyExponential:
 				// Overall policy:
 				// Delete delta snapshots in all snapStream but the latest one.
@@ -73,7 +74,9 @@ func (ssr *Snapshotter) GarbageCollector(stopCh <-chan bool) {
 					nextSnap := snapList[snapStreamIndexList[snapStreamIndex-1]]
 
 					// garbage collect delta snapshots.
-					if err := ssr.garbageCollectDeltaSnapshots(snapList[snapStreamIndexList[snapStreamIndex-1]:snapStreamIndexList[snapStreamIndex]]); err != nil {
+					deletedSnap, err := ssr.garbageCollectDeltaSnapshots(snapList[snapStreamIndexList[snapStreamIndex-1]:snapStreamIndexList[snapStreamIndex]])
+					total += deletedSnap
+					if err != nil {
 						continue
 					}
 
@@ -122,17 +125,18 @@ func (ssr *Snapshotter) GarbageCollector(stopCh <-chan bool) {
 
 					if deleteSnap {
 						ssr.logger.Infof("GC: Deleting old full snapshot: %s %v", nextSnap.CreatedOn.UTC(), deleteSnap)
-						if err := ssr.store.Delete(*nextSnap); err != nil {
+						if err := ssr.config.store.Delete(*nextSnap); err != nil {
 							ssr.logger.Warnf("GC: Failed to delete snapshot %s: %v", path.Join(nextSnap.SnapDir, nextSnap.SnapName), err)
 							continue
 						}
+						total++
 						for index := snapStreamIndexList[snapStreamIndex-1] + 1; index < snapStreamIndexList[snapStreamIndex]; index++ {
 							snap := snapList[index]
 							if snap.Kind == snapstore.SnapshotKindDelta {
 								continue
 							}
 							ssr.logger.Infof("GC: Deleting chunk for old full snapshot: %s", path.Join(snap.SnapDir, snap.SnapName))
-							if err := ssr.store.Delete(*snap); err != nil {
+							if err := ssr.config.store.Delete(*snap); err != nil {
 								ssr.logger.Warnf("GC: Failed to delete snapshot %s: %v", path.Join(snap.SnapDir, snap.SnapName), err)
 							}
 						}
@@ -143,45 +147,51 @@ func (ssr *Snapshotter) GarbageCollector(stopCh <-chan bool) {
 				// Delete delta snapshots in all snapStream but the latest one.
 				// Delete all snapshots beyond limit set by ssr.maxBackups.
 				for snapStreamIndex := 0; snapStreamIndex < len(snapStreamIndexList)-1; snapStreamIndex++ {
-					if err := ssr.garbageCollectDeltaSnapshots(snapList[snapStreamIndexList[snapStreamIndex]:snapStreamIndexList[snapStreamIndex+1]]); err != nil {
+					deletedSnap, err := ssr.garbageCollectDeltaSnapshots(snapList[snapStreamIndexList[snapStreamIndex]:snapStreamIndexList[snapStreamIndex+1]])
+					total += deletedSnap
+					if err != nil {
 						continue
 					}
-					if snapStreamIndex < len(snapStreamIndexList)-ssr.maxBackups {
+					if snapStreamIndex < len(snapStreamIndexList)-ssr.config.maxBackups {
 						snap := snapList[snapStreamIndexList[snapStreamIndex]]
 						ssr.logger.Infof("GC: Deleting old full snapshot: %s", path.Join(snap.SnapDir, snap.SnapName))
-						if err := ssr.store.Delete(*snap); err != nil {
+						if err := ssr.config.store.Delete(*snap); err != nil {
 							ssr.logger.Warnf("GC: Failed to delete snapshot %s: %v", path.Join(snap.SnapDir, snap.SnapName), err)
 							continue
 						}
+						total++
 						for index := snapStreamIndexList[snapStreamIndex] + 1; index < snapStreamIndexList[snapStreamIndex+1]; index++ {
 							snap := snapList[index]
 							if snap.Kind == snapstore.SnapshotKindDelta {
 								continue
 							}
 							ssr.logger.Infof("GC: Deleting chunk for old full snapshot: %s", path.Join(snap.SnapDir, snap.SnapName))
-							if err := ssr.store.Delete(*snap); err != nil {
+							if err := ssr.config.store.Delete(*snap); err != nil {
 								ssr.logger.Warnf("GC: Failed to delete snapshot %s: %v", path.Join(snap.SnapDir, snap.SnapName), err)
 							}
 						}
 					}
 				}
 			}
+			ssr.logger.Infof("GC: Total number garbage collected snapshots: %d", total)
 		}
 	}
 }
 
 // garbageCollectDeltaSnapshots deletes only the delta snapshots from time sorted <snapStream>. It won't delete the full snapshot
 // in snapstream which supposed to be at index 0 in <snapStream>.
-func (ssr *Snapshotter) garbageCollectDeltaSnapshots(snapStream snapstore.SnapList) error {
+func (ssr *Snapshotter) garbageCollectDeltaSnapshots(snapStream snapstore.SnapList) (int, error) {
+	total := 0
 	for i := len(snapStream) - 1; i > 0; i-- {
 		if (*snapStream[i]).Kind != snapstore.SnapshotKindDelta {
 			continue
 		}
 		ssr.logger.Infof("GC: Deleting old delta snapshot: %s", path.Join(snapStream[i].SnapDir, snapStream[i].SnapName))
-		if err := ssr.store.Delete(*snapStream[i]); err != nil {
+		if err := ssr.config.store.Delete(*snapStream[i]); err != nil {
 			ssr.logger.Warnf("GC: Failed to delete snapshot %s: %v", path.Join(snapStream[i].SnapDir, snapStream[i].SnapName), err)
-			return err
+			return total, err
 		}
+		total++
 	}
-	return nil
+	return total, nil
 }

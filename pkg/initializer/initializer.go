@@ -91,7 +91,7 @@ func (e *EtcdInitializer) restoreCorruptData() error {
 		err = fmt.Errorf("failed to create snapstore from configured storage provider: %v", err)
 		return err
 	}
-	logger.Infoln("Finding latest set of snapshot to recover from...")
+	logger.Info("Finding latest set of snapshot to recover from...")
 	baseSnap, deltaSnapList, err := miscellaneous.GetLatestFullSnapshotAndDeltaSnapList(store)
 	if err != nil {
 		logger.Errorf("failed to get latest set of snapshot: %v", err)
@@ -111,7 +111,7 @@ func (e *EtcdInitializer) restoreCorruptData() error {
 		err = fmt.Errorf("Failed to restore snapshot: %v", err)
 		return err
 	}
-	logger.Infoln("Successfully restored the etcd data directory.")
+	logger.Info("Successfully restored the etcd data directory.")
 	return err
 }
 

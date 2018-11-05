@@ -24,6 +24,19 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+// NewSnapshot returns the snapshot object.
+func NewSnapshot(kind string, startRevision, lastRevision int64) *Snapshot {
+	snap := &Snapshot{
+		Kind:          kind,
+		StartRevision: startRevision,
+		LastRevision:  lastRevision,
+		CreatedOn:     time.Now().UTC(),
+	}
+	snap.GenerateSnapshotDirectory()
+	snap.GenerateSnapshotName()
+	return snap
+}
+
 // GenerateSnapshotName prepares the snapshot name from metadata
 func (s *Snapshot) GenerateSnapshotName() {
 	s.SnapName = fmt.Sprintf("%s-%08d-%08d-%d", s.Kind, s.StartRevision, s.LastRevision, s.CreatedOn.Unix())

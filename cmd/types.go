@@ -59,3 +59,5 @@ var (
 	storageContainer string
 	storagePrefix    string
 )
+
+var emptyStruct struct{}

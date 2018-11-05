@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"net/http"
 	"path"
+	"sync/atomic"
 	"time"
 
 	"github.com/coreos/etcd/pkg/types"
@@ -38,7 +39,12 @@ func NewServerCommand(stopCh <-chan struct{}) *cobra.Command {
 		Short: "start the http server with backup scheduler.",
 		Long:  `Server will keep listening for http request to deliver its functionality through http endpoins.`,
 		Run: func(cmd *cobra.Command, args []string) {
-
+			var (
+				snapstoreConfig *snapstore.Config
+				ssrStopCh       chan struct{}
+				ackCh           chan struct{}
+			)
+			ackCh = make(chan struct{})
 			clusterUrlsMap, err := types.NewURLsMap(restoreCluster)
 			if err != nil {
 				logger.Fatalf("failed creating url map for restore cluster: %v", err)
@@ -57,7 +63,6 @@ func NewServerCommand(stopCh <-chan struct{}) *cobra.Command {
 				SkipHashCheck:  skipHashCheck,
 			}
 
-			var snapstoreConfig *snapstore.Config
 			if storageProvider != "" {
 				snapstoreConfig = &snapstore.Config{
 					Provider:  storageProvider,
@@ -77,60 +82,60 @@ func NewServerCommand(stopCh <-chan struct{}) *cobra.Command {
 				Status:          http.StatusServiceUnavailable,
 				StopCh:          make(chan struct{}),
 				EnableProfiling: enableProfiling,
+				ReqCh:           make(chan struct{}),
+				AckCh:           make(chan struct{}),
 			}
-			logger.Info("Regsitering the http request handlers...")
+			logger.Info("Registering the http request handlers...")
 			handler.RegisterHandler()
 			logger.Info("Starting the http server...")
 			go handler.Start()
 			defer handler.Stop()
 
-			ssrStopCh := make(chan struct{})
-			go func() {
-				for {
-					var s struct{}
-					select {
-					case <-handler.StopCh:
-					case <-stopCh:
-					}
-					ssrStopCh <- s
-				}
-			}()
-
 			if snapstoreConfig == nil {
 				logger.Warnf("No snapstore storage provider configured. Will not start backup schedule.")
+				go handleNoSsrRequest(handler)
 				handler.Status = http.StatusOK
 				<-stopCh
+				logger.Infof("Received stop signal. Terminating !!")
 				return
 			}
 
+			tlsConfig := snapshotter.NewTLSConfig(
+				certFile,
+				keyFile,
+				caFile,
+				insecureTransport,
+				insecureSkipVerify,
+				etcdEndpoints)
+
+			ss, err := snapstore.GetSnapstore(snapstoreConfig)
+			if err != nil {
+				logger.Fatalf("Failed to create snapstore from configured storage provider: %v", err)
+			}
+			logger.Infof("Created snapstore from provider: %s", storageProvider)
+
+			snapshotterConfig, err := snapshotter.NewSnapshotterConfig(
+				schedule,
+				ss,
+				maxBackups,
+				deltaSnapshotIntervalSeconds,
+				time.Duration(etcdConnectionTimeout),
+				time.Duration(garbageCollectionPeriodSeconds),
+				garbageCollectionPolicy,
+				tlsConfig)
+			if err != nil {
+				logger.Fatalf("failed to create snapstore config: %v", err)
+			}
+			logger.Infof("Creating snapshotter...")
+			ssr := snapshotter.NewSnapshotter(
+				logger,
+				snapshotterConfig)
+
+			ssrStopCh = make(chan struct{})
+			go handleSsrRequest(handler, ssr, ackCh, ssrStopCh, stopCh)
+			go handleAckState(handler, ackCh)
+
 			for {
-				ss, err := snapstore.GetSnapstore(snapstoreConfig)
-				if err != nil {
-					logger.Fatalf("Failed to create snapstore from configured storage provider: %v", err)
-				}
-				logger.Infof("Created snapstore from provider: %s", storageProvider)
-
-				tlsConfig := snapshotter.NewTLSConfig(
-					certFile,
-					keyFile,
-					caFile,
-					insecureTransport,
-					insecureSkipVerify,
-					etcdEndpoints)
-				ssr, err := snapshotter.NewSnapshotter(
-					schedule,
-					ss,
-					logger,
-					maxBackups,
-					deltaSnapshotIntervalSeconds,
-					time.Duration(etcdConnectionTimeout),
-					time.Duration(garbageCollectionPeriodSeconds),
-					garbageCollectionPolicy,
-					tlsConfig)
-				if err != nil {
-					logger.Fatalf("Failed to create snapshotter from configured storage provider: %v", err)
-				}
-
 				logger.Infof("Probing etcd...")
 				select {
 				case <-stopCh:
@@ -145,35 +150,28 @@ func NewServerCommand(stopCh <-chan struct{}) *cobra.Command {
 					continue
 				}
 
-				// Try to take snapshot before setting
-				logger.Infof("Taking initial snapshot at time: %s", time.Now().Local())
-				if err := ssr.TakeFullSnapshot(); err != nil {
-					if etcdErr, ok := err.(*errors.EtcdError); ok == true {
-						logger.Errorf("Snapshotter failed with etcd error: %v", etcdErr)
-					} else {
-						logger.Fatalf("Snapshotter failed with error: %v", err)
-					}
-					handler.Status = http.StatusServiceUnavailable
+				if err = ssr.TakeFullSnapshotAndResetTimer(); err != nil {
+					logger.Errorf("Failed to take first snapshot: %v", err)
 					continue
-				} else {
-					handler.Status = http.StatusOK
 				}
-
-				gcStopCh := make(chan bool)
-
-				go ssr.GarbageCollector(gcStopCh)
-
-				if err := ssr.Run(true, ssrStopCh); err != nil {
-					handler.Status = http.StatusServiceUnavailable
+				handler.Status = http.StatusOK
+				ssr.SsrStateMutex.Lock()
+				ssr.SsrState = snapshotter.SnapshotterActive
+				ssr.SsrStateMutex.Unlock()
+				gcStopCh := make(chan struct{})
+				go ssr.RunGarbageCollector(gcStopCh)
+				logger.Infof("Starting snapshotter...")
+				if err := ssr.Run(ssrStopCh, false); err != nil {
 					if etcdErr, ok := err.(*errors.EtcdError); ok == true {
 						logger.Errorf("Snapshotter failed with etcd error: %v", etcdErr)
 					} else {
-						logger.Fatalf("Snapshotter failed with error: %v", err)
+						logger.Errorf("Snapshotter failed with error: %v", err)
 					}
-				} else {
-					handler.Status = http.StatusOK
 				}
-				gcStopCh <- true
+				logger.Infof("Snapshotter stopped.")
+				ackCh <- emptyStruct
+				handler.Status = http.StatusServiceUnavailable
+				close(gcStopCh)
 			}
 		},
 	}
@@ -208,4 +206,50 @@ func ProbeEtcd(tlsConfig *snapshotter.TLSConfig) error {
 		return err
 	}
 	return nil
+}
+
+func handleAckState(handler *server.HTTPHandler, ackCh chan struct{}) {
+	for {
+		<-ackCh
+		if atomic.CompareAndSwapUint32(&handler.AckState, server.HandlerAckWaiting, server.HandlerAckDone) {
+			handler.AckCh <- emptyStruct
+		}
+	}
+}
+
+// handleNoSsrRequest responds to handlers reqeust with acknowledgment when snapshotter is not running.
+func handleNoSsrRequest(handler *server.HTTPHandler) {
+	for {
+		_, ok := <-handler.ReqCh
+		if !ok {
+			return
+		}
+		if atomic.CompareAndSwapUint32(&handler.AckState, server.HandlerAckWaiting, server.HandlerAckDone) {
+			handler.AckCh <- emptyStruct
+		}
+	}
+}
+
+// handleSsrRequest responds to handlers reqeust and stop interrupt.
+func handleSsrRequest(handler *server.HTTPHandler, ssr *snapshotter.Snapshotter, ackCh, ssrStopCh chan struct{}, stopCh <-chan struct{}) {
+	for {
+		var ok bool
+		select {
+		case _, ok = <-handler.ReqCh:
+		case _, ok = <-stopCh:
+		}
+
+		ssr.SsrStateMutex.Lock()
+		if ssr.SsrState == snapshotter.SnapshotterActive {
+			ssr.SsrStateMutex.Unlock()
+			ssrStopCh <- emptyStruct
+		} else {
+			ssr.SsrState = snapshotter.SnapshotterInactive
+			ssr.SsrStateMutex.Unlock()
+			ackCh <- emptyStruct
+		}
+		if !ok {
+			return
+		}
+	}
 }
