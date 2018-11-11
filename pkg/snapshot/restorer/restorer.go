@@ -50,7 +50,7 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-// NewRestorer returns the snapshotter object.
+// NewRestorer returns the restorer object.
 func NewRestorer(store snapstore.SnapStore, logger *logrus.Logger) *Restorer {
 	return &Restorer{
 		logger: logger,
