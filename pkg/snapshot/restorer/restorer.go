@@ -398,12 +398,9 @@ func (r *Restorer) cleanup(snapLocationsCh chan string, stopCh chan bool, wg *sy
 	r.logger.Infof("Cleanup complete")
 }
 
-// fetch fetches delta snapshots as events and persists them onto disk.
+// fetchSnaps fetches delta snapshots as events and persists them onto disk.
 func (r *Restorer) fetchSnaps(fetcherIndex int, fetcherInfoCh <-chan fetcherInfo, applierInfoCh chan<- applierInfo, snapLocationsCh chan<- string, errCh chan<- error, stopCh chan bool, wg *sync.WaitGroup) {
-	defer func() {
-		wg.Done()
-	}()
-
+	defer wg.Done()
 	wg.Add(1)
 
 	for fetcherInfo := range fetcherInfoCh {
@@ -442,22 +439,15 @@ func (r *Restorer) fetchSnaps(fetcherIndex int, fetcherInfoCh <-chan fetcherInfo
 	}
 }
 
-// apply applies delta snapshot events to the embedded etcd sequentially, in the right order of snapshots, regardless of the order in which they were fetched.
+// applySnaps applies delta snapshot events to the embedded etcd sequentially, in the right order of snapshots, regardless of the order in which they were fetched.
 func (r *Restorer) applySnaps(client *clientv3.Client, remainingSnaps snapstore.SnapList, applierInfoCh <-chan applierInfo, errCh chan<- error, stopCh <-chan bool, wg *sync.WaitGroup) {
-	defer func() {
-		wg.Done()
-	}()
-
+	defer wg.Done()
 	wg.Add(1)
 
-	eventsList := make([][]event, len(remainingSnaps))
-	snapFetchStatus := make([]bool, len(remainingSnaps))
-	for i := 0; i < len(snapFetchStatus); i++ {
-		snapFetchStatus[i] = false
-	}
+	pathList := make([]string, len(remainingSnaps))
 	nextSnapIndexToApply := 0
 
-	for i := 0; i < len(remainingSnaps); i++ {
+	for {
 		select {
 		case _, more := <-stopCh:
 			if !more {
@@ -467,28 +457,9 @@ func (r *Restorer) applySnaps(client *clientv3.Client, remainingSnaps snapstore.
 			if applierInfo.SnapIndex == -1 {
 				return
 			}
-			filePath := applierInfo.EventsFilePath
+
 			fetchedSnapIndex := applierInfo.SnapIndex
-			snapName := remainingSnaps[fetchedSnapIndex].SnapName
-
-			eventsData, err := ioutil.ReadFile(filePath)
-			if err != nil {
-				errCh <- fmt.Errorf("failed to read events data from file for delta snapshot %s : %v", snapName, err)
-				return
-			}
-
-			if err = os.Remove(filePath); err != nil {
-				r.logger.Warnf("Unable to remove file: %s; err: %v", filePath, err)
-			}
-
-			events := []event{}
-			if err = json.Unmarshal(eventsData, &events); err != nil {
-				errCh <- fmt.Errorf("failed to read events from events data for delta snapshot %s : %v", snapName, err)
-				return
-			}
-
-			eventsList[fetchedSnapIndex] = events
-			snapFetchStatus[fetchedSnapIndex] = true
+			pathList[fetchedSnapIndex] = applierInfo.EventsFilePath
 
 			if fetchedSnapIndex < nextSnapIndexToApply {
 				errCh <- fmt.Errorf("snap index mismatch for delta snapshot %d; expected snap index to be atleast %d", fetchedSnapIndex, nextSnapIndexToApply)
@@ -496,13 +467,30 @@ func (r *Restorer) applySnaps(client *clientv3.Client, remainingSnaps snapstore.
 			}
 			if fetchedSnapIndex == nextSnapIndexToApply {
 				for currSnapIndex := fetchedSnapIndex; currSnapIndex < len(remainingSnaps); currSnapIndex++ {
-					if !snapFetchStatus[currSnapIndex] {
+					if pathList[currSnapIndex] == "" {
 						break
 					}
 
 					r.logger.Infof("Applying delta snapshot %s", path.Join(remainingSnaps[currSnapIndex].SnapDir, remainingSnaps[currSnapIndex].SnapName))
 
-					if err := applyEventsAndVerify(client, eventsList[currSnapIndex], remainingSnaps[currSnapIndex]); err != nil {
+					filePath := pathList[currSnapIndex]
+					snapName := remainingSnaps[currSnapIndex].SnapName
+
+					eventsData, err := ioutil.ReadFile(filePath)
+					if err != nil {
+						errCh <- fmt.Errorf("failed to read events data from file for delta snapshot %s : %v", snapName, err)
+						return
+					}
+					if err = os.Remove(filePath); err != nil {
+						r.logger.Warnf("Unable to remove file: %s; err: %v", filePath, err)
+					}
+					events := []event{}
+					if err = json.Unmarshal(eventsData, &events); err != nil {
+						errCh <- fmt.Errorf("failed to read events from events data for delta snapshot %s : %v", snapName, err)
+						return
+					}
+
+					if err := applyEventsAndVerify(client, events, remainingSnaps[currSnapIndex]); err != nil {
 						errCh <- err
 						return
 					}
