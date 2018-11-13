@@ -66,14 +66,10 @@ func NewSnapshotter(logger *logrus.Logger, config *Config) *Snapshotter {
 	}
 	prevSnapshot.GenerateSnapshotDirectory()
 	prevSnapshot.GenerateSnapshotName()
-	ctx := context.TODO()
-	ctx, cancel := context.WithCancel(ctx)
 	return &Snapshotter{
 		logger:        logger,
 		prevSnapshot:  prevSnapshot,
 		config:        config,
-		watchCtx:      ctx,
-		cancelWatch:   cancel,
 		SsrState:      SnapshotterInactive,
 		SsrStateMutex: &sync.Mutex{},
 	}
@@ -190,7 +186,9 @@ func (ssr *Snapshotter) takeFullSnapshot() error {
 	ssr.logger.Infof("Successfully saved full snapshot at: %s", path.Join(s.SnapDir, s.SnapName))
 	//make event array empty as any event prior to full snapshot should not be uploaded in delta.
 	ssr.events = []*event{}
-	ssr.watchCh = client.Watch(ssr.watchCtx, "", clientv3.WithPrefix(), clientv3.WithRev(ssr.prevSnapshot.LastRevision+1))
+	watchCtx, cancelWatch := context.WithCancel(context.TODO())
+	ssr.cancelWatch = cancelWatch
+	ssr.watchCh = client.Watch(watchCtx, "", clientv3.WithPrefix(), clientv3.WithRev(ssr.prevSnapshot.LastRevision+1))
 	ssr.logger.Infof("Applied watch on etcd from revision: %08d", ssr.prevSnapshot.LastRevision+1)
 
 	return nil
@@ -317,7 +315,7 @@ func (ssr *Snapshotter) handleDeltaWatchEvents(wr clientv3.WatchResponse) error 
 	for _, ev := range wr.Events {
 		ssr.events = append(ssr.events, newEvent(ev))
 	}
-	ssr.logger.Infof("Added events till revision: %d", ssr.events[len(ssr.events)-1].EtcdEvent.Kv.ModRevision)
+	ssr.logger.Debugf("Added events till revision: %d", ssr.events[len(ssr.events)-1].EtcdEvent.Kv.ModRevision)
 	return nil
 }
 

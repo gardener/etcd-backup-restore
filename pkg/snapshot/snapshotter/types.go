@@ -51,7 +51,6 @@ type Snapshotter struct {
 	deltaSnapshotTimer *time.Timer
 	events             []*event
 	watchCh            clientv3.WatchChan
-	watchCtx           context.Context
 	cancelWatch        context.CancelFunc
 	SsrStateMutex      *sync.Mutex
 	SsrState           State
