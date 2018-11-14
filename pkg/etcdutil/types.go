@@ -14,6 +14,12 @@
 
 package etcdutil
 
+import (
+	"time"
+)
+
+const etcdDialTimeout = time.Second * 30
+
 // TLSConfig holds cert information and settings for TLS.
 type TLSConfig struct {
 	cert       string

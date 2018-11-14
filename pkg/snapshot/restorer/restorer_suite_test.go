@@ -24,6 +24,7 @@ import (
 
 	"github.com/coreos/etcd/clientv3"
 	"github.com/coreos/etcd/embed"
+	"github.com/gardener/etcd-backup-restore/pkg/etcdutil"
 	"github.com/gardener/etcd-backup-restore/pkg/snapshot/snapshotter"
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	. "github.com/onsi/ginkgo"
@@ -142,7 +143,7 @@ func runSnapshotter(logger *logrus.Logger, endpoints []string, stopCh chan struc
 		return err
 	}
 
-	tlsConfig := snapshotter.NewTLSConfig(
+	tlsConfig := etcdutil.NewTLSConfig(
 		certFile,
 		keyFile,
 		caFile,
@@ -205,13 +206,13 @@ func populateEtcd(logger *logrus.Logger, endpoints []string, errCh chan<- error,
 		case _, more := <-stopCh:
 			if !more {
 				keyTo = currKey
+				logger.Infof("Popolated data till key %s into embedded etcd", keyPrefix+strconv.Itoa(currKey))
 				return
 			}
 		default:
 			currKey++
 			key = keyPrefix + strconv.Itoa(currKey)
 			value = valuePrefix + strconv.Itoa(currKey)
-			logger.Infof("Putting data (%s, %s) into embedded etcd", key, value)
 			_, err = cli.Put(context.TODO(), key, value)
 			if err != nil {
 				errCh <- fmt.Errorf("unable to put key-value pair (%s, %s) into embedded etcd: %v", key, value, err)

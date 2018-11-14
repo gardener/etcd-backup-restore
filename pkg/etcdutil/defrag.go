@@ -16,47 +16,51 @@ package etcdutil
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/sirupsen/logrus"
 )
 
 // defragData defragments the data directory of each etcd member.
-func defragData(tlsConfig *TLSConfig, etcdConnectionTimeout time.Duration) {
+func defragData(tlsConfig *TLSConfig, etcdConnectionTimeout time.Duration) error {
 	client, err := GetTLSClientForEtcd(tlsConfig)
 	if err != nil {
-		logrus.Warnf("failed to create etcd client for defragmentation: %v", err)
-		return
+		return fmt.Errorf("failed to create etcd client for defragmentation: %v", err)
 	}
+	defer client.Close()
 
 	for _, ep := range tlsConfig.endpoints {
+		var dbSizeBeforeDefrag, dbSizeAfterDefrag int64
 		logrus.Infof("Defragmenting etcd member[%s]", ep)
-		ctx, cancel := context.WithTimeout(context.TODO(), etcdConnectionTimeout)
+		ctx, cancel := context.WithTimeout(context.TODO(), etcdDialTimeout)
 		status, err := client.Status(ctx, ep)
 		cancel()
 		if err != nil {
 			logrus.Warnf("Failed to get status of etcd member[%s] with error: %v", ep, err)
-			continue
+		} else {
+			dbSizeBeforeDefrag = status.DbSize
 		}
-		dbSizeBeforeDefrag := status.DbSize
 		ctx, cancel = context.WithTimeout(context.TODO(), etcdConnectionTimeout)
 		_, err = client.Defragment(ctx, ep)
 		cancel()
 		if err != nil {
-			logrus.Warnf("Failed to defragment etcd member[%s] with error: %v", ep, err)
-		} else {
-			logrus.Infof("Finished defragmenting etcd member[%s]", ep)
+			return fmt.Errorf("Failed to defragment etcd member[%s] with error: %v", ep, err)
 		}
-		ctx, cancel = context.WithTimeout(context.TODO(), etcdConnectionTimeout)
+		logrus.Infof("Finished defragmenting etcd member[%s]", ep)
+		// Since below request for status races with other etcd operations. So, size returned in
+		// status might vary from the precise size just after defragmentation.
+		ctx, cancel = context.WithTimeout(context.TODO(), etcdDialTimeout)
 		status, err = client.Status(ctx, ep)
 		cancel()
 		if err != nil {
 			logrus.Warnf("Failed to get status of etcd member[%s] with error: %v", ep, err)
-			continue
+		} else {
+			dbSizeAfterDefrag = status.DbSize
 		}
-		dbSizeAfterDefrag := status.DbSize
-		logrus.Infof("DB size for etcd member [%s] changed from %dB to %dB by defragmentation", ep, dbSizeBeforeDefrag, dbSizeAfterDefrag)
+		logrus.Infof("Probable DB size change for etcd member [%s]:  %dB -> %dB after defragmentation", ep, dbSizeBeforeDefrag, dbSizeAfterDefrag)
 	}
+	return nil
 }
 
 // DefragDataPeriodically defragments the data directory of each etcd member.
@@ -72,8 +76,12 @@ func DefragDataPeriodically(stopCh <-chan struct{}, tlsConfig *TLSConfig, defrag
 			logrus.Infof("Stopping the defragmentation thread.")
 			return
 		case <-time.After(defragmentationPeriod):
-			defragData(tlsConfig, etcdConnectionTimeout)
-			callback()
+			err := defragData(tlsConfig, etcdConnectionTimeout)
+			if err != nil {
+				logrus.Warnf("Failed to defrag data with error: %v", err)
+			} else {
+				callback()
+			}
 		}
 	}
 }
