@@ -78,7 +78,7 @@ func (e *EtcdInitializer) restoreCorruptData() error {
 	dataDir := e.Config.RestoreOptions.RestoreDataDir
 
 	if e.Config.SnapstoreConfig == nil {
-		logger.Warnf("No snapstore storage provider configured. Will only clean the directory.")
+		logger.Warnf("No snapstore storage provider configured.")
 		return nil
 	}
 	store, err := snapstore.GetSnapstore(e.Config.SnapstoreConfig)
@@ -99,10 +99,16 @@ func (e *EtcdInitializer) restoreCorruptData() error {
 
 	e.Config.RestoreOptions.BaseSnapshot = *baseSnap
 	e.Config.RestoreOptions.DeltaSnapList = deltaSnapList
+	tempRestoreOptions := *e.Config.RestoreOptions
+	tempRestoreOptions.RestoreDataDir = fmt.Sprintf("%s.%s", tempRestoreOptions.RestoreDataDir, "part")
+
+	logger.Infof("Removing data directory(%s) for snapshot restoration.", tempRestoreOptions.RestoreDataDir)
+	if err := os.RemoveAll(filepath.Join(tempRestoreOptions.RestoreDataDir)); err != nil {
+		return fmt.Errorf("failed to delete previous temporary data directory %s with err: %v", tempRestoreOptions.RestoreDataDir, err)
+	}
 
 	rs := restorer.NewRestorer(store, logger)
-
-	if err := rs.Restore(*e.Config.RestoreOptions); err != nil {
+	if err := rs.Restore(tempRestoreOptions); err != nil {
 		err = fmt.Errorf("Failed to restore snapshot: %v", err)
 		return err
 	}
@@ -118,11 +124,11 @@ func (e *EtcdInitializer) removeContents(dataDir string) error {
 	logger := e.Logger
 	logger.Infof("Removing data directory(%s) for snapshot restoration.", dataDir)
 	if err := os.RemoveAll(filepath.Join(dataDir)); err != nil {
-		return fmt.Errorf("failed to delete member directory: %v", err)
+		return fmt.Errorf("failed to delete data directory %s with err: %v", dataDir, err)
 	}
 
 	if err := os.Rename(filepath.Join(fmt.Sprintf("%s.%s", dataDir, "part")), filepath.Join(dataDir)); err != nil {
-		return fmt.Errorf("Failed to rename temp snap directory to member directory: %v", err)
+		return fmt.Errorf("Failed to rename temp restore directory %s to data directory %s with err: %v", filepath.Join(fmt.Sprintf("%s.%s", dataDir, "part")), dataDir, err)
 	}
 	return nil
 }
