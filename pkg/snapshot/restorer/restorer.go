@@ -113,7 +113,7 @@ func (r *Restorer) restoreFromBaseSnapshot(ro RestoreOptions) error {
 		return err
 	}
 
-	memberDir := filepath.Join(fmt.Sprintf("%s.%s", ro.RestoreDataDir, "part"), "member")
+	memberDir := filepath.Join(ro.RestoreDataDir, "member")
 	if _, err := os.Stat(memberDir); err == nil {
 		return fmt.Errorf("member directory in data directory(%q) exists", memberDir)
 	}
@@ -306,7 +306,7 @@ func makeWALAndSnap(waldir, snapdir string, cl *membership.RaftCluster, restoreN
 // startEmbeddedEtcd starts the embedded etcd server.
 func startEmbeddedEtcd(ro RestoreOptions) (*embed.Etcd, error) {
 	cfg := embed.NewConfig()
-	cfg.Dir = filepath.Join(ro.RestoreDataDir, "data.part")
+	cfg.Dir = filepath.Join(ro.RestoreDataDir)
 	e, err := embed.StartEtcd(cfg)
 	if err != nil {
 		return nil, err
