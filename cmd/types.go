@@ -53,6 +53,7 @@ var (
 	restorePeerURLs     []string
 	restoreName         string
 	skipHashCheck       bool
+	restoreMaxFetchers  int
 
 	//snapstore flags
 	storageProvider  string

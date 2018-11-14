@@ -43,8 +43,8 @@ func NewSnapshotterConfig(schedule string, store snapstore.SnapStore, maxBackups
 		return nil, fmt.Errorf("maximum backups limit should be greater than zero. Input MaxBackups: %d", maxBackups)
 	}
 	return &Config{
-		schedule: sdl,
-		store:    store,
+		schedule:                       sdl,
+		store:                          store,
 		deltaSnapshotIntervalSeconds:   deltaSnapshotIntervalSeconds,
 		etcdConnectionTimeout:          etcdConnectionTimeout,
 		garbageCollectionPeriodSeconds: garbageCollectionPeriodSeconds,

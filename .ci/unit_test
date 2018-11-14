@@ -64,10 +64,10 @@ function test_with_coverage() {
 ################################################################################
 
 TEST_PACKAGES="cmd pkg"
-GINKGO_COMMON_FLAGS="-r -timeout=1h0m0s --randomizeAllSpecs --randomizeSuites --failOnPending  --progress"
+GINKGO_COMMON_FLAGS="-r -timeout=1h0m0s --randomizeAllSpecs --randomizeSuites --failOnPending --progress"
 if [ -z $COVER ] || [ "$COVER" = false ] ; then
   echo "[INFO] Test coverage is disabled."
-  ginkgo -stream -p -race -trace $GINKGO_COMMON_FLAGS  ${TEST_PACKAGES}
+  ginkgo -race -trace $GINKGO_COMMON_FLAGS ${TEST_PACKAGES}
 else
   test_with_coverage
 fi

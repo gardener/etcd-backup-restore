@@ -61,6 +61,7 @@ func NewServerCommand(stopCh <-chan struct{}) *cobra.Command {
 				PeerURLs:       peerUrls,
 				ClusterToken:   restoreClusterToken,
 				SkipHashCheck:  skipHashCheck,
+				MaxFetchers:    restoreMaxFetchers,
 			}
 
 			if storageProvider != "" {
