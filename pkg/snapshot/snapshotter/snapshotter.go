@@ -18,7 +18,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
-	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"path"
@@ -26,15 +25,16 @@ import (
 	"time"
 
 	"github.com/coreos/etcd/clientv3"
-	"github.com/coreos/etcd/pkg/transport"
 	"github.com/gardener/etcd-backup-restore/pkg/errors"
+	"github.com/gardener/etcd-backup-restore/pkg/etcdutil"
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	"github.com/robfig/cron"
 	"github.com/sirupsen/logrus"
 )
 
 // NewSnapshotterConfig returns a config for the snapshotter.
-func NewSnapshotterConfig(schedule string, store snapstore.SnapStore, maxBackups, deltaSnapshotIntervalSeconds int, etcdConnectionTimeout, garbageCollectionPeriodSeconds time.Duration, garbageCollectionPolicy string, tlsConfig *TLSConfig) (*Config, error) {
+func NewSnapshotterConfig(schedule string, store snapstore.SnapStore, maxBackups, deltaSnapshotIntervalSeconds int, etcdConnectionTimeout, garbageCollectionPeriodSeconds time.Duration, garbageCollectionPolicy string, tlsConfig *etcdutil.TLSConfig) (*Config, error) {
+	logrus.Printf("Validating schedule...")
 	sdl, err := cron.ParseStandard(schedule)
 	if err != nil {
 		return nil, fmt.Errorf("invalid schedule provied %s : %v", schedule, err)
@@ -56,34 +56,15 @@ func NewSnapshotterConfig(schedule string, store snapstore.SnapStore, maxBackups
 
 // NewSnapshotter returns the snapshotter object.
 func NewSnapshotter(logger *logrus.Logger, config *Config) *Snapshotter {
-
 	// Create dummy previous snapshot
-	prevSnapshot := &snapstore.Snapshot{
-		Kind:          snapstore.SnapshotKindFull,
-		StartRevision: 0,
-		LastRevision:  0,
-		CreatedOn:     time.Now().UTC(),
-	}
-	prevSnapshot.GenerateSnapshotDirectory()
-	prevSnapshot.GenerateSnapshotName()
+	prevSnapshot := snapstore.NewSnapshot(snapstore.SnapshotKindFull, 0, 0)
 	return &Snapshotter{
-		logger:        logger,
-		prevSnapshot:  prevSnapshot,
-		config:        config,
-		SsrState:      SnapshotterInactive,
-		SsrStateMutex: &sync.Mutex{},
-	}
-}
-
-// NewTLSConfig returns the TLSConfig object.
-func NewTLSConfig(cert, key, caCert string, insecureTr, skipVerify bool, endpoints []string) *TLSConfig {
-	return &TLSConfig{
-		cert:       cert,
-		key:        key,
-		caCert:     caCert,
-		insecureTr: insecureTr,
-		skipVerify: skipVerify,
-		endpoints:  endpoints,
+		logger:         logger,
+		prevSnapshot:   prevSnapshot,
+		config:         config,
+		SsrState:       SnapshotterInactive,
+		SsrStateMutex:  &sync.Mutex{},
+		fullSnapshotCh: make(chan struct{}),
 	}
 }
 
@@ -97,14 +78,38 @@ func (ssr *Snapshotter) Run(stopCh <-chan struct{}, startFullSnapshot bool) erro
 		return err
 	}
 
-	defer func() {
-		ssr.cancelWatch()
-		ssr.SsrStateMutex.Lock()
-		ssr.SsrState = SnapshotterInactive
-		ssr.SsrStateMutex.Unlock()
-
-	}()
+	defer ssr.stop()
 	return nil
+}
+
+// TriggerFullSnapshot sends the events to take full snapshot. This is to
+// trigger full snapshot externally out regular schedule.
+func (ssr *Snapshotter) TriggerFullSnapshot() {
+	ssr.SsrStateMutex.Lock()
+	if ssr.SsrState == SnapshotterActive {
+		ssr.logger.Info("Triggering out of schedule full snapshot...")
+		ssr.fullSnapshotCh <- emptyStruct
+	} else {
+		ssr.logger.Info("Skipped triggering out of schedule full snapshot, since snapshotter is not active.")
+	}
+	ssr.SsrStateMutex.Unlock()
+}
+
+// stop stops the snapshotter. Once stopped any subsequent calls will
+// not have any effect.
+func (ssr *Snapshotter) stop() {
+	ssr.SsrStateMutex.Lock()
+	if ssr.fullSnapshotTimer != nil {
+		ssr.fullSnapshotTimer.Stop()
+		ssr.fullSnapshotTimer = nil
+	}
+	if ssr.deltaSnapshotTimer != nil {
+		ssr.deltaSnapshotTimer.Stop()
+		ssr.deltaSnapshotTimer = nil
+	}
+	ssr.cancelWatch()
+	ssr.SsrState = SnapshotterInactive
+	ssr.SsrStateMutex.Unlock()
 }
 
 // TakeFullSnapshotAndResetTimer takes a full snapshot and resets the full snapshot
@@ -114,7 +119,7 @@ func (ssr *Snapshotter) TakeFullSnapshotAndResetTimer() error {
 	if err := ssr.takeFullSnapshot(); err != nil {
 		// As per design principle, in business critical service if backup is not working,
 		// it's better to fail the process. So, we are quiting here.
-		ssr.logger.Infof("Taking scheduled snapshot failed: %v", err)
+		ssr.logger.Warnf("Taking scheduled snapshot failed: %v", err)
 		return err
 	}
 	now := time.Now()
@@ -139,7 +144,7 @@ func (ssr *Snapshotter) TakeFullSnapshotAndResetTimer() error {
 // It basically will connect to etcd. Then ask for snapshot. And finally
 // store it to underlying snapstore on the fly.
 func (ssr *Snapshotter) takeFullSnapshot() error {
-	client, err := GetTLSClientForEtcd(ssr.config.tlsConfig)
+	client, err := etcdutil.GetTLSClientForEtcd(ssr.config.tlsConfig)
 	if err != nil {
 		return &errors.EtcdError{
 			Message: fmt.Sprintf("failed to create etcd client: %v", err),
@@ -194,54 +199,6 @@ func (ssr *Snapshotter) takeFullSnapshot() error {
 	return nil
 }
 
-// GetTLSClientForEtcd creates an etcd client using the TLS config params.
-func GetTLSClientForEtcd(tlsConfig *TLSConfig) (*clientv3.Client, error) {
-	// set tls if any one tls option set
-	var cfgtls *transport.TLSInfo
-	tlsinfo := transport.TLSInfo{}
-	if tlsConfig.cert != "" {
-		tlsinfo.CertFile = tlsConfig.cert
-		cfgtls = &tlsinfo
-	}
-
-	if tlsConfig.key != "" {
-		tlsinfo.KeyFile = tlsConfig.key
-		cfgtls = &tlsinfo
-	}
-
-	if tlsConfig.caCert != "" {
-		tlsinfo.CAFile = tlsConfig.caCert
-		cfgtls = &tlsinfo
-	}
-
-	cfg := &clientv3.Config{
-		Endpoints: tlsConfig.endpoints,
-	}
-
-	if cfgtls != nil {
-		clientTLS, err := cfgtls.ClientConfig()
-		if err != nil {
-			return nil, err
-		}
-		cfg.TLS = clientTLS
-	}
-
-	// if key/cert is not given but user wants secure connection, we
-	// should still setup an empty tls configuration for gRPC to setup
-	// secure connection.
-	if cfg.TLS == nil && !tlsConfig.insecureTr {
-		cfg.TLS = &tls.Config{}
-	}
-
-	// If the user wants to skip TLS verification then we should set
-	// the InsecureSkipVerify flag in tls configuration.
-	if tlsConfig.skipVerify && cfg.TLS != nil {
-		cfg.TLS.InsecureSkipVerify = true
-	}
-
-	return clientv3.New(*cfg)
-}
-
 func (ssr *Snapshotter) takeDeltaSnapshotAndResetTimer() error {
 	if ssr.deltaSnapshotTimer == nil {
 		ssr.deltaSnapshotTimer = time.NewTimer(time.Second * time.Duration(ssr.config.deltaSnapshotIntervalSeconds))
@@ -254,7 +211,7 @@ func (ssr *Snapshotter) takeDeltaSnapshotAndResetTimer() error {
 	if err := ssr.takeDeltaSnapshot(); err != nil {
 		// As per design principle, in business critical service if backup is not working,
 		// it's better to fail the process. So, we are quiting here.
-		ssr.logger.Infof("Taking delta snapshot failed: %v", err)
+		ssr.logger.Warnf("Taking delta snapshot failed: %v", err)
 		return err
 	}
 	return nil
@@ -264,17 +221,12 @@ func (ssr *Snapshotter) takeDeltaSnapshot() error {
 	ssr.logger.Infof("Taking delta snapshot for time: %s", time.Now().Local())
 
 	if len(ssr.events) == 0 {
+		ssr.logger.Infof("No events received to save snapshot. Skipping delta snapshot.")
 		return nil
 	}
 
-	snap := &snapstore.Snapshot{
-		Kind:          snapstore.SnapshotKindDelta,
-		CreatedOn:     time.Now().UTC(),
-		StartRevision: ssr.prevSnapshot.LastRevision + 1,
-		LastRevision:  ssr.events[len(ssr.events)-1].EtcdEvent.Kv.ModRevision,
-		SnapDir:       ssr.prevSnapshot.SnapDir,
-	}
-	snap.GenerateSnapshotName()
+	snap := snapstore.NewSnapshot(snapstore.SnapshotKindDelta, ssr.prevSnapshot.LastRevision+1, ssr.events[len(ssr.events)-1].EtcdEvent.Kv.ModRevision)
+	snap.SnapDir = ssr.prevSnapshot.SnapDir
 	data, err := json.Marshal(ssr.events)
 	ssr.events = []*event{}
 	if err != nil {
@@ -295,23 +247,11 @@ func (ssr *Snapshotter) takeDeltaSnapshot() error {
 	return nil
 }
 
-func (ssr *Snapshotter) getClientForDeltaSnapshots() (*clientv3.Client, error) {
-	client, err := GetTLSClientForEtcd(ssr.config.tlsConfig)
-	if err != nil {
-		return nil, &errors.EtcdError{
-			Message: fmt.Sprintf("failed to create etcd client: %v", err),
-		}
-	}
-	return client, nil
-}
-
 func (ssr *Snapshotter) handleDeltaWatchEvents(wr clientv3.WatchResponse) error {
-
 	if err := wr.Err(); err != nil {
 		return err
 	}
-
-	//aggregate events
+	// aggregate events
 	for _, ev := range wr.Events {
 		ssr.events = append(ssr.events, newEvent(ev))
 	}
@@ -329,6 +269,10 @@ func newEvent(e *clientv3.Event) *event {
 func (ssr *Snapshotter) snapshotEventHandler(stopCh <-chan struct{}) error {
 	for {
 		select {
+		case <-ssr.fullSnapshotCh:
+			if err := ssr.TakeFullSnapshotAndResetTimer(); err != nil {
+				return err
+			}
 		case <-ssr.fullSnapshotTimer.C:
 			if err := ssr.TakeFullSnapshotAndResetTimer(); err != nil {
 				return err

@@ -41,6 +41,7 @@ var (
 	certFile                       string
 	keyFile                        string
 	caFile                         string
+	defragmentationPeriodHours     int
 
 	//server flags
 	port            int

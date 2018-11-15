@@ -99,7 +99,7 @@ func (s *GCSSnapStore) Save(snap Snapshot, r io.Reader) error {
 
 	snapshotErr := collectChunkUploadError(errCh, noOfChunks)
 	if len(snapshotErr) == 0 {
-		logrus.Info("All chunk uploaded successfully. Uploading composit object.")
+		logrus.Info("All chunk uploaded successfully. Uploading composite object.")
 		bh := s.client.Bucket(s.bucket)
 		var subObjects []*storage.ObjectHandle
 		for partNumber := int64(1); partNumber <= noOfChunks; partNumber++ {
