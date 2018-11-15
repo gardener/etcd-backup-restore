@@ -50,9 +50,11 @@ func NewRestoreCommand(stopCh <-chan struct{}) *cobra.Command {
 				logger.Fatalf("failed parsing peers urls for restore cluster: %v", err)
 			}
 			snapstoreConfig := &snapstore.Config{
-				Provider:  storageProvider,
-				Container: storageContainer,
-				Prefix:    path.Join(storagePrefix, backupFormatVersion),
+				Provider:                storageProvider,
+				Container:               storageContainer,
+				Prefix:                  path.Join(storagePrefix, backupFormatVersion),
+				MaxParallelChunkUploads: maxParallelChunkUploads,
+				TempDir:                 snapstoreTempDir,
 			}
 			store, err := snapstore.GetSnapstore(snapstoreConfig)
 			if err != nil {

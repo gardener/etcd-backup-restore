@@ -86,7 +86,7 @@ func (d *DataValidator) snapDir() string { return filepath.Join(d.memberDir(), "
 func (d *DataValidator) backendPath() string { return filepath.Join(d.snapDir(), "db") }
 
 //Validate performs the steps required to validate data for Etcd instance.
-// The steps involed are:
+// The steps involved are:
 //   * Check if data directory exists.
 //     - If data directory exists
 //		 * Check for data directory structure.

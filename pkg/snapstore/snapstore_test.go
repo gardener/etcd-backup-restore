@@ -77,7 +77,7 @@ var _ = Describe("Snapstore", func() {
 			multiPartUploads: map[string]*[][]byte{},
 		}
 		snapstores = map[string]SnapStore{
-			"s3": NewS3FromClient(bucket, prefix, &m),
+			"s3": NewS3FromClient(bucket, prefix, "/tmp", 5, &m),
 		}
 	})
 

@@ -61,9 +61,11 @@ func NewInitializeCommand(stopCh <-chan struct{}) *cobra.Command {
 			var snapstoreConfig *snapstore.Config
 			if storageProvider != "" {
 				snapstoreConfig = &snapstore.Config{
-					Provider:  storageProvider,
-					Container: storageContainer,
-					Prefix:    path.Join(storagePrefix, backupFormatVersion),
+					Provider:                storageProvider,
+					Container:               storageContainer,
+					Prefix:                  path.Join(storagePrefix, backupFormatVersion),
+					MaxParallelChunkUploads: maxParallelChunkUploads,
+					TempDir:                 snapstoreTempDir,
 				}
 			}
 			etcdInitializer := initializer.NewInitializer(options, snapstoreConfig, logger)

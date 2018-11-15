@@ -57,9 +57,11 @@ var (
 	restoreMaxFetchers  int
 
 	//snapstore flags
-	storageProvider  string
-	storageContainer string
-	storagePrefix    string
+	storageProvider         string
+	storageContainer        string
+	storagePrefix           string
+	maxParallelChunkUploads int
+	snapstoreTempDir        string
 )
 
 var emptyStruct struct{}

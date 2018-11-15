@@ -24,7 +24,7 @@ import (
 	"path"
 	"sort"
 	"strings"
-	"time"
+	"sync"
 
 	"github.com/sirupsen/logrus"
 
@@ -36,10 +36,12 @@ import (
 
 // SwiftSnapStore is snapstore with Openstack Swift as backend
 type SwiftSnapStore struct {
-	SnapStore
 	prefix string
 	client *gophercloud.ServiceClient
 	bucket string
+	// maxParallelChunkUploads hold the maximum number of parallel chunk uploads allowed.
+	maxParallelChunkUploads int
+	tempDir                 string
 }
 
 const (
@@ -47,7 +49,7 @@ const (
 )
 
 // NewSwiftSnapStore create new SwiftSnapStore from shared configuration with specified bucket
-func NewSwiftSnapStore(bucket, prefix string) (*SwiftSnapStore, error) {
+func NewSwiftSnapStore(bucket, prefix, tempDir string, maxParallelChunkUploads int) (*SwiftSnapStore, error) {
 	authOpts, err := openstack.AuthOptionsFromEnv()
 	if err != nil {
 		return nil, err
@@ -62,12 +64,20 @@ func NewSwiftSnapStore(bucket, prefix string) (*SwiftSnapStore, error) {
 		return nil, err
 
 	}
-	return &SwiftSnapStore{
-		prefix: prefix,
-		client: client,
-		bucket: bucket,
-	}, nil
 
+	return NewSwiftSnapstoreFromClient(bucket, prefix, tempDir, maxParallelChunkUploads, client), nil
+
+}
+
+// NewSwiftSnapstoreFromClient will create the new Swift snapstore object from Swift client
+func NewSwiftSnapstoreFromClient(bucket, prefix, tempDir string, maxParallelChunkUploads int, cli *gophercloud.ServiceClient) *SwiftSnapStore {
+	return &SwiftSnapStore{
+		bucket:                  bucket,
+		prefix:                  prefix,
+		client:                  cli,
+		maxParallelChunkUploads: maxParallelChunkUploads,
+		tempDir:                 tempDir,
+	}
 }
 
 // Fetch should open reader for the snapshot file from store
@@ -79,7 +89,7 @@ func (s *SwiftSnapStore) Fetch(snap Snapshot) (io.ReadCloser, error) {
 // Save will write the snapshot to store
 func (s *SwiftSnapStore) Save(snap Snapshot, r io.Reader) error {
 	// Save it locally
-	tmpfile, err := ioutil.TempFile(tmpDir, tmpBackupFilePrefix)
+	tmpfile, err := ioutil.TempFile(s.tempDir, tmpBackupFilePrefix)
 	if err != nil {
 		return fmt.Errorf("failed to create snapshot tempfile: %v", err)
 	}
@@ -93,7 +103,6 @@ func (s *SwiftSnapStore) Save(snap Snapshot, r io.Reader) error {
 	}
 
 	var (
-		errCh      = make(chan chunkUploadError)
 		chunkSize  = int64(math.Max(float64(minChunkSize), float64(size/swiftNoOfChunk)))
 		noOfChunks = size / chunkSize
 	)
@@ -101,13 +110,34 @@ func (s *SwiftSnapStore) Save(snap Snapshot, r io.Reader) error {
 		noOfChunks++
 	}
 
-	logrus.Infof("Uploading snapshot of size: %d, chunkSize: %d, noOfChunks: %d", size, chunkSize, noOfChunks)
-	for offset := int64(0); offset <= size; offset += int64(chunkSize) {
-		go retryChunkUpload(s, &snap, tmpfile, offset, chunkSize, errCh)
+	var (
+		chunkUploadCh = make(chan chunk, noOfChunks)
+		resCh         = make(chan chunkUploadResult, noOfChunks)
+		wg            sync.WaitGroup
+		cancelCh      = make(chan struct{})
+	)
+
+	for i := 0; i < s.maxParallelChunkUploads; i++ {
+		wg.Add(1)
+		go s.chunkUploader(&wg, cancelCh, &snap, tmpfile, chunkUploadCh, resCh)
 	}
 
-	snapshotErr := collectChunkUploadError(errCh, noOfChunks)
-	if len(snapshotErr) == 0 {
+	logrus.Infof("Uploading snapshot of size: %d, chunkSize: %d, noOfChunks: %d", size, chunkSize, noOfChunks)
+	for offset, index := int64(0), 1; offset <= size; offset += int64(chunkSize) {
+		newChunk := chunk{
+			id:     index,
+			offset: offset,
+			size:   chunkSize,
+		}
+		chunkUploadCh <- newChunk
+		index++
+	}
+	logrus.Infof("Triggered chunk upload for all chunks, total: %d", noOfChunks)
+
+	snapshotErr := collectChunkUploadError(chunkUploadCh, resCh, cancelCh, noOfChunks)
+	wg.Wait()
+
+	if snapshotErr == nil {
 		logrus.Info("All chunk uploaded successfully. Uploading manifest.")
 		b := make([]byte, 0)
 		opts := objects.CreateOpts{
@@ -115,17 +145,17 @@ func (s *SwiftSnapStore) Save(snap Snapshot, r io.Reader) error {
 			ContentLength:  chunkSize,
 			ObjectManifest: path.Join(s.bucket, s.prefix, snap.SnapDir, snap.SnapName),
 		}
-		res := objects.Create(s.client, s.bucket, path.Join(s.prefix, snap.SnapDir, snap.SnapName), opts)
-		return res.Err
+		if res := objects.Create(s.client, s.bucket, path.Join(s.prefix, snap.SnapDir, snap.SnapName), opts); res.Err != nil {
+			return fmt.Errorf("failed uploading manifest for snapshot with error: %v", res.Err)
+		}
+		logrus.Info("Manifest object uploaded successfully.")
+		return nil
 	}
-	var collectedErr []string
-	for _, chunkErr := range snapshotErr {
-		collectedErr = append(collectedErr, fmt.Sprintf("failed uploading chunk with offset %d with error %v", chunkErr.offset, chunkErr.err))
-	}
-	return fmt.Errorf(strings.Join(collectedErr, "\n"))
+
+	return fmt.Errorf("failed uploading chunk, id: %d, offset: %d, error: %v", snapshotErr.chunk.id, snapshotErr.chunk.offset, snapshotErr.err)
 }
 
-func uploadChunk(s *SwiftSnapStore, snap *Snapshot, file *os.File, offset, chunkSize int64) error {
+func (s *SwiftSnapStore) uploadChunk(snap *Snapshot, file *os.File, offset, chunkSize int64) error {
 	fileInfo, err := file.Stat()
 	if err != nil {
 		return err
@@ -146,35 +176,29 @@ func uploadChunk(s *SwiftSnapStore, snap *Snapshot, file *os.File, offset, chunk
 	return res.Err
 }
 
-func retryChunkUpload(s *SwiftSnapStore, snap *Snapshot, file *os.File, offset, chunkSize int64, errCh chan<- chunkUploadError) {
-	var (
-		maxAttempts uint = 5
-		curAttempt  uint = 1
-		err         error
-	)
+func (s *SwiftSnapStore) chunkUploader(wg *sync.WaitGroup, stopCh <-chan struct{}, snap *Snapshot, file *os.File, chunkUploadCh chan chunk, errCh chan<- chunkUploadResult) {
+	defer wg.Done()
 	for {
-		logrus.Infof("Uploading chunk with offset : %d, attempt: %d", offset, curAttempt)
-		err = uploadChunk(s, snap, file, offset, chunkSize)
-		logrus.Infof("For chunk upload of offset %d, err %v", offset, err)
-		if err == nil || curAttempt == maxAttempts {
-			break
+		select {
+		case <-stopCh:
+			return
+		case chunk, more := <-chunkUploadCh:
+			if !more {
+				return
+			}
+			logrus.Infof("Uploading chunk with offset : %d, attempt: %d", chunk.offset, chunk.attempt)
+			err := s.uploadChunk(snap, file, chunk.offset, chunk.size)
+			logrus.Infof("For chunk upload of offset %d, err %v", chunk.offset, err)
+			errCh <- chunkUploadResult{
+				err:   nil,
+				chunk: &chunk,
+			}
 		}
-		delayTime := (1 << curAttempt)
-		curAttempt++
-		logrus.Warnf("Will try to upload chunk with offset: %d at attempt %d  after %d seconds", offset, curAttempt, delayTime)
-		time.Sleep((time.Duration)(delayTime) * time.Second)
 	}
-
-	errCh <- chunkUploadError{
-		err:    err,
-		offset: offset,
-	}
-	return
 }
 
 // List will list the snapshots from store
 func (s *SwiftSnapStore) List() (SnapList, error) {
-
 	opts := &objects.ListOpts{
 		Full:   false,
 		Prefix: s.prefix,

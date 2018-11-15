@@ -23,4 +23,6 @@ func initializeSnapstoreFlags(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&storageProvider, "storage-provider", "", "snapshot storage provider")
 	cmd.Flags().StringVar(&storageContainer, "store-container", "", "container which will be used as snapstore")
 	cmd.Flags().StringVar(&storagePrefix, "store-prefix", "", "prefix or directory inside container under which snapstore is created")
+	cmd.Flags().IntVar(&maxParallelChunkUploads, "max-parallel-chunk-uploads", 5, "maximum number of parallel chunk uploads allowed ")
+	cmd.Flags().StringVar(&snapstoreTempDir, "snapstore-temp-directory", "/tmp", "temporary directory for processing")
 }

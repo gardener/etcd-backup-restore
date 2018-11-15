@@ -65,10 +65,6 @@ func defragData(tlsConfig *TLSConfig, etcdConnectionTimeout time.Duration) error
 
 // DefragDataPeriodically defragments the data directory of each etcd member.
 func DefragDataPeriodically(stopCh <-chan struct{}, tlsConfig *TLSConfig, defragmentationPeriod, etcdConnectionTimeout time.Duration, callback func()) {
-	if defragmentationPeriod <= time.Hour {
-		logrus.Infof("Disabling defragmentation since defragmentation period [%d] is less than 1", defragmentationPeriod)
-		return
-	}
 	logrus.Infof("Defragmentation period :%d hours", defragmentationPeriod/time.Hour)
 	for {
 		select {

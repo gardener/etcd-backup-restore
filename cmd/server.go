@@ -67,9 +67,11 @@ func NewServerCommand(stopCh <-chan struct{}) *cobra.Command {
 
 			if storageProvider != "" {
 				snapstoreConfig = &snapstore.Config{
-					Provider:  storageProvider,
-					Container: storageContainer,
-					Prefix:    path.Join(storagePrefix, backupFormatVersion),
+					Provider:                storageProvider,
+					Container:               storageContainer,
+					Prefix:                  path.Join(storagePrefix, backupFormatVersion),
+					MaxParallelChunkUploads: maxParallelChunkUploads,
+					TempDir:                 snapstoreTempDir,
 				}
 			}
 
@@ -135,8 +137,11 @@ func NewServerCommand(stopCh <-chan struct{}) *cobra.Command {
 			ssrStopCh = make(chan struct{})
 			go handleSsrRequest(handler, ssr, ackCh, ssrStopCh, stopCh)
 			go handleAckState(handler, ackCh)
-			go etcdutil.DefragDataPeriodically(stopCh, tlsConfig, time.Duration(defragmentationPeriodHours)*time.Hour, time.Duration(etcdConnectionTimeout)*time.Second, ssr.TriggerFullSnapshot)
-
+			if defragmentationPeriodHours < 1 {
+				logger.Infof("Disabling defragmentation since defragmentation period [%d] is less than 1", defragmentationPeriodHours)
+			} else {
+				go etcdutil.DefragDataPeriodically(stopCh, tlsConfig, time.Duration(defragmentationPeriodHours)*time.Hour, time.Duration(etcdConnectionTimeout)*time.Second, ssr.TriggerFullSnapshot)
+			}
 			for {
 				logger.Infof("Probing etcd...")
 				select {

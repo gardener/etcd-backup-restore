@@ -22,8 +22,7 @@ import (
 	"os"
 	"path"
 	"sort"
-	"strings"
-	"time"
+	"sync"
 
 	"github.com/Azure/azure-sdk-for-go/storage"
 	"github.com/sirupsen/logrus"
@@ -36,13 +35,15 @@ const (
 
 // ABSSnapStore is an ABS backed snapstore.
 type ABSSnapStore struct {
-	SnapStore
 	prefix    string
 	container *storage.Container
+	// maxParallelChunkUploads hold the maximum number of parallel chunk uploads allowed.
+	maxParallelChunkUploads int
+	tempDir                 string
 }
 
 // NewABSSnapStore create new ABSSnapStore from shared configuration with specified bucket
-func NewABSSnapStore(container, prefix string) (*ABSSnapStore, error) {
+func NewABSSnapStore(container, prefix, tempDir string, maxParallelChunkUploads int) (*ABSSnapStore, error) {
 	storageAccount, err := GetEnvVarOrError(absStorageAccount)
 	if err != nil {
 		return nil, err
@@ -58,11 +59,11 @@ func NewABSSnapStore(container, prefix string) (*ABSSnapStore, error) {
 		return nil, fmt.Errorf("create ABS client failed: %v", err)
 	}
 
-	return GetSnapstoreFromClient(container, prefix, &client)
+	return GetSnapstoreFromClient(container, prefix, tempDir, maxParallelChunkUploads, &client)
 }
 
 // GetSnapstoreFromClient returns a new ABS object for a given container using the supplied storageClient
-func GetSnapstoreFromClient(container, prefix string, storageClient *storage.Client) (*ABSSnapStore, error) {
+func GetSnapstoreFromClient(container, prefix, tempDir string, maxParallelChunkUploads int, storageClient *storage.Client) (*ABSSnapStore, error) {
 	client := storageClient.GetBlobService()
 
 	// Check if supplied container exists
@@ -77,8 +78,10 @@ func GetSnapstoreFromClient(container, prefix string, storageClient *storage.Cli
 	}
 
 	return &ABSSnapStore{
-		prefix:    prefix,
-		container: containerRef,
+		prefix:                  prefix,
+		container:               containerRef,
+		maxParallelChunkUploads: maxParallelChunkUploads,
+		tempDir:                 tempDir,
 	}, nil
 }
 
@@ -115,7 +118,7 @@ func (a *ABSSnapStore) List() (SnapList, error) {
 // Save will write the snapshot to store
 func (a *ABSSnapStore) Save(snap Snapshot, r io.Reader) error {
 	// Save it locally
-	tmpfile, err := ioutil.TempFile(tmpDir, tmpBackupFilePrefix)
+	tmpfile, err := ioutil.TempFile(a.tempDir, tmpBackupFilePrefix)
 	if err != nil {
 		return fmt.Errorf("failed to create snapshot tempfile: %v", err)
 	}
@@ -129,7 +132,6 @@ func (a *ABSSnapStore) Save(snap Snapshot, r io.Reader) error {
 	}
 
 	var (
-		errCh      = make(chan chunkUploadError)
 		chunkSize  = minChunkSize
 		noOfChunks = size / chunkSize
 	)
@@ -137,13 +139,33 @@ func (a *ABSSnapStore) Save(snap Snapshot, r io.Reader) error {
 		noOfChunks++
 	}
 
-	logrus.Infof("Uploading snapshot of size: %d, chunkSize: %d, noOfChunks: %d", size, chunkSize, noOfChunks)
-	for offset := int64(0); offset <= size; offset += int64(chunkSize) {
-		go retryBlockUpload(a, &snap, tmpfile, offset, chunkSize, errCh)
-	}
+	var (
+		chunkUploadCh = make(chan chunk, noOfChunks)
+		resCh         = make(chan chunkUploadResult, noOfChunks)
+		wg            sync.WaitGroup
+		cancelCh      = make(chan struct{})
+	)
 
-	snapshotErr := collectChunkUploadError(errCh, noOfChunks)
-	if len(snapshotErr) == 0 {
+	for i := 0; i < a.maxParallelChunkUploads; i++ {
+		wg.Add(1)
+		go a.blockUploader(&wg, cancelCh, &snap, tmpfile, chunkUploadCh, resCh)
+	}
+	logrus.Infof("Uploading snapshot of size: %d, chunkSize: %d, noOfChunks: %d", size, chunkSize, noOfChunks)
+	for offset, index := int64(0), 1; offset <= size; offset += int64(chunkSize) {
+		newChunk := chunk{
+			offset: offset,
+			size:   chunkSize,
+			id:     index,
+		}
+		chunkUploadCh <- newChunk
+		index++
+	}
+	logrus.Infof("Triggered chunk upload for all chunks, total: %d", noOfChunks)
+
+	snapshotErr := collectChunkUploadError(chunkUploadCh, resCh, cancelCh, noOfChunks)
+	wg.Wait()
+
+	if snapshotErr == nil {
 		logrus.Info("All chunk uploaded successfully. Uploading blocklist.")
 		blobName := path.Join(a.prefix, snap.SnapDir, snap.SnapName)
 		blob := a.container.GetBlobReference(blobName)
@@ -155,16 +177,17 @@ func (a *ABSSnapStore) Save(snap Snapshot, r io.Reader) error {
 			}
 			blockList = append(blockList, block)
 		}
-		return blob.PutBlockList(blockList, &storage.PutBlockListOptions{})
+		if err := blob.PutBlockList(blockList, &storage.PutBlockListOptions{}); err != nil {
+			return fmt.Errorf("failed uploading blocklist for snapshot with error: %v", err)
+		}
+		logrus.Info("Blocklist uploaded successfully.")
+		return nil
 	}
-	var collectedErr []string
-	for _, chunkErr := range snapshotErr {
-		collectedErr = append(collectedErr, fmt.Sprintf("failed uploading chunk with offset %d with error %v", chunkErr.offset, chunkErr.err))
-	}
-	return fmt.Errorf(strings.Join(collectedErr, "\n"))
+
+	return fmt.Errorf("failed uploading chunk, id: %d, offset: %d, error: %v", snapshotErr.chunk.id, snapshotErr.chunk.offset, snapshotErr.err)
 }
 
-func uploadBlock(s *ABSSnapStore, snap *Snapshot, file *os.File, offset, chunkSize int64) error {
+func (a *ABSSnapStore) uploadBlock(snap *Snapshot, file *os.File, offset, chunkSize int64) error {
 	fileInfo, err := file.Stat()
 	if err != nil {
 		return err
@@ -176,38 +199,34 @@ func uploadBlock(s *ABSSnapStore, snap *Snapshot, file *os.File, offset, chunkSi
 	}
 
 	sr := io.NewSectionReader(file, offset, chunkSize)
-	blobName := path.Join(s.prefix, snap.SnapDir, snap.SnapName)
-	blob := s.container.GetBlobReference(blobName)
+	blobName := path.Join(a.prefix, snap.SnapDir, snap.SnapName)
+	blob := a.container.GetBlobReference(blobName)
 	partNumber := ((offset / chunkSize) + 1)
 	blockID := base64.StdEncoding.EncodeToString([]byte(fmt.Sprintf("%010d", partNumber)))
 	err = blob.PutBlockWithLength(blockID, uint64(size), sr, &storage.PutBlockOptions{})
 	return err
 }
 
-func retryBlockUpload(s *ABSSnapStore, snap *Snapshot, file *os.File, offset, chunkSize int64, errCh chan<- chunkUploadError) {
-	var (
-		maxAttempts uint = 5
-		curAttempt  uint = 1
-		err         error
-	)
+func (a *ABSSnapStore) blockUploader(wg *sync.WaitGroup, stopCh <-chan struct{}, snap *Snapshot, file *os.File, chunkUploadCh chan chunk, errCh chan<- chunkUploadResult) {
+	defer wg.Done()
 	for {
-		logrus.Infof("Uploading chunk with offset : %d, attempt: %d", offset, curAttempt)
-		err = uploadBlock(s, snap, file, offset, chunkSize)
-		logrus.Infof("For chunk upload of offset %d, err %v", offset, err)
-		if err == nil || curAttempt == maxAttempts {
-			break
-		}
-		delayTime := (1 << curAttempt)
-		curAttempt++
-		logrus.Warnf("Will try to upload chunk with offset: %d at attempt %d  after %d seconds", offset, curAttempt, delayTime)
-		time.Sleep((time.Duration)(delayTime) * time.Second)
-	}
+		select {
+		case <-stopCh:
+			return
+		case chunk, more := <-chunkUploadCh:
+			if !more {
+				return
+			}
+			logrus.Infof("Uploading chunk with offset : %d, attempt: %d", chunk.offset, chunk.attempt)
+			err := a.uploadBlock(snap, file, chunk.offset, chunk.size)
+			logrus.Infof("For chunk upload of offset %d, err %v", chunk.offset, err)
+			errCh <- chunkUploadResult{
+				err:   nil,
+				chunk: &chunk,
+			}
 
-	errCh <- chunkUploadError{
-		err:    err,
-		offset: offset,
+		}
 	}
-	return
 }
 
 // Delete should delete the snapshot file from store
