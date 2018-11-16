@@ -72,10 +72,3 @@ else
   test_with_coverage
 fi
 echo "Finished executing unit tests."
-
-if [ -z $INTEGRATION ] || [ "$INTEGRATION" = true ] ; then
- echo "Executing integration tests..."
-  .ci/integration_test
-else 
-  echo "Enviornment variable INTEGRATION is not empty or true. Will not execute integration tests."
-fi

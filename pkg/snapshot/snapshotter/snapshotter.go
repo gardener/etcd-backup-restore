@@ -306,12 +306,12 @@ func (ssr *Snapshotter) processWatch(client *clientv3.Client) {
 
 		case wr, ok := <-watchCh:
 			if !ok {
-				ssr.logger.Warnln("watch channel closed")
+				ssr.logger.Warnf("watch channel closed")
 				ssr.fullSnapshotCh <- time.Now()
 				return
 			}
 			if err := wr.Err(); err != nil {
-				ssr.logger.Warnln("watch channel responded with err: %v", err)
+				ssr.logger.Warnf("watch channel responded with err: %v", err)
 				ssr.fullSnapshotCh <- time.Now()
 				return
 			}
