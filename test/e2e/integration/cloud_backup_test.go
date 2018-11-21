@@ -3,6 +3,8 @@ package integration_test
 import (
 	"bufio"
 	"fmt"
+	"io/ioutil"
+	"net/http"
 	"os"
 	"path"
 	"path/filepath"
@@ -51,6 +53,37 @@ func startSnapshotter() (*Cmd, *chan error) {
 		"--garbage-collection-period-seconds=30",
 		"--schedule=*/1 * * * *",
 		"--storage-provider=S3",
+		"--store-container=" + os.Getenv("TEST_ID"),
+	}
+	logger.Info(etcdbrctlArgs)
+	cmdEtcdbrctl := &Cmd{
+		Task:    "etcdbrctl",
+		Flags:   etcdbrctlArgs,
+		Logger:  logger,
+		Logfile: filepath.Join(os.Getenv("TEST_DIR"), "etcdbrctl.log"),
+	}
+	go func(errCh chan error) {
+		err := cmdEtcdbrctl.RunCmdWithFlags()
+		errCh <- err
+	}(errChan)
+
+	return cmdEtcdbrctl, &errChan
+}
+
+func startBackupRestoreServer() (*Cmd, *chan error) {
+	errChan := make(chan error)
+	logger := logrus.New()
+	etcdbrctlArgs := []string{
+		"server",
+		"--max-backups=1",
+		"--data-dir=" + os.Getenv("ETCD_DATA_DIR"),
+		"--insecure-transport=true",
+		"--garbage-collection-policy=LimitBased",
+		"--garbage-collection-period-seconds=30",
+		"--delta-snapshot-period-seconds=10",
+		"--schedule=*/1 * * * *",
+		"--storage-provider=S3",
+		"--garbage-collection-period-seconds=60",
 		"--store-container=" + os.Getenv("TEST_ID"),
 	}
 	logger.Info(etcdbrctlArgs)
@@ -248,4 +281,123 @@ var _ = Describe("CloudBackup", func() {
 			})
 		})
 	})
+
+	Describe("DataDirInitializeCheck", func() {
+		var (
+			cmdEtcd, cmdEtcdbrctl      *Cmd
+			etcdErrChan, etcdbrErrChan *chan error
+		)
+		Context("checks if etcdbrctl re-initializes", func() {
+			It("checks that there is no deadlock on", func() {
+				logger := logrus.New()
+				// Start etcdbrctl server.
+				logger.Info("Starting etcd br server...")
+				cmdEtcdbrctl, etcdbrErrChan = startBackupRestoreServer()
+				go func() {
+					err := <-*etcdbrErrChan
+					Expect(err).ShouldNot(HaveOccurred())
+				}()
+				time.Sleep(5 * time.Second)
+				// Run data directory initialize again.
+				// Verify that deadlock is not occurring.
+				logger.Info("Taking status of etcd br server...")
+				status, err := getEtcdBrServerStatus()
+				logger.Infof("Etcd br server in %v. %v", status, err)
+				Expect(err).ShouldNot(HaveOccurred())
+				Expect(status).Should(Equal("New"))
+				// Curl request to etcdbrctl server to initialize data directory.
+				logger.Info("Initializing data directory...")
+				_, err = initializeDataDir()
+				logger.Info("Done initializing data directory.")
+				Expect(err).ShouldNot(HaveOccurred())
+				logger.Info("Taking status of etcd br server...")
+				for status, err = getEtcdBrServerStatus(); status == "Progress"; status, err = getEtcdBrServerStatus() {
+					logger.Infof("Etcdbr server status: %v", status)
+					time.Sleep(1 * time.Second)
+				}
+				logger.Infof("Etcd br server in %v. %v", status, err)
+				Expect(err).ShouldNot(HaveOccurred())
+				Expect(status).Should(Equal("Successful"))
+				// Start etcd.
+				cmdEtcd, etcdErrChan = startEtcd()
+				go func() {
+					err := <-*etcdErrChan
+					Expect(err).ShouldNot(HaveOccurred())
+				}()
+				// Get status of etcdbrctl via cURL to make status New
+				status, err = getEtcdBrServerStatus()
+				Expect(err).ShouldNot(HaveOccurred())
+				time.Sleep(10 * time.Second)
+				// Stop etcd.
+				cmdEtcd.StopProcess()
+				time.Sleep(10 * time.Second)
+				// Corrupt directory
+				dataDir := os.Getenv("ETCD_DATA_DIR")
+				dbFilePath := filepath.Join(dataDir, "member", "snap", "db")
+				logger.Infof("db file: %v", dbFilePath)
+				file, err := os.Create(dbFilePath)
+				defer file.Close()
+				fileWriter := bufio.NewWriter(file)
+				Expect(err).ShouldNot(HaveOccurred())
+				fileWriter.Write([]byte("corrupt file.."))
+				fileWriter.Flush()
+				status, err = getEtcdBrServerStatus()
+				Expect(err).ShouldNot(HaveOccurred())
+				Expect(status).Should(Equal("New"))
+				// Curl request to etcdbrctl server to initialize data directory.
+				_, err = initializeDataDir()
+				Expect(err).ShouldNot(HaveOccurred())
+				for status, err = getEtcdBrServerStatus(); status == "Progress"; status, err = getEtcdBrServerStatus() {
+					logger.Infof("Etcdbr server status: %v", status)
+					time.Sleep(1 * time.Second)
+				}
+				Expect(err).ShouldNot(HaveOccurred())
+				// Start etcd.
+				cmdEtcd, etcdErrChan = startEtcd()
+				go func() {
+					err := <-*etcdErrChan
+					Expect(err).ShouldNot(HaveOccurred())
+				}()
+				time.Sleep(10 * time.Second)
+			})
+			AfterEach(func() {
+				cmdEtcd.StopProcess()
+				cmdEtcdbrctl.StopProcess()
+				// To make sure etcd is down.
+				time.Sleep(10 * time.Second)
+			})
+		})
+	})
 })
+
+func getEtcdBrServerStatus() (string, error) {
+	url := "http://localhost:8080/initialization/status"
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return "", err
+	}
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer res.Body.Close()
+	body, err := ioutil.ReadAll(res.Body)
+	if err != nil {
+		return "", err
+	}
+	return string(body[:]), err
+}
+
+func initializeDataDir() (int, error) {
+	url := "http://localhost:8080/initialization/start"
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return -1, err
+	}
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return -1, err
+	}
+
+	return res.StatusCode, err
+}
