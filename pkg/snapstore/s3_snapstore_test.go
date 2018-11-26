@@ -21,6 +21,7 @@ import (
 	"io/ioutil"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -32,9 +33,10 @@ import (
 // Define a mock struct to be used in your unit tests of myFunc.
 type mockS3Client struct {
 	s3iface.S3API
-	objects          map[string]*[]byte
-	prefix           string
-	multiPartUploads map[string]*[][]byte
+	objects               map[string]*[]byte
+	prefix                string
+	multiPartUploads      map[string]*[][]byte
+	multiPartUploadsMutex sync.Mutex
 }
 
 // GetObject returns the object from map for mock test
@@ -79,10 +81,12 @@ func (m *mockS3Client) UploadPartWithContext(ctx aws.Context, in *s3.UploadPartI
 		return nil, fmt.Errorf("part number should be positive integer")
 	}
 	if *in.PartNumber > int64(len(*m.multiPartUploads[*in.UploadId])) {
+		m.multiPartUploadsMutex.Lock()
 		t := make([][]byte, *in.PartNumber)
 		copy(t, *m.multiPartUploads[*in.UploadId])
 		delete(m.multiPartUploads, *in.UploadId)
 		m.multiPartUploads[*in.UploadId] = &t
+		m.multiPartUploadsMutex.Unlock()
 	}
 	off, err := in.Body.Seek(0, io.SeekEnd)
 	if err != nil {
@@ -153,7 +157,7 @@ func (m *mockS3Client) ListObjects(in *s3.ListObjectsInput) (*s3.ListObjectsOutp
 func (m *mockS3Client) ListObjectsPages(in *s3.ListObjectsInput, callback func(*s3.ListObjectsOutput, bool) bool) error {
 	var (
 		count    int64 = 0
-		limit    int64 = 1000
+		limit    int64 = 1 // aws default is 1000.
 		lastPage bool  = false
 		keys     []string
 		out      = &s3.ListObjectsOutput{

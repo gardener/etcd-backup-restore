@@ -82,7 +82,6 @@ func startBackupRestoreServer() (*Cmd, *chan error) {
 		"--delta-snapshot-period-seconds=10",
 		"--schedule=*/1 * * * *",
 		"--storage-provider=S3",
-		"--garbage-collection-period-seconds=60",
 		"--store-container=" + os.Getenv("TEST_ID"),
 	}
 	logger.Info(etcdbrctlArgs)

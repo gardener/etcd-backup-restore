@@ -1,4 +1,4 @@
-package bolt
+package bbolt
 
 import (
 	"errors"
@@ -105,8 +105,7 @@ type DB struct {
 
 	path     string
 	file     *os.File
-	lockfile *os.File // windows only
-	dataref  []byte   // mmap'ed readonly, write throws SEGV
+	dataref  []byte // mmap'ed readonly, write throws SEGV
 	data     *[maxMapSize]byte
 	datasz   int
 	filesz   int // current on disk file size
@@ -197,8 +196,7 @@ func Open(path string, mode os.FileMode, options *Options) (*DB, error) {
 	// if !options.ReadOnly.
 	// The database file is locked using the shared lock (more than one process may
 	// hold a lock at the same time) otherwise (options.ReadOnly is set).
-	if err := flock(db, mode, !db.readOnly, options.Timeout); err != nil {
-		db.lockfile = nil // make 'unused' happy. TODO: rework locks
+	if err := flock(db, !db.readOnly, options.Timeout); err != nil {
 		_ = db.close()
 		return nil, err
 	}
@@ -213,10 +211,13 @@ func Open(path string, mode os.FileMode, options *Options) (*DB, error) {
 
 	// Initialize the database if it doesn't exist.
 	if info, err := db.file.Stat(); err != nil {
+		_ = db.close()
 		return nil, err
 	} else if info.Size() == 0 {
 		// Initialize new files with meta pages.
 		if err := db.init(); err != nil {
+			// clean up file descriptor on initialization fail
+			_ = db.close()
 			return nil, err
 		}
 	} else {
@@ -236,6 +237,7 @@ func Open(path string, mode os.FileMode, options *Options) (*DB, error) {
 				db.pageSize = int(m.pageSize)
 			}
 		} else {
+			_ = db.close()
 			return nil, ErrInvalid
 		}
 	}
@@ -441,7 +443,8 @@ func (db *DB) init() error {
 }
 
 // Close releases all database resources.
-// All transactions must be closed before closing the database.
+// It will block waiting for any open transactions to finish
+// before closing the database and returning.
 func (db *DB) Close() error {
 	db.rwlock.Lock()
 	defer db.rwlock.Unlock()
@@ -449,8 +452,8 @@ func (db *DB) Close() error {
 	db.metalock.Lock()
 	defer db.metalock.Unlock()
 
-	db.mmaplock.RLock()
-	defer db.mmaplock.RUnlock()
+	db.mmaplock.Lock()
+	defer db.mmaplock.Unlock()
 
 	return db.close()
 }
