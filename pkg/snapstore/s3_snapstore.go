@@ -230,13 +230,12 @@ func (s *S3SnapStore) partUploader(wg *sync.WaitGroup, stopCh <-chan struct{}, s
 		select {
 		case <-stopCh:
 			return
-		case chunk, more := <-chunkUploadCh:
-			if !more {
+		case chunk, ok := <-chunkUploadCh:
+			if !ok {
 				return
 			}
 			logrus.Infof("Uploading chunk with id: %d, offset: %d, attempt: %d", chunk.id, chunk.offset, chunk.attempt)
 			err := s.uploadPart(snap, file, uploadID, completedParts, chunk.offset, chunk.size)
-			logrus.Infof("For chunk upload of id: %d, offset: %d, error: %v", chunk.id, chunk.offset, err)
 			errCh <- chunkUploadResult{
 				err:   err,
 				chunk: &chunk,
@@ -247,25 +246,28 @@ func (s *S3SnapStore) partUploader(wg *sync.WaitGroup, stopCh <-chan struct{}, s
 
 // List will list the snapshots from store
 func (s *S3SnapStore) List() (SnapList, error) {
-	resp, err := s.client.ListObjects(&s3.ListObjectsInput{
+	var snapList SnapList
+	in := &s3.ListObjectsInput{
 		Bucket: aws.String(s.bucket),
 		Prefix: aws.String(fmt.Sprintf("%s/", s.prefix)),
+	}
+	err := s.client.ListObjectsPages(in, func(page *s3.ListObjectsOutput, lastPage bool) bool {
+		for _, key := range page.Contents {
+			k := (*key.Key)[len(*page.Prefix):]
+			snap, err := ParseSnapshot(k)
+			if err != nil {
+				// Warning
+				logrus.Warnf("Invalid snapshot found. Ignoring it: %s", k)
+			} else {
+				snapList = append(snapList, snap)
+			}
+		}
+		return !lastPage
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	var snapList SnapList
-	for _, key := range resp.Contents {
-		k := (*key.Key)[len(*resp.Prefix):]
-		snap, err := ParseSnapshot(k)
-		if err != nil {
-			// Warning
-			logrus.Warnf("Invalid snapshot found. Ignoring it:%s\n", k)
-		} else {
-			snapList = append(snapList, snap)
-		}
-	}
 	sort.Sort(snapList)
 	return snapList, nil
 }

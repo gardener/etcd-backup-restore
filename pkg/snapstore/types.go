@@ -86,7 +86,7 @@ type Config struct {
 	Prefix string
 	// MaxParallelChunkUploads hold the maximum number of parallel chunk uploads allowed.
 	MaxParallelChunkUploads int
-	// Temporay Directory
+	// Temporary Directory
 	TempDir string
 }
 

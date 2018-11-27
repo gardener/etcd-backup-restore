@@ -137,22 +137,21 @@ func (s *SwiftSnapStore) Save(snap Snapshot, r io.Reader) error {
 	snapshotErr := collectChunkUploadError(chunkUploadCh, resCh, cancelCh, noOfChunks)
 	wg.Wait()
 
-	if snapshotErr == nil {
-		logrus.Info("All chunk uploaded successfully. Uploading manifest.")
-		b := make([]byte, 0)
-		opts := objects.CreateOpts{
-			Content:        bytes.NewReader(b),
-			ContentLength:  chunkSize,
-			ObjectManifest: path.Join(s.bucket, s.prefix, snap.SnapDir, snap.SnapName),
-		}
-		if res := objects.Create(s.client, s.bucket, path.Join(s.prefix, snap.SnapDir, snap.SnapName), opts); res.Err != nil {
-			return fmt.Errorf("failed uploading manifest for snapshot with error: %v", res.Err)
-		}
-		logrus.Info("Manifest object uploaded successfully.")
-		return nil
+	if snapshotErr != nil {
+		return fmt.Errorf("failed uploading chunk, id: %d, offset: %d, error: %v", snapshotErr.chunk.id, snapshotErr.chunk.offset, snapshotErr.err)
 	}
-
-	return fmt.Errorf("failed uploading chunk, id: %d, offset: %d, error: %v", snapshotErr.chunk.id, snapshotErr.chunk.offset, snapshotErr.err)
+	logrus.Info("All chunk uploaded successfully. Uploading manifest.")
+	b := make([]byte, 0)
+	opts := objects.CreateOpts{
+		Content:        bytes.NewReader(b),
+		ContentLength:  chunkSize,
+		ObjectManifest: path.Join(s.bucket, s.prefix, snap.SnapDir, snap.SnapName),
+	}
+	if res := objects.Create(s.client, s.bucket, path.Join(s.prefix, snap.SnapDir, snap.SnapName), opts); res.Err != nil {
+		return fmt.Errorf("failed uploading manifest for snapshot with error: %v", res.Err)
+	}
+	logrus.Info("Manifest object uploaded successfully.")
+	return nil
 }
 
 func (s *SwiftSnapStore) uploadChunk(snap *Snapshot, file *os.File, offset, chunkSize int64) error {
@@ -182,15 +181,14 @@ func (s *SwiftSnapStore) chunkUploader(wg *sync.WaitGroup, stopCh <-chan struct{
 		select {
 		case <-stopCh:
 			return
-		case chunk, more := <-chunkUploadCh:
-			if !more {
+		case chunk, ok := <-chunkUploadCh:
+			if !ok {
 				return
 			}
 			logrus.Infof("Uploading chunk with offset : %d, attempt: %d", chunk.offset, chunk.attempt)
 			err := s.uploadChunk(snap, file, chunk.offset, chunk.size)
-			logrus.Infof("For chunk upload of offset %d, err %v", chunk.offset, err)
 			errCh <- chunkUploadResult{
-				err:   nil,
+				err:   err,
 				chunk: &chunk,
 			}
 		}

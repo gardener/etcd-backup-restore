@@ -165,26 +165,25 @@ func (a *ABSSnapStore) Save(snap Snapshot, r io.Reader) error {
 	snapshotErr := collectChunkUploadError(chunkUploadCh, resCh, cancelCh, noOfChunks)
 	wg.Wait()
 
-	if snapshotErr == nil {
-		logrus.Info("All chunk uploaded successfully. Uploading blocklist.")
-		blobName := path.Join(a.prefix, snap.SnapDir, snap.SnapName)
-		blob := a.container.GetBlobReference(blobName)
-		var blockList []storage.Block
-		for partNumber := int64(1); partNumber <= noOfChunks; partNumber++ {
-			block := storage.Block{
-				ID:     base64.StdEncoding.EncodeToString([]byte(fmt.Sprintf("%010d", partNumber))),
-				Status: storage.BlockStatusUncommitted,
-			}
-			blockList = append(blockList, block)
-		}
-		if err := blob.PutBlockList(blockList, &storage.PutBlockListOptions{}); err != nil {
-			return fmt.Errorf("failed uploading blocklist for snapshot with error: %v", err)
-		}
-		logrus.Info("Blocklist uploaded successfully.")
-		return nil
+	if snapshotErr != nil {
+		return fmt.Errorf("failed uploading chunk, id: %d, offset: %d, error: %v", snapshotErr.chunk.id, snapshotErr.chunk.offset, snapshotErr.err)
 	}
-
-	return fmt.Errorf("failed uploading chunk, id: %d, offset: %d, error: %v", snapshotErr.chunk.id, snapshotErr.chunk.offset, snapshotErr.err)
+	logrus.Info("All chunk uploaded successfully. Uploading blocklist.")
+	blobName := path.Join(a.prefix, snap.SnapDir, snap.SnapName)
+	blob := a.container.GetBlobReference(blobName)
+	var blockList []storage.Block
+	for partNumber := int64(1); partNumber <= noOfChunks; partNumber++ {
+		block := storage.Block{
+			ID:     base64.StdEncoding.EncodeToString([]byte(fmt.Sprintf("%010d", partNumber))),
+			Status: storage.BlockStatusUncommitted,
+		}
+		blockList = append(blockList, block)
+	}
+	if err := blob.PutBlockList(blockList, &storage.PutBlockListOptions{}); err != nil {
+		return fmt.Errorf("failed uploading blocklist for snapshot with error: %v", err)
+	}
+	logrus.Info("Blocklist uploaded successfully.")
+	return nil
 }
 
 func (a *ABSSnapStore) uploadBlock(snap *Snapshot, file *os.File, offset, chunkSize int64) error {
@@ -213,18 +212,16 @@ func (a *ABSSnapStore) blockUploader(wg *sync.WaitGroup, stopCh <-chan struct{},
 		select {
 		case <-stopCh:
 			return
-		case chunk, more := <-chunkUploadCh:
-			if !more {
+		case chunk, ok := <-chunkUploadCh:
+			if !ok {
 				return
 			}
 			logrus.Infof("Uploading chunk with offset : %d, attempt: %d", chunk.offset, chunk.attempt)
 			err := a.uploadBlock(snap, file, chunk.offset, chunk.size)
-			logrus.Infof("For chunk upload of offset %d, err %v", chunk.offset, err)
 			errCh <- chunkUploadResult{
-				err:   nil,
+				err:   err,
 				chunk: &chunk,
 			}
-
 		}
 	}
 }

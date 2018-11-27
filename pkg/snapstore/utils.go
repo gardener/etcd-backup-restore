@@ -86,15 +86,16 @@ func collectChunkUploadError(chunkUploadCh chan<- chunk, resCh <-chan chunkUploa
 	for chunkRes := range resCh {
 		logrus.Infof("Received chunk result for id: %d, offset: %d", chunkRes.chunk.id, chunkRes.chunk.offset)
 		if chunkRes.err != nil {
+			logrus.Infof("Chunk upload failed for id: %d, offset: %d with err: %v", chunkRes.chunk.id, chunkRes.chunk.offset, chunkRes.err)
 			if chunkRes.chunk.attempt == maxRetryAttempts {
-				logrus.Errorf("Received the chunk upload error from one of the workers. Sending stop signal to all workers.")
+				logrus.Errorf("Received the chunk upload error even after %d attempts from one of the workers. Sending stop signal to all workers.", chunkRes.chunk.attempt)
 				close(stopCh)
 				return &chunkRes
 			}
 			chunk := chunkRes.chunk
 			delayTime := (1 << chunk.attempt)
 			chunk.attempt++
-			logrus.Warnf("Will try to upload chunk id:%d, offset: %d at attempt %d  after %d seconds", chunk.id, chunk.offset, chunk.attempt, delayTime)
+			logrus.Warnf("Will try to upload chunk id: %d, offset: %d at attempt %d  after %d seconds", chunk.id, chunk.offset, chunk.attempt, delayTime)
 			time.AfterFunc(time.Duration(delayTime)*time.Second, func() {
 				select {
 				case <-stopCh:
@@ -103,11 +104,13 @@ func collectChunkUploadError(chunkUploadCh chan<- chunk, resCh <-chan chunkUploa
 					chunkUploadCh <- *chunk
 				}
 			})
-		}
-		remainingChunks--
-		if remainingChunks == 0 {
-			close(stopCh)
-			break
+		} else {
+			remainingChunks--
+			if remainingChunks == 0 {
+				logrus.Infof("Received successful chunk result for all chunks. Stopping workers.")
+				close(stopCh)
+				break
+			}
 		}
 	}
 	return nil

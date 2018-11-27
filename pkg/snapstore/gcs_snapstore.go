@@ -122,28 +122,27 @@ func (s *GCSSnapStore) Save(snap Snapshot, r io.Reader) error {
 	snapshotErr := collectChunkUploadError(chunkUploadCh, resCh, cancelCh, noOfChunks)
 	wg.Wait()
 
-	if snapshotErr == nil {
-		logrus.Info("All chunk uploaded successfully. Uploading composite object.")
-		bh := s.client.Bucket(s.bucket)
-		var subObjects []*storage.ObjectHandle
-		for partNumber := int64(1); partNumber <= noOfChunks; partNumber++ {
-			name := path.Join(s.prefix, snap.SnapDir, snap.SnapName, fmt.Sprintf("%010d", partNumber))
-			obj := bh.Object(name)
-			subObjects = append(subObjects, obj)
-		}
-		name := path.Join(s.prefix, snap.SnapDir, snap.SnapName)
-		obj := bh.Object(name)
-		c := obj.ComposerFrom(subObjects...)
-		ctx, cancel := context.WithTimeout(context.TODO(), chunkUploadTimeout)
-		defer cancel()
-		if _, err := c.Run(ctx); err != nil {
-			return fmt.Errorf("failed uploading composite object for snapshot with error: %v", err)
-		}
-		logrus.Info("Composite object uploaded successfully.")
-		return nil
+	if snapshotErr != nil {
+		return fmt.Errorf("failed uploading chunk, id: %d, offset: %d, error: %v", snapshotErr.chunk.id, snapshotErr.chunk.offset, snapshotErr.err)
 	}
-
-	return fmt.Errorf("failed uploading chunk, id: %d, offset: %d, error: %v", snapshotErr.chunk.id, snapshotErr.chunk.offset, snapshotErr.err)
+	logrus.Info("All chunk uploaded successfully. Uploading composite object.")
+	bh := s.client.Bucket(s.bucket)
+	var subObjects []*storage.ObjectHandle
+	for partNumber := int64(1); partNumber <= noOfChunks; partNumber++ {
+		name := path.Join(s.prefix, snap.SnapDir, snap.SnapName, fmt.Sprintf("%010d", partNumber))
+		obj := bh.Object(name)
+		subObjects = append(subObjects, obj)
+	}
+	name := path.Join(s.prefix, snap.SnapDir, snap.SnapName)
+	obj := bh.Object(name)
+	c := obj.ComposerFrom(subObjects...)
+	ctx, cancel := context.WithTimeout(context.TODO(), chunkUploadTimeout)
+	defer cancel()
+	if _, err := c.Run(ctx); err != nil {
+		return fmt.Errorf("failed uploading composite object for snapshot with error: %v", err)
+	}
+	logrus.Info("Composite object uploaded successfully.")
+	return nil
 }
 
 func (s *GCSSnapStore) uploadComponent(snap *Snapshot, file *os.File, offset, chunkSize int64) error {
@@ -177,13 +176,12 @@ func (s *GCSSnapStore) componentUploader(wg *sync.WaitGroup, stopCh <-chan struc
 		select {
 		case <-stopCh:
 			return
-		case chunk, more := <-chunkUploadCh:
-			if !more {
+		case chunk, ok := <-chunkUploadCh:
+			if !ok {
 				return
 			}
 			logrus.Infof("Uploading chunk with offset : %d, attempt: %d", chunk.offset, chunk.attempt)
 			err := s.uploadComponent(snap, file, chunk.offset, chunk.size)
-			logrus.Infof("For chunk upload of offset %d, err %v", chunk.offset, err)
 			errCh <- chunkUploadResult{
 				err:   err,
 				chunk: &chunk,
