@@ -53,8 +53,12 @@ const (
 	// SnapshotKindDelta is constant for delta snapshot kind
 	SnapshotKindDelta = "Incr"
 
-	// ChunkUploadTimeout is timeout for uploading chunk
+	// chunkUploadTimeout is timeout for uploading chunk
 	chunkUploadTimeout = 180 * time.Second
+	// providerConnectionTimeout is timeout for connection/short queries to cloud provider
+	providerConnectionTimeout = 30 * time.Second
+	// downloadTimeout is timeout for downloading chunk
+	downloadTimeout = 5 * time.Minute
 
 	tmpBackupFilePrefix = "etcd-backup-"
 

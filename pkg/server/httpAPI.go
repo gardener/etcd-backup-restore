@@ -144,10 +144,7 @@ func (h *HTTPHandler) serveInitialize(rw http.ResponseWriter, req *http.Request)
 			defer h.initializationStatusMutex.Unlock()
 			if err != nil {
 				h.Logger.Errorf("Failed initialization: %v", err)
-				rw.WriteHeader(http.StatusInternalServerError)
 				h.initializationStatus = initializationStatusFailed
-				// Optional: Event if we send start signal it wi
-				// h.ReqCh <- HandlerSsrStart
 				return
 			}
 			h.Logger.Infof("Successfully initialized data directory \"%s\" for etcd.", h.EtcdInitializer.Validator.Config.DataDir)

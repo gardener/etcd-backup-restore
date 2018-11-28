@@ -256,9 +256,9 @@ Copyright (c) 2013-2014 Onsi Fakhouri.
 MIT License (https://github.com/onsi/gomega/blob/master/LICENSE)
 
 Microsoft Azure SDK for Go.
-https://github.com/Azure/azure-sdk-for-go
-Copyright 2014-2017 Microsoft
-Apache 2 license (https://github.com/Azure/azure-sdk-for-go/blob/master/LICENSE)
+https://github.com/Azure/azure-storage-blob-go
+Copyright 2017 Microsoft
+Apache 2 license (https://github.com/Azure/azure-storage-blob-go/blob/master/LICENSE)
 
 Google Cloud Client Libraries for Go
 https://github.com/GoogleCloudPlatform/google-cloud-go
