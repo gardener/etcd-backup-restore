@@ -74,5 +74,33 @@ var _ = Describe("Defrag", func() {
 
 			Expect(newStatus.Header.GetRevision()).Should(BeNumerically("==", oldStatus.Header.GetRevision()))
 		})
+
+		It("should defrag periodically with callback", func() {
+			defragCount := 0
+			expectedDefragCount := 2
+			defragmentationPeriod := time.Duration(30) * time.Second
+			client, err := GetTLSClientForEtcd(tlsConfig)
+			Expect(err).ShouldNot(HaveOccurred())
+			defer client.Close()
+			ctx, cancel := context.WithTimeout(context.TODO(), etcdDialTimeout)
+			oldStatus, err := client.Status(ctx, endpoints[0])
+			cancel()
+			Expect(err).ShouldNot(HaveOccurred())
+			stopCh := make(chan struct{})
+			time.AfterFunc(time.Second*time.Duration(75), func() {
+				close(stopCh)
+			})
+
+			DefragDataPeriodically(stopCh, tlsConfig, defragmentationPeriod, etcdConnectionTimeout, func() { defragCount++ })
+
+			ctx, cancel = context.WithTimeout(context.TODO(), etcdDialTimeout)
+			newStatus, err := client.Status(ctx, endpoints[0])
+			cancel()
+			Expect(err).ShouldNot(HaveOccurred())
+
+			Expect(defragCount).Should(BeNumerically("==", expectedDefragCount))
+			Expect(newStatus.DbSize).Should(BeNumerically("<", oldStatus.DbSize))
+			Expect(newStatus.Header.GetRevision()).Should(BeNumerically("==", oldStatus.Header.GetRevision()))
+		})
 	})
 })

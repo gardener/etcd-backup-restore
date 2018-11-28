@@ -52,8 +52,14 @@ const (
 	SnapshotKindFull = "Full"
 	// SnapshotKindDelta is constant for delta snapshot kind
 	SnapshotKindDelta = "Incr"
+
 	// ChunkUploadTimeout is timeout for uploading chunk
 	chunkUploadTimeout = 180 * time.Second
+
+	tmpBackupFilePrefix = "etcd-backup-"
+
+	// maxRetryAttempts indicates the number of attempts to be retried in case of failure to upload chunk.
+	maxRetryAttempts = 5
 )
 
 // Snapshot structure represents the metadata of snapshot
@@ -70,17 +76,27 @@ type Snapshot struct {
 // SnapList is list of snapshots
 type SnapList []*Snapshot
 
-// Config defines the configuration to create snapshot store
+// Config defines the configuration to create snapshot store.
 type Config struct {
-	// Provider indicated the cloud provider
+	// Provider indicated the cloud provider.
 	Provider string
-	// Container holds the name of bucket or container to which snapshot will be stored
+	// Container holds the name of bucket or container to which snapshot will be stored.
 	Container string
-	// Prefix holds the prefix or directory under StorageContainer under which snapshot will be stored
+	// Prefix holds the prefix or directory under StorageContainer under which snapshot will be stored.
 	Prefix string
+	// MaxParallelChunkUploads hold the maximum number of parallel chunk uploads allowed.
+	MaxParallelChunkUploads int
+	// Temporary Directory
+	TempDir string
 }
 
-type chunkUploadError struct {
-	err    error
-	offset int64
+type chunk struct {
+	offset  int64
+	size    int64
+	attempt uint
+	id      int
+}
+type chunkUploadResult struct {
+	err   error
+	chunk *chunk
 }

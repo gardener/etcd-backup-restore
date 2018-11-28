@@ -23,7 +23,6 @@ import (
 	"os"
 	"path"
 	"sort"
-	"strings"
 	"sync"
 	"time"
 
@@ -35,48 +34,47 @@ import (
 )
 
 const (
-	tmpDir              = "/tmp"
-	tmpBackupFilePrefix = "etcd-backup-"
-)
-
-const (
 	s3NoOfChunk int64 = 10000 //Default configuration in swift installation
 )
 
 // S3SnapStore is snapstore with local disk as backend
 type S3SnapStore struct {
-	SnapStore
 	prefix    string
 	client    s3iface.S3API
 	bucket    string
 	multiPart sync.Mutex
+	// maxParallelChunkUploads hold the maximum number of parallel chunk uploads allowed.
+	maxParallelChunkUploads int
+	tempDir                 string
 }
 
 // NewS3SnapStore create new S3SnapStore from shared configuration with specified bucket
-func NewS3SnapStore(bucket, prefix string) (*S3SnapStore, error) {
-	return NewS3FromSessionOpt(bucket, prefix, session.Options{
+func NewS3SnapStore(bucket, prefix, tempDir string, maxParallelChunkUploads int) (*S3SnapStore, error) {
+	return newS3FromSessionOpt(bucket, prefix, tempDir, maxParallelChunkUploads, session.Options{
 		// Setting this is equal to the AWS_SDK_LOAD_CONFIG environment variable was set.
 		// We want to save the work to set AWS_SDK_LOAD_CONFIG=1 outside.
 		SharedConfigState: session.SharedConfigEnable,
 	})
 }
 
-// NewS3FromSessionOpt will create the new S3 snapstore object from S3 session options
-func NewS3FromSessionOpt(bucket, prefix string, so session.Options) (*S3SnapStore, error) {
+// newS3FromSessionOpt will create the new S3 snapstore object from S3 session options
+func newS3FromSessionOpt(bucket, prefix, tempDir string, maxParallelChunkUploads int, so session.Options) (*S3SnapStore, error) {
 	sess, err := session.NewSessionWithOptions(so)
 	if err != nil {
 		return nil, fmt.Errorf("new AWS session failed: %v", err)
 	}
 	cli := s3.New(sess)
-	return NewS3FromClient(bucket, prefix, cli), nil
+	return NewS3FromClient(bucket, prefix, tempDir, maxParallelChunkUploads, cli), nil
 }
 
 // NewS3FromClient will create the new S3 snapstore object from S3 client
-func NewS3FromClient(bucket, prefix string, cli s3iface.S3API) *S3SnapStore {
+func NewS3FromClient(bucket, prefix, tempDir string, maxParallelChunkUploads int, cli s3iface.S3API) *S3SnapStore {
 	return &S3SnapStore{
-		bucket: bucket,
-		prefix: prefix,
-		client: cli,
+		bucket:                  bucket,
+		prefix:                  prefix,
+		client:                  cli,
+		maxParallelChunkUploads: maxParallelChunkUploads,
+		tempDir:                 tempDir,
 	}
 }
 
@@ -89,14 +87,12 @@ func (s *S3SnapStore) Fetch(snap Snapshot) (io.ReadCloser, error) {
 	if err != nil {
 		return nil, err
 	}
-
 	return resp.Body, nil
 }
 
 // Save will write the snapshot to store
 func (s *S3SnapStore) Save(snap Snapshot, r io.Reader) error {
-	// since s3 requires io.ReadSeeker, this is the required hack.
-	tmpfile, err := ioutil.TempFile(tmpDir, tmpBackupFilePrefix)
+	tmpfile, err := ioutil.TempFile(s.tempDir, tmpBackupFilePrefix)
 	if err != nil {
 		return fmt.Errorf("failed to create snapshot tempfile: %v", err)
 	}
@@ -125,23 +121,43 @@ func (s *S3SnapStore) Save(snap Snapshot, r io.Reader) error {
 		return fmt.Errorf("failed to initiate multipart upload %v", err)
 	}
 	logrus.Infof("Successfully initiated the multipart upload with upload ID : %s", *uploadOutput.UploadId)
+
 	var (
-		errCh      = make(chan chunkUploadError)
 		chunkSize  = int64(math.Max(float64(minChunkSize), float64(size/s3NoOfChunk)))
 		noOfChunks = size / chunkSize
 	)
 	if size%chunkSize != 0 {
 		noOfChunks++
 	}
+	var (
+		completedParts = make([]*s3.CompletedPart, noOfChunks)
+		chunkUploadCh  = make(chan chunk, noOfChunks)
+		resCh          = make(chan chunkUploadResult, noOfChunks)
+		wg             sync.WaitGroup
+		cancelCh       = make(chan struct{})
+	)
 
-	completedParts := make([]*s3.CompletedPart, noOfChunks)
-	logrus.Infof("Uploading snapshot of size: %d, chunkSize: %d, noOfChunks: %d", size, chunkSize, noOfChunks)
-	for offset := int64(0); offset <= size; offset += int64(chunkSize) {
-		go retryPartUpload(s, &snap, tmpfile, uploadOutput.UploadId, completedParts, offset, chunkSize, errCh)
+	for i := 0; i < s.maxParallelChunkUploads; i++ {
+		wg.Add(1)
+		go s.partUploader(&wg, cancelCh, &snap, tmpfile, uploadOutput.UploadId, completedParts, chunkUploadCh, resCh)
 	}
+	logrus.Infof("Uploading snapshot of size: %d, chunkSize: %d, noOfChunks: %d", size, chunkSize, noOfChunks)
 
-	snapshotErr := collectChunkUploadError(errCh, noOfChunks)
-	if len(snapshotErr) != 0 {
+	for offset, index := int64(0), 1; offset <= size; offset += int64(chunkSize) {
+		newChunk := chunk{
+			id:     index,
+			offset: offset,
+			size:   chunkSize,
+		}
+		logrus.Debugf("Triggering chunk upload for offset: %d", offset)
+		chunkUploadCh <- newChunk
+		index++
+	}
+	logrus.Infof("Triggered chunk upload for all chunks, total: %d", noOfChunks)
+	snapshotErr := collectChunkUploadError(chunkUploadCh, resCh, cancelCh, noOfChunks)
+	wg.Wait()
+
+	if snapshotErr != nil {
 		ctx := context.TODO()
 		ctx, cancel := context.WithTimeout(ctx, chunkUploadTimeout)
 		defer cancel()
@@ -167,20 +183,15 @@ func (s *S3SnapStore) Save(snap Snapshot, r io.Reader) error {
 	}
 
 	if err != nil {
-		return err
+		return fmt.Errorf("failed completing snapshot upload with error %v", err)
 	}
-	if len(snapshotErr) == 0 {
-		return nil
+	if snapshotErr != nil {
+		return fmt.Errorf("failed uploading chunk, id: %d, offset: %d, error: %v", snapshotErr.chunk.id, snapshotErr.chunk.offset, snapshotErr.err)
 	}
-
-	var collectedErr []string
-	for _, chunkErr := range snapshotErr {
-		collectedErr = append(collectedErr, fmt.Sprintf("failed uploading chunk with offset %d with error %v", chunkErr.offset, chunkErr.err))
-	}
-	return fmt.Errorf(strings.Join(collectedErr, "\n"))
+	return nil
 }
 
-func uploadPart(s *S3SnapStore, snap *Snapshot, file *os.File, uploadID *string, completedParts []*s3.CompletedPart, offset, chunkSize int64) error {
+func (s *S3SnapStore) uploadPart(snap *Snapshot, file *os.File, uploadID *string, completedParts []*s3.CompletedPart, offset, chunkSize int64) error {
 	fileInfo, err := file.Stat()
 	if err != nil {
 		return err
@@ -213,53 +224,50 @@ func uploadPart(s *S3SnapStore, snap *Snapshot, file *os.File, uploadID *string,
 	return err
 }
 
-func retryPartUpload(s *S3SnapStore, snap *Snapshot, file *os.File, uploadID *string, completedParts []*s3.CompletedPart, offset, chunkSize int64, errCh chan<- chunkUploadError) {
-	var (
-		maxAttempts uint = 5
-		curAttempt  uint = 1
-		err         error
-	)
+func (s *S3SnapStore) partUploader(wg *sync.WaitGroup, stopCh <-chan struct{}, snap *Snapshot, file *os.File, uploadID *string, completedParts []*s3.CompletedPart, chunkUploadCh <-chan chunk, errCh chan<- chunkUploadResult) {
+	defer wg.Done()
 	for {
-		logrus.Infof("Uploading chunk with offset : %d, attempt: %d", offset, curAttempt)
-		err = uploadPart(s, snap, file, uploadID, completedParts, offset, chunkSize)
-		logrus.Infof("For chunk upload of offset %d, err %v", offset, err)
-		if err == nil || curAttempt == maxAttempts {
-			break
+		select {
+		case <-stopCh:
+			return
+		case chunk, ok := <-chunkUploadCh:
+			if !ok {
+				return
+			}
+			logrus.Infof("Uploading chunk with id: %d, offset: %d, attempt: %d", chunk.id, chunk.offset, chunk.attempt)
+			err := s.uploadPart(snap, file, uploadID, completedParts, chunk.offset, chunk.size)
+			errCh <- chunkUploadResult{
+				err:   err,
+				chunk: &chunk,
+			}
 		}
-		delayTime := (1 << curAttempt)
-		curAttempt++
-		logrus.Warnf("Will try to upload chunk with offset: %d at attempt %d  after %d seconds", offset, curAttempt, delayTime)
-		time.Sleep((time.Duration)(delayTime) * time.Second)
 	}
-
-	errCh <- chunkUploadError{
-		err:    err,
-		offset: offset,
-	}
-	return
 }
 
 // List will list the snapshots from store
 func (s *S3SnapStore) List() (SnapList, error) {
-	resp, err := s.client.ListObjects(&s3.ListObjectsInput{
+	var snapList SnapList
+	in := &s3.ListObjectsInput{
 		Bucket: aws.String(s.bucket),
 		Prefix: aws.String(fmt.Sprintf("%s/", s.prefix)),
+	}
+	err := s.client.ListObjectsPages(in, func(page *s3.ListObjectsOutput, lastPage bool) bool {
+		for _, key := range page.Contents {
+			k := (*key.Key)[len(*page.Prefix):]
+			snap, err := ParseSnapshot(k)
+			if err != nil {
+				// Warning
+				logrus.Warnf("Invalid snapshot found. Ignoring it: %s", k)
+			} else {
+				snapList = append(snapList, snap)
+			}
+		}
+		return !lastPage
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	var snapList SnapList
-	for _, key := range resp.Contents {
-		k := (*key.Key)[len(*resp.Prefix):]
-		snap, err := ParseSnapshot(k)
-		if err != nil {
-			// Warning
-			logrus.Warnf("Invalid snapshot found. Ignoring it:%s\n", k)
-		} else {
-			snapList = append(snapList, snap)
-		}
-	}
 	sort.Sort(snapList)
 	return snapList, nil
 }

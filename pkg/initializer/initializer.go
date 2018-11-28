@@ -50,7 +50,7 @@ func (e *EtcdInitializer) Initialize() error {
 			return fmt.Errorf("error while restoring corrupt data: %v", err)
 		}
 	}
-	return err
+	return nil
 }
 
 //NewInitializer creates an etcd initializer object.

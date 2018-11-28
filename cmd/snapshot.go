@@ -33,9 +33,11 @@ func NewSnapshotCommand(stopCh <-chan struct{}) *cobra.Command {
 storing snapshots on various cloud storage providers as well as local disk location.`,
 		Run: func(cmd *cobra.Command, args []string) {
 			snapstoreConfig := &snapstore.Config{
-				Provider:  storageProvider,
-				Container: storageContainer,
-				Prefix:    path.Join(storagePrefix, backupFormatVersion),
+				Provider:                storageProvider,
+				Container:               storageContainer,
+				Prefix:                  path.Join(storagePrefix, backupFormatVersion),
+				MaxParallelChunkUploads: maxParallelChunkUploads,
+				TempDir:                 snapstoreTempDir,
 			}
 			ss, err := snapstore.GetSnapstore(snapstoreConfig)
 			if err != nil {
@@ -64,7 +66,13 @@ storing snapshots on various cloud storage providers as well as local disk locat
 			ssr := snapshotter.NewSnapshotter(
 				logger,
 				snapshotterConfig)
-			go etcdutil.DefragDataPeriodically(stopCh, tlsConfig, time.Duration(defragmentationPeriodHours)*time.Hour, time.Duration(etcdConnectionTimeout)*time.Second, ssr.TriggerFullSnapshot)
+
+			if defragmentationPeriodHours < 1 {
+				logger.Infof("Disabling defragmentation since defragmentation period [%d] is less than 1", defragmentationPeriodHours)
+			} else {
+				go etcdutil.DefragDataPeriodically(stopCh, tlsConfig, time.Duration(defragmentationPeriodHours)*time.Hour, time.Duration(etcdConnectionTimeout)*time.Second, ssr.TriggerFullSnapshot)
+			}
+
 			gcStopCh := make(chan struct{})
 			go ssr.RunGarbageCollector(gcStopCh)
 			if err := ssr.Run(stopCh, true); err != nil {

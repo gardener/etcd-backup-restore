@@ -2,7 +2,6 @@ package integration_test
 
 import (
 	"bufio"
-	"fmt"
 	"io/ioutil"
 	"net/http"
 	"os"
@@ -113,17 +112,6 @@ var _ = Describe("CloudBackup", func() {
 		)
 
 		BeforeEach(func() {
-			cmdEtcd, etcdErrChan = startEtcd()
-			cmdEtcdbrctl, etcdbrErrChan = startSnapshotter()
-			go func() {
-				select {
-				case err := <-*etcdErrChan:
-					Expect(err).ShouldNot(HaveOccurred())
-				case err := <-*etcdbrErrChan:
-					Expect(err).ShouldNot(HaveOccurred())
-				}
-			}()
-
 			snapstoreConfig := &snapstore.Config{
 				Provider:  "S3",
 				Container: os.Getenv("TEST_ID"),
@@ -138,6 +126,17 @@ var _ = Describe("CloudBackup", func() {
 				store.Delete(*snap)
 			}
 
+			cmdEtcd, etcdErrChan = startEtcd()
+			cmdEtcdbrctl, etcdbrErrChan = startSnapshotter()
+			go func() {
+				select {
+				case err := <-*etcdErrChan:
+					Expect(err).ShouldNot(HaveOccurred())
+				case err := <-*etcdbrErrChan:
+					Expect(err).ShouldNot(HaveOccurred())
+				}
+			}()
+
 		})
 
 		Context("taken at 1 minute interval", func() {
@@ -146,7 +145,7 @@ var _ = Describe("CloudBackup", func() {
 				Expect(snaplist).Should(BeEmpty())
 				Expect(err).ShouldNot(HaveOccurred())
 
-				time.Sleep(1 * time.Minute)
+				time.Sleep(70 * time.Second)
 
 				snaplist, err = store.List()
 				Expect(snaplist).ShouldNot(BeEmpty())
@@ -160,20 +159,20 @@ var _ = Describe("CloudBackup", func() {
 				Expect(snaplist).Should(BeEmpty())
 				Expect(err).ShouldNot(HaveOccurred())
 
-				time.Sleep(160 * time.Second)
+				time.Sleep(190 * time.Second)
 
 				snaplist, err = store.List()
 				Expect(err).ShouldNot(HaveOccurred())
 				count := 0
-				expectedCount := 1
 				for _, snap := range snaplist {
 					if snap.Kind == snapstore.SnapshotKindFull {
 						count++
 					}
 				}
-				if count != expectedCount {
-					Fail(fmt.Sprintf("number of full snapshots found does not match expected count: %d", expectedCount))
-				}
+				// We don't have control over whether for the lifecycle of test, whether GC ran after
+				// last snapshot of not. But we are sure that if GC is working, there will be
+				// max 2 snapshots otherwise 3 full snapshot will be there for 190 second period.
+				Expect(count).Should(BeNumerically("<=", 2))
 			})
 		})
 

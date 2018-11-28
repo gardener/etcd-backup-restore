@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"sort"
 	"strings"
 	"time"
 
@@ -146,6 +147,54 @@ func (m *mockS3Client) ListObjects(in *s3.ListObjectsInput) (*s3.ListObjectsOutp
 		Contents: contents,
 	}
 	return out, nil
+}
+
+// ListObject returns the objects from map for mock test
+func (m *mockS3Client) ListObjectsPages(in *s3.ListObjectsInput, callback func(*s3.ListObjectsOutput, bool) bool) error {
+	var (
+		count    int64 = 0
+		limit    int64 = 1000
+		lastPage bool  = false
+		keys     []string
+		out      = &s3.ListObjectsOutput{
+			Prefix:   in.Prefix,
+			Contents: make([]*s3.Object, 0),
+		}
+	)
+	if in.MaxKeys != nil {
+		limit = *in.MaxKeys
+	}
+	for key := range m.objects {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+
+	for index, key := range keys {
+		if strings.HasPrefix(key, *in.Prefix) {
+			keyPtr := new(string)
+			*keyPtr = key
+			tempObj := &s3.Object{
+				Key: keyPtr,
+			}
+			out.Contents = append(out.Contents, tempObj)
+			count++
+		}
+		if index == len(keys)-1 {
+			lastPage = true
+		}
+		if count == limit || lastPage {
+			if !callback(out, lastPage) {
+				return nil
+			}
+			count = 0
+			out = &s3.ListObjectsOutput{
+				Prefix:     in.Prefix,
+				Contents:   make([]*s3.Object, 0),
+				NextMarker: &key,
+			}
+		}
+	}
+	return nil
 }
 
 // DeleteObject deletes the object from map for mock test

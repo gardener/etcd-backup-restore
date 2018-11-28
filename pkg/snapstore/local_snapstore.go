@@ -26,7 +26,6 @@ import (
 
 // LocalSnapStore is snapstore with local disk as backend
 type LocalSnapStore struct {
-	SnapStore
 	prefix string
 }
 

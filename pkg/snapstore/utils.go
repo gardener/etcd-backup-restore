@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"os"
 	"path"
+	"time"
 
 	"github.com/sirupsen/logrus"
 )
@@ -32,6 +33,9 @@ func GetSnapstore(config *Config) (SnapStore, error) {
 	if config.Container == "" {
 		config.Container = os.Getenv(envStorageContainer)
 	}
+	if config.MaxParallelChunkUploads <= 0 {
+		config.MaxParallelChunkUploads = 5
+	}
 	switch config.Provider {
 	case SnapstoreProviderLocal, "":
 		if config.Container == "" {
@@ -42,22 +46,22 @@ func GetSnapstore(config *Config) (SnapStore, error) {
 		if config.Container == "" {
 			return nil, fmt.Errorf("storage container name not specified")
 		}
-		return NewS3SnapStore(config.Container, config.Prefix)
+		return NewS3SnapStore(config.Container, config.Prefix, config.TempDir, config.MaxParallelChunkUploads)
 	case SnapstoreProviderABS:
 		if config.Container == "" {
 			return nil, fmt.Errorf("storage container name not specified")
 		}
-		return NewABSSnapStore(config.Container, config.Prefix)
+		return NewABSSnapStore(config.Container, config.Prefix, config.TempDir, config.MaxParallelChunkUploads)
 	case SnapstoreProviderGCS:
 		if config.Container == "" {
 			return nil, fmt.Errorf("storage container name not specified")
 		}
-		return NewGCSSnapStore(config.Container, config.Prefix)
+		return NewGCSSnapStore(config.Container, config.Prefix, config.TempDir, config.MaxParallelChunkUploads)
 	case SnapstoreProviderSwift:
 		if config.Container == "" {
 			return nil, fmt.Errorf("storage container name not specified")
 		}
-		return NewSwiftSnapStore(config.Container, config.Prefix)
+		return NewSwiftSnapStore(config.Container, config.Prefix, config.TempDir, config.MaxParallelChunkUploads)
 	default:
 		return nil, fmt.Errorf("unsupported storage provider : %s", config.Provider)
 
@@ -76,18 +80,38 @@ func GetEnvVarOrError(varName string) (string, error) {
 }
 
 // collectChunkUploadError collects the error from all go routine to upload individual chunks
-func collectChunkUploadError(errCh chan chunkUploadError, noOfChunks int64) []chunkUploadError {
-	var snapshotErr []chunkUploadError
+func collectChunkUploadError(chunkUploadCh chan<- chunk, resCh <-chan chunkUploadResult, stopCh chan struct{}, noOfChunks int64) *chunkUploadResult {
 	remainingChunks := noOfChunks
 	logrus.Infof("No of Chunks:= %d", noOfChunks)
-	for {
-		chunkErr := <-errCh
-		if chunkErr.err != nil {
-			snapshotErr = append(snapshotErr, chunkErr)
-		}
-		remainingChunks--
-		if remainingChunks == 0 {
-			return snapshotErr
+	for chunkRes := range resCh {
+		logrus.Infof("Received chunk result for id: %d, offset: %d", chunkRes.chunk.id, chunkRes.chunk.offset)
+		if chunkRes.err != nil {
+			logrus.Infof("Chunk upload failed for id: %d, offset: %d with err: %v", chunkRes.chunk.id, chunkRes.chunk.offset, chunkRes.err)
+			if chunkRes.chunk.attempt == maxRetryAttempts {
+				logrus.Errorf("Received the chunk upload error even after %d attempts from one of the workers. Sending stop signal to all workers.", chunkRes.chunk.attempt)
+				close(stopCh)
+				return &chunkRes
+			}
+			chunk := chunkRes.chunk
+			delayTime := (1 << chunk.attempt)
+			chunk.attempt++
+			logrus.Warnf("Will try to upload chunk id: %d, offset: %d at attempt %d  after %d seconds", chunk.id, chunk.offset, chunk.attempt, delayTime)
+			time.AfterFunc(time.Duration(delayTime)*time.Second, func() {
+				select {
+				case <-stopCh:
+					return
+				default:
+					chunkUploadCh <- *chunk
+				}
+			})
+		} else {
+			remainingChunks--
+			if remainingChunks == 0 {
+				logrus.Infof("Received successful chunk result for all chunks. Stopping workers.")
+				close(stopCh)
+				break
+			}
 		}
 	}
+	return nil
 }
