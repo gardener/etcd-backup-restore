@@ -33,7 +33,7 @@
   version = "0.3.0"
 
 [[projects]]
-  digest = "1:8c5c6014342bfba9d031c36d016e6a269836182ed165c0a2c3e7629d66a491f0"
+  digest = "1:66e9bc21369358ecfe3e1226e1c7040dafb2571b4f857dd9ce2cefb3d21c4dbe"
   name = "github.com/aws/aws-sdk-go"
   packages = [
     "aws",
@@ -72,8 +72,8 @@
     "service/sts",
   ]
   pruneopts = "NUT"
-  revision = "08df30d135d32f1eb21bb7754eb042aeca521a4b"
-  version = "v1.15.84"
+  revision = "180cc10e5ff368b86dee226b034af7d1672baec6"
+  version = "v1.15.87"
 
 [[projects]]
   branch = "master"
@@ -469,7 +469,7 @@
     "xfs",
   ]
   pruneopts = "NUT"
-  revision = "619930b0b4713cc1280189bf0a4c54b3fb506f60"
+  revision = "aa55a523dc0a8297edf51bb75e8eec13eb3be45d"
 
 [[projects]]
   digest = "1:9dfe20a82800ffcf0a2bde15beba44cc6d6f6cf1d003420ecc8ad0ac78300d70"
@@ -618,11 +618,11 @@
     "trace",
   ]
   pruneopts = "NUT"
-  revision = "adae6a3d119ae4890b46832a2e88a95adc62b8e7"
+  revision = "fae4c4e3ad76c295c3d6d259f898136b4bf833a8"
 
 [[projects]]
   branch = "master"
-  digest = "1:ae6187c169fc5ec0d8d46483be8ce73e137a6ebb2dac5e1b1280ea04a95e1c2c"
+  digest = "1:169c27544e7f54a861a05cd84078b494eaf3e41543f0dfd4dd215fa32139cd40"
   name = "golang.org/x/oauth2"
   packages = [
     ".",
@@ -632,7 +632,7 @@
     "jwt",
   ]
   pruneopts = "NUT"
-  revision = "8f65e3013ebad444f13bc19536f7865efc793816"
+  revision = "28207608b83849a028d4f12e46533a6b6894ecaf"
 
 [[projects]]
   branch = "master"
@@ -801,18 +801,19 @@
   revision = "dd632973f1e7218eb1089048e0798ec9ae7dceb8"
 
 [[projects]]
-  digest = "1:7c95b35057a0ff2e19f707173cc1a947fa43a6eb5c4d300d196ece0334046082"
+  digest = "1:18108594151654e9e696b27b181b953f9a90b16bf14d253dd1b397b025a1487f"
   name = "gopkg.in/yaml.v2"
   packages = ["."]
   pruneopts = "NUT"
-  revision = "5420a8b6744d3b0345ab293f6fcba19c978f1183"
-  version = "v2.2.1"
+  revision = "51d6538a90f86fe93ac480b35f37b2be17fef232"
+  version = "v2.2.2"
 
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
   input-imports = [
     "cloud.google.com/go/storage",
+    "github.com/Azure/azure-pipeline-go/pipeline",
     "github.com/Azure/azure-storage-blob-go/azblob",
     "github.com/aws/aws-sdk-go/aws",
     "github.com/aws/aws-sdk-go/aws/request",

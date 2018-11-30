@@ -20,7 +20,6 @@ import (
 	"io"
 	"io/ioutil"
 	"net/http"
-	"net/url"
 	"sort"
 	"strings"
 	"sync"
@@ -57,20 +56,6 @@ func initializeMockSwiftServer(t *testing.T) {
 			w.WriteHeader(http.StatusMethodNotAllowed)
 		}
 	})
-}
-
-func parseObjectNamefromURL(u *url.URL) string {
-	path := u.EscapedPath()
-	if strings.HasPrefix(path, fmt.Sprintf("/%s", bucket)) {
-		splits := strings.SplitAfterN(path, fmt.Sprintf("/%s", bucket), 2)
-		if len(splits[1]) == 0 {
-			return ""
-		}
-		return splits[1][1:]
-	} else {
-		fmt.Printf("path should start with /%s", bucket)
-		return ""
-	}
 }
 
 // handleCreateTextObject creates an HTTP handler at `/testContainer/testObject` on the test handler mux

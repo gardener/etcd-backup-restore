@@ -16,16 +16,18 @@ package snapstore_test
 
 import (
 	"bytes"
+	"fmt"
 	"io/ioutil"
+	"net/url"
 	"path"
+	"strings"
 	"time"
-
-	"github.com/sirupsen/logrus"
 
 	. "github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	fake "github.com/gophercloud/gophercloud/testhelper/client"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
+	"github.com/sirupsen/logrus"
 )
 
 var (
@@ -80,6 +82,7 @@ var _ = Describe("Snapstore", func() {
 				multiPartUploads: map[string]*[][]byte{},
 			}),
 			"swift": NewSwiftSnapstoreFromClient(bucket, prefix, "/tmp", 5, fake.ServiceClient()),
+			"ABS":   newFakeABSSnapstore(),
 		}
 	})
 
@@ -146,5 +149,19 @@ var _ = Describe("Snapstore", func() {
 func resetObjectMap() {
 	for k := range objectMap {
 		delete(objectMap, k)
+	}
+}
+
+func parseObjectNamefromURL(u *url.URL) string {
+	path := u.EscapedPath()
+	if strings.HasPrefix(path, fmt.Sprintf("/%s", bucket)) {
+		splits := strings.SplitAfterN(path, fmt.Sprintf("/%s", bucket), 2)
+		if len(splits[1]) == 0 {
+			return ""
+		}
+		return splits[1][1:]
+	} else {
+		logrus.Errorf("path should start with /%s: but received %s", bucket, u.String())
+		return ""
 	}
 }
