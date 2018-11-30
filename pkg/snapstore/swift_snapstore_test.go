@@ -18,6 +18,7 @@ import (
 	"crypto/md5"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"net/http"
 	"net/url"
 	"sort"
@@ -75,20 +76,24 @@ func parseObjectNamefromURL(u *url.URL) string {
 // handleCreateTextObject creates an HTTP handler at `/testContainer/testObject` on the test handler mux
 // that responds with a `Create` response.
 func handleCreateTextObject(w http.ResponseWriter, r *http.Request) {
+	var (
+		content []byte
+		err     error
+	)
 	key := parseObjectNamefromURL(r.URL)
 	if len(key) == 0 {
 		logrus.Errorf("object name cannot be empty")
 		w.WriteHeader(http.StatusBadRequest)
 	}
-
-	content := make([]byte, r.ContentLength)
 	if len(r.Header.Get("X-Object-Manifest")) == 0 {
-		_, err := r.Body.Read(content)
-		if err != nil && err != io.EOF {
+		content, err = ioutil.ReadAll(r.Body)
+		if err != nil {
 			logrus.Errorf("failed to read content %v", err)
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
+	} else {
+		content = make([]byte, 0)
 	}
 	objectMapMutex.Lock()
 	objectMap[key] = &content

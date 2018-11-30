@@ -16,8 +16,7 @@ package snapstore_test
 
 import (
 	"bytes"
-	"fmt"
-	"io"
+	"io/ioutil"
 	"path"
 	"time"
 
@@ -93,12 +92,9 @@ var _ = Describe("Snapstore", func() {
 				objectMap[path.Join(prefix, snap2.SnapDir, snap2.SnapName)] = &expectedVal2
 				rc, err := snapStore.Fetch(snap1)
 				Expect(err).ShouldNot(HaveOccurred())
-				temp := make([]byte, len(expectedVal1))
-				n, err := rc.Read(temp)
-				if err != nil && err != io.EOF {
-					Fail(fmt.Sprintf("error should not have occurred: %v", err))
-				}
-				Expect(temp[:n]).To(Equal(expectedVal1))
+				temp, err := ioutil.ReadAll(rc)
+				Expect(err).ShouldNot(HaveOccurred())
+				Expect(temp).To(Equal(expectedVal1))
 			}
 		})
 	})
