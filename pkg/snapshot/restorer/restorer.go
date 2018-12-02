@@ -163,10 +163,12 @@ func makeDB(snapdir string, snap snapstore.Snapshot, commit int, ss snapstore.Sn
 		if _, err = db.Seek(-sha256.Size, io.SeekEnd); err != nil {
 			return err
 		}
-		sha := make([]byte, sha256.Size)
-		if _, err := db.Read(sha); err != nil {
-			return err
+
+		sha, err := ioutil.ReadAll(db)
+		if err != nil {
+			return fmt.Errorf("failed to read sha from db %v", err)
 		}
+
 		// truncate away integrity hash
 		if err = db.Truncate(off - sha256.Size); err != nil {
 			return err

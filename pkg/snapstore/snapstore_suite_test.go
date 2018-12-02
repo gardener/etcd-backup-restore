@@ -15,13 +15,36 @@
 package snapstore_test
 
 import (
+	"testing"
+
+	"github.com/sirupsen/logrus"
+
+	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
+	th "github.com/gophercloud/gophercloud/testhelper"
+	fake "github.com/gophercloud/gophercloud/testhelper/client"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
+)
 
-	"testing"
+var (
+	testObj    *testing.T
+	swiftStore snapstore.SnapStore
 )
 
 func TestSnapstore(t *testing.T) {
 	RegisterFailHandler(Fail)
+	testObj = t
 	RunSpecs(t, "Snapstore Suite")
 }
+
+var _ = BeforeSuite(func() {
+	logrus.Infof("Starting test server...")
+	th.SetupHTTP()
+	initializeMockSwiftServer(testObj)
+	swiftStore = snapstore.NewSwiftSnapstoreFromClient(bucket, prefix, "/tmp", 5, fake.ServiceClient())
+})
+
+var _ = AfterSuite(func() {
+	logrus.Infof("Shutting down test server...")
+	th.TeardownHTTP()
+})

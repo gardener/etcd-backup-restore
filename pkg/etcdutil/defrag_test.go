@@ -20,17 +20,18 @@ var _ = Describe("Defrag", func() {
 	tlsConfig = NewTLSConfig("", "", "", true, true, endpoints)
 	Context("Defragmentation", func() {
 		BeforeEach(func() {
+			now := time.Now().Unix()
 			client, err := GetTLSClientForEtcd(tlsConfig)
 			defer client.Close()
 			Expect(err).ShouldNot(HaveOccurred())
 			for index := 0; index <= 1000; index++ {
 				ctx, cancel := context.WithTimeout(context.TODO(), etcdConnectionTimeout)
-				client.Put(ctx, fmt.Sprintf("%s%d", keyPrefix, index), valuePrefix)
+				client.Put(ctx, fmt.Sprintf("%s%d%d", keyPrefix, now, index), valuePrefix)
 				cancel()
 			}
 			for index := 0; index <= 500; index++ {
 				ctx, cancel := context.WithTimeout(context.TODO(), etcdConnectionTimeout)
-				client.Delete(ctx, fmt.Sprintf("%s%d", keyPrefix, index))
+				client.Delete(ctx, fmt.Sprintf("%s%d%d", keyPrefix, now, index))
 				cancel()
 			}
 		})

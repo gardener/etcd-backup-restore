@@ -15,30 +15,36 @@
 package snapstore_test
 
 import (
+	"bytes"
+	"io/ioutil"
 	"path"
-	"strings"
 	"time"
 
+	"github.com/sirupsen/logrus"
+
 	. "github.com/gardener/etcd-backup-restore/pkg/snapstore"
+	fake "github.com/gophercloud/gophercloud/testhelper/client"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 )
 
+var (
+	bucket    string = "mock-bucket"
+	objectMap        = map[string]*[]byte{}
+	prefix    string = "v1"
+)
+
 var _ = Describe("Snapstore", func() {
 	var (
-		bucket       string
 		snap1        Snapshot
 		snap2        Snapshot
 		snap3        Snapshot
-		expectedVal1 string
-		expectedVal2 string
-		m            mockS3Client
+		expectedVal1 []byte
+		expectedVal2 []byte
 		snapstores   map[string]SnapStore
 	)
-	// S3SnapStore is snapstore with local disk as backend
+
 	BeforeEach(func() {
-		bucket = "mock-bucket"
-		prefix := "v1"
 		now := time.Now().Unix()
 		snap1 = Snapshot{
 			CreatedOn:     time.Unix(now, 0).UTC(),
@@ -64,48 +70,55 @@ var _ = Describe("Snapstore", func() {
 		snap2.GenerateSnapshotDirectory()
 		snap3.GenerateSnapshotName()
 		snap3.GenerateSnapshotDirectory()
-		expectedVal1 = "value1"
-		expectedVal2 = "value2"
-		expectedVal1Bytes := []byte(expectedVal1)
-		expectedVal2Bytes := []byte(expectedVal2)
-		m = mockS3Client{
-			objects: map[string]*[]byte{
-				path.Join(prefix, snap1.SnapDir, snap1.SnapName): &expectedVal1Bytes,
-				path.Join(prefix, snap2.SnapDir, snap2.SnapName): &expectedVal2Bytes,
-			},
-			prefix:           prefix,
-			multiPartUploads: map[string]*[][]byte{},
-		}
+		expectedVal1 = []byte("value1")
+		expectedVal2 = []byte("value2")
+
 		snapstores = map[string]SnapStore{
-			"s3": NewS3FromClient(bucket, prefix, "/tmp", 5, &m),
+			"s3": NewS3FromClient(bucket, prefix, "/tmp", 5, &mockS3Client{
+				objects:          objectMap,
+				prefix:           prefix,
+				multiPartUploads: map[string]*[][]byte{},
+			}),
+			"swift": NewSwiftSnapstoreFromClient(bucket, prefix, "/tmp", 5, fake.ServiceClient()),
 		}
 	})
 
 	Describe("Fetch operation", func() {
 		It("fetches snapshot", func() {
-			for _, snapStore := range snapstores {
+			for key, snapStore := range snapstores {
+				logrus.Infof("Running tests for %s", key)
+				resetObjectMap()
+				objectMap[path.Join(prefix, snap1.SnapDir, snap1.SnapName)] = &expectedVal1
+				objectMap[path.Join(prefix, snap2.SnapDir, snap2.SnapName)] = &expectedVal2
 				rc, err := snapStore.Fetch(snap1)
 				Expect(err).ShouldNot(HaveOccurred())
-				temp := make([]byte, len(expectedVal1))
-				n, err := rc.Read(temp)
+				temp, err := ioutil.ReadAll(rc)
 				Expect(err).ShouldNot(HaveOccurred())
-				Expect(string(temp[:n])).To(Equal(expectedVal1))
+				Expect(temp).To(Equal(expectedVal1))
 			}
 		})
 	})
+
 	Describe("Save snapshot", func() {
 		It("saves snapshot", func() {
-			for _, snapStore := range snapstores {
-				prevLen := len(m.objects)
-				err := snapStore.Save(snap3, strings.NewReader("value3"))
+			for key, snapStore := range snapstores {
+				logrus.Infof("Running tests for %s", key)
+				resetObjectMap()
+				dummyData := make([]byte, 6*1024*1024)
+				err := snapStore.Save(snap3, bytes.NewReader(dummyData))
 				Expect(err).ShouldNot(HaveOccurred())
-				Expect(len(m.objects)).To(Equal(prevLen + 1))
+				Expect(len(objectMap)).Should(BeNumerically(">", 0))
 			}
 		})
 	})
+
 	Describe("List snapshot", func() {
 		It("gives sorted list of snapshot", func() {
-			for _, snapStore := range snapstores {
+			for key, snapStore := range snapstores {
+				logrus.Infof("Running tests for %s", key)
+				resetObjectMap()
+				objectMap[path.Join(prefix, snap1.SnapDir, snap1.SnapName)] = &expectedVal1
+				objectMap[path.Join(prefix, snap2.SnapDir, snap2.SnapName)] = &expectedVal2
 				snapList, err := snapStore.List()
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(snapList.Len()).To(Equal(2))
@@ -113,14 +126,25 @@ var _ = Describe("Snapstore", func() {
 			}
 		})
 	})
+
 	Describe("Delete snapshot", func() {
 		It("deletes snapshot", func() {
-			for _, snapStore := range snapstores {
-				prevLen := len(m.objects)
+			for key, snapStore := range snapstores {
+				logrus.Infof("Running tests for %s", key)
+				resetObjectMap()
+				objectMap[path.Join(prefix, snap1.SnapDir, snap1.SnapName)] = &expectedVal1
+				objectMap[path.Join(prefix, snap2.SnapDir, snap2.SnapName)] = &expectedVal2
+				prevLen := len(objectMap)
 				err := snapStore.Delete(snap2)
 				Expect(err).ShouldNot(HaveOccurred())
-				Expect(len(m.objects)).To(Equal(prevLen - 1))
+				Expect(len(objectMap)).To(Equal(prevLen - 1))
 			}
 		})
 	})
 })
+
+func resetObjectMap() {
+	for k := range objectMap {
+		delete(objectMap, k)
+	}
+}

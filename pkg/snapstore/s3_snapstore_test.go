@@ -17,10 +17,10 @@ package snapstore_test
 import (
 	"bytes"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -32,9 +32,10 @@ import (
 // Define a mock struct to be used in your unit tests of myFunc.
 type mockS3Client struct {
 	s3iface.S3API
-	objects          map[string]*[]byte
-	prefix           string
-	multiPartUploads map[string]*[][]byte
+	objects               map[string]*[]byte
+	prefix                string
+	multiPartUploads      map[string]*[][]byte
+	multiPartUploadsMutex sync.Mutex
 }
 
 // GetObject returns the object from map for mock test
@@ -51,10 +52,10 @@ func (m *mockS3Client) GetObject(in *s3.GetObjectInput) (*s3.GetObjectOutput, er
 
 // PutObject adds the object to the map for mock test
 func (m *mockS3Client) PutObject(in *s3.PutObjectInput) (*s3.PutObjectOutput, error) {
-	off, _ := in.Body.Seek(0, io.SeekEnd)
-	in.Body.Seek(0, io.SeekStart)
-	temp := make([]byte, off)
-	in.Body.Read(temp)
+	temp, err := ioutil.ReadAll(in.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read complete body %v", err)
+	}
 	m.objects[*in.Key] = &temp
 	out := s3.PutObjectOutput{}
 	return &out, nil
@@ -79,18 +80,17 @@ func (m *mockS3Client) UploadPartWithContext(ctx aws.Context, in *s3.UploadPartI
 		return nil, fmt.Errorf("part number should be positive integer")
 	}
 	if *in.PartNumber > int64(len(*m.multiPartUploads[*in.UploadId])) {
+		m.multiPartUploadsMutex.Lock()
 		t := make([][]byte, *in.PartNumber)
 		copy(t, *m.multiPartUploads[*in.UploadId])
 		delete(m.multiPartUploads, *in.UploadId)
 		m.multiPartUploads[*in.UploadId] = &t
+		m.multiPartUploadsMutex.Unlock()
 	}
-	off, err := in.Body.Seek(0, io.SeekEnd)
+	temp, err := ioutil.ReadAll(in.Body)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to read complete body %v", err)
 	}
-	in.Body.Seek(0, io.SeekStart)
-	temp := make([]byte, off)
-	in.Body.Read(temp)
 	(*m.multiPartUploads[*in.UploadId])[*in.PartNumber-1] = temp
 	eTag := string(*in.PartNumber)
 	out := &s3.UploadPartOutput{
@@ -153,7 +153,7 @@ func (m *mockS3Client) ListObjects(in *s3.ListObjectsInput) (*s3.ListObjectsOutp
 func (m *mockS3Client) ListObjectsPages(in *s3.ListObjectsInput, callback func(*s3.ListObjectsOutput, bool) bool) error {
 	var (
 		count    int64 = 0
-		limit    int64 = 1000
+		limit    int64 = 1 // aws default is 1000.
 		lastPage bool  = false
 		keys     []string
 		out      = &s3.ListObjectsOutput{
