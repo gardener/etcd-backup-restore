@@ -40,7 +40,7 @@ func newFakeABSSnapstore() SnapStore {
 		newFakePolicyFactory(bucket, prefix, objectMap),
 	}
 	p := pipeline.NewPipeline(f, pipeline.Options{HTTPSender: newFakePolicyFactory(bucket, prefix, objectMap)})
-	u, err := url.Parse(fmt.Sprintf("https://%s.blob.core.windows.net", "dummyaccount"))
+	u, err := url.Parse(fmt.Sprintf("https://%s.%s", "dummyaccount", AzureBlobStorageHostName))
 	Expect(err).ShouldNot(HaveOccurred())
 	serviceURL := azblob.NewServiceURL(*u, p)
 	containerURL := serviceURL.NewContainerURL(bucket)
@@ -48,6 +48,9 @@ func newFakeABSSnapstore() SnapStore {
 	Expect(err).ShouldNot(HaveOccurred())
 	return a
 }
+
+// Please follow the link https://github.com/Azure/azure-pipeline-go/blob/master/pipeline/policies_test.go
+// for details about details of azure policy, policy factory and pipeline
 
 // newFakePolicyFactory creates a 'Fake' policy factory.
 func newFakePolicyFactory(bucket, prefix string, objectMap map[string]*[]byte) pipeline.Factory {
@@ -82,12 +85,9 @@ type fakePolicy struct {
 	multiPartUploadsMutex sync.Mutex
 }
 
+// Do method is called on pipeline to process the request. This will internally call the `Do` method
+// on next policies in pipeline and return the responce from it.
 func (p *fakePolicy) Do(ctx context.Context, request pipeline.Request) (response pipeline.Response, err error) {
-	// Your code should NOT mutate the ctx or request parameters
-	// However, you can make a copy of the request and mutate the copy
-	// You can also pass a different Context on.
-	// You can optionally use po (PolicyOptions) in this func.
-
 	httpReq, err := http.NewRequest(request.Method, request.URL.String(), request.Body)
 	if err != nil {
 		return nil, err

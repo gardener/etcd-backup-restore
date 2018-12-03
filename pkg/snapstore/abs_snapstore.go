@@ -64,7 +64,7 @@ func NewABSSnapStore(container, prefix, tempDir string, maxParallelChunkUploads 
 		Retry: azblob.RetryOptions{
 			TryTimeout: downloadTimeout,
 		}})
-	u, err := url.Parse(fmt.Sprintf("https://%s.blob.core.windows.net", storageAccount))
+	u, err := url.Parse(fmt.Sprintf("https://%s.%s", storageAccount, AzureBlobStorageHostName))
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse service url: %v", err)
 	}

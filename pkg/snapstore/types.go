@@ -24,49 +24,52 @@ import (
 // Only purpose of these implementation to provide CPI layer to
 // access files.
 type SnapStore interface {
-	// Fetch should open reader for the snapshot file from store
+	// Fetch should open reader for the snapshot file from store.
 	Fetch(Snapshot) (io.ReadCloser, error)
-	// List will list all snapshot files on store
+	// List will list all snapshot files on store.
 	List() (SnapList, error)
-	// Save will write the snapshot to store
+	// Save will write the snapshot to store.
 	Save(Snapshot, io.Reader) error
-	// Delete should delete the snapshot file from store
+	// Delete should delete the snapshot file from store.
 	Delete(Snapshot) error
 }
 
 const (
-	// minChunkSize is set to 5Mib since AWS doesn't allow chunk size less than that
+	// minChunkSize is set to 5Mib since it is lower chunk size limit for AWS.
 	minChunkSize int64 = 5 * (1 << 20) //5 MiB
-	// SnapstoreProviderLocal is constant for local disk storage provider
+	// SnapstoreProviderLocal is constant for local disk storage provider.
 	SnapstoreProviderLocal = "Local"
-	// SnapstoreProviderS3 is constant for aws S3 storage provider
+	// SnapstoreProviderS3 is constant for aws S3 storage provider.
 	SnapstoreProviderS3 = "S3"
-	// SnapstoreProviderABS is constant for azure blob storage provider
+	// SnapstoreProviderABS is constant for azure blob storage provider.
 	SnapstoreProviderABS = "ABS"
-	// SnapstoreProviderGCS is constant for GCS object storage provider
+	// SnapstoreProviderGCS is constant for GCS object storage provider.
 	SnapstoreProviderGCS = "GCS"
-	// SnapstoreProviderSwift is constant for Swift object storage
+	// SnapstoreProviderSwift is constant for Swift object storage.
 	SnapstoreProviderSwift = "Swift"
 
-	// SnapshotKindFull is constant for full snapshot kind
+	// SnapshotKindFull is constant for full snapshot kind.
 	SnapshotKindFull = "Full"
-	// SnapshotKindDelta is constant for delta snapshot kind
+	// SnapshotKindDelta is constant for delta snapshot kind.
 	SnapshotKindDelta = "Incr"
 
-	// chunkUploadTimeout is timeout for uploading chunk
+	// chunkUploadTimeout is timeout for uploading chunk.
 	chunkUploadTimeout = 180 * time.Second
-	// providerConnectionTimeout is timeout for connection/short queries to cloud provider
+	// providerConnectionTimeout is timeout for connection/short queries to cloud provider.
 	providerConnectionTimeout = 30 * time.Second
-	// downloadTimeout is timeout for downloading chunk
+	// downloadTimeout is timeout for downloading chunk.
 	downloadTimeout = 5 * time.Minute
 
 	tmpBackupFilePrefix = "etcd-backup-"
 
 	// maxRetryAttempts indicates the number of attempts to be retried in case of failure to upload chunk.
 	maxRetryAttempts = 5
+
+	// AzureBlobStorageHostName is the host name for azure blob storage service.
+	AzureBlobStorageHostName = "blob.core.windows.net"
 )
 
-// Snapshot structure represents the metadata of snapshot
+// Snapshot structure represents the metadata of snapshot.s
 type Snapshot struct {
 	Kind          string //incr:incremental,full:full
 	StartRevision int64
@@ -77,7 +80,7 @@ type Snapshot struct {
 	IsChunk       bool
 }
 
-// SnapList is list of snapshots
+// SnapList is list of snapshots.
 type SnapList []*Snapshot
 
 // Config defines the configuration to create snapshot store.

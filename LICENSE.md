@@ -258,12 +258,12 @@ MIT License (https://github.com/onsi/gomega/blob/master/LICENSE)
 Microsoft Azure SDK for Go.
 https://github.com/Azure/azure-storage-blob-go
 Copyright 2017 Microsoft
-Apache 2 license (https://github.com/Azure/azure-storage-blob-go/blob/master/LICENSE)
+MIT License (https://github.com/Azure/azure-storage-blob-go/blob/master/LICENSE)
 
 Microsoft Azure SDK for Go.
 https://github.com/Azure/azure-pipeline-go
 Copyright 2017 Microsoft
-Apache 2 license (https://github.com/Azure/azure-pipeline-go/blob/master/LICENSE)
+MIT License (https://github.com/Azure/azure-pipeline-go/blob/master/LICENSE)
 
 Google Cloud Client Libraries for Go
 https://github.com/GoogleCloudPlatform/google-cloud-go
