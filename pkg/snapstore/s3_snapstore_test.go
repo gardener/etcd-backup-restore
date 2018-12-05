@@ -73,20 +73,21 @@ func (m *mockS3Client) CreateMultipartUploadWithContext(ctx aws.Context, in *s3.
 }
 
 func (m *mockS3Client) UploadPartWithContext(ctx aws.Context, in *s3.UploadPartInput, opts ...request.Option) (*s3.UploadPartOutput, error) {
-	if m.multiPartUploads[*in.UploadId] == nil {
-		return nil, fmt.Errorf("multipart upload not initiated")
-	}
 	if *in.PartNumber < 0 {
 		return nil, fmt.Errorf("part number should be positive integer")
 	}
+	m.multiPartUploadsMutex.Lock()
+	if m.multiPartUploads[*in.UploadId] == nil {
+		m.multiPartUploadsMutex.Unlock()
+		return nil, fmt.Errorf("multipart upload not initiated")
+	}
 	if *in.PartNumber > int64(len(*m.multiPartUploads[*in.UploadId])) {
-		m.multiPartUploadsMutex.Lock()
 		t := make([][]byte, *in.PartNumber)
 		copy(t, *m.multiPartUploads[*in.UploadId])
 		delete(m.multiPartUploads, *in.UploadId)
 		m.multiPartUploads[*in.UploadId] = &t
-		m.multiPartUploadsMutex.Unlock()
 	}
+	m.multiPartUploadsMutex.Unlock()
 	temp, err := ioutil.ReadAll(in.Body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read complete body %v", err)

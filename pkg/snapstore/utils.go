@@ -33,6 +33,21 @@ func GetSnapstore(config *Config) (SnapStore, error) {
 	if config.Container == "" {
 		config.Container = os.Getenv(envStorageContainer)
 	}
+
+	if len(config.TempDir) == 0 {
+		config.TempDir = path.Join("/tmp")
+	}
+	if _, err := os.Stat(config.TempDir); err != nil {
+		if os.IsNotExist(err) {
+			logrus.Infof("Temporary directory %s does not exit. Creating it...", config.TempDir)
+			if err := os.MkdirAll(config.TempDir, 0700); err != nil {
+				return nil, fmt.Errorf("failed to create temporary directory %s: %v", config.TempDir, err)
+			}
+		} else {
+			return nil, fmt.Errorf("failed to get file info of temporary directory %s: %v", config.TempDir, err)
+		}
+	}
+
 	if config.MaxParallelChunkUploads <= 0 {
 		config.MaxParallelChunkUploads = 5
 	}
