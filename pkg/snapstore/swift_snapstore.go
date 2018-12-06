@@ -54,6 +54,10 @@ func NewSwiftSnapStore(bucket, prefix, tempDir string, maxParallelChunkUploads i
 	if err != nil {
 		return nil, err
 	}
+	// AllowReauth should be set to true if you grant permission for Gophercloud to
+	// cache your credentials in memory, and to allow Gophercloud to attempt to
+	// re-authenticate automatically if/when your token expires.
+	authOpts.AllowReauth = true
 	provider, err := openstack.AuthenticatedClient(authOpts)
 	if err != nil {
 		return nil, err
