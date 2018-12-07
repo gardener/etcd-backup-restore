@@ -2,19 +2,20 @@
 
 
 [[projects]]
-  digest = "1:16b28cc847407abda1774ae8e56875e91741a70a8da31ceca9d383e648701a66"
+  digest = "1:c7931499c1ea384e8ddb3d48cb60ecda4136eb84ca8db0b358c5781f5863b9d5"
   name = "cloud.google.com/go"
   packages = [
     "compute/metadata",
     "iam",
     "internal",
     "internal/optional",
+    "internal/trace",
     "internal/version",
     "storage",
   ]
   pruneopts = "NUT"
-  revision = "20d4028b8a750c2aca76bf9fefa8ed2d0109b573"
-  version = "v0.19.0"
+  revision = "74b12019e2aa53ec27882158f59192d7cd6d1998"
+  version = "v0.33.1"
 
 [[projects]]
   digest = "1:d2ccb697dc13c8fbffafa37baae97594d5592ae8f7e113471084137315536e2b"
@@ -33,7 +34,7 @@
   version = "0.3.0"
 
 [[projects]]
-  digest = "1:66e9bc21369358ecfe3e1226e1c7040dafb2571b4f857dd9ce2cefb3d21c4dbe"
+  digest = "1:4a93ee04bd3883778e9c7587618d4a1c175292e0005d85b69d8ec49abf861dfb"
   name = "github.com/aws/aws-sdk-go"
   packages = [
     "aws",
@@ -45,6 +46,7 @@
     "aws/credentials",
     "aws/credentials/ec2rolecreds",
     "aws/credentials/endpointcreds",
+    "aws/credentials/processcreds",
     "aws/credentials/stscreds",
     "aws/csm",
     "aws/defaults",
@@ -72,8 +74,8 @@
     "service/sts",
   ]
   pruneopts = "NUT"
-  revision = "180cc10e5ff368b86dee226b034af7d1672baec6"
-  version = "v1.15.87"
+  revision = "130ebb7dc1d6b5a940198b47642fc8b20936a65d"
+  version = "v1.16.1"
 
 [[projects]]
   branch = "master"
@@ -253,6 +255,13 @@
   version = "v2.0.2"
 
 [[projects]]
+  digest = "1:5ec3be1c7884398947314546ba477a5c4a56ceab97f0cc551d7fabfe4e4b1067"
+  name = "github.com/googleapis/google-cloud-go-testing"
+  packages = ["storage/stiface"]
+  pruneopts = "NUT"
+  revision = "f773598aef764db07257d386141bed45e60dc228"
+
+[[projects]]
   digest = "1:32de9c48a572723e2abbae9ec99544eb3b109eea6ca2e3c7de0093e043116a82"
   name = "github.com/gophercloud/gophercloud"
   packages = [
@@ -427,7 +436,7 @@
   revision = "53be0d36a84c2a886ca057d34b6aa4468df9ccb4"
 
 [[projects]]
-  digest = "1:a8512715947d49f24e6aa2d0fdd06f46bdd8d2e792517ba0ac95a2c089eaae28"
+  digest = "1:7c7cfeecd2b7147bcfec48a4bf622b4879e26aec145a9e373ce51d0c23b16f6b"
   name = "github.com/prometheus/client_golang"
   packages = [
     "prometheus",
@@ -435,8 +444,8 @@
     "prometheus/promhttp",
   ]
   pruneopts = "NUT"
-  revision = "abad2d1bd44235a26707c172eab6bca5bf2dbad3"
-  version = "v0.9.1"
+  revision = "505eaef017263e299324067d40ca2c48f6a2cf50"
+  version = "v0.9.2"
 
 [[projects]]
   branch = "master"
@@ -469,7 +478,7 @@
     "xfs",
   ]
   pruneopts = "NUT"
-  revision = "aa55a523dc0a8297edf51bb75e8eec13eb3be45d"
+  revision = "1dc9a6cbc91aacc3e8b2d63db4d2e957a5394ac4"
 
 [[projects]]
   digest = "1:9dfe20a82800ffcf0a2bde15beba44cc6d6f6cf1d003420ecc8ad0ac78300d70"
@@ -598,11 +607,11 @@
     "ssh/terminal",
   ]
   pruneopts = "NUT"
-  revision = "eb0de9b17e854e9b1ccd9963efafc79862359959"
+  revision = "505ab145d0a99da450461ae2c1a9f6cd10d1f447"
 
 [[projects]]
   branch = "master"
-  digest = "1:e8e8a00e27478c53779c8b4d1bc4ce91d1b5d59497588a5b644726bece44c1f4"
+  digest = "1:5ac1e0c3979cd33b29af4d61e7a5fd97d12336d0e8a737a56f7dad5f8d7b7b97"
   name = "golang.org/x/net"
   packages = [
     "context",
@@ -618,11 +627,11 @@
     "trace",
   ]
   pruneopts = "NUT"
-  revision = "fae4c4e3ad76c295c3d6d259f898136b4bf833a8"
+  revision = "610586996380ceef02dd726cc09df7e00a3f8e56"
 
 [[projects]]
   branch = "master"
-  digest = "1:169c27544e7f54a861a05cd84078b494eaf3e41543f0dfd4dd215fa32139cd40"
+  digest = "1:5364323a31838682c280a6bae0efe47991de96b9cbfeef4f27b3ca2353eb7ff8"
   name = "golang.org/x/oauth2"
   packages = [
     ".",
@@ -632,18 +641,18 @@
     "jwt",
   ]
   pruneopts = "NUT"
-  revision = "28207608b83849a028d4f12e46533a6b6894ecaf"
+  revision = "d668ce993890a79bda886613ee587a69dd5da7a6"
 
 [[projects]]
   branch = "master"
-  digest = "1:6ddfd101211f81df3ba1f474baf1c451f7708f01c1e0c4be49cd9f0af03596cf"
+  digest = "1:d504c2e2a9d57c644347bac08e4e883399a158510e260d21b8ab6b8ea5ef63d5"
   name = "golang.org/x/sys"
   packages = [
     "unix",
     "windows",
   ]
   pruneopts = "NUT"
-  revision = "4ed8d59d0b35e1e29334a206d1b3f38b1e5dfb31"
+  revision = "70b957f3b65e069b4930ea94e2721eefa0f8f695"
 
 [[projects]]
   digest = "1:8a12cbc891b7130d3f660f8a309e5c0b083f831e6ac38cdaa1f12e63c12d6bea"
@@ -690,7 +699,7 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:0a44042c7a3d3b01cc727cf1654ce0305c6765fa7c7f18c62c22702504613287"
+  digest = "1:23d9fc277640dc6c36702437a57f0ee033b9f7c9f05a7a425abc7df28f6dd259"
   name = "google.golang.org/api"
   packages = [
     "gensupport",
@@ -705,7 +714,7 @@
     "transport/http/internal/propagation",
   ]
   pruneopts = "NUT"
-  revision = "0a71a4356c3f4bcbdd16294c78ca2a31fda36cca"
+  revision = "1a5ef82f9af45ef51c486291ef2b0a16d82fdb95"
 
 [[projects]]
   digest = "1:b63b351b57e64ae8aec1af030dc5e74a2676fcda62102f006ae4411fac1b04c8"
@@ -728,27 +737,30 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:19d24f6da9de18caafbf2ecf3b6cc31c75047ef5d9738ef491fb86ef54841090"
+  digest = "1:a7d48ca460ca1b4f6ccd8c95502443afa05df88aee84de7dbeb667a8754e8fa6"
   name = "google.golang.org/genproto"
   packages = [
     "googleapis/api/annotations",
     "googleapis/iam/v1",
+    "googleapis/rpc/code",
     "googleapis/rpc/status",
   ]
   pruneopts = "NUT"
-  revision = "31ac5d88444a9e7ad18077db9a165d793ad06a2e"
+  revision = "bd91e49a0898e27abb88c339b432fa53d7497ac0"
 
 [[projects]]
-  digest = "1:f112c6f3e9bbd16eb113db8f37adb6bd10270142079d00c7ac625534cbb16475"
+  digest = "1:3f21220da2c9af37c32adb314f1c609a6bf8548d5801bf43b95386af19c148bd"
   name = "google.golang.org/grpc"
   packages = [
     ".",
     "balancer",
     "balancer/base",
     "balancer/roundrobin",
+    "binarylog/grpc_binarylog_v1",
     "codes",
     "connectivity",
     "credentials",
+    "credentials/internal",
     "encoding",
     "encoding/proto",
     "grpclog",
@@ -756,9 +768,12 @@
     "health/grpc_health_v1",
     "internal",
     "internal/backoff",
+    "internal/binarylog",
     "internal/channelz",
     "internal/envconfig",
     "internal/grpcrand",
+    "internal/grpcsync",
+    "internal/syscall",
     "internal/transport",
     "keepalive",
     "metadata",
@@ -772,8 +787,8 @@
     "tap",
   ]
   pruneopts = "NUT"
-  revision = "2e463a05d100327ca47ac218281906921038fd95"
-  version = "v1.16.0"
+  revision = "df014850f6dee74ba2fc94874043a9f3f75fbfd8"
+  version = "v1.17.0"
 
 [[projects]]
   digest = "1:1b91ae0dc69a41d4c2ed23ea5cffb721ea63f5037ca4b81e6d6771fbb8f45129"
@@ -840,6 +855,7 @@
     "github.com/coreos/etcd/store",
     "github.com/coreos/etcd/wal",
     "github.com/coreos/etcd/wal/walpb",
+    "github.com/googleapis/google-cloud-go-testing/storage/stiface",
     "github.com/gophercloud/gophercloud",
     "github.com/gophercloud/gophercloud/openstack",
     "github.com/gophercloud/gophercloud/openstack/objectstorage/v1/objects",

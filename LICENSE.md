@@ -256,21 +256,26 @@ Copyright (c) 2013-2014 Onsi Fakhouri.
 MIT License (https://github.com/onsi/gomega/blob/master/LICENSE)
 
 Microsoft Azure SDK for Go.
-https://github.com/Azure/azure-storage-blob-go
-Copyright 2017 Microsoft
+https://github.com/Azure/azure-storage-blob-go.
+Copyright 2017 Microsoft.
 MIT License (https://github.com/Azure/azure-storage-blob-go/blob/master/LICENSE)
 
 Microsoft Azure SDK for Go.
 https://github.com/Azure/azure-pipeline-go
-Copyright 2017 Microsoft
+Copyright 2017 Microsoft.
 MIT License (https://github.com/Azure/azure-pipeline-go/blob/master/LICENSE)
 
-Google Cloud Client Libraries for Go
+Google Cloud Client Libraries for Go.
 https://github.com/GoogleCloudPlatform/google-cloud-go
 Copyright 2017 Google Inc. All Rights Reserved.
 Apache 2 license (https://github.com/GoogleCloudPlatform/google-cloud-go/blob/master/LICENSE)
 
-Gophercloud: an OpenStack SDK for Go
+Testing Support for the Google Cloud Client Libraries for Go.
+https://github.com/googleapis/google-cloud-go-testing
+Copyright 2018 Google Inc. All Rights Reserved.
+Apache 2 license (https://github.com/googleapis/google-cloud-go-testing/blob/master/LICENSE)
+
+Gophercloud: an OpenStack SDK for Go.
 https://github.com/gophercloud/gophercloud
 Copyright 2012-2013 Rackspace, Inc.
 Apache 2 license (https://github.com/gophercloud/gophercloud/blob/master/LICENSE)
