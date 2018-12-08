@@ -157,6 +157,7 @@ func runSnapshotter(logger *logrus.Logger, endpoints []string, stopCh chan struc
 		store,
 		maxBackups,
 		deltaSnapshotPeriod,
+		snapshotter.DefaultDeltaSnapMemoryLimit,
 		etcdConnectionTimeout,
 		garbageCollectionPeriodSeconds,
 		garbageCollectionPolicy,

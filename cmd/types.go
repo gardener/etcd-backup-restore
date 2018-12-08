@@ -32,6 +32,7 @@ var (
 	schedule                       string
 	etcdEndpoints                  []string
 	deltaSnapshotIntervalSeconds   int
+	deltaSnapshotMemoryLimit       int
 	maxBackups                     int
 	etcdConnectionTimeout          int
 	garbageCollectionPeriodSeconds int

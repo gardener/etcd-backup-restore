@@ -123,6 +123,7 @@ func NewServerCommand(stopCh <-chan struct{}) *cobra.Command {
 				ss,
 				maxBackups,
 				deltaSnapshotIntervalSeconds,
+				deltaSnapshotMemoryLimit,
 				time.Duration(etcdConnectionTimeout),
 				time.Duration(garbageCollectionPeriodSeconds),
 				garbageCollectionPolicy,

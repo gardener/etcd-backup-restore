@@ -33,19 +33,31 @@ import (
 )
 
 // NewSnapshotterConfig returns a config for the snapshotter.
-func NewSnapshotterConfig(schedule string, store snapstore.SnapStore, maxBackups, deltaSnapshotIntervalSeconds int, etcdConnectionTimeout, garbageCollectionPeriodSeconds time.Duration, garbageCollectionPolicy string, tlsConfig *etcdutil.TLSConfig) (*Config, error) {
+func NewSnapshotterConfig(schedule string, store snapstore.SnapStore, maxBackups, deltaSnapshotIntervalSeconds, deltaSnapshotMemoryLimit int, etcdConnectionTimeout, garbageCollectionPeriodSeconds time.Duration, garbageCollectionPolicy string, tlsConfig *etcdutil.TLSConfig) (*Config, error) {
 	logrus.Printf("Validating schedule...")
 	sdl, err := cron.ParseStandard(schedule)
 	if err != nil {
 		return nil, fmt.Errorf("invalid schedule provied %s : %v", schedule, err)
 	}
-	if maxBackups < 1 {
-		return nil, fmt.Errorf("maximum backups limit should be greater than zero. Input MaxBackups: %d", maxBackups)
+
+	if garbageCollectionPolicy == GarbageCollectionPolicyLimitBased && maxBackups < 1 {
+		logrus.Infof("Found garbage collection policy: [%s], and maximum backup value %d less than 1. Setting it to default: %d ", GarbageCollectionPolicyLimitBased, maxBackups, DefaultMaxBackups)
+		maxBackups = DefaultMaxBackups
 	}
+	if deltaSnapshotIntervalSeconds < 1 {
+		logrus.Infof("Found delta snapshot interval %d second less than 1 second. Setting it to default: %d ", deltaSnapshotIntervalSeconds, DefaultDeltaSnapshotIntervalSeconds)
+		deltaSnapshotIntervalSeconds = DefaultDeltaSnapshotIntervalSeconds
+	}
+	if deltaSnapshotMemoryLimit < 1 {
+		logrus.Infof("Found delta snapshot memory limit %d bytes less than 1 byte. Setting it to default: %d ", deltaSnapshotMemoryLimit, DefaultDeltaSnapMemoryLimit)
+		deltaSnapshotMemoryLimit = DefaultDeltaSnapMemoryLimit
+	}
+
 	return &Config{
 		schedule:                       sdl,
 		store:                          store,
 		deltaSnapshotIntervalSeconds:   deltaSnapshotIntervalSeconds,
+		deltaSnapshotMemoryLimit:       deltaSnapshotMemoryLimit,
 		etcdConnectionTimeout:          etcdConnectionTimeout,
 		garbageCollectionPeriodSeconds: garbageCollectionPeriodSeconds,
 		garbageCollectionPolicy:        garbageCollectionPolicy,
@@ -191,6 +203,7 @@ func (ssr *Snapshotter) takeFullSnapshot() error {
 	ssr.logger.Infof("Successfully saved full snapshot at: %s", path.Join(s.SnapDir, s.SnapName))
 	//make event array empty as any event prior to full snapshot should not be uploaded in delta.
 	ssr.events = []*event{}
+	ssr.eventMemory = 0
 	watchCtx, cancelWatch := context.WithCancel(context.TODO())
 	ssr.cancelWatch = cancelWatch
 	ssr.watchCh = client.Watch(watchCtx, "", clientv3.WithPrefix(), clientv3.WithRev(ssr.prevSnapshot.LastRevision+1))
@@ -200,6 +213,13 @@ func (ssr *Snapshotter) takeFullSnapshot() error {
 }
 
 func (ssr *Snapshotter) takeDeltaSnapshotAndResetTimer() error {
+	if err := ssr.takeDeltaSnapshot(); err != nil {
+		// As per design principle, in business critical service if backup is not working,
+		// it's better to fail the process. So, we are quiting here.
+		ssr.logger.Warnf("Taking delta snapshot failed: %v", err)
+		return err
+	}
+	ssr.eventMemory = 0
 	if ssr.deltaSnapshotTimer == nil {
 		ssr.deltaSnapshotTimer = time.NewTimer(time.Second * time.Duration(ssr.config.deltaSnapshotIntervalSeconds))
 	} else {
@@ -207,12 +227,6 @@ func (ssr *Snapshotter) takeDeltaSnapshotAndResetTimer() error {
 		ssr.deltaSnapshotTimer.Stop()
 		ssr.logger.Infof("Reseting delta snapshot to run after %d secs.", ssr.config.deltaSnapshotIntervalSeconds)
 		ssr.deltaSnapshotTimer.Reset(time.Second * time.Duration(ssr.config.deltaSnapshotIntervalSeconds))
-	}
-	if err := ssr.takeDeltaSnapshot(); err != nil {
-		// As per design principle, in business critical service if backup is not working,
-		// it's better to fail the process. So, we are quiting here.
-		ssr.logger.Warnf("Taking delta snapshot failed: %v", err)
-		return err
 	}
 	return nil
 }
@@ -234,10 +248,12 @@ func (ssr *Snapshotter) takeDeltaSnapshot() error {
 	}
 	// compute hash
 	hash := sha256.New()
-	hash.Write(data)
+	if _, err := hash.Write(data); err != nil {
+		return fmt.Errorf("failed to compute hash of events: %v", err)
+	}
 	data = hash.Sum(data)
-	dataReader := bytes.NewReader(data)
 
+	dataReader := bytes.NewReader(data)
 	if err := ssr.config.store.Save(*snap, dataReader); err != nil {
 		ssr.logger.Errorf("Error saving delta snapshots. %v", err)
 		return err
@@ -253,9 +269,19 @@ func (ssr *Snapshotter) handleDeltaWatchEvents(wr clientv3.WatchResponse) error 
 	}
 	// aggregate events
 	for _, ev := range wr.Events {
-		ssr.events = append(ssr.events, newEvent(ev))
+		timedEvent := newEvent(ev)
+		jsonByte, err := json.Marshal(timedEvent)
+		if err != nil {
+			return fmt.Errorf("failed to marshal events to json: %v", err)
+		}
+		ssr.eventMemory = ssr.eventMemory + len(jsonByte)
+		ssr.events = append(ssr.events, timedEvent)
 	}
 	ssr.logger.Debugf("Added events till revision: %d", ssr.events[len(ssr.events)-1].EtcdEvent.Kv.ModRevision)
+	if ssr.eventMemory >= ssr.config.deltaSnapshotMemoryLimit {
+		ssr.logger.Infof("Delta events memory crossed the memory limit: %d Bytes", ssr.eventMemory)
+		return ssr.takeDeltaSnapshotAndResetTimer()
+	}
 	return nil
 }
 
