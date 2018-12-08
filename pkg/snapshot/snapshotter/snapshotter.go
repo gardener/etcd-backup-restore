@@ -27,6 +27,7 @@ import (
 	"github.com/coreos/etcd/clientv3"
 	"github.com/gardener/etcd-backup-restore/pkg/errors"
 	"github.com/gardener/etcd-backup-restore/pkg/etcdutil"
+	"github.com/gardener/etcd-backup-restore/pkg/miscellaneous"
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	"github.com/robfig/cron"
 	"github.com/sirupsen/logrus"
@@ -69,7 +70,16 @@ func NewSnapshotterConfig(schedule string, store snapstore.SnapStore, maxBackups
 // NewSnapshotter returns the snapshotter object.
 func NewSnapshotter(logger *logrus.Logger, config *Config) *Snapshotter {
 	// Create dummy previous snapshot
-	prevSnapshot := snapstore.NewSnapshot(snapstore.SnapshotKindFull, 0, 0)
+	var prevSnapshot *snapstore.Snapshot
+	fullSnap, deltaSnapList, err := miscellaneous.GetLatestFullSnapshotAndDeltaSnapList(config.store)
+	if err != nil || fullSnap == nil {
+		prevSnapshot = snapstore.NewSnapshot(snapstore.SnapshotKindFull, 0, 0)
+	} else if len(deltaSnapList) == 0 {
+		prevSnapshot = fullSnap
+	} else {
+		prevSnapshot = deltaSnapList[len(deltaSnapList)-1]
+	}
+
 	return &Snapshotter{
 		logger:         logger,
 		prevSnapshot:   prevSnapshot,
@@ -175,32 +185,38 @@ func (ssr *Snapshotter) takeFullSnapshot() error {
 		}
 	}
 	lastRevision := resp.Header.Revision
-	ctx, cancel = context.WithTimeout(context.TODO(), ssr.config.etcdConnectionTimeout*time.Second)
-	defer cancel()
-	rc, err := client.Snapshot(ctx)
-	if err != nil {
-		return &errors.EtcdError{
-			Message: fmt.Sprintf("failed to create etcd snapshot: %v", err),
+
+	if ssr.prevSnapshot.Kind == snapstore.SnapshotKindFull && ssr.prevSnapshot.LastRevision == lastRevision {
+		ssr.logger.Infof("There are no updates since last snapshot, skipping full snapshot.")
+	} else {
+		ctx, cancel = context.WithTimeout(context.TODO(), ssr.config.etcdConnectionTimeout*time.Second)
+		defer cancel()
+		rc, err := client.Snapshot(ctx)
+		if err != nil {
+			return &errors.EtcdError{
+				Message: fmt.Sprintf("failed to create etcd snapshot: %v", err),
+			}
 		}
-	}
-	ssr.logger.Infof("Successfully opened snapshot reader on etcd")
-	s := &snapstore.Snapshot{
-		Kind:          snapstore.SnapshotKindFull,
-		CreatedOn:     time.Now().UTC(),
-		StartRevision: 0,
-		LastRevision:  lastRevision,
-	}
-	s.GenerateSnapshotDirectory()
-	s.GenerateSnapshotName()
-	startTime := time.Now()
-	if err := ssr.config.store.Save(*s, rc); err != nil {
-		return &errors.SnapstoreError{
-			Message: fmt.Sprintf("failed to save snapshot: %v", err),
+		ssr.logger.Infof("Successfully opened snapshot reader on etcd")
+		s := &snapstore.Snapshot{
+			Kind:          snapstore.SnapshotKindFull,
+			CreatedOn:     time.Now().UTC(),
+			StartRevision: 0,
+			LastRevision:  lastRevision,
 		}
+		s.GenerateSnapshotDirectory()
+		s.GenerateSnapshotName()
+		startTime := time.Now()
+		if err := ssr.config.store.Save(*s, rc); err != nil {
+			return &errors.SnapstoreError{
+				Message: fmt.Sprintf("failed to save snapshot: %v", err),
+			}
+		}
+		logrus.Infof("Total time to save snapshot: %f seconds.", time.Now().Sub(startTime).Seconds())
+		ssr.prevSnapshot = s
+		ssr.logger.Infof("Successfully saved full snapshot at: %s", path.Join(s.SnapDir, s.SnapName))
 	}
-	logrus.Infof("Total time to save snapshot: %f seconds.", time.Now().Sub(startTime).Seconds())
-	ssr.prevSnapshot = s
-	ssr.logger.Infof("Successfully saved full snapshot at: %s", path.Join(s.SnapDir, s.SnapName))
+
 	//make event array empty as any event prior to full snapshot should not be uploaded in delta.
 	ssr.events = []*event{}
 	ssr.eventMemory = 0
