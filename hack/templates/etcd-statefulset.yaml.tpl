@@ -7,7 +7,7 @@
   if context.get("container", "") == "":
    raise Exception("missing --var container=ContainerName flag")  
   provider=""
-  imageTag="0.2.3"
+  imageTag="0.4.0"
   if cloud == "aws":
     provider="S3"
   elif cloud == "azure" or cloud == "az":
