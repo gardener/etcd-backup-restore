@@ -19,6 +19,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/gardener/etcd-backup-restore/pkg/metrics"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/sirupsen/logrus"
 )
 
@@ -41,12 +43,15 @@ func defragData(tlsConfig *TLSConfig, etcdConnectionTimeout time.Duration) error
 		} else {
 			dbSizeBeforeDefrag = status.DbSize
 		}
+		start := time.Now()
 		ctx, cancel = context.WithTimeout(context.TODO(), etcdConnectionTimeout)
 		_, err = client.Defragment(ctx, ep)
 		cancel()
 		if err != nil {
+			metrics.DefragmentationDurationSeconds.With(prometheus.Labels{metrics.LabelSucceeded: metrics.ValueSucceededFalse}).Observe(time.Now().Sub(start).Seconds())
 			return fmt.Errorf("Failed to defragment etcd member[%s] with error: %v", ep, err)
 		}
+		metrics.DefragmentationDurationSeconds.With(prometheus.Labels{metrics.LabelSucceeded: metrics.ValueSucceededTrue}).Observe(time.Now().Sub(start).Seconds())
 		logrus.Infof("Finished defragmenting etcd member[%s]", ep)
 		// Since below request for status races with other etcd operations. So, size returned in
 		// status might vary from the precise size just after defragmentation.

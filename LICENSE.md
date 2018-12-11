@@ -280,6 +280,11 @@ https://github.com/gophercloud/gophercloud
 Copyright 2012-2013 Rackspace, Inc.
 Apache 2 license (https://github.com/gophercloud/gophercloud/blob/master/LICENSE)
 
+
+Prometheus instrumentation library for Go applications.
+https://github.com/prometheus/client_golang.
+Copyright 2014 The Prometheus Authors.
+Apache 2 license (https://github.com/prometheus/client_golang/blob/master/LICENSE)
 ------
 ## MIT License
 

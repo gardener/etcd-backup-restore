@@ -52,6 +52,8 @@ const (
 	SnapshotKindFull = "Full"
 	// SnapshotKindDelta is constant for delta snapshot kind.
 	SnapshotKindDelta = "Incr"
+	// SnapshotKindChunk is constant for chunk snapshot kind.
+	SnapshotKindChunk = "Chunk"
 
 	// chunkUploadTimeout is timeout for uploading chunk.
 	chunkUploadTimeout = 180 * time.Second
