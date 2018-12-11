@@ -49,7 +49,7 @@ func NewInitializeCommand(stopCh <-chan struct{}) *cobra.Command {
 			}
 
 			options := &restorer.RestoreOptions{
-				RestoreDataDir: restoreDataDir,
+				RestoreDataDir: path.Clean(restoreDataDir),
 				Name:           restoreName,
 				ClusterURLs:    clusterUrlsMap,
 				PeerURLs:       peerUrls,

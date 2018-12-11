@@ -63,7 +63,8 @@ func NewInitializer(options *restorer.RestoreOptions, snapstoreConfig *snapstore
 		},
 		Validator: &validator.DataValidator{
 			Config: &validator.Config{
-				DataDir: options.RestoreDataDir,
+				DataDir:         options.RestoreDataDir,
+				SnapstoreConfig: snapstoreConfig,
 			},
 			Logger: logger,
 		},

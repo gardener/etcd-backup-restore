@@ -14,11 +14,37 @@
 
 package validator
 
-import "github.com/sirupsen/logrus"
+import (
+	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
+	"github.com/sirupsen/logrus"
+)
+
+// DataDirStatus represents the status of the etcd data directory.
+type DataDirStatus int
+
+const (
+	// DataDirectoryValid indicates data directory is valid.
+	DataDirectoryValid = iota
+	// DataDirectoryNotExist indicates data directory is non-existent.
+	DataDirectoryNotExist
+	// DataDirectoryInvStruct indicates data directory has invalid structure.
+	DataDirectoryInvStruct
+	// DataDirectoryCorrupt indicates data directory is corrupt.
+	DataDirectoryCorrupt
+	// DataDirectoryError indicates unknown error while validation.
+	DataDirectoryError
+	// RevisionConsistencyError indicates current etcd revision is inconsistent with latest snapshot revision.
+	RevisionConsistencyError
+)
+
+const (
+	snapSuffix = ".snap"
+)
 
 // Config store configuration for DataValidator.
 type Config struct {
-	DataDir string
+	DataDir         string
+	SnapstoreConfig *snapstore.Config
 }
 
 // DataValidator contains implements Validator interface to perform data validation.
