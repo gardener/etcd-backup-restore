@@ -1,0 +1,69 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: etcd-bootstrap-{{ .Values.role }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: etcd
+data:
+  bootstrap.sh: |-
+    #!/bin/sh
+    while true;
+    do
+      wget http://localhost:8080/initialization/status -S -O status;
+      STATUS=`cat status`;
+      case $STATUS in
+      "New")
+            wget http://localhost:8080/initialization/start -S -O - ;;
+      "Progress")
+            sleep 1;
+            continue;;
+      "Failed")
+            continue;;
+      "Successful")
+            exec etcd --config-file /var/etcd/config/etcd.conf.yaml
+            ;;
+      esac;
+    done
+  etcd.conf.yaml: |-
+    # Human-readable name for this member.
+    name: etcd-{{.Values.role}}
+
+    # Path to the data directory.
+    data-dir: /var/etcd/data/new.etcd
+
+    # Number of committed transactions to trigger a snapshot to disk.
+    snapshot-count: 75000
+
+    # Raise alarms when backend size exceeds the given quota. 0 means use the
+    # default quota.
+    quota-backend-bytes: 8589934592
+
+    # List of comma separated URLs to listen on for client traffic.
+    listen-client-urls: {{ if .Values.tls }}https{{ else }}http{{ end }}://0.0.0.0:2379
+
+    # List of this member's client URLs to advertise to the public.
+    # The URLs needed to be a comma-separated list.
+    advertise-client-urls: {{ if .Values.tls }}https{{ else }}http{{ end }}://0.0.0.0:2379
+
+    # Initial cluster token for the etcd cluster during bootstrap.
+    initial-cluster-token: 'new'
+
+    # Initial cluster state ('new' or 'existing').
+    initial-cluster-state: 'new'
+
+{{- if .Values.tls }}
+    client-transport-security:
+      # Path to the client server TLS cert file.
+      cert-file: /var/etcd/ssl/server/tls.crt
+
+      # Path to the client server TLS key file.
+      key-file: /var/etcd/ssl/server/tls.key
+
+      # Enable client cert authentication.
+      client-cert-auth: true
+
+      # Path to the client server TLS trusted CA cert file.
+      trusted-ca-file: /var/etcd/ssl/ca/ca.crt
+{{- end }}
