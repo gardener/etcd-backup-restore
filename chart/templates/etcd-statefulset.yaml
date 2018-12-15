@@ -164,7 +164,7 @@ spec:
         secret:
           secretName: {{ .Values.tls.caSecret }}
 {{- end }}
-{{- if not (eq .Values.backup.storageProvider "Local") }}
+{{- if and .Values.backup.storageProvider (not (eq .Values.backup.storageProvider "Local")) }}
       - name: {{ .Values.backup.backupSecret }}
         secret:
           secretName: {{ .Values.backup.backupSecret }}
