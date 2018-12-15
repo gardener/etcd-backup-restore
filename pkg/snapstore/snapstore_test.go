@@ -17,7 +17,7 @@ package snapstore_test
 import (
 	"bytes"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/url"
 	"path"
 	"strings"
@@ -94,10 +94,12 @@ var _ = Describe("Snapstore", func() {
 				objectMap[path.Join(prefix, snap1.SnapDir, snap1.SnapName)] = &expectedVal1
 				objectMap[path.Join(prefix, snap2.SnapDir, snap2.SnapName)] = &expectedVal2
 				rc, err := snapStore.Fetch(snap1)
+				defer rc.Close()
 				Expect(err).ShouldNot(HaveOccurred())
-				temp, err := ioutil.ReadAll(rc)
+				buf := new(bytes.Buffer)
+				_, err = io.Copy(buf, rc)
 				Expect(err).ShouldNot(HaveOccurred())
-				Expect(temp).To(Equal(expectedVal1))
+				Expect(buf.Bytes()).To(Equal(expectedVal1))
 			}
 		})
 	})
