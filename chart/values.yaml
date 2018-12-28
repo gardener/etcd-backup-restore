@@ -1,0 +1,133 @@
+
+role: for-test
+
+replicas: 1
+
+images:
+
+  # etcd image to use
+  etcd: quay.io/coreos/etcd:v3.3.10
+
+  # etcd-backup-restore image to use
+  etcd-backup-restore: eu.gcr.io/gardener-project/gardener/etcdbrctl:0.4.0
+
+backup:
+
+  # schedule is cron standard schedule to run backups
+  schedule: "0 */24 * * *"
+
+  # maxBackups is the maximum number of backups to keep (may change in
+  # future)
+  maxBackups: 7
+
+  # mentions the policy for garbage collecting old backups. Allowed values are Exponential(default), LimtBased.
+  garbageCollectionPolicy: Exponential
+
+  storageProvider: "Local"  # Abs,Gcs,S3,Swift empty means no backup,
+
+  backupSecret: etcd-backup
+
+  storageContainer: ""
+
+  # env should include the right list of values for the
+  # storageProvider you use, follow the comments below
+  env: []           # Follow comments below
+
+  # volumeMounts should include the right list of values for the
+  # storageProvider you use, follow the comments below
+  volumeMounts: []  # Follow comments below
+
+# tls field contains the pre-created secrets for etcd. Uncomment the
+# whole tls section if you dont want to use tls for the etcd.
+tls:
+
+  # caSecret should point a pre-created Opaque secret that includes a
+  # "ca.crt" field.
+  caSecret: ca-etcd
+
+  # serverSecret should point a pre-created secret that includes a
+  # signed key pair for server. The secret should have "tls.crt" and
+  # "tls.key" data fields. Certificate CN should be "etcd-<role>",
+  # and "etcd-<role>-0" should be included into the hosts.
+  serverSecret: etcd-server-tls
+
+  # clientSecret should point a pre-created secret that includes a
+  # signed key pair for clients.
+  clientSecret: etcd-client-tls
+
+# podAnnotations will be placed to the resulting etcd pod
+podAnnotations: {}
+
+# Aws S3 storage configuration
+# Note: No volumeMounts variable needed
+# storageProvider: "S3"
+# env:
+# - name: "AWS_REGION"
+#   valueFrom:
+#     secretKeyRef:
+#       name: etcd-backup
+#       key: "region"
+# - name: "AWS_SECRET_ACCESS_KEY"
+#   valueFrom:
+#     secretKeyRef:
+#       name: etcd-backup
+#       key: "secretAccessKey"
+# - name: "AWS_ACCESS_KEY_ID"
+#   valueFrom:
+#     secretKeyRef:
+#       name: etcd-backup
+#       key: "accessKeyID"
+
+# Azure ABS storage configuration
+# Note: No volumeMounts needed
+# storageProvider: "ABS"
+# env:
+# - name: "STORAGE_ACCOUNT"
+#   valueFrom:
+#     secretKeyRef:
+#       name: etcd-backup
+#       key: "storage-account"
+# - name: "STORAGE_KEY"
+#   valueFrom:
+#     secretKeyRef:
+#       name: etcd-backup
+#       key: "storage-key"
+
+# Google Cloud storage configuration
+# storageProvider: "GCS"
+# env:
+# - name: "GOOGLE_APPLICATION_CREDENTIALS"
+#   value: "/root/.gcp/serviceaccount.json"
+# volumeMount:
+# - name: etcd-backup
+#   mountPath: "/root/.gcp/"
+
+# Openstack Swift configuration
+# Note: No volumeMounts variable needed
+# storageProvider: "Swift"
+# env:
+# - name: "OS_AUTH_URL"
+#   valueFrom:
+#     secretKeyRef:
+#       name: etcd-backup
+#       key: "authURL"
+# - name: "OS_DOMAIN_NAME"
+#   valueFrom:
+#     secretKeyRef:
+#       name: etcd-backup
+#       key: "domainName"
+# -	name: "OS_USERNAME"
+#   valueFrom:
+#     secretKeyRef:
+#       name: etcd-backup
+#       key: "username"
+# - name: "OS_PASSWORD"
+#   valueFrom:
+#     secretKeyRef:
+#       name: etcd-backup
+#       key: "password"
+# - name: "OS_TENANT_NAME"
+#   valueFrom:
+#     secretKeyRef:
+#       name: etcd-backup
+#       key: "tenantName"

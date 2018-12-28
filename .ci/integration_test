@@ -65,14 +65,14 @@ function setup_test_enviornment() {
 function setup_ginkgo(){
     echo "Installing Ginkgo..."
     go get -u github.com/onsi/ginkgo/ginkgo
-    echo "Successfully installed Ginkgo." 
+    echo "Successfully installed Ginkgo."
 }
 
 function setup_etcd(){
     echo "Downloading and installing etcd..."
     export ETCD_VER=v3.3.8
     curl -L https://storage.googleapis.com/etcd/${ETCD_VER}/etcd-${ETCD_VER}-linux-amd64.tar.gz -o etcd-${ETCD_VER}-linux-amd64.tar.gz
-    tar xzvf etcd-${ETCD_VER}-linux-amd64.tar.gz 
+    tar xzvf etcd-${ETCD_VER}-linux-amd64.tar.gz
     chmod +x ./etcd-${ETCD_VER}-linux-amd64/etcd
     chmod +x ./etcd-${ETCD_VER}-linux-amd64/etcdctl
     mv ./etcd-${ETCD_VER}-linux-amd64/etcdctl ${GOBIN}/etcdctl
@@ -91,12 +91,11 @@ function setup_etcbrctl(){
     main.go
     chmod +x ${GOBIN}/etcdbrctl
     echo "Successfully installed etcdbrctl."
-  
 }
 
 function setup_awscli() {
     echo "Installing awscli..."
-    apt update && apt install -y python-pip
+    (apt update || apt update) && apt install -y python-pip
     pip install awscli
     echo "Successfully installed awscli."
 }
@@ -122,7 +121,7 @@ function create_aws_secret() {
   SECRET_ACCESS_KEY=`/cc/utils/cli.py config attribute --cfg-type aws --cfg-name etcd-backup-restore --key secret_access_key`
   REGION=`/cc/utils/cli.py config attribute --cfg-type aws --cfg-name etcd-backup-restore --key region`
   echo "Successfully fetched aws credentials from secret server."
-  
+
 
   echo "Creating aws credentials for API access..."
   mkdir ${HOME}/.aws
@@ -162,21 +161,21 @@ function cleanup-aws-infrastructure() {
 #        Azure Setup        #
 #############################
 function create_azure_secret() {
-  echo "Creating Azure secret"  
+  echo "Creating Azure secret"
 }
 
 #############################
 #        GCP Setup          #
 #############################
 function create_gcp_secret() {
-echo "Creating GCP secret" 
+echo "Creating GCP secret"
 }
 
 #############################
 #        Openstack Setup    #
 #############################
 function create_openstack_secret() {
-echo "Creating Openstack secret" 
+echo "Creating Openstack secret"
 }
 
 ##############################################################################
@@ -200,7 +199,7 @@ echo "Setting up test cluster..."
 setup_test_cluster
 
 echo "Starting integration tests..."
-cd test/e2e/integration 
+cd test/e2e/integration
 
 set +e
 ginkgo -r

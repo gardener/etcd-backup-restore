@@ -31,19 +31,23 @@ const (
 	GarbageCollectionPolicyExponential = "Exponential"
 	// GarbageCollectionPolicyLimitBased defines the limit based policy for garbage collecting old backups
 	GarbageCollectionPolicyLimitBased = "LimitBased"
+	// DefaultMaxBackups is default number of maximum backups for limit based garbage collection policy.
+	DefaultMaxBackups = 7
+
+	// SnapshotterInactive is set when the snapshotter has not started taking snapshots.
+	SnapshotterInactive State = 0
+	// SnapshotterActive is set when the snapshotter has started taking snapshots.
+	SnapshotterActive State = 1
+	// DefaultDeltaSnapMemoryLimit is default memory limit for delta snapshots.
+	DefaultDeltaSnapMemoryLimit = 10 * 1024 * 1024 //10Mib
+	// DefaultDeltaSnapshotIntervalSeconds is the default interval for delta snapshots in seconds.
+	DefaultDeltaSnapshotIntervalSeconds = 20
 )
 
 var emptyStruct struct{}
 
 // State denotes the state the snapshotter would be in.
 type State int
-
-const (
-	// SnapshotterInactive is set when the snapshotter has not started taking snapshots.
-	SnapshotterInactive State = 0
-	// SnapshotterActive is set when the snapshotter has started taking snapshots.
-	SnapshotterActive State = 1
-)
 
 // Snapshotter is a struct for etcd snapshot taker
 type Snapshotter struct {
@@ -58,6 +62,7 @@ type Snapshotter struct {
 	cancelWatch        context.CancelFunc
 	SsrStateMutex      *sync.Mutex
 	SsrState           State
+	eventMemory        int
 }
 
 // Config stores the configuration parameters for the snapshotter.
@@ -66,6 +71,7 @@ type Config struct {
 	store                          snapstore.SnapStore
 	maxBackups                     int
 	deltaSnapshotIntervalSeconds   int
+	deltaSnapshotMemoryLimit       int
 	etcdConnectionTimeout          time.Duration
 	garbageCollectionPeriodSeconds time.Duration
 	garbageCollectionPolicy        string

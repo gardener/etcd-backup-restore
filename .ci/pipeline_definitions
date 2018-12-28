@@ -20,13 +20,13 @@ etcd-backup-restore:
                 build: ~
     steps:
       check:
-        image: 'golang:1.9.4'
+        image: 'golang:1.11.4'
       unit_test:
-        image: 'eu.gcr.io/gardener-project/cc/job-image-golang:0.1.0'
+        image: 'golang:1.11.4'
       integration_test:
-        image: 'eu.gcr.io/gardener-project/cc/job-image-golang:0.1.0'
+        image: 'eu.gcr.io/gardener-project/cc/job-image-golang:0.4.0'
       build:
-        image: 'golang:1.9.4'
+        image: 'golang:1.11.4'
         output_dir: 'binary'
 
   variants:
@@ -42,4 +42,10 @@ etcd-backup-restore:
           preprocess: 'finalize'
         release:
           nextversion: 'bump_minor'
+        slack:
+          default_channel: 'internal_scp_workspace'
+          channel_cfgs:
+            internal_scp_workspace:
+              channel_name: 'k8s-backup-restore'
+              slack_cfg_name: 'scp_workspace'
         component_descriptor: ~

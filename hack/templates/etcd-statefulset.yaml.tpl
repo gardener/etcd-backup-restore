@@ -7,7 +7,7 @@
   if context.get("container", "") == "":
    raise Exception("missing --var container=ContainerName flag")  
   provider=""
-  imageTag="0.2.3"
+  imageTag="0.4.0"
   if cloud == "aws":
     provider="S3"
   elif cloud == "azure" or cloud == "az":
@@ -57,7 +57,7 @@ data:
       "Failed")
             continue;;
       "Successful")
-            exec etcd --data-dir=/var/etcd/data --name=etcd --advertise-client-urls=http://0.0.0.0:2379 --listen-client-urls=http://0.0.0.0:2379 --initial-cluster-state=new --initial-cluster-token=new
+            exec etcd --data-dir=/var/etcd/data/new.etcd --name=etcd --advertise-client-urls=http://0.0.0.0:2379 --listen-client-urls=http://0.0.0.0:2379 --initial-cluster-state=new --initial-cluster-token=new
             ;;
       esac;
     done
@@ -81,7 +81,7 @@ spec:
       - name: etcd
         command:
         - /bootstrap/bootstrap.sh
-        image: quay.io/coreos/etcd:v3.3.1
+        image: quay.io/coreos/etcd:v3.3.10
         imagePullPolicy: IfNotPresent
         livenessProbe:
           exec:
@@ -113,13 +113,13 @@ spec:
         command:
         - etcdbrctl
         - server
-        - --schedule=*/5 * * * *
-        - --max-backups=5
-        - --data-dir=/var/etcd/data
+        - --schedule=* */1 * * *
+        - --data-dir=/var/etcd/data/new.etcd
         - --insecure-transport=true
         - --storage-provider=${provider}
-        - --delta-snapshot-period-seconds=10
-        - --garbage-collection-period-seconds=60
+        - --delta-snapshot-period-seconds=3600
+        - --garbage-collection-period-seconds=1800
+        - --snapstore-temp-directory=/var/etcd/data/temp
         image: eu.gcr.io/gardener-project/gardener/etcdbrctl:${imageTag}
         imagePullPolicy: Always
         ports:
