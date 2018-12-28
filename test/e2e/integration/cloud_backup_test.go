@@ -1,21 +1,35 @@
+// Copyright (c) 2018 SAP SE or an SAP affiliate company. All rights reserved. This file is licensed under the Apache Software License, v. 2 except as noted otherwise in the LICENSE file.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package integration_test
 
 import (
 	"bufio"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"os"
 	"path"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/gardener/etcd-backup-restore/pkg/initializer/validator"
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
+	. "github.com/gardener/etcd-backup-restore/test/e2e/integration"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	"github.com/sirupsen/logrus"
-
-	. "github.com/gardener/etcd-backup-restore/test/e2e/integration"
 )
 
 func startEtcd() (*Cmd, *chan error) {
@@ -324,6 +338,7 @@ var _ = Describe("CloudBackup", func() {
 				}()
 				// Get status of etcdbrctl via cURL to make status New
 				status, err = getEtcdBrServerStatus()
+				Expect(status).Should(Equal("New"))
 				Expect(err).ShouldNot(HaveOccurred())
 				time.Sleep(10 * time.Second)
 				// Stop etcd.
@@ -379,11 +394,11 @@ func getEtcdBrServerStatus() (string, error) {
 		return "", err
 	}
 	defer res.Body.Close()
-	body, err := ioutil.ReadAll(res.Body)
-	if err != nil {
+	statusBuilder := &strings.Builder{}
+	if _, err := io.Copy(statusBuilder, res.Body); err != nil {
 		return "", err
 	}
-	return string(body[:]), err
+	return statusBuilder.String(), nil
 }
 
 func initializeDataDir() (int, error) {

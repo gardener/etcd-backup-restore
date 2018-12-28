@@ -15,10 +15,10 @@
 package snapstore_test
 
 import (
+	"bytes"
 	"crypto/md5"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"sort"
 	"strings"
@@ -71,12 +71,13 @@ func handleCreateTextObject(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 	}
 	if len(r.Header.Get("X-Object-Manifest")) == 0 {
-		content, err = ioutil.ReadAll(r.Body)
-		if err != nil {
+		buf := new(bytes.Buffer)
+		if _, err = io.Copy(buf, r.Body); err != nil {
 			logrus.Errorf("failed to read content %v", err)
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
+		content = buf.Bytes()
 	} else {
 		content = make([]byte, 0)
 	}

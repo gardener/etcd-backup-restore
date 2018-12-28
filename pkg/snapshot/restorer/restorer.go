@@ -163,9 +163,8 @@ func makeDB(snapdir string, snap snapstore.Snapshot, commit int, ss snapstore.Sn
 		if _, err = db.Seek(-sha256.Size, io.SeekEnd); err != nil {
 			return err
 		}
-
-		sha, err := ioutil.ReadAll(db)
-		if err != nil {
+		sha := make([]byte, sha256.Size)
+		if _, err := db.Read(sha); err != nil {
 			return fmt.Errorf("failed to read sha from db %v", err)
 		}
 
@@ -427,8 +426,6 @@ func (r *Restorer) fetchSnaps(fetcherIndex int, fetcherInfoCh <-chan fetcherInfo
 				applierInfoCh <- applierInfo{SnapIndex: -1}
 				return
 			}
-
-			eventsData = nil // ensures that underlying memory gets garbage-collected
 
 			snapLocationsCh <- eventsFilePath // used for cleanup later
 
