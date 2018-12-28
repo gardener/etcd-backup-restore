@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"sync"
 	"testing"
 	"time"
 
@@ -57,11 +58,10 @@ func TestRestorer(t *testing.T) {
 
 var _ = SynchronizedBeforeSuite(func() []byte {
 	var (
-		data               []byte
-		errCh              = make(chan error)
-		populatorStopCh    = make(chan bool)
-		populatorStoppedCh = make(chan bool)
-		ssrStopCh          = make(chan struct{})
+		data            []byte
+		errCh           = make(chan error)
+		populatorStopCh = make(chan bool)
+		ssrStopCh       = make(chan struct{})
 	)
 
 	err = os.RemoveAll(outputDir)
@@ -71,17 +71,19 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 
 	etcd, err = startEmbeddedEtcd(etcdDir, logger)
 	Expect(err).ShouldNot(HaveOccurred())
-
-	go populateEtcd(logger, endpoints, errCh, populatorStopCh, populatorStoppedCh)
-
+	wg := &sync.WaitGroup{}
+	deltaSnapshotPeriod := 5
+	wg.Add(1)
+	go populateEtcd(wg, logger, endpoints, errCh, populatorStopCh)
 	go func() {
 		<-time.After(time.Duration(snapshotterDurationSeconds * time.Second))
 		close(populatorStopCh)
-		<-populatorStoppedCh
+		wg.Wait()
+		time.Sleep(time.Duration(deltaSnapshotPeriod+2) * time.Second)
 		close(ssrStopCh)
 	}()
 
-	err = runSnapshotter(logger, endpoints, ssrStopCh)
+	err = runSnapshotter(logger, deltaSnapshotPeriod, endpoints, ssrStopCh)
 	Expect(err).ShouldNot(HaveOccurred())
 
 	etcd.Server.Stop()
@@ -122,7 +124,7 @@ func startEmbeddedEtcd(dir string, logger *logrus.Logger) (*embed.Etcd, error) {
 }
 
 // runSnapshotter creates a snapshotter object and runs it for a duration specified by 'snapshotterDurationSeconds'
-func runSnapshotter(logger *logrus.Logger, endpoints []string, stopCh chan struct{}) error {
+func runSnapshotter(logger *logrus.Logger, deltaSnapshotPeriod int, endpoints []string, stopCh chan struct{}) error {
 	var (
 		store                          snapstore.SnapStore
 		certFile                       string
@@ -131,7 +133,6 @@ func runSnapshotter(logger *logrus.Logger, endpoints []string, stopCh chan struc
 		insecureTransport              bool
 		insecureSkipVerify             bool
 		maxBackups                     = 1
-		deltaSnapshotPeriod            = 5
 		etcdConnectionTimeout          = time.Duration(10)
 		garbageCollectionPeriodSeconds = time.Duration(60)
 		schedule                       = "0 0 1 1 *"
@@ -172,19 +173,12 @@ func runSnapshotter(logger *logrus.Logger, endpoints []string, stopCh chan struc
 		snapshotterConfig,
 	)
 
-	err = ssr.Run(stopCh, true)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return ssr.Run(stopCh, true)
 }
 
 // populateEtcd sequentially puts key-value pairs into the embedded etcd, until stopped
-func populateEtcd(logger *logrus.Logger, endpoints []string, errCh chan<- error, stopCh <-chan bool, stoppedCh chan<- bool) {
-	defer func() {
-		stoppedCh <- true
-	}()
+func populateEtcd(wg *sync.WaitGroup, logger *logrus.Logger, endpoints []string, errCh chan<- error, stopCh <-chan bool) {
+	defer wg.Done()
 
 	cli, err := clientv3.New(clientv3.Config{
 		Endpoints:   endpoints,

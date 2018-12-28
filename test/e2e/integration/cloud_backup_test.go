@@ -16,20 +16,20 @@ package integration_test
 
 import (
 	"bufio"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"os"
 	"path"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/gardener/etcd-backup-restore/pkg/initializer/validator"
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
+	. "github.com/gardener/etcd-backup-restore/test/e2e/integration"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	"github.com/sirupsen/logrus"
-
-	. "github.com/gardener/etcd-backup-restore/test/e2e/integration"
 )
 
 func startEtcd() (*Cmd, *chan error) {
@@ -338,6 +338,7 @@ var _ = Describe("CloudBackup", func() {
 				}()
 				// Get status of etcdbrctl via cURL to make status New
 				status, err = getEtcdBrServerStatus()
+				Expect(status).Should(Equal("New"))
 				Expect(err).ShouldNot(HaveOccurred())
 				time.Sleep(10 * time.Second)
 				// Stop etcd.
@@ -393,11 +394,11 @@ func getEtcdBrServerStatus() (string, error) {
 		return "", err
 	}
 	defer res.Body.Close()
-	body, err := ioutil.ReadAll(res.Body)
-	if err != nil {
+	statusBuilder := &strings.Builder{}
+	if _, err := io.Copy(statusBuilder, res.Body); err != nil {
 		return "", err
 	}
-	return string(body[:]), err
+	return statusBuilder.String(), nil
 }
 
 func initializeDataDir() (int, error) {

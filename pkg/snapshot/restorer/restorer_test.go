@@ -122,6 +122,7 @@ var _ = Describe("Running Restorer", func() {
 			Expect(err).ShouldNot(HaveOccurred())
 
 			err = checkDataConsistency(restoreDataDir, logger)
+			Expect(err).ShouldNot(HaveOccurred())
 		})
 	})
 
