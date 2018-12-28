@@ -428,8 +428,6 @@ func (r *Restorer) fetchSnaps(fetcherIndex int, fetcherInfoCh <-chan fetcherInfo
 				return
 			}
 
-			eventsData = nil // ensures that underlying memory gets garbage-collected
-
 			snapLocationsCh <- eventsFilePath // used for cleanup later
 
 			applierInfo := applierInfo{

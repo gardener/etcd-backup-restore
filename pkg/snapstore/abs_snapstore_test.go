@@ -86,7 +86,7 @@ type fakePolicy struct {
 }
 
 // Do method is called on pipeline to process the request. This will internally call the `Do` method
-// on next policies in pipeline and return the responce from it.
+// on next policies in pipeline and return the response from it.
 func (p *fakePolicy) Do(ctx context.Context, request pipeline.Request) (response pipeline.Response, err error) {
 	httpReq, err := http.NewRequest(request.Method, request.URL.String(), request.Body)
 	if err != nil {

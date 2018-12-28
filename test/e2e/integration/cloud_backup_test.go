@@ -338,6 +338,7 @@ var _ = Describe("CloudBackup", func() {
 				}()
 				// Get status of etcdbrctl via cURL to make status New
 				status, err = getEtcdBrServerStatus()
+				Expect(status).Should(Equal("New"))
 				Expect(err).ShouldNot(HaveOccurred())
 				time.Sleep(10 * time.Second)
 				// Stop etcd.
