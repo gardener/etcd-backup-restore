@@ -204,8 +204,8 @@ func (p *fakePolicy) handleBlobPutOperation(w *http.Response) {
 
 	switch comp {
 	case "block":
-		content, err := ioutil.ReadAll(w.Request.Body)
-		if err != nil {
+		content := make([]byte, w.Request.ContentLength)
+		if _, err := w.Request.Body.Read(content); err != nil {
 			w.StatusCode = http.StatusBadRequest
 			w.Body = ioutil.NopCloser(strings.NewReader(fmt.Sprintf("failed to read content %v", err)))
 			return
@@ -222,8 +222,8 @@ func (p *fakePolicy) handleBlobPutOperation(w *http.Response) {
 		w.StatusCode = http.StatusCreated
 
 	case "blocklist":
-		content, err := ioutil.ReadAll(w.Request.Body)
-		if err != nil {
+		content := make([]byte, w.Request.ContentLength)
+		if _, err := w.Request.Body.Read(content); err != nil {
 			w.StatusCode = http.StatusBadRequest
 			w.Body = ioutil.NopCloser(strings.NewReader(fmt.Sprintf("failed to read content %v", err)))
 			return

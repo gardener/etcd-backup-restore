@@ -17,6 +17,7 @@ package snapstore_test
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"sort"
 	"strings"
@@ -52,11 +53,18 @@ func (m *mockS3Client) GetObject(in *s3.GetObjectInput) (*s3.GetObjectOutput, er
 
 // PutObject adds the object to the map for mock test
 func (m *mockS3Client) PutObject(in *s3.PutObjectInput) (*s3.PutObjectOutput, error) {
-	temp, err := ioutil.ReadAll(in.Body)
+	size, err := in.Body.Seek(0, io.SeekEnd)
 	if err != nil {
+		return nil, fmt.Errorf("failed to seek at the end of body %v", err)
+	}
+	if _, err := in.Body.Seek(0, io.SeekStart); err != nil {
+		return nil, fmt.Errorf("failed to seek at the start of body %v", err)
+	}
+	content := make([]byte, size)
+	if _, err := in.Body.Read(content); err != nil {
 		return nil, fmt.Errorf("failed to read complete body %v", err)
 	}
-	m.objects[*in.Key] = &temp
+	m.objects[*in.Key] = &content
 	out := s3.PutObjectOutput{}
 	return &out, nil
 }
@@ -88,11 +96,19 @@ func (m *mockS3Client) UploadPartWithContext(ctx aws.Context, in *s3.UploadPartI
 		m.multiPartUploads[*in.UploadId] = &t
 	}
 	m.multiPartUploadsMutex.Unlock()
-	temp, err := ioutil.ReadAll(in.Body)
+	size, err := in.Body.Seek(0, io.SeekEnd)
 	if err != nil {
+		return nil, fmt.Errorf("failed to seek at the end of body %v", err)
+	}
+	if _, err := in.Body.Seek(0, io.SeekStart); err != nil {
+		return nil, fmt.Errorf("failed to seek at the start of body %v", err)
+	}
+	content := make([]byte, size)
+	if _, err := in.Body.Read(content); err != nil {
 		return nil, fmt.Errorf("failed to read complete body %v", err)
 	}
-	(*m.multiPartUploads[*in.UploadId])[*in.PartNumber-1] = temp
+
+	(*m.multiPartUploads[*in.UploadId])[*in.PartNumber-1] = content
 	eTag := string(*in.PartNumber)
 	out := &s3.UploadPartOutput{
 		ETag: &eTag,
