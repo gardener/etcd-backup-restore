@@ -27,53 +27,57 @@ import (
 	"sync"
 
 	"cloud.google.com/go/storage"
+	"github.com/googleapis/google-cloud-go-testing/storage/stiface"
 	"github.com/sirupsen/logrus"
 	"google.golang.org/api/iterator"
 )
 
-// GCSSnapStore is snapstore with local disk as backend
+// GCSSnapStore is snapstore with GCS object store as backend.
 type GCSSnapStore struct {
+	client stiface.Client
 	prefix string
-	client *storage.Client
 	bucket string
-	ctx    context.Context
 	// maxParallelChunkUploads hold the maximum number of parallel chunk uploads allowed.
 	maxParallelChunkUploads int
 	tempDir                 string
 }
 
 const (
-	gcsNoOfChunk int64 = 32 //Default configuration in swift installation
+	gcsNoOfChunk int64 = 32
 )
 
-// NewGCSSnapStore create new S3SnapStore from shared configuration with specified bucket
+// NewGCSSnapStore create new GCSSnapStore from shared configuration with specified bucket.
 func NewGCSSnapStore(bucket, prefix, tempDir string, maxParallelChunkUploads int) (*GCSSnapStore, error) {
 	ctx := context.TODO()
-	gcsClient, err := storage.NewClient(ctx)
+	cli, err := storage.NewClient(ctx)
 	if err != nil {
 		return nil, err
 	}
+	gcsClient := stiface.AdaptClient(cli)
 
+	return NewGCSSnapStoreFromClient(bucket, prefix, tempDir, maxParallelChunkUploads, gcsClient), nil
+}
+
+// NewGCSSnapStoreFromClient create new GCSSnapStore from shared configuration with specified bucket.
+func NewGCSSnapStoreFromClient(bucket, prefix, tempDir string, maxParallelChunkUploads int, cli stiface.Client) *GCSSnapStore {
 	return &GCSSnapStore{
 		prefix:                  prefix,
-		client:                  gcsClient,
+		client:                  cli,
 		bucket:                  bucket,
-		ctx:                     ctx,
 		maxParallelChunkUploads: maxParallelChunkUploads,
 		tempDir:                 tempDir,
-	}, nil
-
+	}
 }
 
-// Fetch should open reader for the snapshot file from store
+// Fetch should open reader for the snapshot file from store.
 func (s *GCSSnapStore) Fetch(snap Snapshot) (io.ReadCloser, error) {
 	objectName := path.Join(s.prefix, snap.SnapDir, snap.SnapName)
-	return s.client.Bucket(s.bucket).Object(objectName).NewReader(s.ctx)
+	ctx := context.TODO()
+	return s.client.Bucket(s.bucket).Object(objectName).NewReader(ctx)
 }
 
-// Save will write the snapshot to store
+// Save will write the snapshot to store.
 func (s *GCSSnapStore) Save(snap Snapshot, r io.Reader) error {
-	// Save it locally
 	tmpfile, err := ioutil.TempFile(s.tempDir, tmpBackupFilePrefix)
 	if err != nil {
 		return fmt.Errorf("failed to create snapshot tempfile: %v", err)
@@ -127,7 +131,7 @@ func (s *GCSSnapStore) Save(snap Snapshot, r io.Reader) error {
 	}
 	logrus.Info("All chunk uploaded successfully. Uploading composite object.")
 	bh := s.client.Bucket(s.bucket)
-	var subObjects []*storage.ObjectHandle
+	var subObjects []stiface.ObjectHandle
 	for partNumber := int64(1); partNumber <= noOfChunks; partNumber++ {
 		name := path.Join(s.prefix, snap.SnapDir, snap.SnapName, fmt.Sprintf("%010d", partNumber))
 		obj := bh.Object(name)
@@ -190,11 +194,9 @@ func (s *GCSSnapStore) componentUploader(wg *sync.WaitGroup, stopCh <-chan struc
 	}
 }
 
-// List will list the snapshots from store
+// List will list the snapshots from store.
 func (s *GCSSnapStore) List() (SnapList, error) {
-	// recursively list all "files", not directory
-
-	it := s.client.Bucket(s.bucket).Objects(s.ctx, &storage.Query{Prefix: s.prefix})
+	it := s.client.Bucket(s.bucket).Objects(context.TODO(), &storage.Query{Prefix: s.prefix})
 
 	var attrs []*storage.ObjectAttrs
 	for {
@@ -225,8 +227,8 @@ func (s *GCSSnapStore) List() (SnapList, error) {
 	return snapList, nil
 }
 
-// Delete should delete the snapshot file from store
+// Delete should delete the snapshot file from store.
 func (s *GCSSnapStore) Delete(snap Snapshot) error {
 	objectName := path.Join(s.prefix, snap.SnapDir, snap.SnapName)
-	return s.client.Bucket(s.bucket).Object(objectName).Delete(s.ctx)
+	return s.client.Bucket(s.bucket).Object(objectName).Delete(context.TODO())
 }

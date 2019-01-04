@@ -37,7 +37,7 @@ const (
 	s3NoOfChunk int64 = 10000 //Default configuration in swift installation
 )
 
-// S3SnapStore is snapstore with local disk as backend
+// S3SnapStore is snapstore with AWS S3 object store as backend
 type S3SnapStore struct {
 	prefix    string
 	client    s3iface.S3API

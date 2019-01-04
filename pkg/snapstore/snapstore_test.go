@@ -83,6 +83,10 @@ var _ = Describe("Snapstore", func() {
 			}),
 			"swift": NewSwiftSnapstoreFromClient(bucket, prefix, "/tmp", 5, fake.ServiceClient()),
 			"ABS":   newFakeABSSnapstore(),
+			"GCS": NewGCSSnapStoreFromClient(bucket, prefix, "/tmp", 5, &mockGCSClient{
+				objects: objectMap,
+				prefix:  prefix,
+			}),
 		}
 	})
 
