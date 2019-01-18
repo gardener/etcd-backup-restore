@@ -115,7 +115,16 @@ func startBackupRestoreServer() (*Cmd, *chan error) {
 
 var _ = Describe("CloudBackup", func() {
 
+	var snapstoreConfig *snapstore.Config
 	var store snapstore.SnapStore
+
+	BeforeEach(func() {
+		snapstoreConfig = &snapstore.Config{
+			Provider:  "S3",
+			Container: os.Getenv("TEST_ID"),
+			Prefix:    path.Join("v1"),
+		}
+	})
 
 	Describe("Regular backups", func() {
 		var (
@@ -125,11 +134,6 @@ var _ = Describe("CloudBackup", func() {
 		)
 
 		BeforeEach(func() {
-			snapstoreConfig := &snapstore.Config{
-				Provider:  "S3",
-				Container: os.Getenv("TEST_ID"),
-				Prefix:    path.Join("v1"),
-			}
 			store, err = snapstore.GetSnapstore(snapstoreConfig)
 			Expect(err).ShouldNot(HaveOccurred())
 
@@ -208,7 +212,8 @@ var _ = Describe("CloudBackup", func() {
 				dataValidator := validator.DataValidator{
 					Logger: logger,
 					Config: &validator.Config{
-						DataDir: dataDir,
+						DataDir:         dataDir,
+						SnapstoreConfig: snapstoreConfig,
 					},
 				}
 				dataDirStatus, err := dataValidator.Validate()
@@ -239,12 +244,13 @@ var _ = Describe("CloudBackup", func() {
 				dataValidator := validator.DataValidator{
 					Logger: logger,
 					Config: &validator.Config{
-						DataDir: dataDir,
+						DataDir:         dataDir,
+						SnapstoreConfig: snapstoreConfig,
 					},
 				}
 				dataDirStatus, err := dataValidator.Validate()
 				Expect(err).ShouldNot(HaveOccurred())
-				Expect(dataDirStatus).Should(Equal(validator.DataDirStatus(validator.DataDirectoryCorrupt)))
+				Expect(dataDirStatus).Should(SatisfyAny(Equal(validator.DataDirStatus(validator.DataDirectoryCorrupt)), Equal(validator.DataDirStatus(validator.RevisionConsistencyError))))
 			})
 
 			AfterEach(func() {

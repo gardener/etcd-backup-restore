@@ -1,23 +1,11 @@
-// Copyright (c) 2018 SAP SE or an SAP affiliate company. All rights reserved. This file is licensed under the Apache Software License, v. 2 except as noted otherwise in the LICENSE file.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
-package restorer_test
+package validator_test
 
 import (
 	"context"
 	"fmt"
+	"io/ioutil"
 	"os"
+	"path"
 	"strconv"
 	"sync"
 	"testing"
@@ -38,22 +26,30 @@ const (
 	etcdDir                    = outputDir + "/default.etcd"
 	snapstoreDir               = outputDir + "/snapshotter.bkp"
 	etcdEndpoint               = "http://localhost:2379"
-	snapshotterDurationSeconds = 100
+	snapshotterDurationSeconds = 15
+	snapCount                  = 10
 	keyPrefix                  = "key-"
 	valuePrefix                = "val-"
 	keyFrom                    = 1
 )
 
 var (
-	etcd      *embed.Etcd
-	err       error
-	keyTo     int
-	endpoints = []string{etcdEndpoint}
+	etcd         *embed.Etcd
+	err          error
+	keyTo        int
+	endpoints    = []string{etcdEndpoint}
+	etcdRevision int64
 )
 
-func TestRestorer(t *testing.T) {
+// fileInfo holds file information such as file name and file path
+type fileInfo struct {
+	name string
+	path string
+}
+
+func TestValidator(t *testing.T) {
 	RegisterFailHandler(Fail)
-	RunSpecs(t, "Restorer Suite")
+	RunSpecs(t, "Validator Suite")
 }
 
 var _ = SynchronizedBeforeSuite(func() []byte {
@@ -69,12 +65,16 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 
 	logger := logrus.New()
 
+	err = os.RemoveAll(etcdDir)
+	Expect(err).ShouldNot(HaveOccurred())
+
 	etcd, err = startEmbeddedEtcd(etcdDir, logger)
 	Expect(err).ShouldNot(HaveOccurred())
 	wg := &sync.WaitGroup{}
 	deltaSnapshotPeriod := 5
 	wg.Add(1)
 	go populateEtcd(wg, logger, endpoints, errCh, populatorStopCh)
+
 	go func() {
 		<-time.After(time.Duration(snapshotterDurationSeconds * time.Second))
 		close(populatorStopCh)
@@ -88,15 +88,15 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 
 	etcd.Server.Stop()
 	etcd.Close()
+
+	err = os.Mkdir(path.Join(outputDir, "temp"), 0700)
+	Expect(err).ShouldNot(HaveOccurred())
+
 	return data
 }, func(data []byte) {})
 
 var _ = SynchronizedAfterSuite(func() {}, func() {
-	err = os.RemoveAll(etcdDir)
-	Expect(err).ShouldNot(HaveOccurred())
 
-	err = os.RemoveAll(snapstoreDir)
-	Expect(err).ShouldNot(HaveOccurred())
 })
 
 // startEmbeddedEtcd starts an embedded etcd server
@@ -107,6 +107,7 @@ func startEmbeddedEtcd(dir string, logger *logrus.Logger) (*embed.Etcd, error) {
 	cfg.EnableV2 = false
 	cfg.Debug = false
 	cfg.GRPCKeepAliveTimeout = 0
+	cfg.SnapCount = snapCount
 	e, err := embed.StartEtcd(cfg)
 	if err != nil {
 		return nil, err
@@ -133,6 +134,7 @@ func runSnapshotter(logger *logrus.Logger, deltaSnapshotPeriod int, endpoints []
 		insecureTransport              bool
 		insecureSkipVerify             bool
 		maxBackups                     = 1
+		deltaSnapshotMemoryLimit       = 10 * 1024 * 1024 //10Mib
 		etcdConnectionTimeout          = time.Duration(10)
 		garbageCollectionPeriodSeconds = time.Duration(60)
 		schedule                       = "0 0 1 1 *"
@@ -158,7 +160,7 @@ func runSnapshotter(logger *logrus.Logger, deltaSnapshotPeriod int, endpoints []
 		store,
 		maxBackups,
 		deltaSnapshotPeriod,
-		snapshotter.DefaultDeltaSnapMemoryLimit,
+		deltaSnapshotMemoryLimit,
 		etcdConnectionTimeout,
 		garbageCollectionPeriodSeconds,
 		garbageCollectionPolicy,
@@ -208,12 +210,59 @@ func populateEtcd(wg *sync.WaitGroup, logger *logrus.Logger, endpoints []string,
 			currKey++
 			key = keyPrefix + strconv.Itoa(currKey)
 			value = valuePrefix + strconv.Itoa(currKey)
-			_, err = cli.Put(context.TODO(), key, value)
+			resp, err := cli.Put(context.TODO(), key, value)
 			if err != nil {
 				errCh <- fmt.Errorf("unable to put key-value pair (%s, %s) into embedded etcd: %v", key, value, err)
 				return
 			}
+			etcdRevision = resp.Header.GetRevision()
 			time.Sleep(time.Second * 1)
 		}
 	}
+}
+
+// populateEtcd sequentially puts key-value pairs through numbers 'from' and 'to' into the embedded etcd
+func populateEtcdFinite(logger *logrus.Logger, endpoints []string, from, to int) (int64, error) {
+	cli, err := clientv3.New(clientv3.Config{
+		Endpoints:   endpoints,
+		DialTimeout: 10 * time.Second,
+	})
+	if err != nil {
+		return -1, fmt.Errorf("unable to start etcd client: %v", err)
+	}
+	defer cli.Close()
+
+	var (
+		key   string
+		value string
+		rev   int64
+	)
+
+	for currKey := from; currKey <= to; currKey++ {
+		key = keyPrefix + strconv.Itoa(currKey)
+		value = valuePrefix + strconv.Itoa(currKey)
+		resp, err := cli.Put(context.TODO(), key, value)
+		if err != nil {
+			return -1, fmt.Errorf("unable to put key-value pair (%s, %s) into embedded etcd: %v", key, value, err)
+		}
+		rev = resp.Header.GetRevision()
+		time.Sleep(time.Millisecond * 100)
+	}
+
+	return rev, nil
+}
+
+// copyFile copies the contents of the file at sourceFilePath into the file at destinationFilePath. If no file exists at destinationFilePath, a new file is created before copying
+func copyFile(sourceFilePath, destinationFilePath string) error {
+	data, err := ioutil.ReadFile(sourceFilePath)
+	if err != nil {
+		return fmt.Errorf("unable to read source file %s: %v", sourceFilePath, err)
+	}
+
+	err = ioutil.WriteFile(destinationFilePath, data, 0700)
+	if err != nil {
+		return fmt.Errorf("unable to create destination file %s: %v", destinationFilePath, err)
+	}
+
+	return nil
 }

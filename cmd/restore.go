@@ -73,7 +73,7 @@ func NewRestoreCommand(stopCh <-chan struct{}) *cobra.Command {
 			rs := restorer.NewRestorer(store, logger)
 
 			options := &restorer.RestoreOptions{
-				RestoreDataDir: restoreDataDir,
+				RestoreDataDir: path.Clean(restoreDataDir),
 				Name:           restoreName,
 				BaseSnapshot:   *baseSnap,
 				DeltaSnapList:  deltaSnapList,

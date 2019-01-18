@@ -38,7 +38,7 @@ func NewServerCommand(stopCh <-chan struct{}) *cobra.Command {
 	var serverCmd = &cobra.Command{
 		Use:   "server",
 		Short: "start the http server with backup scheduler.",
-		Long:  `Server will keep listening for http request to deliver its functionality through http endpoins.`,
+		Long:  `Server will keep listening for http request to deliver its functionality through http endpoints.`,
 		Run: func(cmd *cobra.Command, args []string) {
 			var (
 				snapstoreConfig *snapstore.Config
@@ -56,7 +56,7 @@ func NewServerCommand(stopCh <-chan struct{}) *cobra.Command {
 			}
 
 			options := &restorer.RestoreOptions{
-				RestoreDataDir: restoreDataDir,
+				RestoreDataDir: path.Clean(restoreDataDir),
 				Name:           restoreName,
 				ClusterURLs:    clusterUrlsMap,
 				PeerURLs:       peerUrls,
@@ -238,7 +238,7 @@ func handleNoSsrRequest(handler *server.HTTPHandler) {
 	}
 }
 
-// handleSsrRequest responds to handlers reqeust and stop interrupt.
+// handleSsrRequest responds to handlers request and stop interrupt.
 func handleSsrRequest(handler *server.HTTPHandler, ssr *snapshotter.Snapshotter, ackCh, ssrStopCh chan struct{}, stopCh <-chan struct{}) {
 	for {
 		var ok bool

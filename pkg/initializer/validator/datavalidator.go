@@ -15,6 +15,7 @@
 package validator
 
 import (
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"hash/crc32"
@@ -31,24 +32,9 @@ import (
 	"github.com/coreos/etcd/snap/snappb"
 	"github.com/coreos/etcd/wal"
 	"github.com/coreos/etcd/wal/walpb"
+	"github.com/gardener/etcd-backup-restore/pkg/miscellaneous"
+	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	"github.com/sirupsen/logrus"
-)
-
-const (
-	// DataDirectoryValid indicates data directory is valid.
-	DataDirectoryValid = iota
-	// DataDirectoryNotExist indicates data directory is non-existent.
-	DataDirectoryNotExist
-	// DataDirectoryInvStruct indicates data directory has invalid structure.
-	DataDirectoryInvStruct
-	// DataDirectoryCorrupt indicates data directory is corrupt.
-	DataDirectoryCorrupt
-	// DataDirectoryError indicates unknown error while validation.
-	DataDirectoryError
-)
-
-const (
-	snapSuffix = ".snap"
 )
 
 var (
@@ -70,9 +56,6 @@ var (
 	logger *logrus.Logger
 )
 
-// DataDirStatus represents the status of the etcd data directory.
-type DataDirStatus int
-
 func init() {
 	logger = logrus.New()
 }
@@ -85,7 +68,7 @@ func (d *DataValidator) snapDir() string { return filepath.Join(d.memberDir(), "
 
 func (d *DataValidator) backendPath() string { return filepath.Join(d.snapDir(), "db") }
 
-//Validate performs the steps required to validate data for Etcd instance.
+// Validate performs the steps required to validate data for Etcd instance.
 // The steps involved are:
 //   * Check if data directory exists.
 //     - If data directory exists
@@ -112,12 +95,19 @@ func (d *DataValidator) Validate() (DataDirStatus, error) {
 		d.Logger.Infof("Data directory structure invalid.")
 		return DataDirectoryInvStruct, nil
 	}
+
+	d.Logger.Info("Checking for revision consistency...")
+	if err = d.CheckRevisionConsistency(); err != nil {
+		d.Logger.Infof("Etcd revision inconsistent with latest snapshot revision: %v", err)
+		return RevisionConsistencyError, nil
+	}
+
 	d.Logger.Info("Checking for data directory files corruption...")
-	err = d.checkForDataCorruption()
-	if err != nil {
+	if err = d.checkForDataCorruption(); err != nil {
 		d.Logger.Infof("Data directory corrupt. %v", err)
 		return DataDirectoryCorrupt, nil
 	}
+
 	d.Logger.Info("Data directory valid.")
 	return DataDirectoryValid, nil
 }
@@ -273,7 +263,7 @@ func checkSuffix(names []string) []string {
 			snaps = append(snaps, names[i])
 		} else {
 			// If we find a file which is not a snapshot then check if it's
-			// a vaild file. If not throw out a warning.
+			// a valid file. If not throw out a warning.
 			if _, ok := validFiles[names[i]]; !ok {
 				fmt.Printf("skipped unexpected non snapshot file %v", names[i])
 			}
@@ -346,4 +336,72 @@ func verifyDB(path string) error {
 		// Notify user that database is valid.
 		return nil
 	})
+}
+
+// CheckRevisionConsistency compares the latest revisions on the etcd db file and the latest snapshot to verify that the etcd revision is not lesser than snapshot revision.
+func (d *DataValidator) CheckRevisionConsistency() error {
+	etcdRevision, err := getLatestEtcdRevision(d.backendPath())
+	if err != nil {
+		return fmt.Errorf("unable to get current etcd revision from backend db file: %v", err)
+	}
+
+	store, err := snapstore.GetSnapstore(d.Config.SnapstoreConfig)
+	if err != nil {
+		return fmt.Errorf("unable to fetch snapstore: %v", err)
+	}
+
+	fullSnap, deltaSnaps, err := miscellaneous.GetLatestFullSnapshotAndDeltaSnapList(store)
+	if err != nil {
+		return fmt.Errorf("unable to get snapshots from store: %v", err)
+	}
+	var latestSnapshotRevision int64
+	if len(deltaSnaps) != 0 {
+		latestSnapshotRevision = deltaSnaps[len(deltaSnaps)-1].LastRevision
+	} else {
+		latestSnapshotRevision = fullSnap.LastRevision
+	}
+
+	if etcdRevision < latestSnapshotRevision {
+		return fmt.Errorf("current etcd revision (%d) is less than latest snapshot revision (%d): possible data loss", etcdRevision, latestSnapshotRevision)
+	}
+
+	return nil
+}
+
+// getLatestEtcdRevision finds out the latest revision on the etcd db file without starting etcd server or an embedded etcd server.
+func getLatestEtcdRevision(path string) (int64, error) {
+	if _, err := os.Stat(path); err != nil {
+		return -1, fmt.Errorf("unable to stat backend db file: %v", err)
+	}
+
+	db, err := bolt.Open(path, 0400, &bolt.Options{ReadOnly: true})
+	if err != nil {
+		return -1, fmt.Errorf("unable to open backend boltdb file: %v", err)
+	}
+	defer db.Close()
+
+	var rev int64
+
+	err = db.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte("key"))
+		if b == nil {
+			return fmt.Errorf("cannot get hash of bucket \"key\"")
+		}
+
+		c := b.Cursor()
+		k, _ := c.Last()
+		if len(k) < 8 {
+			rev = 1
+			return nil
+		}
+		rev = int64(binary.BigEndian.Uint64(k[0:8]))
+
+		return nil
+	})
+
+	if err != nil {
+		return -1, err
+	}
+
+	return rev, nil
 }
