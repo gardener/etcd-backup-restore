@@ -20,15 +20,19 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"math"
 	"path"
 	"sync"
 	"time"
+
+	"github.com/gardener/etcd-backup-restore/pkg/metrics"
 
 	"github.com/coreos/etcd/clientv3"
 	"github.com/gardener/etcd-backup-restore/pkg/errors"
 	"github.com/gardener/etcd-backup-restore/pkg/etcdutil"
 	"github.com/gardener/etcd-backup-restore/pkg/miscellaneous"
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/robfig/cron"
 	"github.com/sirupsen/logrus"
 )
@@ -74,11 +78,16 @@ func NewSnapshotter(logger *logrus.Logger, config *Config) *Snapshotter {
 	fullSnap, deltaSnapList, err := miscellaneous.GetLatestFullSnapshotAndDeltaSnapList(config.store)
 	if err != nil || fullSnap == nil {
 		prevSnapshot = snapstore.NewSnapshot(snapstore.SnapshotKindFull, 0, 0)
+		metrics.LatestSnapshotTimestamp.With(prometheus.Labels{metrics.LabelKind: prevSnapshot.Kind}).Set(math.NaN())
 	} else if len(deltaSnapList) == 0 {
 		prevSnapshot = fullSnap
+		metrics.LatestSnapshotTimestamp.With(prometheus.Labels{metrics.LabelKind: prevSnapshot.Kind}).Set(float64(prevSnapshot.CreatedOn.Unix()))
 	} else {
 		prevSnapshot = deltaSnapList[len(deltaSnapList)-1]
+		metrics.LatestSnapshotTimestamp.With(prometheus.Labels{metrics.LabelKind: prevSnapshot.Kind}).Set(float64(prevSnapshot.CreatedOn.Unix()))
 	}
+
+	metrics.LatestSnapshotRevision.With(prometheus.Labels{metrics.LabelKind: prevSnapshot.Kind}).Set(float64(prevSnapshot.LastRevision))
 
 	return &Snapshotter{
 		logger:         logger,
@@ -198,22 +207,23 @@ func (ssr *Snapshotter) takeFullSnapshot() error {
 			}
 		}
 		ssr.logger.Infof("Successfully opened snapshot reader on etcd")
-		s := &snapstore.Snapshot{
-			Kind:          snapstore.SnapshotKindFull,
-			CreatedOn:     time.Now().UTC(),
-			StartRevision: 0,
-			LastRevision:  lastRevision,
-		}
-		s.GenerateSnapshotDirectory()
-		s.GenerateSnapshotName()
+		s := snapstore.NewSnapshot(snapstore.SnapshotKindFull, 0, lastRevision)
 		startTime := time.Now()
 		if err := ssr.config.store.Save(*s, rc); err != nil {
+			timeTaken := time.Now().Sub(startTime).Seconds()
+			metrics.SnapshotDurationSeconds.With(prometheus.Labels{metrics.LabelKind: snapstore.SnapshotKindFull, metrics.LabelSucceeded: metrics.ValueSucceededFalse}).Observe(timeTaken)
 			return &errors.SnapstoreError{
 				Message: fmt.Sprintf("failed to save snapshot: %v", err),
 			}
 		}
-		logrus.Infof("Total time to save snapshot: %f seconds.", time.Now().Sub(startTime).Seconds())
+		timeTaken := time.Now().Sub(startTime).Seconds()
+		metrics.SnapshotDurationSeconds.With(prometheus.Labels{metrics.LabelKind: snapstore.SnapshotKindFull, metrics.LabelSucceeded: metrics.ValueSucceededTrue}).Observe(timeTaken)
+		logrus.Infof("Total time to save snapshot: %f seconds.", timeTaken)
 		ssr.prevSnapshot = s
+
+		metrics.LatestSnapshotRevision.With(prometheus.Labels{metrics.LabelKind: ssr.prevSnapshot.Kind}).Set(float64(ssr.prevSnapshot.LastRevision))
+		metrics.LatestSnapshotTimestamp.With(prometheus.Labels{metrics.LabelKind: ssr.prevSnapshot.Kind}).Set(float64(ssr.prevSnapshot.CreatedOn.Unix()))
+
 		ssr.logger.Infof("Successfully saved full snapshot at: %s", path.Join(s.SnapDir, s.SnapName))
 	}
 
@@ -270,11 +280,19 @@ func (ssr *Snapshotter) takeDeltaSnapshot() error {
 	data = hash.Sum(data)
 
 	dataReader := bytes.NewReader(data)
+	startTime := time.Now()
 	if err := ssr.config.store.Save(*snap, dataReader); err != nil {
+		timeTaken := time.Now().Sub(startTime).Seconds()
+		metrics.SnapshotDurationSeconds.With(prometheus.Labels{metrics.LabelKind: snapstore.SnapshotKindDelta, metrics.LabelSucceeded: metrics.ValueSucceededFalse}).Observe(timeTaken)
 		ssr.logger.Errorf("Error saving delta snapshots. %v", err)
 		return err
 	}
+	timeTaken := time.Now().Sub(startTime).Seconds()
+	metrics.SnapshotDurationSeconds.With(prometheus.Labels{metrics.LabelKind: snapstore.SnapshotKindDelta, metrics.LabelSucceeded: metrics.ValueSucceededTrue}).Observe(timeTaken)
+	logrus.Infof("Total time to save delta snapshot: %f seconds.", timeTaken)
 	ssr.prevSnapshot = snap
+	metrics.LatestSnapshotRevision.With(prometheus.Labels{metrics.LabelKind: ssr.prevSnapshot.Kind}).Set(float64(ssr.prevSnapshot.LastRevision))
+	metrics.LatestSnapshotTimestamp.With(prometheus.Labels{metrics.LabelKind: ssr.prevSnapshot.Kind}).Set(float64(ssr.prevSnapshot.CreatedOn.Unix()))
 	ssr.logger.Infof("Successfully saved delta snapshot at: %s", path.Join(snap.SnapDir, snap.SnapName))
 	return nil
 }

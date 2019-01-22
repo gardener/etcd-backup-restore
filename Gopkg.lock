@@ -34,7 +34,7 @@
   version = "0.3.0"
 
 [[projects]]
-  digest = "1:4a93ee04bd3883778e9c7587618d4a1c175292e0005d85b69d8ec49abf861dfb"
+  digest = "1:098111bfb059c9d73bd0ec56e57d6ab6e2e6c525bc1fda96e0c0c4dc9d1500a6"
   name = "github.com/aws/aws-sdk-go"
   packages = [
     "aws",
@@ -74,8 +74,8 @@
     "service/sts",
   ]
   pruneopts = "NUT"
-  revision = "130ebb7dc1d6b5a940198b47642fc8b20936a65d"
-  version = "v1.16.1"
+  revision = "d75ca9c91e5bcf0c3adb9672a786ac65e8073a6e"
+  version = "v1.16.13"
 
 [[projects]]
   branch = "master"
@@ -210,7 +210,7 @@
   version = "v1.0.0"
 
 [[projects]]
-  digest = "1:700c0988d24fac04439828af2aab8e7d1638cea3bc91ff20d2a2befc970ff165"
+  digest = "1:8873557c930ebcd43c106fdc72324ee20f7b2bd55e66d8f93a97f0b6f676a9d4"
   name = "github.com/gogo/protobuf"
   packages = [
     "gogoproto",
@@ -218,8 +218,8 @@
     "protoc-gen-gogo/descriptor",
   ]
   pruneopts = "NUT"
-  revision = "636bf0302bc95575d69441b25a2603156ffdddf1"
-  version = "v1.1.1"
+  revision = "4cbf7e384e768b4e01799441fdf2a706a5635ae7"
+  version = "v1.2.0"
 
 [[projects]]
   digest = "1:9b117ac202b9de210a7093bca0c29d0d2424e4c9235c9e025ae0d6ef6b121c82"
@@ -247,12 +247,15 @@
   revision = "4030bb1f1f0c35b30ca7009e9ebd06849dd45306"
 
 [[projects]]
-  digest = "1:fb9f5147a9d6fc69057d05b0739bcd79562c55db143c3bdacfe1c9c6129461f6"
+  digest = "1:fd4d1f4c2d75aee3833ee7d8ef11fcf42ddec3c63d1819548288c3d868d6eb14"
   name = "github.com/googleapis/gax-go"
-  packages = ["."]
+  packages = [
+    ".",
+    "v2",
+  ]
   pruneopts = "NUT"
-  revision = "b001040cd31805261cbd978842099e326dfa857b"
-  version = "v2.0.2"
+  revision = "c8a15bac9b9fe955bd9f900272f9a306465d28cf"
+  version = "v2.0.3"
 
 [[projects]]
   digest = "1:5ec3be1c7884398947314546ba477a5c4a56ceab97f0cc551d7fabfe4e4b1067"
@@ -339,11 +342,11 @@
   version = "v1.0"
 
 [[projects]]
-  digest = "1:ac6d01547ec4f7f673311b4663909269bfb8249952de3279799289467837c3cc"
+  digest = "1:1f2aebae7e7c856562355ec0198d8ca2fa222fb05e5b1b66632a1fce39631885"
   name = "github.com/jmespath/go-jmespath"
   packages = ["."]
   pruneopts = "NUT"
-  revision = "0b12d6b5"
+  revision = "c2b33e84"
 
 [[projects]]
   digest = "1:6b1eae4bb93e5ccd23cb09d1e005ecb391316d27701b7a5264f8555a6e2f3d87"
@@ -370,18 +373,11 @@
   version = "v1.0.1"
 
 [[projects]]
-  digest = "1:d572b3bb05f19ba06398e950dadeb4e2f9fe2ab08be55440d961b0625f49ec31"
+  digest = "1:cdc5cfc04dd0b98f86433207fe6d9879757c46734441a08886acc11251c7ed4a"
   name = "github.com/onsi/ginkgo"
   packages = [
     ".",
     "config",
-    "extensions/table",
-    "ginkgo/convert",
-    "ginkgo/interrupthandler",
-    "ginkgo/nodot",
-    "ginkgo/testrunner",
-    "ginkgo/testsuite",
-    "ginkgo/watch",
     "internal/codelocation",
     "internal/containernode",
     "internal/failer",
@@ -404,14 +400,11 @@
   version = "v1.7.0"
 
 [[projects]]
-  digest = "1:c1f231e749cfbfb59870c4399faf664dd2fb8d7350569149eddaf526450b51c9"
+  digest = "1:0db10c512b410a1ecd8845e31db52622c08b76198f7ab76afb25319c84a7fd4b"
   name = "github.com/onsi/gomega"
   packages = [
     ".",
     "format",
-    "gbytes",
-    "gexec",
-    "ghttp",
     "internal/assertion",
     "internal/asyncassertion",
     "internal/oraclematcher",
@@ -457,7 +450,7 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:06375f3b602de9c99fa99b8484f0e949fd5273e6e9c6592b5a0dd4cd9085f3ea"
+  digest = "1:4340e7fba4a17b3c5c8c874698eae0db8573668bfa541903bd6a654915d6b2bb"
   name = "github.com/prometheus/common"
   packages = [
     "expfmt",
@@ -465,11 +458,11 @@
     "model",
   ]
   pruneopts = "NUT"
-  revision = "4724e9255275ce38f7179b2478abeae4e28c904f"
+  revision = "b1c43a6df3aedba268353d940b5974f05037ed5c"
 
 [[projects]]
   branch = "master"
-  digest = "1:102dea0c03a915acfc634b7c67f2662012b5483b56d9025e33f5188e112759b6"
+  digest = "1:21971c48d2d34cf633e1898e60bb968eb046a42010ebeb73c8733d7b610cbf59"
   name = "github.com/prometheus/procfs"
   packages = [
     ".",
@@ -478,7 +471,7 @@
     "xfs",
   ]
   pruneopts = "NUT"
-  revision = "1dc9a6cbc91aacc3e8b2d63db4d2e957a5394ac4"
+  revision = "b1a0a9a36d7453ba0f62578b99712f3a6c5f82d1"
 
 [[projects]]
   digest = "1:9dfe20a82800ffcf0a2bde15beba44cc6d6f6cf1d003420ecc8ad0ac78300d70"
@@ -607,11 +600,11 @@
     "ssh/terminal",
   ]
   pruneopts = "NUT"
-  revision = "505ab145d0a99da450461ae2c1a9f6cd10d1f447"
+  revision = "ff983b9c42bc9fbf91556e191cc8efb585c16908"
 
 [[projects]]
   branch = "master"
-  digest = "1:5ac1e0c3979cd33b29af4d61e7a5fd97d12336d0e8a737a56f7dad5f8d7b7b97"
+  digest = "1:1e3d40360b710aa4d650c83efedc986e447ff35e2ba86a15ff5add14e15c9b45"
   name = "golang.org/x/net"
   packages = [
     "context",
@@ -627,7 +620,7 @@
     "trace",
   ]
   pruneopts = "NUT"
-  revision = "610586996380ceef02dd726cc09df7e00a3f8e56"
+  revision = "927f97764cc334a6575f4b7a1584a147864d5723"
 
 [[projects]]
   branch = "master"
@@ -645,14 +638,14 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:d504c2e2a9d57c644347bac08e4e883399a158510e260d21b8ab6b8ea5ef63d5"
+  digest = "1:07aaaa686ca4f19afc6a85c83991253218d1582fb536078ae2fcde1df0d0ec91"
   name = "golang.org/x/sys"
   packages = [
     "unix",
     "windows",
   ]
   pruneopts = "NUT"
-  revision = "70b957f3b65e069b4930ea94e2721eefa0f8f695"
+  revision = "82a175fd1598e8a172e58ebdf5ed262bb29129e5"
 
 [[projects]]
   digest = "1:8a12cbc891b7130d3f660f8a309e5c0b083f831e6ac38cdaa1f12e63c12d6bea"
@@ -698,7 +691,6 @@
   revision = "85acf8d2951cb2a3bde7632f9ff273ef0379bcbd"
 
 [[projects]]
-  branch = "master"
   digest = "1:23d9fc277640dc6c36702437a57f0ee033b9f7c9f05a7a425abc7df28f6dd259"
   name = "google.golang.org/api"
   packages = [
@@ -714,10 +706,11 @@
     "transport/http/internal/propagation",
   ]
   pruneopts = "NUT"
-  revision = "1a5ef82f9af45ef51c486291ef2b0a16d82fdb95"
+  revision = "19e022d8cf43ce81f046bae8cc18c5397cc7732f"
+  version = "v0.1.0"
 
 [[projects]]
-  digest = "1:b63b351b57e64ae8aec1af030dc5e74a2676fcda62102f006ae4411fac1b04c8"
+  digest = "1:d395d49d784dd3a11938a3e85091b6570664aa90ff2767a626565c6c130fa7e9"
   name = "google.golang.org/appengine"
   packages = [
     ".",
@@ -732,8 +725,8 @@
     "urlfetch",
   ]
   pruneopts = "NUT"
-  revision = "4a4468ece617fc8205e99368fa2200e9d1fad421"
-  version = "v1.3.0"
+  revision = "e9657d882bb81064595ca3b56cbe2546bbabf7b1"
+  version = "v1.4.0"
 
 [[projects]]
   branch = "master"
@@ -746,7 +739,7 @@
     "googleapis/rpc/status",
   ]
   pruneopts = "NUT"
-  revision = "bd91e49a0898e27abb88c339b432fa53d7497ac0"
+  revision = "bd9b4fb69e2ffd37621a6caa54dcbead29b546f2"
 
 [[projects]]
   digest = "1:3f21220da2c9af37c32adb314f1c609a6bf8548d5801bf43b95386af19c148bd"
@@ -797,14 +790,6 @@
   pruneopts = "NUT"
   revision = "c2828203cd70a50dcccfb2761f8b1f8ceef9a8e9"
   source = "https://github.com/fsnotify/fsnotify.git"
-  version = "v1.4.7"
-
-[[projects]]
-  digest = "1:1b91ae0dc69a41d4c2ed23ea5cffb721ea63f5037ca4b81e6d6771fbb8f45129"
-  name = "gopkg.in/fsnotify/fsnotify.v1"
-  packages = ["."]
-  pruneopts = "NUT"
-  revision = "c2828203cd70a50dcccfb2761f8b1f8ceef9a8e9"
   version = "v1.4.7"
 
 [[projects]]
@@ -862,47 +847,14 @@
     "github.com/gophercloud/gophercloud/pagination",
     "github.com/gophercloud/gophercloud/testhelper",
     "github.com/gophercloud/gophercloud/testhelper/client",
-    "github.com/hpcloud/tail",
-    "github.com/hpcloud/tail/ratelimiter",
-    "github.com/hpcloud/tail/util",
-    "github.com/hpcloud/tail/watch",
-    "github.com/hpcloud/tail/winfile",
     "github.com/onsi/ginkgo",
-    "github.com/onsi/ginkgo/config",
-    "github.com/onsi/ginkgo/extensions/table",
-    "github.com/onsi/ginkgo/ginkgo/convert",
-    "github.com/onsi/ginkgo/ginkgo/interrupthandler",
-    "github.com/onsi/ginkgo/ginkgo/nodot",
-    "github.com/onsi/ginkgo/ginkgo/testrunner",
-    "github.com/onsi/ginkgo/ginkgo/testsuite",
-    "github.com/onsi/ginkgo/ginkgo/watch",
-    "github.com/onsi/ginkgo/internal/codelocation",
-    "github.com/onsi/ginkgo/internal/containernode",
-    "github.com/onsi/ginkgo/internal/failer",
-    "github.com/onsi/ginkgo/internal/leafnodes",
-    "github.com/onsi/ginkgo/internal/remote",
-    "github.com/onsi/ginkgo/internal/spec",
-    "github.com/onsi/ginkgo/internal/spec_iterator",
-    "github.com/onsi/ginkgo/internal/specrunner",
-    "github.com/onsi/ginkgo/internal/suite",
-    "github.com/onsi/ginkgo/internal/testingtproxy",
-    "github.com/onsi/ginkgo/internal/writer",
-    "github.com/onsi/ginkgo/reporters",
-    "github.com/onsi/ginkgo/reporters/stenographer",
-    "github.com/onsi/ginkgo/reporters/stenographer/support/go-colorable",
-    "github.com/onsi/ginkgo/reporters/stenographer/support/go-isatty",
-    "github.com/onsi/ginkgo/types",
     "github.com/onsi/gomega",
-    "github.com/onsi/gomega/gbytes",
-    "github.com/onsi/gomega/gexec",
-    "github.com/onsi/gomega/ghttp",
+    "github.com/prometheus/client_golang/prometheus",
+    "github.com/prometheus/client_golang/prometheus/promhttp",
     "github.com/robfig/cron",
     "github.com/sirupsen/logrus",
     "github.com/spf13/cobra",
-    "golang.org/x/sys/unix",
     "google.golang.org/api/iterator",
-    "gopkg.in/fsnotify/fsnotify.v1",
-    "gopkg.in/tomb.v1",
   ]
   solver-name = "gps-cdcl"
   solver-version = 1

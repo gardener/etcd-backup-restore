@@ -22,6 +22,7 @@ import (
 	"sync/atomic"
 
 	"github.com/gardener/etcd-backup-restore/pkg/initializer"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/sirupsen/logrus"
 )
 
@@ -79,6 +80,7 @@ func (h *HTTPHandler) RegisterHandler() {
 	mux.HandleFunc("/initialization/start", h.serveInitialize)
 	mux.HandleFunc("/initialization/status", h.serveInitializationStatus)
 	mux.HandleFunc("/healthz", h.serveHealthz)
+	mux.Handle("/metrics", promhttp.Handler())
 
 	h.server = &http.Server{
 		Addr:    fmt.Sprintf(":%d", h.Port),
