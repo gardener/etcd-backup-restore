@@ -143,12 +143,22 @@ func (ssr *Snapshotter) stop() {
 		ssr.deltaSnapshotTimer.Stop()
 		ssr.deltaSnapshotTimer = nil
 	}
-	if ssr.cancelWatch != nil {
-		ssr.cancelWatch()
-	}
+	ssr.closeEtcdClient()
 
 	ssr.SsrState = SnapshotterInactive
 	ssr.SsrStateMutex.Unlock()
+}
+
+func (ssr *Snapshotter) closeEtcdClient() {
+	if ssr.cancelWatch != nil {
+		ssr.cancelWatch()
+	}
+	if ssr.etcdClient != nil {
+		if err := ssr.etcdClient.Close(); err != nil {
+			ssr.logger.Warnf("Error while closing etcd client connection, %v", err)
+		}
+		ssr.etcdClient = nil
+	}
 }
 
 // TakeFullSnapshotAndResetTimer takes a full snapshot and resets the full snapshot
@@ -183,6 +193,9 @@ func (ssr *Snapshotter) TakeFullSnapshotAndResetTimer() error {
 // It basically will connect to etcd. Then ask for snapshot. And finally
 // store it to underlying snapstore on the fly.
 func (ssr *Snapshotter) takeFullSnapshot() error {
+	// close previous watch and client.
+	ssr.closeEtcdClient()
+
 	client, err := etcdutil.GetTLSClientForEtcd(ssr.config.tlsConfig)
 	if err != nil {
 		return &errors.EtcdError{
@@ -240,14 +253,14 @@ func (ssr *Snapshotter) takeFullSnapshot() error {
 		return nil
 	}
 
-	//make event array empty as any event prior to full snapshot should not be uploaded in delta.
+	// make event array empty as any event prior to full snapshot should not be uploaded in delta.
 	ssr.events = []*event{}
 	ssr.eventMemory = 0
-	ssr.cancelWatch() // cancel previous watch
 	watchCtx, cancelWatch := context.WithCancel(context.TODO())
 	ssr.cancelWatch = cancelWatch
+	ssr.etcdClient = client
 	ssr.watchCh = client.Watch(watchCtx, "", clientv3.WithPrefix(), clientv3.WithRev(ssr.prevSnapshot.LastRevision+1))
-	ssr.logger.Infof("Applied watch on etcd from revision: %08d", ssr.prevSnapshot.LastRevision+1)
+	ssr.logger.Infof("Applied watch on etcd from revision: %d", ssr.prevSnapshot.LastRevision+1)
 
 	return nil
 }
