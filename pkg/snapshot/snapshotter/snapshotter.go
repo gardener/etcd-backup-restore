@@ -50,8 +50,7 @@ func NewSnapshotterConfig(schedule string, store snapstore.SnapStore, maxBackups
 		maxBackups = DefaultMaxBackups
 	}
 	if deltaSnapshotIntervalSeconds < 1 {
-		logrus.Infof("Found delta snapshot interval %d second less than 1 second. Setting it to default: %d ", deltaSnapshotIntervalSeconds, DefaultDeltaSnapshotIntervalSeconds)
-		deltaSnapshotIntervalSeconds = DefaultDeltaSnapshotIntervalSeconds
+		logrus.Infof("Found delta snapshot interval %d second less than 1 second. Disabling delta snapshotting. ", deltaSnapshotIntervalSeconds)
 	}
 	if deltaSnapshotMemoryLimit < 1 {
 		logrus.Infof("Found delta snapshot memory limit %d bytes less than 1 byte. Setting it to default: %d ", deltaSnapshotMemoryLimit, DefaultDeltaSnapMemoryLimit)
@@ -104,12 +103,17 @@ func (ssr *Snapshotter) Run(stopCh <-chan struct{}, startFullSnapshot bool) erro
 	if startFullSnapshot {
 		ssr.fullSnapshotTimer = time.NewTimer(0)
 	}
-	ssr.deltaSnapshotTimer = time.NewTimer(time.Duration(ssr.config.deltaSnapshotIntervalSeconds))
+	if ssr.config.deltaSnapshotIntervalSeconds < 1 {
+		ssr.deltaSnapshotTimer = time.NewTimer(time.Duration(DefaultDeltaSnapshotIntervalSeconds))
+	} else {
+		ssr.deltaSnapshotTimer = time.NewTimer(time.Duration(ssr.config.deltaSnapshotIntervalSeconds))
+	}
+
+	defer ssr.stop()
 	if err := ssr.snapshotEventHandler(stopCh); err != nil {
 		return err
 	}
 
-	defer ssr.stop()
 	return nil
 }
 
@@ -138,7 +142,10 @@ func (ssr *Snapshotter) stop() {
 		ssr.deltaSnapshotTimer.Stop()
 		ssr.deltaSnapshotTimer = nil
 	}
-	ssr.cancelWatch()
+	if ssr.cancelWatch != nil {
+		ssr.cancelWatch()
+	}
+
 	ssr.SsrState = SnapshotterInactive
 	ssr.SsrStateMutex.Unlock()
 }
@@ -225,6 +232,11 @@ func (ssr *Snapshotter) takeFullSnapshot() error {
 		metrics.LatestSnapshotTimestamp.With(prometheus.Labels{metrics.LabelKind: ssr.prevSnapshot.Kind}).Set(float64(ssr.prevSnapshot.CreatedOn.Unix()))
 
 		ssr.logger.Infof("Successfully saved full snapshot at: %s", path.Join(s.SnapDir, s.SnapName))
+	}
+
+	if ssr.config.deltaSnapshotIntervalSeconds < 1 {
+		// return without creating a watch on events
+		return nil
 	}
 
 	//make event array empty as any event prior to full snapshot should not be uploaded in delta.
@@ -338,8 +350,10 @@ func (ssr *Snapshotter) snapshotEventHandler(stopCh <-chan struct{}) error {
 				return err
 			}
 		case <-ssr.deltaSnapshotTimer.C:
-			if err := ssr.takeDeltaSnapshotAndResetTimer(); err != nil {
-				return err
+			if ssr.config.deltaSnapshotIntervalSeconds >= 1 {
+				if err := ssr.takeDeltaSnapshotAndResetTimer(); err != nil {
+					return err
+				}
 			}
 		case wr, ok := <-ssr.watchCh:
 			if !ok {

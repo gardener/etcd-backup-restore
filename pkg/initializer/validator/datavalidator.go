@@ -350,15 +350,18 @@ func (d *DataValidator) CheckRevisionConsistency() error {
 		return fmt.Errorf("unable to fetch snapstore: %v", err)
 	}
 
+	var latestSnapshotRevision int64
 	fullSnap, deltaSnaps, err := miscellaneous.GetLatestFullSnapshotAndDeltaSnapList(store)
 	if err != nil {
 		return fmt.Errorf("unable to get snapshots from store: %v", err)
 	}
-	var latestSnapshotRevision int64
-	if len(deltaSnaps) != 0 {
-		latestSnapshotRevision = deltaSnaps[len(deltaSnaps)-1].LastRevision
-	} else {
+	if fullSnap == nil {
+		logger.Infof("No snapshot found.")
+		return nil
+	} else if len(deltaSnaps) == 0 {
 		latestSnapshotRevision = fullSnap.LastRevision
+	} else {
+		latestSnapshotRevision = deltaSnaps[len(deltaSnaps)-1].LastRevision
 	}
 
 	if etcdRevision < latestSnapshotRevision {
