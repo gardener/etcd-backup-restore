@@ -20,6 +20,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"math"
 	"path"
 	"sync"
@@ -306,9 +307,9 @@ func (ssr *Snapshotter) takeDeltaSnapshot() error {
 	}
 	data = hash.Sum(data)
 
-	dataReader := bytes.NewReader(data)
+	sumReader := bytes.NewReader(data)
 	startTime := time.Now()
-	if err := ssr.config.store.Save(*snap, dataReader); err != nil {
+	if err := ssr.config.store.Save(*snap, ioutil.NopCloser(sumReader)); err != nil {
 		timeTaken := time.Now().Sub(startTime).Seconds()
 		metrics.SnapshotDurationSeconds.With(prometheus.Labels{metrics.LabelKind: snapstore.SnapshotKindDelta, metrics.LabelSucceeded: metrics.ValueSucceededFalse}).Observe(timeTaken)
 		ssr.logger.Errorf("Error saving delta snapshots. %v", err)

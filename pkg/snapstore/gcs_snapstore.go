@@ -77,16 +77,18 @@ func (s *GCSSnapStore) Fetch(snap Snapshot) (io.ReadCloser, error) {
 }
 
 // Save will write the snapshot to store.
-func (s *GCSSnapStore) Save(snap Snapshot, r io.Reader) error {
+func (s *GCSSnapStore) Save(snap Snapshot, rc io.ReadCloser) error {
 	tmpfile, err := ioutil.TempFile(s.tempDir, tmpBackupFilePrefix)
 	if err != nil {
+		rc.Close()
 		return fmt.Errorf("failed to create snapshot tempfile: %v", err)
 	}
 	defer func() {
 		tmpfile.Close()
 		os.Remove(tmpfile.Name())
 	}()
-	size, err := io.Copy(tmpfile, r)
+	size, err := io.Copy(tmpfile, rc)
+	rc.Close()
 	if err != nil {
 		return fmt.Errorf("failed to save snapshot to tmpfile: %v", err)
 	}
