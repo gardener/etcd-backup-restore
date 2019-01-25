@@ -76,7 +76,7 @@ func (d *DataValidator) backendPath() string { return filepath.Join(d.snapDir(),
 //			- If data directory structure is invalid return DataDirectoryInvStruct status.
 //       * Check for data corruption.
 //			- return data directory corruption status.
-func (d *DataValidator) Validate() (DataDirStatus, error) {
+func (d *DataValidator) Validate(mode Mode) (DataDirStatus, error) {
 	dataDir := d.Config.DataDir
 	dirExists, err := directoryExist(dataDir)
 	if err != nil {
@@ -106,10 +106,14 @@ func (d *DataValidator) Validate() (DataDirStatus, error) {
 		d.Logger.Info("Skipping check for revision consistency, since no snapstore configured.")
 	}
 
-	d.Logger.Info("Checking for data directory files corruption...")
-	if err = d.checkForDataCorruption(); err != nil {
-		d.Logger.Infof("Data directory corrupt. %v", err)
-		return DataDirectoryCorrupt, nil
+	switch mode {
+	case Full:
+		d.Logger.Info("Checking for data directory files corruption...")
+		err = d.checkForDataCorruption()
+		if err != nil {
+			d.Logger.Infof("Data directory corrupt. %v", err)
+			return DataDirectoryCorrupt, nil
+		}
 	}
 
 	d.Logger.Info("Data directory valid.")

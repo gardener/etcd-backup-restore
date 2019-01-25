@@ -42,9 +42,9 @@ const (
 //       * Check if Latest snapshot available.
 //		   - Try to perform an Etcd data restoration from the latest snapshot.
 //		   - No snapshots are available, start etcd as a fresh installation.
-func (e *EtcdInitializer) Initialize() error {
+func (e *EtcdInitializer) Initialize(mode validator.Mode) error {
 	start := time.Now()
-	dataDirStatus, err := e.Validator.Validate()
+	dataDirStatus, err := e.Validator.Validate(mode)
 	if err != nil && dataDirStatus != validator.DataDirectoryNotExist {
 		metrics.ValidationDurationSeconds.With(prometheus.Labels{metrics.LabelSucceeded: metrics.ValueSucceededFalse}).Observe(time.Now().Sub(start).Seconds())
 		err = fmt.Errorf("error while initializing: %v", err)

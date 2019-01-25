@@ -45,7 +45,7 @@ var _ = Describe("Running Datavalidator", func() {
 			tempDir := fmt.Sprintf("%s.%s", restoreDataDir, "temp")
 			err = os.Rename(restoreDataDir, tempDir)
 			Expect(err).ShouldNot(HaveOccurred())
-			dataDirStatus, err := validator.Validate()
+			dataDirStatus, err := validator.Validate(Full)
 			Expect(err).Should(HaveOccurred())
 			Expect(int(dataDirStatus)).Should(SatisfyAny(Equal(DataDirectoryNotExist), Equal(DataDirectoryError)))
 			err = os.Rename(tempDir, restoreDataDir)
@@ -61,7 +61,7 @@ var _ = Describe("Running Datavalidator", func() {
 					tempDir := fmt.Sprintf("%s.%s", memberDir, "temp")
 					err = os.Rename(memberDir, tempDir)
 					Expect(err).ShouldNot(HaveOccurred())
-					dataDirStatus, err := validator.Validate()
+					dataDirStatus, err := validator.Validate(Full)
 					Expect(err).ShouldNot(HaveOccurred())
 					Expect(int(dataDirStatus)).Should(SatisfyAny(Equal(DataDirectoryInvStruct), Equal(DataDirectoryError)))
 					err = os.Rename(tempDir, memberDir)
@@ -75,7 +75,7 @@ var _ = Describe("Running Datavalidator", func() {
 						tempDir := fmt.Sprintf("%s.%s", snapDir, "temp")
 						err = os.Rename(snapDir, tempDir)
 						Expect(err).ShouldNot(HaveOccurred())
-						dataDirStatus, err := validator.Validate()
+						dataDirStatus, err := validator.Validate(Full)
 						Expect(err).ShouldNot(HaveOccurred())
 						Expect(int(dataDirStatus)).Should(SatisfyAny(Equal(DataDirectoryInvStruct), Equal(DataDirectoryError)))
 						err = os.Rename(tempDir, snapDir)
@@ -88,10 +88,28 @@ var _ = Describe("Running Datavalidator", func() {
 						tempDir := fmt.Sprintf("%s.%s", walDir, "temp")
 						err = os.Rename(walDir, tempDir)
 						Expect(err).ShouldNot(HaveOccurred())
-						dataDirStatus, err := validator.Validate()
+						dataDirStatus, err := validator.Validate(Full)
 						Expect(err).ShouldNot(HaveOccurred())
 						Expect(int(dataDirStatus)).Should(SatisfyAny(Equal(DataDirectoryInvStruct), Equal(DataDirectoryError)))
 						err = os.Rename(tempDir, walDir)
+						Expect(err).ShouldNot(HaveOccurred())
+					})
+				})
+
+				Context("with empty wal directory and data validation in sanity mode", func() {
+					It("should return DataDirStatus as DataDirectoryValid, and nil error", func() {
+						walDir := path.Join(restoreDataDir, "member", "wal")
+						tempWalDir := fmt.Sprintf("%s.%s", walDir, "temp")
+						err = os.Rename(walDir, tempWalDir)
+						Expect(err).ShouldNot(HaveOccurred())
+						err = os.Mkdir(walDir, 0700)
+						Expect(err).ShouldNot(HaveOccurred())
+						dataDirStatus, err := validator.Validate(Sanity)
+						Expect(err).ShouldNot(HaveOccurred())
+						Expect(int(dataDirStatus)).Should(Equal(DataDirectoryValid))
+						err = os.RemoveAll(walDir)
+						Expect(err).ShouldNot(HaveOccurred())
+						err = os.Rename(tempWalDir, walDir)
 						Expect(err).ShouldNot(HaveOccurred())
 					})
 				})
@@ -120,7 +138,7 @@ var _ = Describe("Running Datavalidator", func() {
 					// newEtcdRevision: current revision number on etcd db
 					Expect(etcdRevision).To(BeNumerically(">=", newEtcdRevision))
 
-					dataDirStatus, err := validator.Validate()
+					dataDirStatus, err := validator.Validate(Full)
 					Expect(err).ShouldNot(HaveOccurred())
 					Expect(int(dataDirStatus)).Should(SatisfyAny(Equal(RevisionConsistencyError), Equal(DataDirectoryError)))
 
@@ -156,7 +174,7 @@ var _ = Describe("Running Datavalidator", func() {
 							_, err = file.Write(byteSlice)
 							Expect(err).ShouldNot(HaveOccurred())
 
-							dataDirStatus, err := validator.Validate()
+							dataDirStatus, err := validator.Validate(Full)
 							Expect(err).ShouldNot(HaveOccurred())
 							Expect(int(dataDirStatus)).Should(SatisfyAny(Equal(DataDirectoryCorrupt), Equal(DataDirectoryError), Equal(RevisionConsistencyError)))
 
@@ -170,7 +188,7 @@ var _ = Describe("Running Datavalidator", func() {
 				})
 				Context("with clean data directory", func() {
 					It("should return DataDirStatus as DataDirectoryValid, and nil error", func() {
-						dataDirStatus, err := validator.Validate()
+						dataDirStatus, err := validator.Validate(Full)
 						Expect(err).ShouldNot(HaveOccurred())
 						Expect(int(dataDirStatus)).Should(Equal(DataDirectoryValid))
 					})

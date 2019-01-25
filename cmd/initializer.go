@@ -20,6 +20,7 @@ import (
 
 	"github.com/coreos/etcd/pkg/types"
 	"github.com/gardener/etcd-backup-restore/pkg/initializer"
+	"github.com/gardener/etcd-backup-restore/pkg/initializer/validator"
 	"github.com/gardener/etcd-backup-restore/pkg/snapshot/restorer"
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	"github.com/sirupsen/logrus"
@@ -36,6 +37,7 @@ func NewInitializeCommand(stopCh <-chan struct{}) *cobra.Command {
 		Short: "initialize an etcd instance.",
 		Long:  fmt.Sprintf(`Initializes an etcd instance. Data directory is checked for corruption and restored in case of corruption.`),
 		Run: func(cmd *cobra.Command, args []string) {
+			var mode validator.Mode
 			logger := logrus.New()
 
 			clusterUrlsMap, err := types.NewURLsMap(restoreCluster)
@@ -46,6 +48,15 @@ func NewInitializeCommand(stopCh <-chan struct{}) *cobra.Command {
 			peerUrls, err := types.NewURLs(restorePeerURLs)
 			if err != nil {
 				logger.Fatalf("failed parsing peers urls for restore cluster: %v", err)
+			}
+
+			switch validator.Mode(validationMode) {
+			case validator.Full:
+				mode = validator.Full
+			case validator.Sanity:
+				mode = validator.Sanity
+			default:
+				logger.Fatal("validation-mode can only be one of these values [full/sanity]")
 			}
 
 			options := &restorer.RestoreOptions{
@@ -70,7 +81,7 @@ func NewInitializeCommand(stopCh <-chan struct{}) *cobra.Command {
 				}
 			}
 			etcdInitializer := initializer.NewInitializer(options, snapstoreConfig, logger)
-			err = etcdInitializer.Initialize()
+			err = etcdInitializer.Initialize(mode)
 			if err != nil {
 				logger.Fatalf("initializer failed. %v", err)
 			}
@@ -78,5 +89,10 @@ func NewInitializeCommand(stopCh <-chan struct{}) *cobra.Command {
 	}
 	initializeEtcdFlags(initializeCmd)
 	initializeSnapstoreFlags(initializeCmd)
+	initializeValidatorFlags(initializeCmd)
 	return initializeCmd
+}
+
+func initializeValidatorFlags(cmd *cobra.Command) {
+	cmd.Flags().StringVar(&validationMode, "validation-mode", string(validator.Full), "mode to do data initialization[full/sanity]")
 }
