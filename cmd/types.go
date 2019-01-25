@@ -64,6 +64,9 @@ var (
 	storagePrefix           string
 	maxParallelChunkUploads int
 	snapstoreTempDir        string
+
+	//initializer flags
+	validationMode string
 )
 
 var emptyStruct struct{}

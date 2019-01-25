@@ -41,6 +41,16 @@ const (
 	snapSuffix = ".snap"
 )
 
+// Mode is the Validation mode passed on to the DataValidator
+type Mode string
+
+const (
+	// Full Mode does complete validation including the data directory contents for corruption.
+	Full Mode = "full"
+	// Sanity Mode validates only the data revision against the revision in the backup store.
+	Sanity Mode = "sanity"
+)
+
 // Config store configuration for DataValidator.
 type Config struct {
 	DataDir         string
@@ -55,5 +65,5 @@ type DataValidator struct {
 
 // Validator is the interface for data validation actions.
 type Validator interface {
-	Validate() error
+	Validate(Mode) error
 }

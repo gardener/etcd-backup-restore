@@ -216,7 +216,7 @@ var _ = Describe("CloudBackup", func() {
 						SnapstoreConfig: snapstoreConfig,
 					},
 				}
-				dataDirStatus, err := dataValidator.Validate()
+				dataDirStatus, err := dataValidator.Validate(validator.Full)
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(dataDirStatus).Should(Equal(validator.DataDirStatus(validator.DataDirectoryValid)))
 			})
@@ -248,7 +248,7 @@ var _ = Describe("CloudBackup", func() {
 						SnapstoreConfig: snapstoreConfig,
 					},
 				}
-				dataDirStatus, err := dataValidator.Validate()
+				dataDirStatus, err := dataValidator.Validate(validator.Full)
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(dataDirStatus).Should(SatisfyAny(Equal(validator.DataDirStatus(validator.DataDirectoryCorrupt)), Equal(validator.DataDirStatus(validator.RevisionConsistencyError))))
 			})
