@@ -136,6 +136,12 @@ func (p *fakePolicy) handleContainerGetOperation(w *http.Response) error {
 
 // handleListObjectNames responds with a blob `List` response.
 func (p *fakePolicy) handleListObjects(w *http.Response) error {
+	if networkTimeoutFlag {
+		w.StatusCode = http.StatusRequestTimeout
+		w.Body = http.NoBody
+		return nil
+	}
+
 	var (
 		keys          []string
 		blobs         []blobItem
@@ -195,6 +201,12 @@ func (p *fakePolicy) handleListObjects(w *http.Response) error {
 
 // handleBlobCreateOperation responds with a blob `Put` response.
 func (p *fakePolicy) handleBlobPutOperation(w *http.Response) {
+	if networkTimeoutFlag {
+		w.StatusCode = http.StatusRequestTimeout
+		w.Body = http.NoBody
+		return
+	}
+
 	var (
 		query   = w.Request.URL.Query()
 		comp    = query.Get("comp")
@@ -248,6 +260,12 @@ func (p *fakePolicy) handleBlobPutOperation(w *http.Response) {
 
 // handleBlobGetOperation on GET request `/testContainer/testObject` responds with a `Get` response.
 func (p *fakePolicy) handleBlobGetOperation(w *http.Response) {
+	if networkTimeoutFlag {
+		w.StatusCode = http.StatusRequestTimeout
+		w.Body = http.NoBody
+		return
+	}
+
 	key := parseObjectNamefromURL(w.Request.URL)
 	if _, ok := p.objectMap[key]; ok {
 		w.StatusCode = http.StatusOK
@@ -260,6 +278,12 @@ func (p *fakePolicy) handleBlobGetOperation(w *http.Response) {
 
 // handleDeleteObject on delete request `/testContainer/testObject` responds with a `Delete` response.
 func (p *fakePolicy) handleDeleteObject(w *http.Response) {
+	if networkTimeoutFlag {
+		w.StatusCode = http.StatusRequestTimeout
+		w.Body = http.NoBody
+		return
+	}
+
 	key := parseObjectNamefromURL(w.Request.URL)
 	if _, ok := p.objectMap[key]; ok {
 		delete(p.objectMap, key)

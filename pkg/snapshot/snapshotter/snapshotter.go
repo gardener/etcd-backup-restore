@@ -171,7 +171,7 @@ func (ssr *Snapshotter) TakeFullSnapshotAndResetTimer() error {
 	} else {
 		ssr.logger.Infof("Stopping full snapshot...")
 		ssr.fullSnapshotTimer.Stop()
-		ssr.logger.Infof("Reseting full snapshot to run after %d secs.", effective.Sub(now))
+		ssr.logger.Infof("Reseting full snapshot to run after %f secs.", effective.Sub(now).Seconds())
 		ssr.fullSnapshotTimer.Reset(effective.Sub(now))
 	}
 	ssr.logger.Infof("Will take next full snapshot at time: %s", effective)

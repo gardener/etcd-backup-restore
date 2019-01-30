@@ -41,6 +41,10 @@ type mockS3Client struct {
 
 // GetObject returns the object from map for mock test
 func (m *mockS3Client) GetObject(in *s3.GetObjectInput) (*s3.GetObjectOutput, error) {
+	if networkTimeoutFlag {
+		return nil, fmt.Errorf("network timeout for GetObject()")
+	}
+
 	if m.objects[*in.Key] == nil {
 		return nil, fmt.Errorf("object not found")
 	}
@@ -51,8 +55,13 @@ func (m *mockS3Client) GetObject(in *s3.GetObjectInput) (*s3.GetObjectOutput, er
 	return &out, nil
 }
 
+/*
 // PutObject adds the object to the map for mock test
 func (m *mockS3Client) PutObject(in *s3.PutObjectInput) (*s3.PutObjectOutput, error) {
+	if networkTimeoutFlag {
+		return nil, fmt.Errorf("network timeout for PutObject()")
+	}
+
 	size, err := in.Body.Seek(0, io.SeekEnd)
 	if err != nil {
 		return nil, fmt.Errorf("failed to seek at the end of body %v", err)
@@ -68,6 +77,7 @@ func (m *mockS3Client) PutObject(in *s3.PutObjectInput) (*s3.PutObjectOutput, er
 	out := s3.PutObjectOutput{}
 	return &out, nil
 }
+*/
 
 func (m *mockS3Client) CreateMultipartUploadWithContext(ctx aws.Context, in *s3.CreateMultipartUploadInput, opts ...request.Option) (*s3.CreateMultipartUploadOutput, error) {
 	uploadID := time.Now().String()
@@ -81,6 +91,10 @@ func (m *mockS3Client) CreateMultipartUploadWithContext(ctx aws.Context, in *s3.
 }
 
 func (m *mockS3Client) UploadPartWithContext(ctx aws.Context, in *s3.UploadPartInput, opts ...request.Option) (*s3.UploadPartOutput, error) {
+	if networkTimeoutFlag {
+		return nil, fmt.Errorf("network timeout for UploadPartWithContext()")
+	}
+
 	if *in.PartNumber < 0 {
 		return nil, fmt.Errorf("part number should be positive integer")
 	}
@@ -146,8 +160,13 @@ func (m *mockS3Client) AbortMultipartUploadWithContext(ctx aws.Context, in *s3.A
 	return out, nil
 }
 
+/*
 // ListObject returns the objects from map for mock test
 func (m *mockS3Client) ListObjects(in *s3.ListObjectsInput) (*s3.ListObjectsOutput, error) {
+	if networkTimeoutFlag {
+		return nil, fmt.Errorf("network timeout for ListObjects()")
+	}
+
 	var contents []*s3.Object
 	for key := range m.objects {
 		if strings.HasPrefix(key, *in.Prefix) {
@@ -165,9 +184,14 @@ func (m *mockS3Client) ListObjects(in *s3.ListObjectsInput) (*s3.ListObjectsOutp
 	}
 	return out, nil
 }
+*/
 
 // ListObject returns the objects from map for mock test
 func (m *mockS3Client) ListObjectsPages(in *s3.ListObjectsInput, callback func(*s3.ListObjectsOutput, bool) bool) error {
+	if networkTimeoutFlag {
+		return fmt.Errorf("network timeout for ListObjectsPages()")
+	}
+
 	var (
 		count    int64 = 0
 		limit    int64 = 1 // aws default is 1000.
@@ -216,6 +240,10 @@ func (m *mockS3Client) ListObjectsPages(in *s3.ListObjectsInput, callback func(*
 
 // DeleteObject deletes the object from map for mock test
 func (m *mockS3Client) DeleteObject(in *s3.DeleteObjectInput) (*s3.DeleteObjectOutput, error) {
+	if networkTimeoutFlag {
+		return nil, fmt.Errorf("network timeout for DeleteObject()")
+	}
+
 	delete(m.objects, *in.Key)
 	return &s3.DeleteObjectOutput{}, nil
 }

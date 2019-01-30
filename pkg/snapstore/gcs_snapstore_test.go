@@ -51,6 +51,10 @@ func (m *mockBucketHandle) Object(name string) stiface.ObjectHandle {
 }
 
 func (m *mockBucketHandle) Objects(context.Context, *storage.Query) stiface.ObjectIterator {
+	if networkTimeoutFlag {
+		return nil
+	}
+
 	var keys []string
 	for key, _ := range m.client.objects {
 		keys = append(keys, key)
@@ -66,6 +70,10 @@ type mockObjectHandle struct {
 }
 
 func (m *mockObjectHandle) NewReader(ctx context.Context) (stiface.Reader, error) {
+	if networkTimeoutFlag {
+		return nil, fmt.Errorf("network timeout for NewReader()")
+	}
+
 	if value, ok := m.client.objects[m.object]; ok {
 		return &mockObjectReader{reader: ioutil.NopCloser(bytes.NewReader(*value))}, nil
 	}
@@ -73,6 +81,9 @@ func (m *mockObjectHandle) NewReader(ctx context.Context) (stiface.Reader, error
 }
 
 func (m *mockObjectHandle) NewWriter(context.Context) stiface.Writer {
+	if networkTimeoutFlag {
+		return nil
+	}
 	return &mockObjectWriter{object: m.object, client: m.client}
 }
 
@@ -85,6 +96,10 @@ func (m *mockObjectHandle) ComposerFrom(objects ...stiface.ObjectHandle) stiface
 }
 
 func (m *mockObjectHandle) Delete(context.Context) error {
+	if networkTimeoutFlag {
+		return fmt.Errorf("network timeout for Delete()")
+	}
+
 	if _, ok := m.client.objects[m.object]; ok {
 		delete(m.client.objects, m.object)
 		return nil

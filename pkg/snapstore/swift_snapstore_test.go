@@ -61,6 +61,11 @@ func initializeMockSwiftServer(t *testing.T) {
 // handleCreateTextObject creates an HTTP handler at `/testContainer/testObject` on the test handler mux
 // that responds with a `Create` response.
 func handleCreateTextObject(w http.ResponseWriter, r *http.Request) {
+	if networkTimeoutFlag {
+		w.WriteHeader(http.StatusRequestTimeout)
+		return
+	}
+
 	var (
 		content []byte
 		err     error
@@ -94,6 +99,11 @@ func handleCreateTextObject(w http.ResponseWriter, r *http.Request) {
 // handleDownloadObject creates an HTTP handler at `/testContainer/testObject` on the test handler mux that
 // responds with a `Download` response.
 func handleDownloadObject(w http.ResponseWriter, r *http.Request) {
+	if networkTimeoutFlag {
+		w.WriteHeader(http.StatusRequestTimeout)
+		return
+	}
+
 	prefix := parseObjectNamefromURL(r.URL)
 	var contents []byte
 	for key, val := range objectMap {
@@ -109,6 +119,11 @@ func handleDownloadObject(w http.ResponseWriter, r *http.Request) {
 // handleListObjectNames creates an HTTP handler at `/testContainer` on the test handler mux that
 // responds with a `List` response when only object names are requested.
 func handleListObjectNames(w http.ResponseWriter, r *http.Request) {
+	if networkTimeoutFlag {
+		w.WriteHeader(http.StatusRequestTimeout)
+		return
+	}
+
 	marker := r.URL.Query().Get("marker")
 
 	// To store the keys in slice in sorted order
@@ -132,6 +147,11 @@ func handleListObjectNames(w http.ResponseWriter, r *http.Request) {
 // handleDeleteObject creates an HTTP handler at `/testContainer/testObject` on the test handler mux that
 // responds with a `Delete` response.
 func handleDeleteObject(w http.ResponseWriter, r *http.Request) {
+	if networkTimeoutFlag {
+		w.WriteHeader(http.StatusRequestTimeout)
+		return
+	}
+
 	key := parseObjectNamefromURL(r.URL)
 	if _, ok := objectMap[key]; ok {
 		delete(objectMap, key)

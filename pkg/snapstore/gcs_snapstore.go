@@ -167,6 +167,9 @@ func (s *GCSSnapStore) uploadComponent(snap *Snapshot, file *os.File, offset, ch
 	ctx, cancel := context.WithTimeout(context.TODO(), chunkUploadTimeout)
 	defer cancel()
 	w := obj.NewWriter(ctx)
+	if w == nil {
+		return fmt.Errorf("failed to create writer for snapshot")
+	}
 	if _, err := io.Copy(w, sr); err != nil {
 		w.Close()
 		return err
@@ -197,6 +200,9 @@ func (s *GCSSnapStore) componentUploader(wg *sync.WaitGroup, stopCh <-chan struc
 // List will list the snapshots from store.
 func (s *GCSSnapStore) List() (SnapList, error) {
 	it := s.client.Bucket(s.bucket).Objects(context.TODO(), &storage.Query{Prefix: s.prefix})
+	if it == nil {
+		return nil, fmt.Errorf("failed listing objects")
+	}
 
 	var attrs []*storage.ObjectAttrs
 	for {

@@ -90,10 +90,14 @@ var _ = Describe("Snapstore", func() {
 		}
 	})
 
+	AfterEach(func() {
+		networkTimeoutFlag = false
+	})
+
 	Describe("Fetch operation", func() {
 		It("fetches snapshot", func() {
 			for key, snapStore := range snapstores {
-				logrus.Infof("Running tests for %s", key)
+				logrus.Infof("Running test for Fetch() for %s", key)
 				resetObjectMap()
 				objectMap[path.Join(prefix, snap1.SnapDir, snap1.SnapName)] = &expectedVal1
 				objectMap[path.Join(prefix, snap2.SnapDir, snap2.SnapName)] = &expectedVal2
@@ -105,18 +109,35 @@ var _ = Describe("Snapstore", func() {
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(buf.Bytes()).To(Equal(expectedVal1))
 			}
+			networkTimeoutFlag = true
+			for key, snapStore := range snapstores {
+				logrus.Infof("Running negative test for Fetch() for %s", key)
+				resetObjectMap()
+				objectMap[path.Join(prefix, snap1.SnapDir, snap1.SnapName)] = &expectedVal1
+				objectMap[path.Join(prefix, snap2.SnapDir, snap2.SnapName)] = &expectedVal2
+				_, err := snapStore.Fetch(snap1)
+				Expect(err).Should(HaveOccurred())
+			}
 		})
 	})
 
 	Describe("Save snapshot", func() {
 		It("saves snapshot", func() {
 			for key, snapStore := range snapstores {
-				logrus.Infof("Running tests for %s", key)
+				logrus.Infof("Running test for Save() for %s", key)
 				resetObjectMap()
 				dummyData := make([]byte, 6*1024*1024)
 				err := snapStore.Save(snap3, bytes.NewReader(dummyData))
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(len(objectMap)).Should(BeNumerically(">", 0))
+			}
+			networkTimeoutFlag = true
+			for key, snapStore := range snapstores {
+				logrus.Infof("Running negative test for Save() for %s", key)
+				resetObjectMap()
+				dummyData := make([]byte, 6*1024*1024)
+				err := snapStore.Save(snap3, bytes.NewReader(dummyData))
+				Expect(err).Should(HaveOccurred())
 			}
 		})
 	})
@@ -124,7 +145,7 @@ var _ = Describe("Snapstore", func() {
 	Describe("List snapshot", func() {
 		It("gives sorted list of snapshot", func() {
 			for key, snapStore := range snapstores {
-				logrus.Infof("Running tests for %s", key)
+				logrus.Infof("Running test for List() for %s", key)
 				resetObjectMap()
 				objectMap[path.Join(prefix, snap1.SnapDir, snap1.SnapName)] = &expectedVal1
 				objectMap[path.Join(prefix, snap2.SnapDir, snap2.SnapName)] = &expectedVal2
@@ -133,13 +154,22 @@ var _ = Describe("Snapstore", func() {
 				Expect(snapList.Len()).To(Equal(2))
 				Expect(snapList[0].SnapName).To(Equal(snap1.SnapName))
 			}
+			networkTimeoutFlag = true
+			for key, snapStore := range snapstores {
+				logrus.Infof("Running negative test for List() for %s", key)
+				resetObjectMap()
+				objectMap[path.Join(prefix, snap1.SnapDir, snap1.SnapName)] = &expectedVal1
+				objectMap[path.Join(prefix, snap2.SnapDir, snap2.SnapName)] = &expectedVal2
+				_, err := snapStore.List()
+				Expect(err).Should(HaveOccurred())
+			}
 		})
 	})
 
 	Describe("Delete snapshot", func() {
 		It("deletes snapshot", func() {
 			for key, snapStore := range snapstores {
-				logrus.Infof("Running tests for %s", key)
+				logrus.Infof("Running test for Delete() for %s", key)
 				resetObjectMap()
 				objectMap[path.Join(prefix, snap1.SnapDir, snap1.SnapName)] = &expectedVal1
 				objectMap[path.Join(prefix, snap2.SnapDir, snap2.SnapName)] = &expectedVal2
@@ -147,6 +177,15 @@ var _ = Describe("Snapstore", func() {
 				err := snapStore.Delete(snap2)
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(len(objectMap)).To(Equal(prevLen - 1))
+			}
+			networkTimeoutFlag = true
+			for key, snapStore := range snapstores {
+				logrus.Infof("Running negative test for Delete() for %s", key)
+				resetObjectMap()
+				objectMap[path.Join(prefix, snap1.SnapDir, snap1.SnapName)] = &expectedVal1
+				objectMap[path.Join(prefix, snap2.SnapDir, snap2.SnapName)] = &expectedVal2
+				err := snapStore.Delete(snap2)
+				Expect(err).Should(HaveOccurred())
 			}
 		})
 	})

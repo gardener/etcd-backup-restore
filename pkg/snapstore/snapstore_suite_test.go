@@ -27,8 +27,9 @@ import (
 )
 
 var (
-	testObj    *testing.T
-	swiftStore snapstore.SnapStore
+	testObj            *testing.T
+	swiftStore         snapstore.SnapStore
+	networkTimeoutFlag bool = false
 )
 
 func TestSnapstore(t *testing.T) {
