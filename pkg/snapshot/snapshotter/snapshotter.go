@@ -15,12 +15,11 @@
 package snapshotter
 
 import (
-	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"math"
 	"path"
 	"sync"
@@ -295,26 +294,17 @@ func (ssr *Snapshotter) takeDeltaSnapshot() error {
 
 	snap := snapstore.NewSnapshot(snapstore.SnapshotKindDelta, ssr.prevSnapshot.LastRevision+1, ssr.events[len(ssr.events)-1].EtcdEvent.Kv.ModRevision)
 	snap.SnapDir = ssr.prevSnapshot.SnapDir
-	data, err := json.Marshal(ssr.events)
-	ssr.events = []*event{}
-	if err != nil {
-		return err
-	}
-	// compute hash
-	hash := sha256.New()
-	if _, err := hash.Write(data); err != nil {
-		return fmt.Errorf("failed to compute hash of events: %v", err)
-	}
-	data = hash.Sum(data)
-
-	sumReader := bytes.NewReader(data)
+	pr, pw := io.Pipe()
+	go jsonEncodeEvents(ssr.events, pw)
 	startTime := time.Now()
-	if err := ssr.config.store.Save(*snap, ioutil.NopCloser(sumReader)); err != nil {
+	if err := ssr.config.store.Save(*snap, pr); err != nil {
 		timeTaken := time.Now().Sub(startTime).Seconds()
 		metrics.SnapshotDurationSeconds.With(prometheus.Labels{metrics.LabelKind: snapstore.SnapshotKindDelta, metrics.LabelSucceeded: metrics.ValueSucceededFalse}).Observe(timeTaken)
 		ssr.logger.Errorf("Error saving delta snapshots. %v", err)
 		return err
 	}
+	ssr.events = []*event{}
+
 	timeTaken := time.Now().Sub(startTime).Seconds()
 	metrics.SnapshotDurationSeconds.With(prometheus.Labels{metrics.LabelKind: snapstore.SnapshotKindDelta, metrics.LabelSucceeded: metrics.ValueSucceededTrue}).Observe(timeTaken)
 	logrus.Infof("Total time to save delta snapshot: %f seconds.", timeTaken)
@@ -323,6 +313,45 @@ func (ssr *Snapshotter) takeDeltaSnapshot() error {
 	metrics.LatestSnapshotTimestamp.With(prometheus.Labels{metrics.LabelKind: ssr.prevSnapshot.Kind}).Set(float64(ssr.prevSnapshot.CreatedOn.Unix()))
 	ssr.logger.Infof("Successfully saved delta snapshot at: %s", path.Join(snap.SnapDir, snap.SnapName))
 	return nil
+}
+
+func jsonEncodeEvents(events []*event, pw *io.PipeWriter) {
+	// compute hash
+	hash := sha256.New()
+	mw := io.MultiWriter(hash, pw)
+	if len(events) == 0 {
+		pw.CloseWithError(fmt.Errorf("no event found to encode"))
+		return
+	}
+	if _, err := mw.Write([]byte("[")); err != nil {
+		pw.CloseWithError(fmt.Errorf("no event found to encode"))
+		return
+	}
+	enc := json.NewEncoder(mw)
+	if err := enc.Encode(events[0]); err != nil {
+		pw.CloseWithError(fmt.Errorf("no event found to encode"))
+		return
+	}
+	for _, e := range events[1:] {
+		if _, err := mw.Write([]byte(",")); err != nil {
+			pw.CloseWithError(fmt.Errorf("no event found to encode"))
+			return
+		}
+		if err := enc.Encode(e); err != nil {
+			pw.CloseWithError(fmt.Errorf("no event found to encode"))
+			return
+		}
+	}
+	if _, err := mw.Write([]byte("]")); err != nil {
+		pw.CloseWithError(fmt.Errorf("no event found to encode"))
+		return
+	}
+	// write the final check sum to pipe
+	if _, err := mw.Write(hash.Sum(nil)); err != nil {
+		pw.CloseWithError(fmt.Errorf("no event found to encode"))
+		return
+	}
+	pw.Close()
 }
 
 func (ssr *Snapshotter) handleDeltaWatchEvents(wr clientv3.WatchResponse) error {
