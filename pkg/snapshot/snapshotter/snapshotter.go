@@ -347,7 +347,7 @@ func jsonEncodeEvents(events []*event, pw *io.PipeWriter) {
 		return
 	}
 	// write the final check sum to pipe
-	if _, err := mw.Write(hash.Sum(nil)); err != nil {
+	if _, err := pw.Write(hash.Sum(nil)); err != nil {
 		pw.CloseWithError(fmt.Errorf("no event found to encode"))
 		return
 	}

@@ -32,6 +32,7 @@ func NewSnapshotCommand(stopCh <-chan struct{}) *cobra.Command {
 		Long: `Snapshot utility will backup the etcd at regular interval. It supports
 storing snapshots on various cloud storage providers as well as local disk location.`,
 		Run: func(cmd *cobra.Command, args []string) {
+			printVersionInfo()
 			snapstoreConfig := &snapstore.Config{
 				Provider:                storageProvider,
 				Container:               storageContainer,

@@ -26,8 +26,8 @@ const (
 )
 
 var (
-	logger = logrus.New()
-
+	logger  = logrus.New()
+	version bool
 	//snapshotter flags
 	schedule                       string
 	etcdEndpoints                  []string

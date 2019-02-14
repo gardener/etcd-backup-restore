@@ -18,6 +18,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"net/url"
 	"path"
 	"strings"
@@ -114,7 +115,7 @@ var _ = Describe("Snapstore", func() {
 				logrus.Infof("Running tests for %s", key)
 				resetObjectMap()
 				dummyData := make([]byte, 6*1024*1024)
-				err := snapStore.Save(snap3, bytes.NewReader(dummyData))
+				err := snapStore.Save(snap3, ioutil.NopCloser(bytes.NewReader(dummyData)))
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(len(objectMap)).Should(BeNumerically(">", 0))
 			}
