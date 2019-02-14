@@ -95,6 +95,7 @@ func NewSnapshotter(logger *logrus.Logger, config *Config) *Snapshotter {
 		SsrState:       SnapshotterInactive,
 		SsrStateMutex:  &sync.Mutex{},
 		fullSnapshotCh: make(chan struct{}),
+		cancelWatch:    func() {},
 	}
 }
 
@@ -171,7 +172,7 @@ func (ssr *Snapshotter) TakeFullSnapshotAndResetTimer() error {
 	} else {
 		ssr.logger.Infof("Stopping full snapshot...")
 		ssr.fullSnapshotTimer.Stop()
-		ssr.logger.Infof("Reseting full snapshot to run after %d secs.", effective.Sub(now))
+		ssr.logger.Infof("Resetting full snapshot to run after %s", effective.Sub(now))
 		ssr.fullSnapshotTimer.Reset(effective.Sub(now))
 	}
 	ssr.logger.Infof("Will take next full snapshot at time: %s", effective)
@@ -242,6 +243,7 @@ func (ssr *Snapshotter) takeFullSnapshot() error {
 	//make event array empty as any event prior to full snapshot should not be uploaded in delta.
 	ssr.events = []*event{}
 	ssr.eventMemory = 0
+	ssr.cancelWatch() // cancel previous watch
 	watchCtx, cancelWatch := context.WithCancel(context.TODO())
 	ssr.cancelWatch = cancelWatch
 	ssr.watchCh = client.Watch(watchCtx, "", clientv3.WithPrefix(), clientv3.WithRev(ssr.prevSnapshot.LastRevision+1))
@@ -263,7 +265,7 @@ func (ssr *Snapshotter) takeDeltaSnapshotAndResetTimer() error {
 	} else {
 		ssr.logger.Infof("Stopping delta snapshot...")
 		ssr.deltaSnapshotTimer.Stop()
-		ssr.logger.Infof("Reseting delta snapshot to run after %d secs.", ssr.config.deltaSnapshotIntervalSeconds)
+		ssr.logger.Infof("Resetting delta snapshot to run after %d secs.", ssr.config.deltaSnapshotIntervalSeconds)
 		ssr.deltaSnapshotTimer.Reset(time.Second * time.Duration(ssr.config.deltaSnapshotIntervalSeconds))
 	}
 	return nil
