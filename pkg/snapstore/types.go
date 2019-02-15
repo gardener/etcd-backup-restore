@@ -29,7 +29,7 @@ type SnapStore interface {
 	// List will list all snapshot files on store.
 	List() (SnapList, error)
 	// Save will write the snapshot to store.
-	Save(Snapshot, io.Reader) error
+	Save(Snapshot, io.ReadCloser) error
 	// Delete should delete the snapshot file from store.
 	Delete(Snapshot) error
 }

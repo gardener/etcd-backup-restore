@@ -56,6 +56,7 @@ fi
 
 VERSION_FILE="$(readlink  -f "${SOURCE_PATH}/VERSION")"
 VERSION="$(cat "${VERSION_FILE}")"
+GIT_SHA=$(git rev-parse --short HEAD || echo "GitNotFound")
 
 # If no LOCAL_BUILD environment variable is set, we configure the `go build` command
 # to build for linux OS, amd64 architectures and without CGO enablement.
@@ -64,7 +65,7 @@ if [[ -z "$LOCAL_BUILD" ]]; then
     -a \
     -v \
     -o ${BINARY_PATH}/linux-amd64/etcdbrctl \
-    -ldflags "-w -X ${REPOSITORY}/pkg/version.Version=${VERSION}" \
+    -ldflags "-w -X ${REPOSITORY}/pkg/version.Version=${VERSION} -X ${REPOSITORY}/pkg/version.GitSHA=${GIT_SHA}" \
     main.go
 
 # If the LOCAL_BUILD environment variable is set, we simply run `go build`.
@@ -72,6 +73,6 @@ else
   go build \
     -v \
     -o ${BINARY_PATH}/etcdbrctl \
-    -ldflags "-w -X ${REPOSITORY}/pkg/version.Version=${VERSION}" \
+    -ldflags "-w -X ${REPOSITORY}/pkg/version.Version=${VERSION} -X ${REPOSITORY}/pkg/version.GitSHA=${GIT_SHA}" \
     main.go
 fi

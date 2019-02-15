@@ -15,11 +15,11 @@
 package snapshotter
 
 import (
-	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"io"
 	"math"
 	"path"
 	"sync"
@@ -143,12 +143,22 @@ func (ssr *Snapshotter) stop() {
 		ssr.deltaSnapshotTimer.Stop()
 		ssr.deltaSnapshotTimer = nil
 	}
-	if ssr.cancelWatch != nil {
-		ssr.cancelWatch()
-	}
+	ssr.closeEtcdClient()
 
 	ssr.SsrState = SnapshotterInactive
 	ssr.SsrStateMutex.Unlock()
+}
+
+func (ssr *Snapshotter) closeEtcdClient() {
+	if ssr.cancelWatch != nil {
+		ssr.cancelWatch()
+	}
+	if ssr.etcdClient != nil {
+		if err := ssr.etcdClient.Close(); err != nil {
+			ssr.logger.Warnf("Error while closing etcd client connection, %v", err)
+		}
+		ssr.etcdClient = nil
+	}
 }
 
 // TakeFullSnapshotAndResetTimer takes a full snapshot and resets the full snapshot
@@ -183,6 +193,9 @@ func (ssr *Snapshotter) TakeFullSnapshotAndResetTimer() error {
 // It basically will connect to etcd. Then ask for snapshot. And finally
 // store it to underlying snapstore on the fly.
 func (ssr *Snapshotter) takeFullSnapshot() error {
+	// close previous watch and client.
+	ssr.closeEtcdClient()
+
 	client, err := etcdutil.GetTLSClientForEtcd(ssr.config.tlsConfig)
 	if err != nil {
 		return &errors.EtcdError{
@@ -240,14 +253,14 @@ func (ssr *Snapshotter) takeFullSnapshot() error {
 		return nil
 	}
 
-	//make event array empty as any event prior to full snapshot should not be uploaded in delta.
+	// make event array empty as any event prior to full snapshot should not be uploaded in delta.
 	ssr.events = []*event{}
 	ssr.eventMemory = 0
-	ssr.cancelWatch() // cancel previous watch
 	watchCtx, cancelWatch := context.WithCancel(context.TODO())
 	ssr.cancelWatch = cancelWatch
+	ssr.etcdClient = client
 	ssr.watchCh = client.Watch(watchCtx, "", clientv3.WithPrefix(), clientv3.WithRev(ssr.prevSnapshot.LastRevision+1))
-	ssr.logger.Infof("Applied watch on etcd from revision: %08d", ssr.prevSnapshot.LastRevision+1)
+	ssr.logger.Infof("Applied watch on etcd from revision: %d", ssr.prevSnapshot.LastRevision+1)
 
 	return nil
 }
@@ -281,26 +294,17 @@ func (ssr *Snapshotter) takeDeltaSnapshot() error {
 
 	snap := snapstore.NewSnapshot(snapstore.SnapshotKindDelta, ssr.prevSnapshot.LastRevision+1, ssr.events[len(ssr.events)-1].EtcdEvent.Kv.ModRevision)
 	snap.SnapDir = ssr.prevSnapshot.SnapDir
-	data, err := json.Marshal(ssr.events)
-	ssr.events = []*event{}
-	if err != nil {
-		return err
-	}
-	// compute hash
-	hash := sha256.New()
-	if _, err := hash.Write(data); err != nil {
-		return fmt.Errorf("failed to compute hash of events: %v", err)
-	}
-	data = hash.Sum(data)
-
-	dataReader := bytes.NewReader(data)
+	pr, pw := io.Pipe()
+	go jsonEncodeEvents(ssr.events, pw)
 	startTime := time.Now()
-	if err := ssr.config.store.Save(*snap, dataReader); err != nil {
+	if err := ssr.config.store.Save(*snap, pr); err != nil {
 		timeTaken := time.Now().Sub(startTime).Seconds()
 		metrics.SnapshotDurationSeconds.With(prometheus.Labels{metrics.LabelKind: snapstore.SnapshotKindDelta, metrics.LabelSucceeded: metrics.ValueSucceededFalse}).Observe(timeTaken)
 		ssr.logger.Errorf("Error saving delta snapshots. %v", err)
 		return err
 	}
+	ssr.events = []*event{}
+
 	timeTaken := time.Now().Sub(startTime).Seconds()
 	metrics.SnapshotDurationSeconds.With(prometheus.Labels{metrics.LabelKind: snapstore.SnapshotKindDelta, metrics.LabelSucceeded: metrics.ValueSucceededTrue}).Observe(timeTaken)
 	logrus.Infof("Total time to save delta snapshot: %f seconds.", timeTaken)
@@ -309,6 +313,45 @@ func (ssr *Snapshotter) takeDeltaSnapshot() error {
 	metrics.LatestSnapshotTimestamp.With(prometheus.Labels{metrics.LabelKind: ssr.prevSnapshot.Kind}).Set(float64(ssr.prevSnapshot.CreatedOn.Unix()))
 	ssr.logger.Infof("Successfully saved delta snapshot at: %s", path.Join(snap.SnapDir, snap.SnapName))
 	return nil
+}
+
+func jsonEncodeEvents(events []*event, pw *io.PipeWriter) {
+	// compute hash
+	hash := sha256.New()
+	mw := io.MultiWriter(hash, pw)
+	if len(events) == 0 {
+		pw.CloseWithError(fmt.Errorf("no event found to encode"))
+		return
+	}
+	if _, err := mw.Write([]byte("[")); err != nil {
+		pw.CloseWithError(fmt.Errorf("no event found to encode"))
+		return
+	}
+	enc := json.NewEncoder(mw)
+	if err := enc.Encode(events[0]); err != nil {
+		pw.CloseWithError(fmt.Errorf("no event found to encode"))
+		return
+	}
+	for _, e := range events[1:] {
+		if _, err := mw.Write([]byte(",")); err != nil {
+			pw.CloseWithError(fmt.Errorf("no event found to encode"))
+			return
+		}
+		if err := enc.Encode(e); err != nil {
+			pw.CloseWithError(fmt.Errorf("no event found to encode"))
+			return
+		}
+	}
+	if _, err := mw.Write([]byte("]")); err != nil {
+		pw.CloseWithError(fmt.Errorf("no event found to encode"))
+		return
+	}
+	// write the final check sum to pipe
+	if _, err := pw.Write(hash.Sum(nil)); err != nil {
+		pw.CloseWithError(fmt.Errorf("no event found to encode"))
+		return
+	}
+	pw.Close()
 }
 
 func (ssr *Snapshotter) handleDeltaWatchEvents(wr clientv3.WatchResponse) error {

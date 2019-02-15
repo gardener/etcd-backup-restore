@@ -133,17 +133,19 @@ func (a *ABSSnapStore) List() (SnapList, error) {
 }
 
 // Save will write the snapshot to store
-func (a *ABSSnapStore) Save(snap Snapshot, r io.Reader) error {
+func (a *ABSSnapStore) Save(snap Snapshot, rc io.ReadCloser) error {
 	// Save it locally
 	tmpfile, err := ioutil.TempFile(a.tempDir, tmpBackupFilePrefix)
 	if err != nil {
+		rc.Close()
 		return fmt.Errorf("failed to create snapshot tempfile: %v", err)
 	}
 	defer func() {
 		tmpfile.Close()
 		os.Remove(tmpfile.Name())
 	}()
-	size, err := io.Copy(tmpfile, r)
+	size, err := io.Copy(tmpfile, rc)
+	rc.Close()
 	if err != nil {
 		return fmt.Errorf("failed to save snapshot to tmpfile: %v", err)
 	}

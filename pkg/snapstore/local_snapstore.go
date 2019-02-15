@@ -48,7 +48,8 @@ func (s *LocalSnapStore) Fetch(snap Snapshot) (io.ReadCloser, error) {
 }
 
 // Save will write the snapshot to store
-func (s *LocalSnapStore) Save(snap Snapshot, r io.Reader) error {
+func (s *LocalSnapStore) Save(snap Snapshot, rc io.ReadCloser) error {
+	defer rc.Close()
 	err := os.MkdirAll(path.Join(s.prefix, snap.SnapDir), 0700)
 	if err != nil && !os.IsExist(err) {
 		return err
@@ -58,7 +59,7 @@ func (s *LocalSnapStore) Save(snap Snapshot, r io.Reader) error {
 		return err
 	}
 	defer f.Close()
-	_, err = io.Copy(f, r)
+	_, err = io.Copy(f, rc)
 	if err != nil {
 		return err
 	}

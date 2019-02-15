@@ -15,6 +15,9 @@
 package cmd
 
 import (
+	"runtime"
+
+	ver "github.com/gardener/etcd-backup-restore/pkg/version"
 	"github.com/spf13/cobra"
 )
 
@@ -25,4 +28,11 @@ func initializeSnapstoreFlags(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&storagePrefix, "store-prefix", "", "prefix or directory inside container under which snapstore is created")
 	cmd.Flags().IntVar(&maxParallelChunkUploads, "max-parallel-chunk-uploads", 5, "maximum number of parallel chunk uploads allowed ")
 	cmd.Flags().StringVar(&snapstoreTempDir, "snapstore-temp-directory", "/tmp", "temporary directory for processing")
+}
+
+func printVersionInfo() {
+	logger.Infof("etcd-backup-restore Version: %s", ver.Version)
+	logger.Infof("Git SHA: %s", ver.GitSHA)
+	logger.Infof("Go Version: %s", runtime.Version())
+	logger.Infof("Go OS/Arch: %s/%s", runtime.GOOS, runtime.GOARCH)
 }

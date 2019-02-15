@@ -16,6 +16,7 @@ package snapshotter_test
 
 import (
 	"fmt"
+	"io/ioutil"
 	"path"
 	"strings"
 	"time"
@@ -554,7 +555,7 @@ func prepareStoreForGarbageCollection(forTime time.Time, storeContainer string) 
 		snap.GenerateSnapshotDirectory()
 		snap.GenerateSnapshotName()
 		snapTime = snapTime.Add(time.Duration(time.Minute * 10))
-		store.Save(snap, strings.NewReader(fmt.Sprintf("dummy-snapshot-content for snap created on %s", snap.CreatedOn)))
+		store.Save(snap, ioutil.NopCloser(strings.NewReader(fmt.Sprintf("dummy-snapshot-content for snap created on %s", snap.CreatedOn))))
 	}
 	return store
 }

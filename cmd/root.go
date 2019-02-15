@@ -23,11 +23,17 @@ func NewBackupRestoreCommand(stopCh <-chan struct{}) *cobra.Command {
 	var RootCmd = &cobra.Command{
 		Use:   "etcdbrctl",
 		Short: "command line utility for etcd backup restore",
-		Long: `The etcdbrctl, command line utility, is built to support etcd's backup and restore 
+		Long: `The etcdbrctl, command line utility, is built to support etcd's backup and restore
 related functionality. Sub-command for this root command will support features
 like scheduled snapshot of etcd, etcd data directory validation and restore etcd
 from previously taken snapshot.`,
+		Run: func(cmd *cobra.Command, args []string) {
+			if version {
+				printVersionInfo()
+			}
+		},
 	}
+	RootCmd.Flags().BoolVarP(&version, "version", "v", false, "print version info")
 	RootCmd.AddCommand(NewSnapshotCommand(stopCh),
 		NewRestoreCommand(stopCh),
 		NewInitializeCommand(stopCh),

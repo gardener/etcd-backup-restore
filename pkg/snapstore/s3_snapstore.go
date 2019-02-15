@@ -91,9 +91,10 @@ func (s *S3SnapStore) Fetch(snap Snapshot) (io.ReadCloser, error) {
 }
 
 // Save will write the snapshot to store
-func (s *S3SnapStore) Save(snap Snapshot, r io.Reader) error {
+func (s *S3SnapStore) Save(snap Snapshot, rc io.ReadCloser) error {
 	tmpfile, err := ioutil.TempFile(s.tempDir, tmpBackupFilePrefix)
 	if err != nil {
+		rc.Close()
 		return fmt.Errorf("failed to create snapshot tempfile: %v", err)
 	}
 	defer func() {
@@ -101,7 +102,8 @@ func (s *S3SnapStore) Save(snap Snapshot, r io.Reader) error {
 		os.Remove(tmpfile.Name())
 	}()
 
-	size, err := io.Copy(tmpfile, r)
+	size, err := io.Copy(tmpfile, rc)
+	rc.Close()
 	if err != nil {
 		return fmt.Errorf("failed to save snapshot to tmpfile: %v", err)
 	}

@@ -40,6 +40,7 @@ func NewServerCommand(stopCh <-chan struct{}) *cobra.Command {
 		Short: "start the http server with backup scheduler.",
 		Long:  `Server will keep listening for http request to deliver its functionality through http endpoints.`,
 		Run: func(cmd *cobra.Command, args []string) {
+			printVersionInfo()
 			var (
 				snapstoreConfig *snapstore.Config
 				ssrStopCh       chan struct{}
