@@ -82,6 +82,14 @@ required = ["github.com/coreos/bbolt"]
   name = "github.com/prometheus/client_golang"
   version = "0.9.2"
 
+[[constraint]]
+  name = "github.com/aliyun/aliyun-oss-go-sdk"
+  version = "1.9.4"
+
 [[override]]
 name = "gopkg.in/fsnotify.v1"
 source = "https://github.com/fsnotify/fsnotify.git"
+
+[[override]]
+name = "github.com/ugorji/go"
+revision = "b4c50a2b199d93b13dc15e78929cfb23bfdf21ab"

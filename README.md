@@ -115,7 +115,7 @@ Please find the design doc [here](doc/design.md).
 
 ## Usage
 
-You can follow the `help` flag on `etcdbrctl` command and its sub-commands to know the usage details. Some of the common use cases are mentioned below. Although examples below uses AWS S3 as storage provider, we have added support for AWS, GCS, Azure and Openstack swift object store. It also supports local disk as storage provider.
+You can follow the `help` flag on `etcdbrctl` command and its sub-commands to know the usage details. Some of the common use cases are mentioned below. Although examples below uses AWS S3 as storage provider, we have added support for AWS, GCS, Azure, Openstack swift and Alicloud OSS object store. It also supports local disk as storage provider.
 
 ### Cloud Provider Credentials
 
@@ -128,6 +128,8 @@ For `GCP Containers`, the service account json file should be provided in the `~
 For `Azure Blob storage`, `STORAGE_ACCOUNT` and `STORAGE_KEY` should be made available as environment variables.
 
 For `Openstack Swift`, `OS_USERNAME`, `OS_PASSWORD`, `OS_AUTH_URL`, `OS_TENANT_ID` and `OS_DOMAIN_ID` should be made available as environment variables.
+
+For `Alicloud OSS`, `ALICLOUD_ENDPOINT`, `ALICLOUD_ACCESS_KEY_ID`, `ALICLOUD_ACCESS_KEY_SECRET` should be made available as environment variables.
 
 ### Taking scheduled snapshot
 

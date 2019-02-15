@@ -88,6 +88,12 @@ var _ = Describe("Snapstore", func() {
 				objects: objectMap,
 				prefix:  prefix,
 			}),
+			"OSS": NewOSSFromBucket(prefix, "/tmp", 5, &mockOSSBucket{
+				objects:          objectMap,
+				prefix:           prefix,
+				multiPartUploads: map[string]*[][]byte{},
+				bucketName:       bucket,
+			}),
 		}
 	})
 
