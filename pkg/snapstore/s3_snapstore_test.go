@@ -96,6 +96,7 @@ func (m *mockS3Client) UploadPartWithContext(ctx aws.Context, in *s3.UploadPartI
 		m.multiPartUploads[*in.UploadId] = &t
 	}
 	m.multiPartUploadsMutex.Unlock()
+
 	size, err := in.Body.Seek(0, io.SeekEnd)
 	if err != nil {
 		return nil, fmt.Errorf("failed to seek at the end of body %v", err)
@@ -108,7 +109,10 @@ func (m *mockS3Client) UploadPartWithContext(ctx aws.Context, in *s3.UploadPartI
 		return nil, fmt.Errorf("failed to read complete body %v", err)
 	}
 
+	m.multiPartUploadsMutex.Lock()
 	(*m.multiPartUploads[*in.UploadId])[*in.PartNumber-1] = content
+	m.multiPartUploadsMutex.Unlock()
+
 	eTag := string(*in.PartNumber)
 	out := &s3.UploadPartOutput{
 		ETag: &eTag,
