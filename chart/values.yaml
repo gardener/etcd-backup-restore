@@ -23,7 +23,7 @@ backup:
   # mentions the policy for garbage collecting old backups. Allowed values are Exponential(default), LimtBased.
   garbageCollectionPolicy: Exponential
 
-  storageProvider: "Local"  # Abs,Gcs,S3,Swift empty means no backup,
+  storageProvider: "Local"  # Abs,Gcs,S3,Swift,Oss empty means no backup,
 
   backupSecret: etcd-backup
 
@@ -57,6 +57,26 @@ tls:
 
 # podAnnotations will be placed to the resulting etcd pod
 podAnnotations: {}
+
+# Alicloud OSS storage configuration
+# Note: No volumeMounts needed
+# storageProvider: "OSS"
+# env:
+# - name: "ALICLOUD_ENDPOINT"
+#   valueFrom:
+#     secretKeyRef:
+#       name: etcd-backup
+#       key: "storageEndpoint"
+# - name: "ALICLOUD_ACCESS_KEY_ID"
+#   valueFrom:
+#     secretKeyRef:
+#       name: etcd-backup
+#       key: "accessKeyID"
+# - name: "ALICLOUD_ACCESS_KEY_SECRET"
+#   valueFrom:
+#     secretKeyRef:
+#       name: etcd-backup
+#       key: "accessKeySecret"
 
 # Aws S3 storage configuration
 # Note: No volumeMounts variable needed

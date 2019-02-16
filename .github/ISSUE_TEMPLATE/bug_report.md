@@ -23,6 +23,6 @@ A clear and concise description of what you expected to happen.
 **Environment (please complete the following information):**
  - Etcd version/commit ID :
  - Etcd-backup-restore version/commit ID:
- - Cloud Provider [All/AWS/GCS/ABS/Swift]: 
+ - Cloud Provider [All/AWS/GCS/ABS/Swift/OSS]:
 
 **Anything else we need to know?**:

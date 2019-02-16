@@ -280,6 +280,10 @@ https://github.com/gophercloud/gophercloud.
 Copyright 2012-2013 Rackspace, Inc.  
 Apache 2 license (https://github.com/gophercloud/gophercloud/blob/master/LICENSE)
 
+Alibaba Cloud OSS SDK for Go.
+https://github.com/aliyun/aliyun-oss-go-sdk.
+Copyright 2019 The Alibaba Cloud Authors
+Apache 2 license (https://github.com/aliyun/aliyun-oss-go-sdk/blob/master/README.md)
 
 Prometheus instrumentation library for Go applications.  
 https://github.com/prometheus/client_golang.  
