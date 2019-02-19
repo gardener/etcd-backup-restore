@@ -9,7 +9,7 @@ images:
   etcd: quay.io/coreos/etcd:v3.3.10
 
   # etcd-backup-restore image to use
-  etcd-backup-restore: eu.gcr.io/gardener-project/gardener/etcdbrctl:0.4.0
+  etcd-backup-restore: eu.gcr.io/gardener-project/gardener/etcdbrctl:0.5.0
 
 backup:
 

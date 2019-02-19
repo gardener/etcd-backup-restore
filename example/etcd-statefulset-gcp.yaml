@@ -99,7 +99,7 @@ spec:
         - --delta-snapshot-period-seconds=3600
         - --garbage-collection-period-seconds=1800
         - --snapstore-temp-directory=/var/etcd/data/temp
-        image: eu.gcr.io/gardener-project/gardener/etcdbrctl:0.4.0
+        image: eu.gcr.io/gardener-project/gardener/etcdbrctl:0.5.0
         imagePullPolicy: Always
         ports:
         - containerPort: 8080
