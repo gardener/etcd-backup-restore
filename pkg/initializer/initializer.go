@@ -89,6 +89,10 @@ func (e *EtcdInitializer) restoreCorruptData() error {
 
 	if e.Config.SnapstoreConfig == nil {
 		logger.Warnf("No snapstore storage provider configured.")
+		logger.Infof("Removing data directory(%s) for snapshot restoration.", dataDir)
+		if err := os.RemoveAll(filepath.Join(dataDir)); err != nil {
+			return fmt.Errorf("failed to delete data directory %s with err: %v", dataDir, err)
+		}
 		return nil
 	}
 	store, err := snapstore.GetSnapstore(e.Config.SnapstoreConfig)
