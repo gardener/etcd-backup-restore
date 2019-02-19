@@ -96,10 +96,14 @@ func (d *DataValidator) Validate() (DataDirStatus, error) {
 		return DataDirectoryInvStruct, nil
 	}
 
-	d.Logger.Info("Checking for revision consistency...")
-	if err = d.CheckRevisionConsistency(); err != nil {
-		d.Logger.Infof("Etcd revision inconsistent with latest snapshot revision: %v", err)
-		return RevisionConsistencyError, nil
+	if d.Config.SnapstoreConfig != nil {
+		d.Logger.Info("Checking for revision consistency...")
+		if err = checkRevisionConsistency(d.backendPath(), *d.Config.SnapstoreConfig); err != nil {
+			d.Logger.Infof("Etcd revision inconsistent with latest snapshot revision: %v", err)
+			return RevisionConsistencyError, nil
+		}
+	} else {
+		d.Logger.Info("Skipping check for revision consistency, since no snapstore configured.")
 	}
 
 	d.Logger.Info("Checking for data directory files corruption...")
@@ -338,14 +342,14 @@ func verifyDB(path string) error {
 	})
 }
 
-// CheckRevisionConsistency compares the latest revisions on the etcd db file and the latest snapshot to verify that the etcd revision is not lesser than snapshot revision.
-func (d *DataValidator) CheckRevisionConsistency() error {
-	etcdRevision, err := getLatestEtcdRevision(d.backendPath())
+// checkRevisionConsistency compares the latest revisions on the etcd db file and the latest snapshot to verify that the etcd revision is not lesser than snapshot revision.
+func checkRevisionConsistency(dbPath string, config snapstore.Config) error {
+	etcdRevision, err := getLatestEtcdRevision(dbPath)
 	if err != nil {
 		return fmt.Errorf("unable to get current etcd revision from backend db file: %v", err)
 	}
 
-	store, err := snapstore.GetSnapstore(d.Config.SnapstoreConfig)
+	store, err := snapstore.GetSnapstore(&config)
 	if err != nil {
 		return fmt.Errorf("unable to fetch snapstore: %v", err)
 	}
