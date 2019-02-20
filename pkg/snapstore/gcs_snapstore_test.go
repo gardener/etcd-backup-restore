@@ -52,7 +52,7 @@ func (m *mockBucketHandle) Object(name string) stiface.ObjectHandle {
 
 func (m *mockBucketHandle) Objects(context.Context, *storage.Query) stiface.ObjectIterator {
 	var keys []string
-	for key, _ := range m.client.objects {
+	for key := range m.client.objects {
 		keys = append(keys, key)
 	}
 	sort.Strings(keys)

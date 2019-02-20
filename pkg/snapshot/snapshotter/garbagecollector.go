@@ -22,6 +22,7 @@ import (
 	"github.com/gardener/etcd-backup-restore/pkg/metrics"
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/sirupsen/logrus"
 )
 
 // RunGarbageCollector basically consider the older backups as garbage and deletes it
@@ -30,6 +31,7 @@ func (ssr *Snapshotter) RunGarbageCollector(stopCh <-chan struct{}) {
 		ssr.logger.Infof("GC: Not running garbage collector since GarbageCollectionPeriodSeconds [%d] set to less than 1.", ssr.config.garbageCollectionPeriodSeconds)
 		return
 	}
+
 	for {
 		select {
 		case <-stopCh:
@@ -44,19 +46,7 @@ func (ssr *Snapshotter) RunGarbageCollector(stopCh <-chan struct{}) {
 				continue
 			}
 
-			// At this stage, we assume the snapList is sorted in increasing order of time, i.e. older snapshot at
-			// lower index and newer snapshot at higher index in list.
-			snapLen := len(snapList)
-			var snapStreamIndexList []int
-			// snapStream indicates the list of snapshot, where first snapshot is base/full snapshot followed by
-			// list of incremental snapshots based on it. snapStreamIndex points to index of snapStream in snapList
-			// which consist of collection of snapStream.
-			snapStreamIndexList = append(snapStreamIndexList, 0)
-			for index := 1; index < snapLen; index++ {
-				if snapList[index].Kind == snapstore.SnapshotKindFull && !snapList[index].IsChunk {
-					snapStreamIndexList = append(snapStreamIndexList, index)
-				}
-			}
+			snapStreamIndexList := getSnapStreamIndexList(snapList)
 
 			switch ssr.config.garbageCollectionPolicy {
 			case GarbageCollectionPolicyExponential:
@@ -138,19 +128,7 @@ func (ssr *Snapshotter) RunGarbageCollector(stopCh <-chan struct{}) {
 						}
 						metrics.GCSnapshotCounter.With(prometheus.Labels{metrics.LabelKind: snapstore.SnapshotKindFull, metrics.LabelSucceeded: metrics.ValueSucceededTrue}).Inc()
 						total++
-						for index := snapStreamIndexList[snapStreamIndex-1] + 1; index < snapStreamIndexList[snapStreamIndex]; index++ {
-							snap := snapList[index]
-							if snap.Kind == snapstore.SnapshotKindDelta {
-								continue
-							}
-							ssr.logger.Infof("GC: Deleting chunk for old full snapshot: %s", path.Join(snap.SnapDir, snap.SnapName))
-							if err := ssr.config.store.Delete(*snap); err != nil {
-								ssr.logger.Warnf("GC: Failed to delete snapshot %s: %v", path.Join(snap.SnapDir, snap.SnapName), err)
-								metrics.GCSnapshotCounter.With(prometheus.Labels{metrics.LabelKind: snapstore.SnapshotKindChunk, metrics.LabelSucceeded: metrics.ValueSucceededFalse}).Inc()
-								continue
-							}
-							metrics.GCSnapshotCounter.With(prometheus.Labels{metrics.LabelKind: snapstore.SnapshotKindChunk, metrics.LabelSucceeded: metrics.ValueSucceededTrue}).Inc()
-						}
+						garbageCollectChunks(ssr.config.store, snapList, snapStreamIndexList[snapStreamIndex-1]+1, snapStreamIndexList[snapStreamIndex])
 					}
 				}
 
@@ -165,31 +143,56 @@ func (ssr *Snapshotter) RunGarbageCollector(stopCh <-chan struct{}) {
 					}
 					if snapStreamIndex < len(snapStreamIndexList)-ssr.config.maxBackups {
 						snap := snapList[snapStreamIndexList[snapStreamIndex]]
-						ssr.logger.Infof("GC: Deleting old full snapshot: %s", path.Join(snap.SnapDir, snap.SnapName))
+						snapPath := path.Join(snap.SnapDir, snap.SnapName)
+						ssr.logger.Infof("GC: Deleting old full snapshot: %s", snapPath)
 						if err := ssr.config.store.Delete(*snap); err != nil {
-							ssr.logger.Warnf("GC: Failed to delete snapshot %s: %v", path.Join(snap.SnapDir, snap.SnapName), err)
+							ssr.logger.Warnf("GC: Failed to delete snapshot %s: %v", snapPath, err)
 							metrics.GCSnapshotCounter.With(prometheus.Labels{metrics.LabelKind: snapstore.SnapshotKindFull, metrics.LabelSucceeded: metrics.ValueSucceededFalse}).Inc()
 							continue
 						}
 						metrics.GCSnapshotCounter.With(prometheus.Labels{metrics.LabelKind: snapstore.SnapshotKindFull, metrics.LabelSucceeded: metrics.ValueSucceededTrue}).Inc()
 						total++
-						for index := snapStreamIndexList[snapStreamIndex] + 1; index < snapStreamIndexList[snapStreamIndex+1]; index++ {
-							snap := snapList[index]
-							if snap.Kind == snapstore.SnapshotKindDelta {
-								continue
-							}
-							ssr.logger.Infof("GC: Deleting chunk for old full snapshot: %s", path.Join(snap.SnapDir, snap.SnapName))
-							if err := ssr.config.store.Delete(*snap); err != nil {
-								ssr.logger.Warnf("GC: Failed to delete snapshot %s: %v", path.Join(snap.SnapDir, snap.SnapName), err)
-								metrics.GCSnapshotCounter.With(prometheus.Labels{metrics.LabelKind: snapstore.SnapshotKindChunk, metrics.LabelSucceeded: metrics.ValueSucceededFalse}).Inc()
-							}
-							metrics.GCSnapshotCounter.With(prometheus.Labels{metrics.LabelKind: snapstore.SnapshotKindChunk, metrics.LabelSucceeded: metrics.ValueSucceededTrue}).Inc()
-						}
+						garbageCollectChunks(ssr.config.store, snapList, snapStreamIndexList[snapStreamIndex]+1, snapStreamIndexList[snapStreamIndex+1])
 					}
 				}
 			}
 			ssr.logger.Infof("GC: Total number garbage collected snapshots: %d", total)
 		}
+	}
+}
+
+// getSnapStreamIndexList lists the index of snapStreams in snapList which consist of collection of snapStream.
+// snapStream indicates the list of snapshot, where first snapshot is base/full snapshot followed by
+// list of incremental snapshots based on it.
+func getSnapStreamIndexList(snapList snapstore.SnapList) []int {
+	// At this stage, we assume the snapList is sorted in increasing order of time, i.e. older snapshot at
+	// lower index and newer snapshot at higher index in list.
+	snapLen := len(snapList)
+	var snapStreamIndexList []int
+	snapStreamIndexList = append(snapStreamIndexList, 0)
+	for index := 1; index < snapLen; index++ {
+		if snapList[index].Kind == snapstore.SnapshotKindFull && !snapList[index].IsChunk {
+			snapStreamIndexList = append(snapStreamIndexList, index)
+		}
+	}
+	return snapStreamIndexList
+}
+
+// garbageCollectChunks deletes the chunks in the store from snaplist starting at index low (inclusive) till high (exclusive).
+func garbageCollectChunks(store snapstore.SnapStore, snapList snapstore.SnapList, low, high int) {
+	for index := low; index < high; index++ {
+		snap := snapList[index]
+		if snap.Kind == snapstore.SnapshotKindDelta {
+			continue
+		}
+		snapPath := path.Join(snap.SnapDir, snap.SnapName)
+		logrus.Infof("GC: Deleting chunk for old full snapshot: %s", snapPath)
+		if err := store.Delete(*snap); err != nil {
+			logrus.Warnf("GC: Failed to delete snapshot %s: %v", snapPath, err)
+			metrics.GCSnapshotCounter.With(prometheus.Labels{metrics.LabelKind: snapstore.SnapshotKindChunk, metrics.LabelSucceeded: metrics.ValueSucceededFalse}).Inc()
+			continue
+		}
+		metrics.GCSnapshotCounter.With(prometheus.Labels{metrics.LabelKind: snapstore.SnapshotKindChunk, metrics.LabelSucceeded: metrics.ValueSucceededTrue}).Inc()
 	}
 }
 
@@ -201,9 +204,10 @@ func (ssr *Snapshotter) garbageCollectDeltaSnapshots(snapStream snapstore.SnapLi
 		if (*snapStream[i]).Kind != snapstore.SnapshotKindDelta {
 			continue
 		}
-		ssr.logger.Infof("GC: Deleting old delta snapshot: %s", path.Join(snapStream[i].SnapDir, snapStream[i].SnapName))
+		snapPath := path.Join(snapStream[i].SnapDir, snapStream[i].SnapName)
+		ssr.logger.Infof("GC: Deleting old delta snapshot: %s", snapPath)
 		if err := ssr.config.store.Delete(*snapStream[i]); err != nil {
-			ssr.logger.Warnf("GC: Failed to delete snapshot %s: %v", path.Join(snapStream[i].SnapDir, snapStream[i].SnapName), err)
+			ssr.logger.Warnf("GC: Failed to delete snapshot %s: %v", snapPath, err)
 			metrics.GCSnapshotCounter.With(prometheus.Labels{metrics.LabelKind: snapstore.SnapshotKindDelta, metrics.LabelSucceeded: metrics.ValueSucceededFalse}).Inc()
 			return total, err
 		}
