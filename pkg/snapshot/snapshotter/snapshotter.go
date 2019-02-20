@@ -112,11 +112,7 @@ func (ssr *Snapshotter) Run(stopCh <-chan struct{}, startFullSnapshot bool) erro
 	}
 
 	defer ssr.stop()
-	if err := ssr.snapshotEventHandler(stopCh); err != nil {
-		return err
-	}
-
-	return nil
+	return ssr.snapshotEventHandler(stopCh)
 }
 
 // TriggerFullSnapshot sends the events to take full snapshot. This is to
