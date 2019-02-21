@@ -132,7 +132,7 @@ func (m *mockS3Client) CompleteMultipartUploadWithContext(ctx aws.Context, in *s
 			return nil, fmt.Errorf("parts should be sorted in ascending orders")
 		}
 		object = append(object, data[*part.PartNumber-1]...)
-
+		prevPartId = *part.PartNumber
 	}
 	m.objects[*in.Key] = &object
 	delete(m.multiPartUploads, *in.UploadId)
