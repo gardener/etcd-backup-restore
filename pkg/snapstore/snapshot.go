@@ -113,8 +113,11 @@ func (s SnapList) Less(i, j int) bool {
 		if s[i].IsChunk && !s[j].IsChunk {
 			return false
 		}
+		if !s[i].IsChunk && !s[j].IsChunk {
+			return (s[i].StartRevision < s[j].StartRevision)
+		}
 		// If both are chunks, ordering doesn't matter.
-		return false
+		return true
 	}
 	return (s[i].CreatedOn.Unix() < s[j].CreatedOn.Unix())
 }
