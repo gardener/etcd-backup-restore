@@ -63,6 +63,10 @@ func (r *Restorer) Restore(ro RestoreOptions) error {
 	if ro.MaxFetchers < 1 {
 		return fmt.Errorf("Maximum number of fetchers should be greater than zero. Input MaxFetchers: %d", ro.MaxFetchers)
 	}
+	if ro.EmbeddedEtcdQuotaBytes <= 0 {
+		r.logger.Infof("Quota size for etcd must be greater than 0. Input EmbeddedEtcdQuotaBytes: %d. Defaulting to 8GB.", ro.EmbeddedEtcdQuotaBytes)
+		ro.EmbeddedEtcdQuotaBytes = int64(8 * 1024 * 1024 * 1024)
+	}
 	if err := r.restoreFromBaseSnapshot(ro); err != nil {
 		return fmt.Errorf("failed to restore from the base snapshot :%v", err)
 	}
@@ -308,6 +312,7 @@ func makeWALAndSnap(waldir, snapdir string, cl *membership.RaftCluster, restoreN
 func startEmbeddedEtcd(ro RestoreOptions) (*embed.Etcd, error) {
 	cfg := embed.NewConfig()
 	cfg.Dir = filepath.Join(ro.RestoreDataDir)
+	cfg.QuotaBackendBytes = ro.EmbeddedEtcdQuotaBytes
 	e, err := embed.StartEtcd(cfg)
 	if err != nil {
 		return nil, err
