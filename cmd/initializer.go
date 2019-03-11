@@ -49,13 +49,14 @@ func NewInitializeCommand(stopCh <-chan struct{}) *cobra.Command {
 			}
 
 			options := &restorer.RestoreOptions{
-				RestoreDataDir: path.Clean(restoreDataDir),
-				Name:           restoreName,
-				ClusterURLs:    clusterUrlsMap,
-				PeerURLs:       peerUrls,
-				ClusterToken:   restoreClusterToken,
-				SkipHashCheck:  skipHashCheck,
-				MaxFetchers:    restoreMaxFetchers,
+				RestoreDataDir:         path.Clean(restoreDataDir),
+				Name:                   restoreName,
+				ClusterURLs:            clusterUrlsMap,
+				PeerURLs:               peerUrls,
+				ClusterToken:           restoreClusterToken,
+				SkipHashCheck:          skipHashCheck,
+				MaxFetchers:            restoreMaxFetchers,
+				EmbeddedEtcdQuotaBytes: embeddedEtcdQuotaBytes,
 			}
 
 			var snapstoreConfig *snapstore.Config

@@ -39,13 +39,14 @@ var _ = Describe("Running Restorer", func() {
 		store snapstore.SnapStore
 		rstr  *Restorer
 
-		restoreCluster      string
-		restoreClusterToken string
-		restoreDataDir      string
-		restorePeerURLs     []string
-		restoreName         string
-		skipHashCheck       bool
-		maxFetchers         int
+		restoreCluster         string
+		restoreClusterToken    string
+		restoreDataDir         string
+		restorePeerURLs        []string
+		restoreName            string
+		skipHashCheck          bool
+		maxFetchers            int
+		embeddedEtcdQuotaBytes int64
 
 		clusterUrlsMap types.URLsMap
 		peerUrls       types.URLs
@@ -68,6 +69,7 @@ var _ = Describe("Running Restorer", func() {
 		Expect(err).ShouldNot(HaveOccurred())
 		skipHashCheck = false
 		maxFetchers = 6
+		embeddedEtcdQuotaBytes = 8 * 1024 * 1024 * 1024
 
 		err = corruptEtcdDir()
 		Expect(err).ShouldNot(HaveOccurred())
@@ -87,15 +89,16 @@ var _ = Describe("Running Restorer", func() {
 			maxFetchers = 0
 
 			restoreOptions := RestoreOptions{
-				ClusterURLs:    clusterUrlsMap,
-				ClusterToken:   restoreClusterToken,
-				RestoreDataDir: restoreDataDir,
-				PeerURLs:       peerUrls,
-				SkipHashCheck:  skipHashCheck,
-				Name:           restoreName,
-				MaxFetchers:    maxFetchers,
-				BaseSnapshot:   *baseSnapshot,
-				DeltaSnapList:  deltaSnapList,
+				ClusterURLs:            clusterUrlsMap,
+				ClusterToken:           restoreClusterToken,
+				RestoreDataDir:         restoreDataDir,
+				PeerURLs:               peerUrls,
+				SkipHashCheck:          skipHashCheck,
+				Name:                   restoreName,
+				MaxFetchers:            maxFetchers,
+				EmbeddedEtcdQuotaBytes: embeddedEtcdQuotaBytes,
+				BaseSnapshot:           *baseSnapshot,
+				DeltaSnapList:          deltaSnapList,
 			}
 			err = rstr.Restore(restoreOptions)
 			Expect(err).Should(HaveOccurred())
@@ -108,15 +111,16 @@ var _ = Describe("Running Restorer", func() {
 			maxFetchers = 1
 
 			restoreOptions := RestoreOptions{
-				ClusterURLs:    clusterUrlsMap,
-				ClusterToken:   restoreClusterToken,
-				RestoreDataDir: restoreDataDir,
-				PeerURLs:       peerUrls,
-				SkipHashCheck:  skipHashCheck,
-				Name:           restoreName,
-				MaxFetchers:    maxFetchers,
-				BaseSnapshot:   *baseSnapshot,
-				DeltaSnapList:  deltaSnapList,
+				ClusterURLs:            clusterUrlsMap,
+				ClusterToken:           restoreClusterToken,
+				RestoreDataDir:         restoreDataDir,
+				PeerURLs:               peerUrls,
+				SkipHashCheck:          skipHashCheck,
+				Name:                   restoreName,
+				MaxFetchers:            maxFetchers,
+				EmbeddedEtcdQuotaBytes: embeddedEtcdQuotaBytes,
+				BaseSnapshot:           *baseSnapshot,
+				DeltaSnapList:          deltaSnapList,
 			}
 			err = rstr.Restore(restoreOptions)
 			Expect(err).ShouldNot(HaveOccurred())
@@ -132,15 +136,16 @@ var _ = Describe("Running Restorer", func() {
 			maxFetchers = 4
 
 			restoreOptions := RestoreOptions{
-				ClusterURLs:    clusterUrlsMap,
-				ClusterToken:   restoreClusterToken,
-				RestoreDataDir: restoreDataDir,
-				PeerURLs:       peerUrls,
-				SkipHashCheck:  skipHashCheck,
-				Name:           restoreName,
-				MaxFetchers:    maxFetchers,
-				BaseSnapshot:   *baseSnapshot,
-				DeltaSnapList:  deltaSnapList,
+				ClusterURLs:            clusterUrlsMap,
+				ClusterToken:           restoreClusterToken,
+				RestoreDataDir:         restoreDataDir,
+				PeerURLs:               peerUrls,
+				SkipHashCheck:          skipHashCheck,
+				Name:                   restoreName,
+				MaxFetchers:            maxFetchers,
+				EmbeddedEtcdQuotaBytes: embeddedEtcdQuotaBytes,
+				BaseSnapshot:           *baseSnapshot,
+				DeltaSnapList:          deltaSnapList,
 			}
 			err = rstr.Restore(restoreOptions)
 			Expect(err).ShouldNot(HaveOccurred())
@@ -156,15 +161,16 @@ var _ = Describe("Running Restorer", func() {
 			maxFetchers = 100
 
 			restoreOptions := RestoreOptions{
-				ClusterURLs:    clusterUrlsMap,
-				ClusterToken:   restoreClusterToken,
-				RestoreDataDir: restoreDataDir,
-				PeerURLs:       peerUrls,
-				SkipHashCheck:  skipHashCheck,
-				Name:           restoreName,
-				MaxFetchers:    maxFetchers,
-				BaseSnapshot:   *baseSnapshot,
-				DeltaSnapList:  deltaSnapList,
+				ClusterURLs:            clusterUrlsMap,
+				ClusterToken:           restoreClusterToken,
+				RestoreDataDir:         restoreDataDir,
+				PeerURLs:               peerUrls,
+				SkipHashCheck:          skipHashCheck,
+				Name:                   restoreName,
+				MaxFetchers:            maxFetchers,
+				EmbeddedEtcdQuotaBytes: embeddedEtcdQuotaBytes,
+				BaseSnapshot:           *baseSnapshot,
+				DeltaSnapList:          deltaSnapList,
 			}
 			err = rstr.Restore(restoreOptions)
 			Expect(err).ShouldNot(HaveOccurred())

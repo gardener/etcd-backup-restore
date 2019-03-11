@@ -49,13 +49,14 @@ var (
 	enableProfiling bool
 
 	//restore flags
-	restoreCluster      string
-	restoreClusterToken string
-	restoreDataDir      string
-	restorePeerURLs     []string
-	restoreName         string
-	skipHashCheck       bool
-	restoreMaxFetchers  int
+	restoreCluster         string
+	restoreClusterToken    string
+	restoreDataDir         string
+	restorePeerURLs        []string
+	restoreName            string
+	skipHashCheck          bool
+	restoreMaxFetchers     int
+	embeddedEtcdQuotaBytes int64
 
 	//snapstore flags
 	storageProvider         string

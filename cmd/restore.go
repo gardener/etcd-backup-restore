@@ -73,15 +73,16 @@ func NewRestoreCommand(stopCh <-chan struct{}) *cobra.Command {
 			rs := restorer.NewRestorer(store, logger)
 
 			options := &restorer.RestoreOptions{
-				RestoreDataDir: path.Clean(restoreDataDir),
-				Name:           restoreName,
-				BaseSnapshot:   *baseSnap,
-				DeltaSnapList:  deltaSnapList,
-				ClusterURLs:    clusterUrlsMap,
-				PeerURLs:       peerUrls,
-				ClusterToken:   restoreClusterToken,
-				SkipHashCheck:  skipHashCheck,
-				MaxFetchers:    restoreMaxFetchers,
+				RestoreDataDir:         path.Clean(restoreDataDir),
+				Name:                   restoreName,
+				BaseSnapshot:           *baseSnap,
+				DeltaSnapList:          deltaSnapList,
+				ClusterURLs:            clusterUrlsMap,
+				PeerURLs:               peerUrls,
+				ClusterToken:           restoreClusterToken,
+				SkipHashCheck:          skipHashCheck,
+				MaxFetchers:            restoreMaxFetchers,
+				EmbeddedEtcdQuotaBytes: embeddedEtcdQuotaBytes,
 			}
 
 			err = rs.Restore(*options)
@@ -107,6 +108,7 @@ func initializeEtcdFlags(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&restoreName, "name", defaultName, "human-readable name for this member")
 	cmd.Flags().BoolVar(&skipHashCheck, "skip-hash-check", false, "ignore snapshot integrity hash value (required if copied from data directory)")
 	cmd.Flags().IntVar(&restoreMaxFetchers, "max-fetchers", 6, "maximum number of threads that will fetch delta snapshots in parallel")
+	cmd.Flags().Int64Var(&embeddedEtcdQuotaBytes, "embedded-etcd-quota-bytes", int64(8*1024*1024*1024), "maximum backend quota for the embedded etcd used for applying delta snapshots")
 }
 
 func initialClusterFromName(name string) string {
