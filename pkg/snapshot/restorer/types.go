@@ -36,13 +36,14 @@ type Restorer struct {
 
 // RestoreOptions hold all snapshot restore related fields
 type RestoreOptions struct {
-	ClusterURLs    types.URLsMap
-	ClusterToken   string
-	RestoreDataDir string
-	PeerURLs       types.URLs
-	SkipHashCheck  bool
-	Name           string
-	MaxFetchers    int
+	ClusterURLs            types.URLsMap
+	ClusterToken           string
+	RestoreDataDir         string
+	PeerURLs               types.URLs
+	SkipHashCheck          bool
+	Name                   string
+	MaxFetchers            int
+	EmbeddedEtcdQuotaBytes int64
 	// Base full snapshot + delta snapshots to restore from
 	BaseSnapshot  snapstore.Snapshot
 	DeltaSnapList snapstore.SnapList
