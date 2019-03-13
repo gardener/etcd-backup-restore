@@ -1,0 +1,241 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ .Release.Name }}-etcd
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: etcd
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+spec:
+  updateStrategy:
+    type: RollingUpdate
+  serviceName: {{ .Release.Name }}-etcd-client
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: etcd
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      annotations:
+        checksum/configmap-etcd-bootstrap: {{ include (print $.Template.BasePath "/etcd-bootstrap-configmap.yaml") . | sha256sum }}
+{{- if .Values.podAnnotations }}
+{{ toYaml .Values.podAnnotations | indent 8 }}
+{{- end }}
+      labels:
+        app.kubernetes.io/name: etcd
+        app.kubernetes.io/instance: {{ .Release.Name }}
+    spec:
+      containers:
+      - name: etcd
+        image: {{ .Values.images.etcd.repository }}:{{ .Values.images.etcd.tag }}
+        imagePullPolicy: {{ .Values.images.etcd.pullPolicy }}
+        command:
+        - /var/etcd/bin/bootstrap.sh
+        readinessProbe:
+          httpGet:
+            path: /healthz
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        livenessProbe:
+          exec:
+            command:
+            - /bin/sh
+            - -ec
+            - ETCDCTL_API=3
+            - etcdctl
+            - --config-file=/var/etcd/config/etcd.conf.yaml
+            - get
+            - foo
+          initialDelaySeconds: 15
+          periodSeconds: 5
+        ports:
+        - containerPort: 2380
+          name: server
+          protocol: TCP
+        - containerPort: 2379
+          name: client
+          protocol: TCP
+        resources:
+{{ toYaml .Values.resources.etcd | indent 10 }}
+        volumeMounts:
+        - name: {{ .Release.Name }}-etcd
+          mountPath: /var/etcd/data/
+        - name: etcd-bootstrap-sh
+          mountPath: /var/etcd/bin/
+        - name: etcd-config-file
+          mountPath: /var/etcd/config/
+{{- if .Values.tls }}
+        - name: ca-etcd
+          mountPath: /var/etcd/ssl/ca
+        - name: etcd-tls
+          mountPath: /var/etcd/ssl/tls
+{{- end }}
+      - name: backup-restore
+        command:
+        - etcdbrctl
+        - server
+        - --schedule={{ .Values.backup.schedule }}
+{{- if eq .Values.backup.garbageCollectionPolicy "LimitBased" }}
+        - --max-backups={{ .Values.backup.maxBackups }}
+        - --garbage-collection-policy={{ .Values.garbageCollectionPolicy }}
+{{- end }}
+        - --data-dir=/var/etcd/data/new.etcd
+        - --storage-provider={{ .Values.backup.storageProvider }}
+        - --store-prefix={{ .Release.Name }}-etcd
+{{- if .Values.backup.etcdQuotaBytes }}
+        - --embedded-etcd-quota-bytes={{ int $.Values.backup.etcdQuotaBytes }}
+{{- end }}
+{{- if .Values.tls }}
+        - --cert=/var/etcd/ssl/tls/tls.crt
+        - --key=/var/etcd/ssl/tls/tls.key
+        - --cacert=/var/etcd/ssl/ca/ca.crt
+        - --insecure-transport=false
+        - --insecure-skip-tls-verify=false
+        - --endpoints=https://{{ .Release.Name }}-etcd-0:2379
+{{ else }}
+        - --insecure-transport=true
+        - --insecure-skip-tls-verify=true
+        - --endpoints=http://{{ .Release.Name }}-etcd-0:2379
+{{- end }}
+        - --etcd-connection-timeout={{ .Values.backup.etcdConnectionTimeout }}
+        - --delta-snapshot-period-seconds={{ int $.Values.backup.deltaSnapshotPeriodSeconds }}
+        - --delta-snapshot-memory-limit={{ int $.Values.backup.deltaSnapshotMemoryLimit }}
+        image: {{ .Values.images.etcdBackupRestore.repository }}:{{ .Values.images.etcdBackupRestore.tag }}
+        imagePullPolicy: {{ .Values.images.etcdBackupRestore.pullPolicy }}
+        ports:
+        - containerPort: 8080
+          name: server
+          protocol: TCP
+        resources:
+{{ toYaml .Values.resources.backup | indent 10 }}
+        env:
+        - name: STORAGE_CONTAINER
+          value: {{ .Values.backup.storageContainer }}
+{{- if eq .Values.backup.storageProvider "S3" }}
+        - name: "AWS_REGION"
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Release.Name }}-etcd-backup
+              key: "region"
+        - name: "AWS_SECRET_ACCESS_KEY"
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Release.Name }}-etcd-backup
+              key: "secretAccessKey"
+        - name: "AWS_ACCESS_KEY_ID"
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Release.Name }}-etcd-backup
+              key: "accessKeyID"
+{{- else if eq .Values.backup.storageProvider "ABS" }}
+        - name: "STORAGE_ACCOUNT"
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Release.Name }}-etcd-backup
+              key: "storageAccount"
+        - name: "STORAGE_KEY"
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Release.Name }}-etcd-backup
+              key: "storageKey"
+{{- else if eq .Values.backup.storageProvider "GCS" }}
+        - name: "GOOGLE_APPLICATION_CREDENTIALS"
+          value: "/root/.gcp/serviceaccount.json"
+{{- else if eq .Values.backup.storageProvider "Swift" }}
+        - name: "OS_AUTH_URL"
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Release.Name }}-etcd-backup
+              key: "authURL"
+        - name: "OS_DOMAIN_NAME"
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Release.Name }}-etcd-backup
+              key: "domainName"
+        - name: "OS_USERNAME"
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Release.Name }}-etcd-backup
+              key: "username"
+        - name: "OS_PASSWORD"
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Release.Name }}-etcd-backup
+              key: "password"
+        - name: "OS_TENANT_NAME"
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Release.Name }}-etcd-backup
+              key: "tenantName"
+{{- else if eq .Values.backup.storageProvider "OSS" }}
+        - name: ""ALICLOUD_ENDPOINT""
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Release.Name }}-etcd-backup
+              key: "endpoint"
+        - name: "ALICLOUD_ACCESS_KEY_SECRET"
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Release.Name }}-etcd-backup
+              key: "accessKeySecret"
+        - name: "ALICLOUD_ACCESS_KEY_ID"
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Release.Name }}-etcd-backup
+              key: "accessKeyID"
+{{- end }}
+        volumeMounts:
+        - name: {{ .Release.Name }}-etcd
+          mountPath: /var/etcd/data/
+        - name: etcd-config-file
+          mountPath: /var/etcd/config/
+{{- if .Values.tls }}
+        - name: ca-etcd
+          mountPath: /var/etcd/ssl/ca
+        - name: etcd-tls
+          mountPath: /var/etcd/ssl/tls
+{{- end }}
+{{- if eq .Values.backup.storageProvider "GCS" }}
+        - name: etcd-backup
+          mountPath: "/root/.gcp/"
+{{- end }}
+      volumes:
+      - name: etcd-bootstrap-sh
+        configMap:
+          name: {{ .Release.Name }}-etcd-bootstrap
+          defaultMode: 0744
+          items:
+          - key: bootstrap.sh
+            path: bootstrap.sh
+      - name: etcd-config-file
+        configMap:
+          name: {{ .Release.Name }}-etcd-bootstrap
+          defaultMode: 0644
+          items:
+          - key: etcd.conf.yaml
+            path: etcd.conf.yaml
+{{- if .Values.tls }}
+      - name: etcd-tls
+        secret:
+          secretName: {{ .Release.Name }}-etcd-tls
+      - name: ca-etcd
+        secret:
+          secretName: {{ .Release.Name }}-etcd-ca
+{{- end }}
+{{- if and .Values.backup.storageProvider (not (eq .Values.backup.storageProvider "Local")) }}
+      - name: etcd-backup
+        secret:
+          secretName: {{ .Release.Name }}-etcd-backup
+{{- end }}
+  volumeClaimTemplates:
+  - metadata:
+      name: {{ .Release.Name }}-etcd
+    spec:
+      accessModes:
+      - "ReadWriteOnce"
+      resources:
+        requests:
+          storage: 20Gi
