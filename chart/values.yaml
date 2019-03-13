@@ -29,6 +29,8 @@ backup:
 
   storageContainer: ""
 
+  embeddedEtcdQuotaBytes: 8589934592
+
   # env should include the right list of values for the
   # storageProvider you use, follow the comments below
   env: []           # Follow comments below

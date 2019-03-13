@@ -57,13 +57,13 @@ type Snapshotter struct {
 	fullSnapshotCh     chan struct{}
 	fullSnapshotTimer  *time.Timer
 	deltaSnapshotTimer *time.Timer
-	events             []*event
+	events             []byte
 	watchCh            clientv3.WatchChan
 	etcdClient         *clientv3.Client
 	cancelWatch        context.CancelFunc
 	SsrStateMutex      *sync.Mutex
 	SsrState           State
-	eventMemory        int
+	lastEventRevision  int64
 }
 
 // Config stores the configuration parameters for the snapshotter.

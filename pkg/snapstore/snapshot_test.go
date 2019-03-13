@@ -76,6 +76,55 @@ var _ = Describe("Snapshot", func() {
 			})
 		})
 
+		Context("when provied with list of snapshots where few have the same timestamp", func() {
+			It("sorts snapshot by creation time as well as start revision", func() {
+				interval := int64(5)
+				now := time.Now().Unix()
+				snap1 := Snapshot{
+					CreatedOn:     time.Unix(now, 0).UTC(),
+					StartRevision: 1001,
+					LastRevision:  1050,
+					Kind:          SnapshotKindDelta,
+				}
+				snap2 := Snapshot{
+					CreatedOn:     time.Unix(now+1*interval, 0).UTC(),
+					StartRevision: 1051,
+					LastRevision:  1200,
+					Kind:          SnapshotKindDelta,
+				}
+				snap3 := Snapshot{
+					CreatedOn:     time.Unix(now+1*interval, 0).UTC(),
+					StartRevision: 1201,
+					LastRevision:  1500,
+					Kind:          SnapshotKindDelta,
+				}
+				snap4 := Snapshot{
+					CreatedOn:     time.Unix(now+2*interval, 0).UTC(),
+					StartRevision: 1501,
+					LastRevision:  2000,
+					Kind:          SnapshotKindDelta,
+				}
+				snap5 := Snapshot{
+					CreatedOn:     time.Unix(now+2*interval, 0).UTC(),
+					StartRevision: 2001,
+					LastRevision:  2150,
+					Kind:          SnapshotKindDelta,
+				}
+				snap6 := Snapshot{
+					CreatedOn:     time.Unix(now+3*interval, 0).UTC(),
+					StartRevision: 2151,
+					LastRevision:  2160,
+					Kind:          SnapshotKindDelta,
+				}
+				snapList := SnapList{&snap5, &snap2, &snap1, &snap4, &snap6, &snap3}
+				sort.Sort(snapList)
+				for i := 1; i < len(snapList); i++ {
+					Expect(snapList[i].CreatedOn.Unix()).Should(BeNumerically(">=", snapList[i-1].CreatedOn.Unix()))
+					Expect(snapList[i].StartRevision).Should(BeNumerically(">", snapList[i-1].StartRevision))
+				}
+			})
+		})
+
 		Context("given a snapshot", func() {
 			now := time.Now().Unix()
 			snap1 := Snapshot{
