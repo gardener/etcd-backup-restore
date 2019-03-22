@@ -6,10 +6,10 @@ replicas: 1
 images:
 
   # etcd image to use
-  etcd: quay.io/coreos/etcd:v3.3.10
+  etcd: quay.io/coreos/etcd:v3.3.12
 
   # etcd-backup-restore image to use
-  etcd-backup-restore: eu.gcr.io/gardener-project/gardener/etcdbrctl:0.5.0
+  etcd-backup-restore: eu.gcr.io/gardener-project/gardener/etcdbrctl:0.6.0
 
 backup:
 
@@ -29,7 +29,7 @@ backup:
 
   storageContainer: ""
 
-  embeddedEtcdQuotaBytes: 8589934592
+  etcdQuotaBytes: 8589934592  # 8GB
 
   # env should include the right list of values for the
   # storageProvider you use, follow the comments below
