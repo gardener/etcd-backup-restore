@@ -22,6 +22,7 @@ import (
 	"sync/atomic"
 
 	"github.com/gardener/etcd-backup-restore/pkg/initializer"
+	"github.com/gardener/etcd-backup-restore/pkg/initializer/validator"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/sirupsen/logrus"
 )
@@ -136,12 +137,22 @@ func (h *HTTPHandler) serveInitialize(rw http.ResponseWriter, req *http.Request)
 		h.initializationStatus = initializationStatusProgress
 		go func() {
 			// This is needed to stop snapshotter.
+			var mode validator.Mode
 			atomic.StoreUint32(&h.AckState, HandlerAckWaiting)
 			h.Logger.Info("Changed handler state.")
 			h.ReqCh <- emptyStruct
 			h.Logger.Info("Waiting for acknowledgment...")
 			<-h.AckCh
-			err := h.EtcdInitializer.Initialize()
+			switch modeVal := req.URL.Query().Get("mode"); modeVal {
+			case string(validator.Full):
+				mode = validator.Full
+			case string(validator.Sanity):
+				mode = validator.Sanity
+			default:
+				mode = validator.Full
+			}
+			h.Logger.Infof("Validation mode: %s", mode)
+			err := h.EtcdInitializer.Initialize(mode)
 			h.initializationStatusMutex.Lock()
 			defer h.initializationStatusMutex.Unlock()
 			if err != nil {
