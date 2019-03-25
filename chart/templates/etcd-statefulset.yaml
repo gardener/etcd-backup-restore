@@ -91,8 +91,8 @@ spec:
         - --data-dir=/var/etcd/data/new.etcd
         - --storage-provider={{ .Values.backup.storageProvider }}
         - --store-prefix=etcd-{{ .Values.role }}
-{{- if .Values.backup.embeddedEtcdQuotaBytes }}
-        - --embeddedEtcdQuotaBytes={{ .Values.backup.embeddedEtcdQuotaBytes }}
+{{- if .Values.backup.etcdQuotaBytes }}
+        - --embedded-etcd-quota-bytes={{ int $.Values.backup.etcdQuotaBytes }}
 {{- end }}
 {{- if .Values.tls }}
         - --cert=/var/etcd/ssl/client/tls.crt
