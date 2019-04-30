@@ -160,11 +160,15 @@ func NewServerCommand(stopCh <-chan struct{}) *cobra.Command {
 					continue
 				}
 
+				// set server's healthz endpoint status to OK so that
+				// etcd is marked as ready to serve traffic
+				handler.Status = http.StatusOK
+
 				if err = ssr.TakeFullSnapshotAndResetTimer(); err != nil {
 					logger.Errorf("Failed to take first snapshot: %v", err)
 					continue
 				}
-				handler.Status = http.StatusOK
+
 				ssr.SsrStateMutex.Lock()
 				ssr.SsrState = snapshotter.SnapshotterActive
 				ssr.SsrStateMutex.Unlock()
