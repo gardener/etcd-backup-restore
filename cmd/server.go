@@ -160,14 +160,54 @@ func NewServerCommand(stopCh <-chan struct{}) *cobra.Command {
 					continue
 				}
 
+				// The decision to either take an initial delta snapshot or
+				// or a full snapshot directly is based on whether there has
+				// been a previous full snapshot (if not, we assume the etcd
+				// to be a fresh etcd) or it has been more than 24 hours since
+				// the last full snapshot was taken.
+				// If this is not the case, we take a delta snapshot by first
+				// collecting all the delta events since the previous snapshot
+				// and take a delta snapshot of these (there may be multiple
+				// delta snapshots based on the amount of events collected and
+				// the delta snapshot memory limit), after which a full snapshot
+				// is taken and the regular snapshot schedule comes into effect.
+
+				var startWithFullSnapshot bool
+
+				// TODO: write code to find out if prev full snapshot is older than it is
+				// supposed to be, according to the given cron schedule, instead of the
+				// hard-coded "24 hours" full snapshot interval
+				if ssr.PrevFullSnapshot == nil || time.Now().Sub(ssr.PrevFullSnapshot.CreatedOn).Hours() > 24 {
+					startWithFullSnapshot = false
+					if err = ssr.TakeFullSnapshotAndResetTimer(); err != nil {
+						logger.Errorf("Failed to take first full snapshot: %v", err)
+						continue
+					}
+				} else {
+					startWithFullSnapshot = true
+					if ssrStopped, err := ssr.CollectEventsSincePrevSnapshot(ssrStopCh); err != nil {
+						if ssrStopped {
+							logger.Infof("Snapshotter stopped.")
+							ackCh <- emptyStruct
+							handler.Status = http.StatusServiceUnavailable
+							return
+						}
+						if etcdErr, ok := err.(*errors.EtcdError); ok == true {
+							logger.Errorf("Failed to take first delta snapshot: snapshotter failed with etcd error: %v", etcdErr)
+						} else {
+							logger.Errorf("Failed to take first delta snapshot: snapshotter failed with error: %v", err)
+						}
+						continue
+					}
+					if err = ssr.TakeDeltaSnapshot(); err != nil {
+						logger.Errorf("Failed to take first delta snapshot: snapshotter failed with error: %v", err)
+						continue
+					}
+				}
+
 				// set server's healthz endpoint status to OK so that
 				// etcd is marked as ready to serve traffic
 				handler.Status = http.StatusOK
-
-				if err = ssr.TakeFullSnapshotAndResetTimer(); err != nil {
-					logger.Errorf("Failed to take first snapshot: %v", err)
-					continue
-				}
 
 				ssr.SsrStateMutex.Lock()
 				ssr.SsrState = snapshotter.SnapshotterActive
@@ -175,7 +215,7 @@ func NewServerCommand(stopCh <-chan struct{}) *cobra.Command {
 				gcStopCh := make(chan struct{})
 				go ssr.RunGarbageCollector(gcStopCh)
 				logger.Infof("Starting snapshotter...")
-				if err := ssr.Run(ssrStopCh, false); err != nil {
+				if err := ssr.Run(ssrStopCh, startWithFullSnapshot); err != nil {
 					if etcdErr, ok := err.(*errors.EtcdError); ok == true {
 						logger.Errorf("Snapshotter failed with etcd error: %v", etcdErr)
 					} else {
