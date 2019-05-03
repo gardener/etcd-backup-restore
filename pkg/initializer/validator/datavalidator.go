@@ -281,19 +281,11 @@ func checkSuffix(names []string) []string {
 }
 
 func verifyWALDir(waldir string, snap walpb.Snapshot) error {
-	var (
-		err error
-		w   *wal.WAL
-	)
+	var err error
 
 	repaired := false
 	for {
-		w, err = wal.Open(waldir, snap)
-		if err != nil {
-			return fmt.Errorf("open wal error: %v", err)
-		}
-		if _, _, _, err = w.ReadAll(); err != nil {
-			w.Close()
+		if err = wal.Verify(waldir, snap); err != nil {
 			// we can only repair ErrUnexpectedEOF and we never repair twice.
 			if repaired || err != io.ErrUnexpectedEOF {
 				fmt.Printf("read wal error (%v) and cannot be repaired.\n", err)
@@ -308,7 +300,6 @@ func verifyWALDir(waldir string, snap walpb.Snapshot) error {
 
 			continue
 		}
-		w.Close()
 		break
 	}
 	return err
