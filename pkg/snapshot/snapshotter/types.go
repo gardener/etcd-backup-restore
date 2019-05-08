@@ -53,6 +53,7 @@ type State int
 type Snapshotter struct {
 	logger             *logrus.Logger
 	prevSnapshot       *snapstore.Snapshot
+	PrevFullSnapshot   *snapstore.Snapshot
 	config             *Config
 	fullSnapshotCh     chan struct{}
 	fullSnapshotTimer  *time.Timer

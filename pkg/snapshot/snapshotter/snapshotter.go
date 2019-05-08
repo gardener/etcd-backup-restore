@@ -90,19 +90,20 @@ func NewSnapshotter(logger *logrus.Logger, config *Config) *Snapshotter {
 	metrics.LatestSnapshotRevision.With(prometheus.Labels{metrics.LabelKind: prevSnapshot.Kind}).Set(float64(prevSnapshot.LastRevision))
 
 	return &Snapshotter{
-		logger:         logger,
-		prevSnapshot:   prevSnapshot,
-		config:         config,
-		SsrState:       SnapshotterInactive,
-		SsrStateMutex:  &sync.Mutex{},
-		fullSnapshotCh: make(chan struct{}),
-		cancelWatch:    func() {},
+		logger:           logger,
+		prevSnapshot:     prevSnapshot,
+		PrevFullSnapshot: fullSnap,
+		config:           config,
+		SsrState:         SnapshotterInactive,
+		SsrStateMutex:    &sync.Mutex{},
+		fullSnapshotCh:   make(chan struct{}),
+		cancelWatch:      func() {},
 	}
 }
 
 // Run process loop for scheduled backup
-func (ssr *Snapshotter) Run(stopCh <-chan struct{}, startFullSnapshot bool) error {
-	if startFullSnapshot {
+func (ssr *Snapshotter) Run(stopCh <-chan struct{}, startWithFullSnapshot bool) error {
+	if startWithFullSnapshot {
 		ssr.fullSnapshotTimer = time.NewTimer(0)
 	}
 	if ssr.config.deltaSnapshotIntervalSeconds < 1 {
@@ -266,7 +267,7 @@ func (ssr *Snapshotter) cleanupInMemoryEvents() {
 }
 
 func (ssr *Snapshotter) takeDeltaSnapshotAndResetTimer() error {
-	if err := ssr.takeDeltaSnapshot(); err != nil {
+	if err := ssr.TakeDeltaSnapshot(); err != nil {
 		// As per design principle, in business critical service if backup is not working,
 		// it's better to fail the process. So, we are quiting here.
 		ssr.logger.Warnf("Taking delta snapshot failed: %v", err)
@@ -284,7 +285,9 @@ func (ssr *Snapshotter) takeDeltaSnapshotAndResetTimer() error {
 	return nil
 }
 
-func (ssr *Snapshotter) takeDeltaSnapshot() error {
+// TakeDeltaSnapshot takes a delta snapshot that contains
+// the etcd events collected up till now
+func (ssr *Snapshotter) TakeDeltaSnapshot() error {
 	defer ssr.cleanupInMemoryEvents()
 	ssr.logger.Infof("Taking delta snapshot for time: %s", time.Now().Local())
 
@@ -318,6 +321,59 @@ func (ssr *Snapshotter) takeDeltaSnapshot() error {
 	metrics.LatestSnapshotTimestamp.With(prometheus.Labels{metrics.LabelKind: ssr.prevSnapshot.Kind}).Set(float64(ssr.prevSnapshot.CreatedOn.Unix()))
 	ssr.logger.Infof("Successfully saved delta snapshot at: %s", path.Join(snap.SnapDir, snap.SnapName))
 	return nil
+}
+
+// CollectEventsSincePrevSnapshot takes the first delta snapshot on etcd startup
+func (ssr *Snapshotter) CollectEventsSincePrevSnapshot(stopCh <-chan struct{}) (bool, error) {
+	// close any previous watch and client.
+	ssr.closeEtcdClient()
+
+	client, err := etcdutil.GetTLSClientForEtcd(ssr.config.tlsConfig)
+	if err != nil {
+		return false, &errors.EtcdError{
+			Message: fmt.Sprintf("failed to create etcd client: %v", err),
+		}
+	}
+
+	ctx, cancel := context.WithTimeout(context.TODO(), ssr.config.etcdConnectionTimeout*time.Second)
+	resp, err := client.Get(ctx, "", clientv3.WithLastRev()...)
+	cancel()
+	if err != nil {
+		return false, &errors.EtcdError{
+			Message: fmt.Sprintf("failed to get etcd latest revision: %v", err),
+		}
+	}
+	lastEtcdRevision := resp.Header.Revision
+
+	if ssr.prevSnapshot.LastRevision == lastEtcdRevision {
+		ssr.logger.Infof("No new events since last snapshot. Skipping initial delta snapshot.")
+		return false, nil
+	}
+
+	watchCtx, cancelWatch := context.WithCancel(context.TODO())
+	ssr.cancelWatch = cancelWatch
+	ssr.etcdClient = client
+	ssr.watchCh = client.Watch(watchCtx, "", clientv3.WithPrefix(), clientv3.WithRev(ssr.prevSnapshot.LastRevision+1))
+	ssr.logger.Infof("Applied watch on etcd from revision: %d", ssr.prevSnapshot.LastRevision+1)
+
+	for {
+		select {
+		case wr, ok := <-ssr.watchCh:
+			if !ok {
+				return false, fmt.Errorf("watch channel closed")
+			}
+			if err := ssr.handleDeltaWatchEvents(wr); err != nil {
+				return false, err
+			}
+
+			lastWatchRevision := wr.Events[len(wr.Events)-1].Kv.ModRevision
+			if lastWatchRevision >= lastEtcdRevision {
+				return false, nil
+			}
+		case <-stopCh:
+			return true, nil
+		}
+	}
 }
 
 func (ssr *Snapshotter) handleDeltaWatchEvents(wr clientv3.WatchResponse) error {
