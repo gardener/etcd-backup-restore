@@ -58,6 +58,8 @@ var _ = Describe("Defrag", func() {
 			oldStatus, err := client.Status(ctx, endpoints[0])
 			cancel()
 			Expect(err).ShouldNot(HaveOccurred())
+			oldDBSize := oldStatus.DbSize
+			oldRevision := oldStatus.Header.GetRevision()
 
 			err = defragData(tlsConfig, etcdConnectionTimeout)
 			Expect(err).ShouldNot(HaveOccurred())
@@ -66,8 +68,8 @@ var _ = Describe("Defrag", func() {
 			cancel()
 			Expect(err).ShouldNot(HaveOccurred())
 
-			Expect(newStatus.DbSize).Should(BeNumerically("<", oldStatus.DbSize))
-			Expect(newStatus.Header.GetRevision()).Should(BeNumerically("==", oldStatus.Header.GetRevision()))
+			Expect(newStatus.DbSize).Should(BeNumerically("<", oldDBSize))
+			Expect(newStatus.Header.GetRevision()).Should(BeNumerically("==", oldRevision))
 		})
 
 		It("should keep size of DB same in case of timeout", func() {
@@ -79,6 +81,7 @@ var _ = Describe("Defrag", func() {
 			oldStatus, err := client.Status(ctx, endpoints[0])
 			cancel()
 			Expect(err).ShouldNot(HaveOccurred())
+			oldRevision := oldStatus.Header.GetRevision()
 
 			err = defragData(tlsConfig, time.Duration(time.Microsecond))
 			Expect(err).Should(HaveOccurred())
@@ -87,7 +90,7 @@ var _ = Describe("Defrag", func() {
 			cancel()
 			Expect(err).ShouldNot(HaveOccurred())
 
-			Expect(newStatus.Header.GetRevision()).Should(BeNumerically("==", oldStatus.Header.GetRevision()))
+			Expect(newStatus.Header.GetRevision()).Should(BeNumerically("==", oldRevision))
 		})
 
 		It("should defrag periodically with callback", func() {
@@ -101,6 +104,9 @@ var _ = Describe("Defrag", func() {
 			oldStatus, err := client.Status(ctx, endpoints[0])
 			cancel()
 			Expect(err).ShouldNot(HaveOccurred())
+			oldDBSize := oldStatus.DbSize
+			oldRevision := oldStatus.Header.GetRevision()
+
 			stopCh := make(chan struct{})
 			time.AfterFunc(time.Second*time.Duration(75), func() {
 				close(stopCh)
@@ -114,8 +120,8 @@ var _ = Describe("Defrag", func() {
 			Expect(err).ShouldNot(HaveOccurred())
 
 			Expect(defragCount).Should(BeNumerically("==", expectedDefragCount))
-			Expect(newStatus.DbSize).Should(BeNumerically("<", oldStatus.DbSize))
-			Expect(newStatus.Header.GetRevision()).Should(BeNumerically("==", oldStatus.Header.GetRevision()))
+			Expect(newStatus.DbSize).Should(BeNumerically("<", oldDBSize))
+			Expect(newStatus.Header.GetRevision()).Should(BeNumerically("==", oldRevision))
 		})
 	})
 })
