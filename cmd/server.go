@@ -185,7 +185,8 @@ func NewServerCommand(stopCh <-chan struct{}) *cobra.Command {
 					}
 				} else {
 					startWithFullSnapshot = true
-					if ssrStopped, err := ssr.CollectEventsSincePrevSnapshot(ssrStopCh); err != nil {
+					ssrStopped, skipInitialDeltaSnapshot, err := ssr.CollectEventsSincePrevSnapshot(ssrStopCh)
+					if err != nil {
 						if ssrStopped {
 							logger.Infof("Snapshotter stopped.")
 							ackCh <- emptyStruct
@@ -199,9 +200,11 @@ func NewServerCommand(stopCh <-chan struct{}) *cobra.Command {
 						}
 						continue
 					}
-					if err = ssr.TakeDeltaSnapshot(); err != nil {
-						logger.Errorf("Failed to take first delta snapshot: snapshotter failed with error: %v", err)
-						continue
+					if !skipInitialDeltaSnapshot {
+						if err = ssr.TakeDeltaSnapshot(); err != nil {
+							logger.Errorf("Failed to take first delta snapshot: snapshotter failed with error: %v", err)
+							continue
+						}
 					}
 				}
 

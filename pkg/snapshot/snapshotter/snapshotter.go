@@ -324,13 +324,15 @@ func (ssr *Snapshotter) TakeDeltaSnapshot() error {
 }
 
 // CollectEventsSincePrevSnapshot takes the first delta snapshot on etcd startup
-func (ssr *Snapshotter) CollectEventsSincePrevSnapshot(stopCh <-chan struct{}) (bool, error) {
+// Returns ssrStopped (whether snapshotter is stopped), skipSnapshot (whether to
+// skip initial snapshot), err (any error)
+func (ssr *Snapshotter) CollectEventsSincePrevSnapshot(stopCh <-chan struct{}) (bool, bool, error) {
 	// close any previous watch and client.
 	ssr.closeEtcdClient()
 
 	client, err := etcdutil.GetTLSClientForEtcd(ssr.config.tlsConfig)
 	if err != nil {
-		return false, &errors.EtcdError{
+		return false, true, &errors.EtcdError{
 			Message: fmt.Sprintf("failed to create etcd client: %v", err),
 		}
 	}
@@ -339,7 +341,7 @@ func (ssr *Snapshotter) CollectEventsSincePrevSnapshot(stopCh <-chan struct{}) (
 	resp, err := client.Get(ctx, "", clientv3.WithLastRev()...)
 	cancel()
 	if err != nil {
-		return false, &errors.EtcdError{
+		return false, true, &errors.EtcdError{
 			Message: fmt.Sprintf("failed to get etcd latest revision: %v", err),
 		}
 	}
@@ -347,7 +349,7 @@ func (ssr *Snapshotter) CollectEventsSincePrevSnapshot(stopCh <-chan struct{}) (
 
 	if ssr.prevSnapshot.LastRevision == lastEtcdRevision {
 		ssr.logger.Infof("No new events since last snapshot. Skipping initial delta snapshot.")
-		return false, nil
+		return false, true, nil
 	}
 
 	watchCtx, cancelWatch := context.WithCancel(context.TODO())
@@ -360,18 +362,18 @@ func (ssr *Snapshotter) CollectEventsSincePrevSnapshot(stopCh <-chan struct{}) (
 		select {
 		case wr, ok := <-ssr.watchCh:
 			if !ok {
-				return false, fmt.Errorf("watch channel closed")
+				return false, true, fmt.Errorf("watch channel closed")
 			}
 			if err := ssr.handleDeltaWatchEvents(wr); err != nil {
-				return false, err
+				return false, true, err
 			}
 
 			lastWatchRevision := wr.Events[len(wr.Events)-1].Kv.ModRevision
 			if lastWatchRevision >= lastEtcdRevision {
-				return false, nil
+				return false, false, nil
 			}
 		case <-stopCh:
-			return true, nil
+			return true, true, nil
 		}
 	}
 }
