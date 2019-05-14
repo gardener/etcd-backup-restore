@@ -32,95 +32,166 @@ var _ = Describe("Snapshot", func() {
 			It("sorts snapshot by creation time", func() {
 				interval := int64(5)
 				now := time.Now().Unix()
+				snapdir := fmt.Sprintf("Backup-%d", now)
 				snap1 := Snapshot{
 					CreatedOn:     time.Unix(now, 0).UTC(),
 					StartRevision: 0,
 					LastRevision:  2088,
 					Kind:          SnapshotKindFull,
+					SnapDir:       snapdir,
 				}
 				snap2 := Snapshot{
 					CreatedOn:     time.Unix(now+1*interval, 0).UTC(),
 					StartRevision: 0,
 					LastRevision:  1988,
 					Kind:          SnapshotKindFull,
+					SnapDir:       snapdir,
 				}
 				snap3 := Snapshot{
 					CreatedOn:     time.Unix(now+2*interval, 0).UTC(),
 					StartRevision: 0,
 					LastRevision:  1888,
 					Kind:          SnapshotKindFull,
+					SnapDir:       snapdir,
 				}
 				snap4 := Snapshot{
 					CreatedOn:     time.Unix(now+3*interval, 0).UTC(),
 					StartRevision: 0,
 					LastRevision:  1788,
 					Kind:          SnapshotKindFull,
+					SnapDir:       snapdir,
 				}
 				snap5 := Snapshot{
 					CreatedOn:     time.Unix(now+4*interval, 0).UTC(),
 					StartRevision: 0,
 					LastRevision:  1688,
 					Kind:          SnapshotKindFull,
+					SnapDir:       snapdir,
 				}
 				snap6 := Snapshot{
 					CreatedOn:     time.Unix(now+5*interval, 0).UTC(),
 					StartRevision: 0,
 					LastRevision:  1588,
 					Kind:          SnapshotKindFull,
+					SnapDir:       snapdir,
 				}
 				snapList := SnapList{&snap4, &snap3, &snap1, &snap6, &snap2, &snap5}
 				sort.Sort(snapList)
+				expectedSnapList := SnapList{&snap1, &snap2, &snap3, &snap4, &snap5, &snap6}
 				for i := 0; i < len(snapList); i++ {
 					Expect(snapList[i].CreatedOn.Unix()).To(Equal(now + int64(i)*interval))
+					Expect(snapList[i]).Should(Equal(expectedSnapList[i]))
 				}
 			})
-		})
 
-		Context("when provied with list of snapshots where few have the same timestamp", func() {
 			It("sorts snapshot by creation time as well as start revision", func() {
 				interval := int64(5)
 				now := time.Now().Unix()
+				snapdir := fmt.Sprintf("Backup-%d", now)
 				snap1 := Snapshot{
 					CreatedOn:     time.Unix(now, 0).UTC(),
 					StartRevision: 1001,
 					LastRevision:  1050,
 					Kind:          SnapshotKindDelta,
+					SnapDir:       snapdir,
 				}
 				snap2 := Snapshot{
 					CreatedOn:     time.Unix(now+1*interval, 0).UTC(),
 					StartRevision: 1051,
 					LastRevision:  1200,
 					Kind:          SnapshotKindDelta,
+					SnapDir:       snapdir,
 				}
 				snap3 := Snapshot{
 					CreatedOn:     time.Unix(now+1*interval, 0).UTC(),
 					StartRevision: 1201,
 					LastRevision:  1500,
 					Kind:          SnapshotKindDelta,
+					SnapDir:       snapdir,
 				}
 				snap4 := Snapshot{
 					CreatedOn:     time.Unix(now+2*interval, 0).UTC(),
 					StartRevision: 1501,
 					LastRevision:  2000,
 					Kind:          SnapshotKindDelta,
+					SnapDir:       snapdir,
 				}
 				snap5 := Snapshot{
 					CreatedOn:     time.Unix(now+2*interval, 0).UTC(),
 					StartRevision: 2001,
 					LastRevision:  2150,
 					Kind:          SnapshotKindDelta,
+					SnapDir:       snapdir,
 				}
 				snap6 := Snapshot{
 					CreatedOn:     time.Unix(now+3*interval, 0).UTC(),
 					StartRevision: 2151,
 					LastRevision:  2160,
 					Kind:          SnapshotKindDelta,
+					SnapDir:       snapdir,
 				}
 				snapList := SnapList{&snap5, &snap2, &snap1, &snap4, &snap6, &snap3}
 				sort.Sort(snapList)
+				expectedSnapList := SnapList{&snap1, &snap2, &snap3, &snap4, &snap5, &snap6}
 				for i := 1; i < len(snapList); i++ {
 					Expect(snapList[i].CreatedOn.Unix()).Should(BeNumerically(">=", snapList[i-1].CreatedOn.Unix()))
 					Expect(snapList[i].StartRevision).Should(BeNumerically(">", snapList[i-1].StartRevision))
+					Expect(snapList[i]).Should(Equal(expectedSnapList[i]))
+				}
+			})
+
+			It("sorts snapshot in preference order of snap directory creation time followed by snapshot creation time and then start revision", func() {
+				interval := int64(5)
+				now := time.Now().Unix()
+				snapdir1 := fmt.Sprintf("Backup-%d", now)
+				snapdir2 := fmt.Sprintf("Backup-%d", now+2*interval)
+				snap1 := Snapshot{
+					CreatedOn:     time.Unix(now, 0).UTC(),
+					StartRevision: 1001,
+					LastRevision:  1050,
+					Kind:          SnapshotKindDelta,
+					SnapDir:       snapdir1,
+				}
+				snap2 := Snapshot{
+					CreatedOn:     time.Unix(now+1*interval, 0).UTC(),
+					StartRevision: 1051,
+					LastRevision:  1200,
+					Kind:          SnapshotKindDelta,
+					SnapDir:       snapdir1,
+				}
+				snap3 := Snapshot{
+					CreatedOn:     time.Unix(now+1*interval, 0).UTC(),
+					StartRevision: 1201,
+					LastRevision:  1500,
+					Kind:          SnapshotKindDelta,
+					SnapDir:       snapdir1,
+				}
+				snap4 := Snapshot{
+					CreatedOn:     time.Unix(now+2*interval, 0).UTC(),
+					StartRevision: 1501,
+					LastRevision:  2000,
+					Kind:          SnapshotKindDelta,
+					SnapDir:       snapdir2,
+				}
+				snap5 := Snapshot{
+					CreatedOn:     time.Unix(now+2*interval, 0).UTC(),
+					StartRevision: 2001,
+					LastRevision:  2150,
+					Kind:          SnapshotKindDelta,
+					SnapDir:       snapdir2,
+				}
+				snap6 := Snapshot{
+					CreatedOn:     time.Unix(now+3*interval, 0).UTC(),
+					StartRevision: 2151,
+					LastRevision:  2160,
+					Kind:          SnapshotKindDelta,
+					SnapDir:       snapdir1,
+				}
+				snapList := SnapList{&snap5, &snap2, &snap1, &snap4, &snap6, &snap3}
+				sort.Sort(snapList)
+				expectedSnapList := SnapList{&snap1, &snap2, &snap3, &snap6, &snap4, &snap5}
+				for i := 1; i < len(snapList); i++ {
+					Expect(snapList[i]).Should(Equal(expectedSnapList[i]))
 				}
 			})
 		})
