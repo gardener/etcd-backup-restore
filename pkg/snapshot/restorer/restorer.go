@@ -335,7 +335,6 @@ func (r *Restorer) applyDeltaSnapshots(client *clientv3.Client, ro RestoreOption
 
 	firstDeltaSnap := snapList[0]
 
-	r.logger.Infof("Applying delta snapshot %s", path.Join(firstDeltaSnap.SnapDir, firstDeltaSnap.SnapName))
 	if err := r.applyFirstDeltaSnapshot(client, *firstDeltaSnap); err != nil {
 		return err
 	}

@@ -44,7 +44,13 @@ func (s *Snapshot) GenerateSnapshotName() {
 
 // GenerateSnapshotDirectory prepares the snapshot directory name from metadata
 func (s *Snapshot) GenerateSnapshotDirectory() {
-	s.SnapDir = fmt.Sprintf("%s-%d", "Backup", s.CreatedOn.Unix())
+	s.SnapDir = fmt.Sprintf("Backup-%d", s.CreatedOn.Unix())
+}
+
+// GetSnapshotDirectoryCreationTimeInUnix returns the creation time for snapshot directory.
+func (s *Snapshot) GetSnapshotDirectoryCreationTimeInUnix() (int64, error) {
+	tok := strings.TrimPrefix(s.SnapDir, "Backup-")
+	return strconv.ParseInt(tok, 10, 64)
 }
 
 // ParseSnapshot parse <snapPath> to create snapshot structure
@@ -106,6 +112,21 @@ func ParseSnapshot(snapPath string) (*Snapshot, error) {
 func (s SnapList) Len() int      { return len(s) }
 func (s SnapList) Swap(i, j int) { s[i], s[j] = s[j], s[i] }
 func (s SnapList) Less(i, j int) bool {
+	// Ignoring errors here, as we assume at this stage the error won't happen.
+	iCreationTime, err := s[i].GetSnapshotDirectoryCreationTimeInUnix()
+	if err != nil {
+		logrus.Errorf("Failed to get snapshot directory creation time for snapshot: %s, with error: %v", path.Join(s[i].SnapDir, s[i].SnapName), err)
+	}
+	jCreationTime, err := s[j].GetSnapshotDirectoryCreationTimeInUnix()
+	if err != nil {
+		logrus.Errorf("Failed to get snapshot directory creation time for snapshot: %s, with error: %v", path.Join(s[j].SnapDir, s[j].SnapName), err)
+	}
+	if iCreationTime < jCreationTime {
+		return true
+	}
+	if iCreationTime > jCreationTime {
+		return false
+	}
 	if s[i].CreatedOn.Unix() == s[j].CreatedOn.Unix() {
 		if !s[i].IsChunk && s[j].IsChunk {
 			return true
