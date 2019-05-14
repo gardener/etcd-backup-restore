@@ -185,13 +185,15 @@ func NewServerCommand(stopCh <-chan struct{}) *cobra.Command {
 					}
 				} else {
 					startWithFullSnapshot = true
-					if ssrStopped, err := ssr.CollectEventsSincePrevSnapshot(ssrStopCh); err != nil {
-						if ssrStopped {
-							logger.Infof("Snapshotter stopped.")
-							ackCh <- emptyStruct
-							handler.Status = http.StatusServiceUnavailable
-							return
-						}
+					ssrStopped, err := ssr.CollectEventsSincePrevSnapshot(ssrStopCh)
+					if ssrStopped {
+						logger.Info("Snapshotter stopped.")
+						ackCh <- emptyStruct
+						handler.Status = http.StatusServiceUnavailable
+						logger.Info("Shutting down...")
+						return
+					}
+					if err != nil {
 						if etcdErr, ok := err.(*errors.EtcdError); ok == true {
 							logger.Errorf("Failed to take first delta snapshot: snapshotter failed with etcd error: %v", etcdErr)
 						} else {
