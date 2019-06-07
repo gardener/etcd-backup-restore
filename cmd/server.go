@@ -172,19 +172,12 @@ func NewServerCommand(stopCh <-chan struct{}) *cobra.Command {
 				// the delta snapshot memory limit), after which a full snapshot
 				// is taken and the regular snapshot schedule comes into effect.
 
-				var startWithFullSnapshot bool
+				var initialDeltaSnapshotTaken bool
 
 				// TODO: write code to find out if prev full snapshot is older than it is
 				// supposed to be, according to the given cron schedule, instead of the
 				// hard-coded "24 hours" full snapshot interval
-				if ssr.PrevFullSnapshot == nil || time.Now().Sub(ssr.PrevFullSnapshot.CreatedOn).Hours() > 24 {
-					startWithFullSnapshot = false
-					if err = ssr.TakeFullSnapshotAndResetTimer(); err != nil {
-						logger.Errorf("Failed to take first full snapshot: %v", err)
-						continue
-					}
-				} else {
-					startWithFullSnapshot = true
+				if ssr.PrevFullSnapshot != nil && time.Since(ssr.PrevFullSnapshot.CreatedOn).Hours() <= 24 {
 					ssrStopped, err := ssr.CollectEventsSincePrevSnapshot(ssrStopCh)
 					if ssrStopped {
 						logger.Info("Snapshotter stopped.")
@@ -193,16 +186,19 @@ func NewServerCommand(stopCh <-chan struct{}) *cobra.Command {
 						logger.Info("Shutting down...")
 						return
 					}
-					if err != nil {
-						if etcdErr, ok := err.(*errors.EtcdError); ok == true {
-							logger.Errorf("Failed to take first delta snapshot: snapshotter failed with etcd error: %v", etcdErr)
-						} else {
-							logger.Errorf("Failed to take first delta snapshot: snapshotter failed with error: %v", err)
+					if err == nil {
+						if err := ssr.TakeDeltaSnapshot(); err != nil {
+							logger.Warnf("Failed to take first delta snapshot: snapshotter failed with error: %v", err)
+							continue
 						}
-						continue
+						initialDeltaSnapshotTaken = true
+					} else {
+						logger.Warnf("Failed to collect events for first delta snapshot: %v", err)
 					}
-					if err = ssr.TakeDeltaSnapshot(); err != nil {
-						logger.Errorf("Failed to take first delta snapshot: snapshotter failed with error: %v", err)
+				}
+				if !initialDeltaSnapshotTaken {
+					if err := ssr.TakeFullSnapshotAndResetTimer(); err != nil {
+						logger.Errorf("Failed to take substitute first full snapshot: %v", err)
 						continue
 					}
 				}
@@ -217,11 +213,11 @@ func NewServerCommand(stopCh <-chan struct{}) *cobra.Command {
 				gcStopCh := make(chan struct{})
 				go ssr.RunGarbageCollector(gcStopCh)
 				logger.Infof("Starting snapshotter...")
-				if err := ssr.Run(ssrStopCh, startWithFullSnapshot); err != nil {
+				if err := ssr.Run(ssrStopCh, initialDeltaSnapshotTaken); err != nil {
 					if etcdErr, ok := err.(*errors.EtcdError); ok == true {
 						logger.Errorf("Snapshotter failed with etcd error: %v", etcdErr)
 					} else {
-						logger.Errorf("Snapshotter failed with error: %v", err)
+						logger.Fatalf("Snapshotter failed with error: %v", err)
 					}
 				}
 				logger.Infof("Snapshotter stopped.")
