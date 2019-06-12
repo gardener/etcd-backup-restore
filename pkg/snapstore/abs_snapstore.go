@@ -81,7 +81,10 @@ func GetABSSnapstoreFromClient(container, prefix, tempDir string, maxParallelChu
 	_, err := containerURL.GetProperties(ctx, azblob.LeaseAccessConditions{})
 	if err != nil {
 		aer, ok := err.(azblob.StorageError)
-		if !ok || aer.ServiceCode() != azblob.ServiceCodeContainerNotFound {
+		if !ok {
+			return nil, fmt.Errorf("failed to get properties of container %v with err, %v", container, err.Error())
+		}
+		if aer.ServiceCode() != azblob.ServiceCodeContainerNotFound {
 			return nil, fmt.Errorf("failed to get properties of container %v with err, %v", container, aer.Error())
 		}
 		return nil, fmt.Errorf("container %s does not exist", container)
