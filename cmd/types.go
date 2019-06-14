@@ -31,6 +31,8 @@ var (
 	//snapshotter flags
 	schedule                       string
 	etcdEndpoints                  []string
+	etcdUsername                   string
+	etcdPassword                   string
 	deltaSnapshotIntervalSeconds   int
 	deltaSnapshotMemoryLimit       int
 	maxBackups                     int

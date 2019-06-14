@@ -51,7 +51,9 @@ storing snapshots on various cloud storage providers as well as local disk locat
 				caFile,
 				insecureTransport,
 				insecureSkipVerify,
-				etcdEndpoints)
+				etcdEndpoints,
+				etcdUsername,
+				etcdPassword)
 			snapshotterConfig, err := snapshotter.NewSnapshotterConfig(
 				schedule,
 				ss,
@@ -105,5 +107,7 @@ func initializeSnapshotterFlags(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&certFile, "cert", "", "identify secure client using this TLS certificate file")
 	cmd.Flags().StringVar(&keyFile, "key", "", "identify secure client using this TLS key file")
 	cmd.Flags().StringVar(&caFile, "cacert", "", "verify certificates of TLS-enabled secure servers using this CA bundle")
+	cmd.Flags().StringVar(&etcdUsername, "etcd-username", "", "etcd server username, if one is required")
+	cmd.Flags().StringVar(&etcdPassword, "etcd-password", "", "etcd server password, if one is required")
 	cmd.Flags().IntVar(&defragmentationPeriodHours, "defragmentation-period-hours", 72, "period after which we should defragment etcd data directory")
 }

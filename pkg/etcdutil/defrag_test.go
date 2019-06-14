@@ -30,8 +30,10 @@ var _ = Describe("Defrag", func() {
 		etcdConnectionTimeout = time.Duration(30 * time.Second)
 		keyPrefix             = "/defrag/key-"
 		valuePrefix           = "val"
+		etcdUsername          string
+		etcdPassword          string
 	)
-	tlsConfig = NewTLSConfig("", "", "", true, true, endpoints)
+	tlsConfig = NewTLSConfig("", "", "", true, true, endpoints, etcdUsername, etcdPassword)
 	Context("Defragmentation", func() {
 		BeforeEach(func() {
 			now := time.Now().Unix()
