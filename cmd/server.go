@@ -42,9 +42,13 @@ func NewServerCommand(stopCh <-chan struct{}) *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			printVersionInfo()
 			var (
-				snapstoreConfig *snapstore.Config
-				ssrStopCh       chan struct{}
-				ackCh           chan struct{}
+				snapstoreConfig           *snapstore.Config
+				ssrStopCh                 chan struct{}
+				ackCh                     chan struct{}
+				ssr                       *snapshotter.Snapshotter
+				handler                   *server.HTTPHandler
+				snapshotterEnabled        bool
+				initialDeltaSnapshotTaken bool
 			)
 			ackCh = make(chan struct{})
 			clusterUrlsMap, err := types.NewURLsMap(restoreCluster)
@@ -67,7 +71,11 @@ func NewServerCommand(stopCh <-chan struct{}) *cobra.Command {
 				EmbeddedEtcdQuotaBytes: embeddedEtcdQuotaBytes,
 			}
 
-			if storageProvider != "" {
+			if storageProvider == "" {
+				snapshotterEnabled = false
+				logger.Warnf("No snapstore storage provider configured. Will not start backup schedule.")
+			} else {
+				snapshotterEnabled = true
 				snapstoreConfig = &snapstore.Config{
 					Provider:                storageProvider,
 					Container:               storageContainer,
@@ -78,12 +86,51 @@ func NewServerCommand(stopCh <-chan struct{}) *cobra.Command {
 			}
 
 			etcdInitializer := initializer.NewInitializer(options, snapstoreConfig, logger)
-			// Start http handler with Error state and wait till snapshotter is up
-			// and running before setting the state to OK.
 
-			handler := &server.HTTPHandler{
+			tlsConfig := etcdutil.NewTLSConfig(
+				certFile,
+				keyFile,
+				caFile,
+				insecureTransport,
+				insecureSkipVerify,
+				etcdEndpoints)
+
+			if snapshotterEnabled {
+				ss, err := snapstore.GetSnapstore(snapstoreConfig)
+				if err != nil {
+					logger.Fatalf("Failed to create snapstore from configured storage provider: %v", err)
+				}
+				logger.Infof("Created snapstore from provider: %s", storageProvider)
+
+				snapshotterConfig, err := snapshotter.NewSnapshotterConfig(
+					schedule,
+					ss,
+					maxBackups,
+					deltaSnapshotIntervalSeconds,
+					deltaSnapshotMemoryLimit,
+					time.Duration(etcdConnectionTimeout),
+					time.Duration(garbageCollectionPeriodSeconds),
+					garbageCollectionPolicy,
+					tlsConfig)
+				if err != nil {
+					logger.Fatalf("failed to create snapshotter config: %v", err)
+				}
+
+				logger.Infof("Creating snapshotter...")
+				ssr = snapshotter.NewSnapshotter(
+					logger,
+					snapshotterConfig,
+				)
+			}
+
+			// Start http handler with Error state and wait till snapshotter is up
+			// and running before setting the status to OK.
+			// If no storage provider is given, snapshotter will be nil, in which
+			// case the status is set to OK as soon as etcd probe is successful
+			handler = &server.HTTPHandler{
 				Port:            port,
 				EtcdInitializer: *etcdInitializer,
+				Snapshotter:     ssr,
 				Logger:          logger,
 				Status:          http.StatusServiceUnavailable,
 				StopCh:          make(chan struct{}),
@@ -97,54 +144,18 @@ func NewServerCommand(stopCh <-chan struct{}) *cobra.Command {
 			go handler.Start()
 			defer handler.Stop()
 
-			if snapstoreConfig == nil {
-				logger.Warnf("No snapstore storage provider configured. Will not start backup schedule.")
-				go handleNoSsrRequest(handler)
-				handler.Status = http.StatusOK
-				<-stopCh
-				logger.Infof("Received stop signal. Terminating !!")
-				return
+			if snapshotterEnabled {
+				ssrStopCh = make(chan struct{})
+				go handleSsrStopRequest(handler, ssr, ackCh, ssrStopCh, stopCh)
+				go handleAckState(handler, ackCh)
 			}
 
-			tlsConfig := etcdutil.NewTLSConfig(
-				certFile,
-				keyFile,
-				caFile,
-				insecureTransport,
-				insecureSkipVerify,
-				etcdEndpoints)
-
-			ss, err := snapstore.GetSnapstore(snapstoreConfig)
-			if err != nil {
-				logger.Fatalf("Failed to create snapstore from configured storage provider: %v", err)
-			}
-			logger.Infof("Created snapstore from provider: %s", storageProvider)
-
-			snapshotterConfig, err := snapshotter.NewSnapshotterConfig(
-				schedule,
-				ss,
-				maxBackups,
-				deltaSnapshotIntervalSeconds,
-				deltaSnapshotMemoryLimit,
-				time.Duration(etcdConnectionTimeout),
-				time.Duration(garbageCollectionPeriodSeconds),
-				garbageCollectionPolicy,
-				tlsConfig)
-			if err != nil {
-				logger.Fatalf("failed to create snapstore config: %v", err)
-			}
-			logger.Infof("Creating snapshotter...")
-			ssr := snapshotter.NewSnapshotter(
-				logger,
-				snapshotterConfig)
-			ssrStopCh = make(chan struct{})
-			go handleSsrRequest(handler, ssr, ackCh, ssrStopCh, stopCh)
-			go handleAckState(handler, ackCh)
 			if defragmentationPeriodHours < 1 {
 				logger.Infof("Disabling defragmentation since defragmentation period [%d] is less than 1", defragmentationPeriodHours)
 			} else {
 				go etcdutil.DefragDataPeriodically(stopCh, tlsConfig, time.Duration(defragmentationPeriodHours)*time.Hour, time.Duration(etcdConnectionTimeout)*time.Second, ssr.TriggerFullSnapshot)
 			}
+
 			for {
 				logger.Infof("Probing etcd...")
 				select {
@@ -160,52 +171,60 @@ func NewServerCommand(stopCh <-chan struct{}) *cobra.Command {
 					continue
 				}
 
-				// The decision to either take an initial delta snapshot or
-				// or a full snapshot directly is based on whether there has
-				// been a previous full snapshot (if not, we assume the etcd
-				// to be a fresh etcd) or it has been more than 24 hours since
-				// the last full snapshot was taken.
-				// If this is not the case, we take a delta snapshot by first
-				// collecting all the delta events since the previous snapshot
-				// and take a delta snapshot of these (there may be multiple
-				// delta snapshots based on the amount of events collected and
-				// the delta snapshot memory limit), after which a full snapshot
-				// is taken and the regular snapshot schedule comes into effect.
+				if snapshotterEnabled {
+					// The decision to either take an initial delta snapshot or
+					// or a full snapshot directly is based on whether there has
+					// been a previous full snapshot (if not, we assume the etcd
+					// to be a fresh etcd) or it has been more than 24 hours since
+					// the last full snapshot was taken.
+					// If this is not the case, we take a delta snapshot by first
+					// collecting all the delta events since the previous snapshot
+					// and take a delta snapshot of these (there may be multiple
+					// delta snapshots based on the amount of events collected and
+					// the delta snapshot memory limit), after which a full snapshot
+					// is taken and the regular snapshot schedule comes into effect.
 
-				var initialDeltaSnapshotTaken bool
-
-				// TODO: write code to find out if prev full snapshot is older than it is
-				// supposed to be, according to the given cron schedule, instead of the
-				// hard-coded "24 hours" full snapshot interval
-				if ssr.PrevFullSnapshot != nil && time.Since(ssr.PrevFullSnapshot.CreatedOn).Hours() <= 24 {
-					ssrStopped, err := ssr.CollectEventsSincePrevSnapshot(ssrStopCh)
-					if ssrStopped {
-						logger.Info("Snapshotter stopped.")
-						ackCh <- emptyStruct
-						handler.Status = http.StatusServiceUnavailable
-						logger.Info("Shutting down...")
-						return
+					// TODO: write code to find out if prev full snapshot is older than it is
+					// supposed to be, according to the given cron schedule, instead of the
+					// hard-coded "24 hours" full snapshot interval
+					if ssr.PrevFullSnapshot != nil && time.Since(ssr.PrevFullSnapshot.CreatedOn).Hours() <= 24 {
+						ssrStopped, err := ssr.CollectEventsSincePrevSnapshot(ssrStopCh)
+						if ssrStopped {
+							logger.Info("Snapshotter stopped.")
+							ackCh <- emptyStruct
+							handler.Status = http.StatusServiceUnavailable
+							logger.Info("Shutting down...")
+							return
+						}
+						if err == nil {
+							if err := ssr.TakeDeltaSnapshot(); err != nil {
+								logger.Warnf("Failed to take first delta snapshot: snapshotter failed with error: %v", err)
+								continue
+							}
+							initialDeltaSnapshotTaken = true
+						} else {
+							logger.Warnf("Failed to collect events for first delta snapshot: %v", err)
+						}
 					}
-					if err == nil {
-						if err := ssr.TakeDeltaSnapshot(); err != nil {
-							logger.Warnf("Failed to take first delta snapshot: snapshotter failed with error: %v", err)
+					if !initialDeltaSnapshotTaken {
+						if err := ssr.TakeFullSnapshotAndResetTimer(); err != nil {
+							logger.Errorf("Failed to take substitute first full snapshot: %v", err)
 							continue
 						}
-						initialDeltaSnapshotTaken = true
-					} else {
-						logger.Warnf("Failed to collect events for first delta snapshot: %v", err)
 					}
-				}
-				if !initialDeltaSnapshotTaken {
-					if err := ssr.TakeFullSnapshotAndResetTimer(); err != nil {
-						logger.Errorf("Failed to take substitute first full snapshot: %v", err)
-						continue
-					}
+
 				}
 
 				// set server's healthz endpoint status to OK so that
 				// etcd is marked as ready to serve traffic
 				handler.Status = http.StatusOK
+
+				if !snapshotterEnabled {
+					<-stopCh
+					handler.Status = http.StatusServiceUnavailable
+					logger.Infof("Received stop signal. Terminating !!")
+					return
+				}
 
 				ssr.SsrStateMutex.Lock()
 				ssr.SsrState = snapshotter.SnapshotterActive
@@ -269,21 +288,8 @@ func handleAckState(handler *server.HTTPHandler, ackCh chan struct{}) {
 	}
 }
 
-// handleNoSsrRequest responds to handlers request with acknowledgment when snapshotter is not running.
-func handleNoSsrRequest(handler *server.HTTPHandler) {
-	for {
-		_, ok := <-handler.ReqCh
-		if !ok {
-			return
-		}
-		if atomic.CompareAndSwapUint32(&handler.AckState, server.HandlerAckWaiting, server.HandlerAckDone) {
-			handler.AckCh <- emptyStruct
-		}
-	}
-}
-
-// handleSsrRequest responds to handlers request and stop interrupt.
-func handleSsrRequest(handler *server.HTTPHandler, ssr *snapshotter.Snapshotter, ackCh, ssrStopCh chan struct{}, stopCh <-chan struct{}) {
+// handleSsrStopRequest responds to handlers request and stop interrupt.
+func handleSsrStopRequest(handler *server.HTTPHandler, ssr *snapshotter.Snapshotter, ackCh, ssrStopCh chan struct{}, stopCh <-chan struct{}) {
 	for {
 		var ok bool
 		select {
