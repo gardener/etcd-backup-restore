@@ -135,6 +135,11 @@ func NewServerCommand(stopCh <-chan struct{}) *cobra.Command {
 				handler = startHTTPServer(etcdInitializer, nil)
 				defer handler.Stop()
 
+				// start defragmentation without trigerring full snapshot
+				// after each successful data defragmentation
+				startDefragmentationThread(defragmentationPeriodHours, stopCh, tlsConfig, func() error {
+					return nil
+				})
 				runEtcdProbeLoopWithoutSnapshotter(tlsConfig, handler, stopCh, ackCh)
 			}
 		},
