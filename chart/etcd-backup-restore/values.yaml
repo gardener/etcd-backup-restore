@@ -1,0 +1,97 @@
+images:
+  # etcd image to use
+  etcd:
+    repository: quay.io/coreos/etcd
+    tag: v3.3.12
+    pullPolicy: IfNotPresent
+  # etcd-backup-restore image to use
+  etcdBackupRestore:
+    repository:  eu.gcr.io/gardener-project/gardener/etcdbrctl
+    tag:  0.6.4
+    pullPolicy: IfNotPresent
+
+resources:
+  etcd:
+    limits:
+      cpu: 100m
+      memory: 1Gi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+  backup:
+    limits:
+      cpu: 100m
+      memory: 1Gi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+
+backup:
+
+  # schedule is cron standard schedule to take full snapshots.
+  schedule: "0 */1 * * *"
+
+  # deltaSnapshotPeriodSeconds is Period in seconds after which delta snapshot will be persisted. If this value is set to be lesser than 1, delta snapshotting will be disabled.
+  deltaSnapshotPeriodSeconds: 60
+  # deltaSnapshotMemoryLimit is memory limit in bytes after which delta snapshots will be taken out of schedule.
+  deltaSnapshotMemoryLimit: 104857600 #100MB
+
+  # defragmentationPeriodHours is period after which the etcd data will defragmented. If this value is set to be lesser than 1, defragmentation will be disabled.
+  defragmentationPeriodHours: 72
+
+  # garbageCollectionPolicy mentions the policy for garbage collecting old backups. Allowed values are Exponential(default), LimitBased.
+  garbageCollectionPolicy: Exponential
+  # maxBackups is the maximum number of backups to keep (may change in future). This is interpreted in case of garbageCollectionPolicy set to LimitBased.
+  maxBackups: 7
+
+  etcdConnectionTimeout: 300
+  # etcdQuotaBytes used to Raise alarms when backend DB size exceeds the given quota bytes
+  etcdQuotaBytes: 8589934592 #8GB
+
+  # storageContainer is name of the container or bucket name used for storage.
+  # Directory name in case of local storage provider.
+  storageContainer: ""
+
+  # storageProvider indicate the type of backup storage provider.
+  # Supported values are ABS,GCS,S3,Swift,OSS,Local, empty means no backup.
+  storageProvider: "Local"
+
+  # Please uncomment the following section based on the storage provider.
+  # s3:
+  #   region: region-where-bucket-exists
+  #   secretAccessKey: secret-access-key-with-object-storage-privileges
+  #   accessKeyID: access-key-id-with-route53-privileges
+  # gcs:
+  #   serviceAccountJson: service-account-json-with-object-storage-privileges
+  # abs:
+  #   storageAccount: storage-account-with-object-storage-privileges
+  #   storageKey: storage-key-with-object-storage-privileges
+  # swift:
+  #   authURL: identity-server-url
+  #   domainName: domain-name
+  #   username: username-with-object-storage-privileges
+  #   password: password
+  #   tenantName: tenant-name
+  # oss:
+  #   endpoint: oss-endpoint-url
+  #   accessKeySecret: secret-access-key-with-object-storage-privileges
+  #   accessKeyID: access-key-id-with-object-storage-privileges
+
+# tls field contains the pre-created secrets for etcd. Uncomment the
+# whole tls section if you dont want to use tls for the etcd.
+tls: {}
+  # caBundle: |
+      #   -----BEGIN CERTIFICATE-----
+      #   ...
+      #   -----END CERTIFICATE-----
+  # crt: |
+      #     -----BEGIN CERTIFICATE-----
+      #     ...
+      #     -----END CERTIFICATE-----
+  # key: |
+      #     -----BEGIN RSA PRIVATE KEY-----
+      #     ...
+      #     -----END RSA PRIVATE KEY-----
+
+# podAnnotations will be placed to the resulting etcd pod
+podAnnotations: {}
