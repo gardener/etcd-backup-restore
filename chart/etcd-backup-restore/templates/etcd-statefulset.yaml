@@ -46,7 +46,10 @@ spec:
             - -ec
             - ETCDCTL_API=3
             - etcdctl
-            - --config-file=/var/etcd/config/etcd.conf.yaml
+            - --cert=/var/etcd/ssl/tls/tls.crt
+            - --key=/var/etcd/ssl/tls/tls.key
+            - --cacert=/var/etcd/ssl/ca/ca.crt
+            - --endpoints={{ if .Values.tls }}https{{ else }}http{{ end }}://{{ .Release.Name }}-etcd-0:{{ .Values.servicePorts.client }}
             - get
             - foo
           initialDelaySeconds: 15
