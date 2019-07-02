@@ -35,11 +35,11 @@ data:
     check_and_start_etcd(){
           while true;
           do
-            wget http://localhost:8080/initialization/status -S -O status;
+            wget http://localhost:{{ .Values.servicePorts.backupRestore }}/initialization/status -S -O status;
             STATUS=`cat status`;
             case $STATUS in
             "New")
-                  wget http://localhost:8080/initialization/start?mode=$1 -S -O - ;;
+                  wget http://localhost:{{ .Values.servicePorts.backupRestore }}/initialization/start?mode=$1 -S -O - ;;
             "Progress")
                   sleep 1;
                   continue;;
@@ -88,11 +88,11 @@ data:
     {{- end }}
 
     # List of comma separated URLs to listen on for client traffic.
-    listen-client-urls: {{ if .Values.tls }}https{{ else }}http{{ end }}://0.0.0.0:2379
+    listen-client-urls: {{ if .Values.tls }}https{{ else }}http{{ end }}://0.0.0.0:{{ .Values.servicePorts.client }}
 
     # List of this member's client URLs to advertise to the public.
     # The URLs needed to be a comma-separated list.
-    advertise-client-urls: {{ if .Values.tls }}https{{ else }}http{{ end }}://0.0.0.0:2379
+    advertise-client-urls: {{ if .Values.tls }}https{{ else }}http{{ end }}://0.0.0.0:{{ .Values.servicePorts.client }}
 
     # Initial cluster token for the etcd cluster during bootstrap.
     initial-cluster-token: 'new'
