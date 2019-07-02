@@ -36,7 +36,7 @@ spec:
         readinessProbe:
           httpGet:
             path: /healthz
-            port: 8080
+            port: {{ .Values.servicePorts.backupRestore }}
           initialDelaySeconds: 5
           periodSeconds: 5
         livenessProbe:
@@ -52,10 +52,10 @@ spec:
           initialDelaySeconds: 15
           periodSeconds: 5
         ports:
-        - containerPort: 2380
+        - containerPort: {{ .Values.servicePorts.server }}
           name: server
           protocol: TCP
-        - containerPort: 2379
+        - containerPort: {{ .Values.servicePorts.client }}
           name: client
           protocol: TCP
         resources:
@@ -94,11 +94,11 @@ spec:
         - --cacert=/var/etcd/ssl/ca/ca.crt
         - --insecure-transport=false
         - --insecure-skip-tls-verify=false
-        - --endpoints=https://{{ .Release.Name }}-etcd-0:2379
+        - --endpoints=https://{{ .Release.Name }}-etcd-0:{{ .Values.servicePorts.client }}
 {{ else }}
         - --insecure-transport=true
         - --insecure-skip-tls-verify=true
-        - --endpoints=http://{{ .Release.Name }}-etcd-0:2379
+        - --endpoints=http://{{ .Release.Name }}-etcd-0:{{ .Values.servicePorts.client }}
 {{- end }}
         - --etcd-connection-timeout={{ .Values.backup.etcdConnectionTimeout }}
         - --delta-snapshot-period-seconds={{ int $.Values.backup.deltaSnapshotPeriodSeconds }}
@@ -106,7 +106,7 @@ spec:
         image: {{ .Values.images.etcdBackupRestore.repository }}:{{ .Values.images.etcdBackupRestore.tag }}
         imagePullPolicy: {{ .Values.images.etcdBackupRestore.pullPolicy }}
         ports:
-        - containerPort: 8080
+        - containerPort: {{ .Values.servicePorts.backupRestore }}
           name: server
           protocol: TCP
         resources:

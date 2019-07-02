@@ -26,6 +26,11 @@ resources:
       cpu: 100m
       memory: 128Mi
 
+servicePorts:
+  client: 2379
+  server: 2380
+  backupRestore: 8080
+
 backup:
 
   # schedule is cron standard schedule to take full snapshots.
