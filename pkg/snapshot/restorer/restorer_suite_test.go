@@ -17,6 +17,7 @@ package restorer_test
 import (
 	"context"
 	"fmt"
+	"math"
 	"os"
 	"strconv"
 	"sync"
@@ -38,7 +39,7 @@ const (
 	etcdDir                    = outputDir + "/default.etcd"
 	snapstoreDir               = outputDir + "/snapshotter.bkp"
 	etcdEndpoint               = "http://localhost:2379"
-	snapshotterDurationSeconds = 100
+	snapshotterDurationSeconds = 20
 	keyPrefix                  = "key-"
 	valuePrefix                = "val-"
 	keyFrom                    = 1
@@ -72,7 +73,7 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 	etcd, err = startEmbeddedEtcd(etcdDir, logger)
 	Expect(err).ShouldNot(HaveOccurred())
 	wg := &sync.WaitGroup{}
-	deltaSnapshotPeriod := 5
+	deltaSnapshotPeriod := 1
 	wg.Add(1)
 	go populateEtcd(wg, logger, endpoints, errCh, populatorStopCh)
 	go func() {
@@ -83,21 +84,24 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 		close(ssrStopCh)
 	}()
 
-	err = runSnapshotter(logger, deltaSnapshotPeriod, endpoints, ssrStopCh)
+	err = runSnapshotter(logger, deltaSnapshotPeriod, endpoints, ssrStopCh, true)
 	Expect(err).ShouldNot(HaveOccurred())
 
 	etcd.Server.Stop()
 	etcd.Close()
 	return data
+
 }, func(data []byte) {})
 
-var _ = SynchronizedAfterSuite(func() {}, func() {
+var _ = SynchronizedAfterSuite(func() {}, cleanUp)
+
+func cleanUp() {
 	err = os.RemoveAll(etcdDir)
 	Expect(err).ShouldNot(HaveOccurred())
 
 	err = os.RemoveAll(snapstoreDir)
 	Expect(err).ShouldNot(HaveOccurred())
-})
+}
 
 // startEmbeddedEtcd starts an embedded etcd server
 func startEmbeddedEtcd(dir string, logger *logrus.Logger) (*embed.Etcd, error) {
@@ -124,7 +128,7 @@ func startEmbeddedEtcd(dir string, logger *logrus.Logger) (*embed.Etcd, error) {
 }
 
 // runSnapshotter creates a snapshotter object and runs it for a duration specified by 'snapshotterDurationSeconds'
-func runSnapshotter(logger *logrus.Logger, deltaSnapshotPeriod int, endpoints []string, stopCh chan struct{}) error {
+func runSnapshotter(logger *logrus.Logger, deltaSnapshotPeriod int, endpoints []string, stopCh chan struct{}, startWithFullSnapshot bool) error {
 	var (
 		store                          snapstore.SnapStore
 		certFile                       string
@@ -177,7 +181,7 @@ func runSnapshotter(logger *logrus.Logger, deltaSnapshotPeriod int, endpoints []
 		snapshotterConfig,
 	)
 
-	return ssr.Run(stopCh, true)
+	return ssr.Run(stopCh, startWithFullSnapshot)
 }
 
 // populateEtcd sequentially puts key-value pairs into the embedded etcd, until stopped
@@ -218,6 +222,19 @@ func populateEtcd(wg *sync.WaitGroup, logger *logrus.Logger, endpoints []string,
 				return
 			}
 			time.Sleep(time.Second * 1)
+			//call a delete for every 10th Key after putting it in the store to check deletes in consistency check
+			// handles deleted keys as every 10th key is deleted during populate etcd call
+			// this handling is also done in the checkDataConsistency() in restorer_test.go file
+			// also it assumes that the deltaSnapshotDuration is more than 10 --
+			// if you change the constant please change the factor accordingly to have coverage of delete scenarios.
+			if math.Mod(float64(currKey), 10) == 0 {
+				_, err = cli.Delete(context.TODO(), key)
+				if err != nil {
+					errCh <- fmt.Errorf("unable to delete key  (%s) from embedded etcd: %v", key, err)
+					return
+				}
+			}
+
 		}
 	}
 }

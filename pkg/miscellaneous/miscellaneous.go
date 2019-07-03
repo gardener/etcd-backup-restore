@@ -38,5 +38,6 @@ func GetLatestFullSnapshotAndDeltaSnapList(store snapstore.SnapStore) (*snapstor
 		}
 		deltaSnapList = append(deltaSnapList, snapList[index-1])
 	}
+	sort.Sort(deltaSnapList) //added to ensure the list is well formed for only deltasnapshots scenarios as well
 	return nil, deltaSnapList, nil
 }
