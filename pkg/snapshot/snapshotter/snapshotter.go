@@ -118,15 +118,17 @@ func (ssr *Snapshotter) Run(stopCh <-chan struct{}, startWithFullSnapshot bool) 
 
 // TriggerFullSnapshot sends the events to take full snapshot. This is to
 // trigger full snapshot externally out regular schedule.
-func (ssr *Snapshotter) TriggerFullSnapshot() {
+func (ssr *Snapshotter) TriggerFullSnapshot() error {
 	ssr.SsrStateMutex.Lock()
-	if ssr.SsrState == SnapshotterActive {
-		ssr.logger.Info("Triggering out of schedule full snapshot...")
-		ssr.fullSnapshotCh <- emptyStruct
-	} else {
-		ssr.logger.Info("Skipped triggering out of schedule full snapshot, since snapshotter is not active.")
+	defer ssr.SsrStateMutex.Unlock()
+
+	if ssr.SsrState != SnapshotterActive {
+		return fmt.Errorf("snapshotter is not active")
 	}
-	ssr.SsrStateMutex.Unlock()
+	ssr.logger.Info("Triggering out of schedule full snapshot...")
+	ssr.fullSnapshotCh <- emptyStruct
+
+	return nil
 }
 
 // stop stops the snapshotter. Once stopped any subsequent calls will
@@ -323,7 +325,7 @@ func (ssr *Snapshotter) TakeDeltaSnapshot() error {
 	return nil
 }
 
-// CollectEventsSincePrevSnapshot takes the first delta snapshot on etcd startup
+// CollectEventsSincePrevSnapshot takes the first delta snapshot on etcd startup.
 func (ssr *Snapshotter) CollectEventsSincePrevSnapshot(stopCh <-chan struct{}) (bool, error) {
 	// close any previous watch and client.
 	ssr.closeEtcdClient()

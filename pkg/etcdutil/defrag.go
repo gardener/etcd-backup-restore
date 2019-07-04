@@ -69,7 +69,7 @@ func defragData(tlsConfig *TLSConfig, etcdConnectionTimeout time.Duration) error
 }
 
 // DefragDataPeriodically defragments the data directory of each etcd member.
-func DefragDataPeriodically(stopCh <-chan struct{}, tlsConfig *TLSConfig, defragmentationPeriod, etcdConnectionTimeout time.Duration, callback func()) {
+func DefragDataPeriodically(stopCh <-chan struct{}, tlsConfig *TLSConfig, defragmentationPeriod, etcdConnectionTimeout time.Duration, callback func() error) {
 	logrus.Infof("Defragmentation period :%d hours", defragmentationPeriod/time.Hour)
 	for {
 		select {
@@ -77,11 +77,12 @@ func DefragDataPeriodically(stopCh <-chan struct{}, tlsConfig *TLSConfig, defrag
 			logrus.Infof("Stopping the defragmentation thread.")
 			return
 		case <-time.After(defragmentationPeriod):
-			err := defragData(tlsConfig, etcdConnectionTimeout)
-			if err != nil {
+			if err := defragData(tlsConfig, etcdConnectionTimeout); err != nil {
 				logrus.Warnf("Failed to defrag data with error: %v", err)
 			} else {
-				callback()
+				if err = callback(); err != nil {
+					logrus.Warnf("Failed to trigger full snapshot: %v", err)
+				}
 			}
 		}
 	}

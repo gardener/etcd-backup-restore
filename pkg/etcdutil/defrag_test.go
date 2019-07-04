@@ -112,7 +112,10 @@ var _ = Describe("Defrag", func() {
 				close(stopCh)
 			})
 
-			DefragDataPeriodically(stopCh, tlsConfig, defragmentationPeriod, etcdConnectionTimeout, func() { defragCount++ })
+			DefragDataPeriodically(stopCh, tlsConfig, defragmentationPeriod, etcdConnectionTimeout, func() error {
+				defragCount++
+				return nil
+			})
 
 			ctx, cancel = context.WithTimeout(context.TODO(), etcdDialTimeout)
 			newStatus, err := client.Status(ctx, endpoints[0])

@@ -23,6 +23,7 @@ import (
 
 	"github.com/gardener/etcd-backup-restore/pkg/initializer"
 	"github.com/gardener/etcd-backup-restore/pkg/initializer/validator"
+	"github.com/gardener/etcd-backup-restore/pkg/snapshot/snapshotter"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/sirupsen/logrus"
 )
@@ -57,6 +58,7 @@ const (
 // HTTPHandler is implementation to handle HTTP API exposed by server
 type HTTPHandler struct {
 	EtcdInitializer           initializer.EtcdInitializer
+	Snapshotter               *snapshotter.Snapshotter
 	Port                      int
 	server                    *http.Server
 	Logger                    *logrus.Logger
@@ -80,6 +82,7 @@ func (h *HTTPHandler) RegisterHandler() {
 	h.initializationStatus = "New"
 	mux.HandleFunc("/initialization/start", h.serveInitialize)
 	mux.HandleFunc("/initialization/status", h.serveInitializationStatus)
+	mux.HandleFunc("/snapshot/full", h.serveFullSnapshotTrigger)
 	mux.HandleFunc("/healthz", h.serveHealthz)
 	mux.Handle("/metrics", promhttp.Handler())
 
@@ -104,7 +107,7 @@ func registerPProfHandler(mux *http.ServeMux) {
 	mux.HandleFunc("/debug/pprof/mutex", pprof.Handler("mutex").ServeHTTP)
 }
 
-// Start start the http server to listen for request
+// Start starts the http server to listen for request
 func (h *HTTPHandler) Start() {
 	h.Logger.Infof("Starting Http server at addr: %s", h.server.Addr)
 	err := h.server.ListenAndServe()
@@ -115,19 +118,19 @@ func (h *HTTPHandler) Start() {
 	return
 }
 
-// Stop start the http server to listen for request
+// Stop stops the http server
 func (h *HTTPHandler) Stop() error {
 	return h.server.Close()
 }
 
-// ServeHTTP serves the http re
+// serveHealthz serves the health status of the server
 func (h *HTTPHandler) serveHealthz(rw http.ResponseWriter, req *http.Request) {
 
 	rw.WriteHeader(h.Status)
 	rw.Write([]byte(fmt.Sprintf("{\"health\":%v}", h.Status == http.StatusOK)))
 }
 
-// ServeInitialize serves the http re
+// serveInitialize starts initialization for the configured Initializer
 func (h *HTTPHandler) serveInitialize(rw http.ResponseWriter, req *http.Request) {
 	h.Logger.Info("Received start initialization request.")
 	h.initializationStatusMutex.Lock()
@@ -136,13 +139,17 @@ func (h *HTTPHandler) serveInitialize(rw http.ResponseWriter, req *http.Request)
 		h.Logger.Infof("Updating status from %s to %s", h.initializationStatus, initializationStatusProgress)
 		h.initializationStatus = initializationStatusProgress
 		go func() {
-			// This is needed to stop snapshotter.
 			var mode validator.Mode
-			atomic.StoreUint32(&h.AckState, HandlerAckWaiting)
-			h.Logger.Info("Changed handler state.")
-			h.ReqCh <- emptyStruct
-			h.Logger.Info("Waiting for acknowledgment...")
-			<-h.AckCh
+
+			// This is needed to stop the currently running snapshotter.
+			if h.Snapshotter != nil {
+				atomic.StoreUint32(&h.AckState, HandlerAckWaiting)
+				h.Logger.Info("Changed handler state.")
+				h.ReqCh <- emptyStruct
+				h.Logger.Info("Waiting for acknowledgment...")
+				<-h.AckCh
+			}
+
 			switch modeVal := req.URL.Query().Get("mode"); modeVal {
 			case string(validator.Full):
 				mode = validator.Full
@@ -167,7 +174,7 @@ func (h *HTTPHandler) serveInitialize(rw http.ResponseWriter, req *http.Request)
 	rw.WriteHeader(http.StatusOK)
 }
 
-// ServeInitializationStatus serves the etcd initialization progress status
+// serveInitializationStatus serves the etcd initialization progress status
 func (h *HTTPHandler) serveInitializationStatus(rw http.ResponseWriter, req *http.Request) {
 	h.initializationStatusMutex.Lock()
 	defer h.initializationStatusMutex.Unlock()
@@ -181,4 +188,20 @@ func (h *HTTPHandler) serveInitializationStatus(rw http.ResponseWriter, req *htt
 		h.Logger.Infof("Updating status from %s to %s", h.initializationStatus, initializationStatusNew)
 		h.initializationStatus = initializationStatusNew
 	}
+}
+
+// serveFullSnapshotTrigger triggers an out-of-schedule full snapshot
+// for the configured Snapshotter
+func (h *HTTPHandler) serveFullSnapshotTrigger(rw http.ResponseWriter, req *http.Request) {
+	if h.Snapshotter == nil {
+		h.Logger.Warnf("Ignoring out-of-schedule full snapshot request as snapshotter is not configured")
+		rw.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	if err := h.Snapshotter.TriggerFullSnapshot(); err != nil {
+		h.Logger.Warnf("Skipped triggering out-of-schedule full snapshot: %v", err)
+		rw.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	rw.WriteHeader(http.StatusOK)
 }
