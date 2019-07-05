@@ -50,6 +50,9 @@ spec:
             - --key=/var/etcd/ssl/tls/tls.key
             - --cacert=/var/etcd/ssl/ca/ca.crt
             - --endpoints={{ if .Values.tls }}https{{ else }}http{{ end }}://{{ .Release.Name }}-etcd-0:{{ .Values.servicePorts.client }}
+{{- if .Values.etcdAuth.user }}
+            - --user=.Values.etcdAuth.user
+{{- end }}            
             - get
             - foo
           initialDelaySeconds: 15

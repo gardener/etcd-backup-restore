@@ -31,6 +31,9 @@ servicePorts:
   server: 2380
   backupRestore: 8080
 
+etcdAuth:
+  # user: username:password
+
 backup:
 
   # schedule is cron standard schedule to take full snapshots.
