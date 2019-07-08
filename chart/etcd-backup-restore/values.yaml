@@ -31,8 +31,9 @@ servicePorts:
   server: 2380
   backupRestore: 8080
 
-etcdAuth:
-  # user: username:password
+etcdAuth: {}
+   #username: username
+   #password: password
 
 backup:
 
