@@ -137,6 +137,8 @@ func runSnapshotter(logger *logrus.Logger, deltaSnapshotPeriod int, endpoints []
 		garbageCollectionPeriodSeconds = time.Duration(60)
 		schedule                       = "0 0 1 1 *"
 		garbageCollectionPolicy        = snapshotter.GarbageCollectionPolicyLimitBased
+		etcdUsername                   string
+		etcdPassword                   string
 	)
 
 	store, err = snapstore.GetSnapstore(&snapstore.Config{Container: snapstoreDir, Provider: "Local"})
@@ -151,6 +153,8 @@ func runSnapshotter(logger *logrus.Logger, deltaSnapshotPeriod int, endpoints []
 		insecureTransport,
 		insecureSkipVerify,
 		endpoints,
+		etcdUsername,
+		etcdPassword,
 	)
 
 	snapshotterConfig, err := snapshotter.NewSnapshotterConfig(

@@ -92,7 +92,9 @@ func NewServerCommand(stopCh <-chan struct{}) *cobra.Command {
 				caFile,
 				insecureTransport,
 				insecureSkipVerify,
-				etcdEndpoints)
+				etcdEndpoints,
+				etcdUsername,
+				etcdPassword)
 
 			if snapshotterEnabled {
 				ss, err := snapstore.GetSnapstore(snapstoreConfig)

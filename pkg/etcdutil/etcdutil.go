@@ -22,7 +22,7 @@ import (
 )
 
 // NewTLSConfig returns the TLSConfig object.
-func NewTLSConfig(cert, key, caCert string, insecureTr, skipVerify bool, endpoints []string) *TLSConfig {
+func NewTLSConfig(cert, key, caCert string, insecureTr, skipVerify bool, endpoints []string, username, password string) *TLSConfig {
 	return &TLSConfig{
 		cert:       cert,
 		key:        key,
@@ -30,6 +30,8 @@ func NewTLSConfig(cert, key, caCert string, insecureTr, skipVerify bool, endpoin
 		insecureTr: insecureTr,
 		skipVerify: skipVerify,
 		endpoints:  endpoints,
+		username:   username,
+		password:   password,
 	}
 }
 
@@ -76,6 +78,11 @@ func GetTLSClientForEtcd(tlsConfig *TLSConfig) (*clientv3.Client, error) {
 	// the InsecureSkipVerify flag in tls configuration.
 	if tlsConfig.skipVerify && cfg.TLS != nil {
 		cfg.TLS.InsecureSkipVerify = true
+	}
+
+	if tlsConfig.username != "" && tlsConfig.password != "" {
+		cfg.Username = tlsConfig.username
+		cfg.Password = tlsConfig.password
 	}
 
 	return clientv3.New(*cfg)

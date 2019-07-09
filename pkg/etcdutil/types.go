@@ -28,4 +28,6 @@ type TLSConfig struct {
 	insecureTr bool
 	skipVerify bool
 	endpoints  []string
+	username   string
+	password   string
 }

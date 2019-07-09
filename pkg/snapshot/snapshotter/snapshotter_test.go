@@ -43,6 +43,8 @@ var _ = Describe("Snapshotter", func() {
 		caFile                         string
 		insecureTransport              bool
 		insecureSkipVerify             bool
+		etcdUsername                   string
+		etcdPassword                    string
 		err                            error
 	)
 	BeforeEach(func() {
@@ -67,7 +69,9 @@ var _ = Describe("Snapshotter", func() {
 					caFile,
 					insecureTransport,
 					insecureSkipVerify,
-					endpoints)
+					endpoints,
+					etcdUsername,
+					etcdPassword)
 				_, err := NewSnapshotterConfig(
 					schedule,
 					store,
@@ -91,7 +95,9 @@ var _ = Describe("Snapshotter", func() {
 					caFile,
 					insecureTransport,
 					insecureSkipVerify,
-					endpoints)
+					endpoints,
+					etcdUsername,
+					etcdPassword)
 				_, err := NewSnapshotterConfig(
 					schedule,
 					store,
@@ -123,7 +129,9 @@ var _ = Describe("Snapshotter", func() {
 					caFile,
 					insecureTransport,
 					insecureSkipVerify,
-					endpoints)
+					endpoints,
+					etcdUsername,
+					etcdPassword)
 				snapshotterConfig, err := NewSnapshotterConfig(
 					schedule,
 					store,
@@ -173,7 +181,9 @@ var _ = Describe("Snapshotter", func() {
 						caFile,
 						insecureTransport,
 						insecureSkipVerify,
-						endpoints)
+						endpoints,
+						etcdUsername,
+						etcdPassword)
 					snapshotterConfig, err := NewSnapshotterConfig(
 						schedule,
 						store,
@@ -243,7 +253,9 @@ var _ = Describe("Snapshotter", func() {
 							caFile,
 							insecureTransport,
 							insecureSkipVerify,
-							endpoints)
+							endpoints,
+							etcdUsername,
+							etcdPassword)
 						snapshotterConfig, err := NewSnapshotterConfig(
 							schedule,
 							store,
@@ -286,7 +298,9 @@ var _ = Describe("Snapshotter", func() {
 							caFile,
 							insecureTransport,
 							insecureSkipVerify,
-							endpoints)
+							endpoints,
+							etcdUsername,
+							etcdPassword)
 						snapshotterConfig, err := NewSnapshotterConfig(
 							schedule,
 							store,
@@ -439,7 +453,9 @@ var _ = Describe("Snapshotter", func() {
 					caFile,
 					insecureTransport,
 					insecureSkipVerify,
-					endpoints)
+					endpoints,
+					etcdUsername,
+					etcdPassword)
 				snapshotterConfig, err := NewSnapshotterConfig(
 					schedule,
 					store,
@@ -483,7 +499,9 @@ var _ = Describe("Snapshotter", func() {
 					caFile,
 					insecureTransport,
 					insecureSkipVerify,
-					endpoints)
+					endpoints,
+					etcdUsername,
+					etcdPassword)
 				snapshotterConfig, err := NewSnapshotterConfig(
 					schedule,
 					store,
