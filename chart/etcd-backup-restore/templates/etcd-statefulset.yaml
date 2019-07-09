@@ -51,7 +51,7 @@ spec:
             - --cacert=/var/etcd/ssl/ca/ca.crt
             - --endpoints={{ if .Values.tls }}https{{ else }}http{{ end }}://{{ .Release.Name }}-etcd-0:{{ .Values.servicePorts.client }}
 {{- if and .Values.etcdAuth.username .Values.etcdAuth.password }}
-            - --user=.Values.etcdAuth.username:.Values.etcdAuth.password
+            - --user={{ .Values.etcdAuth.username }}:{{ .Values.etcdAuth.password }}
 {{- end }}            
             - get
             - foo
@@ -110,8 +110,8 @@ spec:
         - --delta-snapshot-period-seconds={{ int $.Values.backup.deltaSnapshotPeriodSeconds }}
         - --delta-snapshot-memory-limit={{ int $.Values.backup.deltaSnapshotMemoryLimit }}
 {{- if and .Values.etcdAuth.username .Values.etcdAuth.password }}
-        - --etcd-username=.Values.etcdAuth.username
-        - --etcd-password=.Values.etcdAuth.password
+        - --etcd-username={{ .Values.etcdAuth.username }}
+        - --etcd-password={{ .Values.etcdAuth.password }}
 {{- end }}           
         image: {{ .Values.images.etcdBackupRestore.repository }}:{{ .Values.images.etcdBackupRestore.tag }}
         imagePullPolicy: {{ .Values.images.etcdBackupRestore.pullPolicy }}
