@@ -48,10 +48,17 @@ fi
 # Install Golint (linting tool).
 go get -u golang.org/x/lint/golint
 
+# Install Helm from binary.
+curl -LO https://git.io/get_helm.sh
+chmod 700 get_helm.sh
+./get_helm.sh --no-sudo
+rm get_helm.sh
+
 ###############################################################################
 
 PACKAGES="$(go list -e ./... | grep -vE '/tmp/|/vendor/')"
 LINT_FOLDERS="$(echo ${PACKAGES} | sed "s|github.com/gardener/etcd-backup-restore|.|g")"
+HELM_CHART_PATH="${SOURCE_PATH}/chart/etcd-backup-restore"
 
 # Execute static code checks.
 go vet ${PACKAGES}
@@ -61,3 +68,6 @@ go fmt ${PACKAGES}
 
 # Execute lint checks.
 golint -set_exit_status ${LINT_FOLDERS}
+
+# Execute lint checks on helm chart.
+helm lint ${HELM_CHART_PATH}
