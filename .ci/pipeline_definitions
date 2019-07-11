@@ -29,7 +29,7 @@ etcd-backup-restore:
         image: 'golang:1.12.0'
         output_dir: 'binary'
 
-  variants:
+  jobs:
     head-update:
       traits:
         draft_release: ~
