@@ -32,6 +32,7 @@ import (
 	"github.com/gophercloud/gophercloud/openstack"
 	"github.com/gophercloud/gophercloud/openstack/objectstorage/v1/objects"
 	"github.com/gophercloud/gophercloud/pagination"
+	"github.com/gophercloud/utils/openstack/clientconfig"
 )
 
 // SwiftSnapStore is snapstore with Openstack Swift as backend
@@ -50,7 +51,7 @@ const (
 
 // NewSwiftSnapStore create new SwiftSnapStore from shared configuration with specified bucket
 func NewSwiftSnapStore(bucket, prefix, tempDir string, maxParallelChunkUploads int) (*SwiftSnapStore, error) {
-	authOpts, err := openstack.AuthOptionsFromEnv()
+	authOpts, err := clientconfig.AuthOptions(nil)
 	if err != nil {
 		return nil, err
 	}
@@ -58,7 +59,7 @@ func NewSwiftSnapStore(bucket, prefix, tempDir string, maxParallelChunkUploads i
 	// cache your credentials in memory, and to allow Gophercloud to attempt to
 	// re-authenticate automatically if/when your token expires.
 	authOpts.AllowReauth = true
-	provider, err := openstack.AuthenticatedClient(authOpts)
+	provider, err := openstack.AuthenticatedClient(*authOpts)
 	if err != nil {
 		return nil, err
 
