@@ -1,4 +1,4 @@
-# Metrics
+# Monitoring
 
 etcd-backup-restore uses [Prometheus][prometheus] for metrics reporting. The metrics can be used for real-time monitoring and debugging. It won't persist its metrics; if a member restarts, the metrics will be reset.
 

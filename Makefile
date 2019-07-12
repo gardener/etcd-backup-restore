@@ -25,6 +25,10 @@ revendor:
 	@env GO111MODULE=on go mod vendor -v
 	@env GO111MODULE=on go mod tidy -v
 
+.PHONY: update-dependencies
+update-dependencies:
+	@env GO111MODULE=on go get -u
+
 .PHONY: build
 build:
 	@.ci/build
