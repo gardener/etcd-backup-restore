@@ -22,7 +22,7 @@ COVERPROFILE        := test/output/coverprofile.out
 
 .PHONY: revendor
 revendor:
-	@dep ensure -update -v
+	@env GO111MODULE=on go get -u -v
 
 .PHONY: build
 build:
