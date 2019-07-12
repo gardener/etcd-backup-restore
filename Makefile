@@ -22,7 +22,8 @@ COVERPROFILE        := test/output/coverprofile.out
 
 .PHONY: revendor
 revendor:
-	@env GO111MODULE=on go get -u -v
+	@env GO111MODULE=on go mod vendor -v
+	@env GO111MODULE=on go mod tidy -v
 
 .PHONY: build
 build:
