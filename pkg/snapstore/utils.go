@@ -39,7 +39,7 @@ func GetSnapstore(config *Config) (SnapStore, error) {
 	}
 	if _, err := os.Stat(config.TempDir); err != nil {
 		if os.IsNotExist(err) {
-			logrus.Infof("Temporary directory %s does not exit. Creating it...", config.TempDir)
+			logrus.Infof("Temporary directory %s does not exist. Creating it...", config.TempDir)
 			if err := os.MkdirAll(config.TempDir, 0700); err != nil {
 				return nil, fmt.Errorf("failed to create temporary directory %s: %v", config.TempDir, err)
 			}

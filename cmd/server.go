@@ -241,7 +241,7 @@ func runEtcdProbeLoopWithSnapshotter(tlsConfig *etcdutil.TLSConfig, handler *ser
 				}
 				initialDeltaSnapshotTaken = true
 			} else {
-				logger.Warnf("Failed to collect events for first delta snapshot: %v", err)
+				logger.Warnf("Failed to collect events for first delta snapshot(s): %v", err)
 			}
 		}
 		if !initialDeltaSnapshotTaken {

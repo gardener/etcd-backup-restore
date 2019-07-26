@@ -19,6 +19,7 @@ import (
 	"io/ioutil"
 	"path"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gardener/etcd-backup-restore/pkg/etcdutil"
@@ -44,7 +45,7 @@ var _ = Describe("Snapshotter", func() {
 		insecureTransport              bool
 		insecureSkipVerify             bool
 		etcdUsername                   string
-		etcdPassword                    string
+		etcdPassword                   string
 		err                            error
 	)
 	BeforeEach(func() {
@@ -222,10 +223,11 @@ var _ = Describe("Snapshotter", func() {
 
 			Context("with valid schedule", func() {
 				var (
-					ssr         *Snapshotter
-					schedule    string
-					maxBackups  int
-					testTimeout time.Duration
+					ssr                          *Snapshotter
+					schedule                     string
+					maxBackups                   int
+					testTimeout                  time.Duration
+					deltaSnapshotIntervalSeconds int
 				)
 				BeforeEach(func() {
 					endpoints = []string{"http://localhost:2379"}
@@ -237,13 +239,11 @@ var _ = Describe("Snapshotter", func() {
 				})
 
 				Context("with delta snapshot interval set to zero seconds", func() {
-					var (
-						deltaSnapshotIntervalSeconds int
-					)
 					BeforeEach(func() {
 						deltaSnapshotIntervalSeconds = 0
+						testTimeout = time.Duration(time.Minute * time.Duration(maxBackups))
 					})
-					It("should take period backups without delta snapshots", func() {
+					It("should take periodic backups without delta snapshots", func() {
 						stopCh := make(chan struct{})
 						store, err = snapstore.GetSnapstore(&snapstore.Config{Container: path.Join(outputDir, "snapshotter_4.bkp")})
 						Expect(err).ShouldNot(HaveOccurred())
@@ -288,48 +288,120 @@ var _ = Describe("Snapshotter", func() {
 				})
 
 				Context("with delta snapshots enabled", func() {
-					It("should take periodic backups", func() {
-						stopCh := make(chan struct{})
-						store, err = snapstore.GetSnapstore(&snapstore.Config{Container: path.Join(outputDir, "snapshotter_5.bkp")})
-						Expect(err).ShouldNot(HaveOccurred())
-						tlsConfig := etcdutil.NewTLSConfig(
-							certFile,
-							keyFile,
-							caFile,
-							insecureTransport,
-							insecureSkipVerify,
-							endpoints,
-							etcdUsername,
-							etcdPassword)
-						snapshotterConfig, err := NewSnapshotterConfig(
-							schedule,
-							store,
-							maxBackups,
-							10,
-							DefaultDeltaSnapMemoryLimit,
-							etcdConnectionTimeout,
-							garbageCollectionPeriodSeconds,
-							GarbageCollectionPolicyExponential,
-							tlsConfig)
-						Expect(err).ShouldNot(HaveOccurred())
+					BeforeEach(func() {
+						deltaSnapshotIntervalSeconds = 10
+					})
 
-						ssr = NewSnapshotter(
-							logger,
-							snapshotterConfig)
+					Context("with snapshotter starting without first full snapshot", func() {
+						It("first snapshot should be a delta snapshot", func() {
+							var (
+								errCh           = make(chan error)
+								populatorStopCh = make(chan bool)
+								ssrStopCh       = make(chan struct{})
+							)
+							store, err = snapstore.GetSnapstore(&snapstore.Config{Container: path.Join(outputDir, "snapshotter_5.bkp")})
+							Expect(err).ShouldNot(HaveOccurred())
+							tlsConfig := etcdutil.NewTLSConfig(
+								certFile,
+								keyFile,
+								caFile,
+								insecureTransport,
+								insecureSkipVerify,
+								endpoints,
+								etcdUsername,
+								etcdPassword)
+							snapshotterConfig, err := NewSnapshotterConfig(
+								schedule,
+								store,
+								maxBackups,
+								deltaSnapshotIntervalSeconds,
+								DefaultDeltaSnapMemoryLimit,
+								etcdConnectionTimeout,
+								garbageCollectionPeriodSeconds,
+								GarbageCollectionPolicyExponential,
+								tlsConfig)
+							Expect(err).ShouldNot(HaveOccurred())
 
-						go func() {
-							<-time.After(testTimeout)
-							close(stopCh)
-						}()
-						err = ssr.Run(stopCh, true)
-						Expect(err).ShouldNot(HaveOccurred())
-						list, err := store.List()
-						Expect(err).ShouldNot(HaveOccurred())
-						Expect(len(list)).ShouldNot(BeZero())
+							ssr = NewSnapshotter(
+								logger,
+								snapshotterConfig)
+
+							wg := &sync.WaitGroup{}
+							wg.Add(1)
+							// populating etcd so that snapshots will be taken
+							go populateEtcd(wg, logger, endpoints, errCh, populatorStopCh)
+
+							go func() {
+								<-time.After(testTimeout)
+								close(populatorStopCh)
+								wg.Wait()
+								close(ssrStopCh)
+							}()
+
+							err = ssr.Run(ssrStopCh, false)
+							Expect(err).ShouldNot(HaveOccurred())
+							list, err := store.List()
+							Expect(err).ShouldNot(HaveOccurred())
+							Expect(len(list)).ShouldNot(BeZero())
+							Expect(list[0].Kind).Should(Equal(snapstore.SnapshotKindDelta))
+						})
+					})
+
+					Context("with snapshotter starting with full snapshot", func() {
+						It("should take periodic backups", func() {
+							var (
+								errCh           = make(chan error)
+								populatorStopCh = make(chan bool)
+								ssrStopCh       = make(chan struct{})
+							)
+							store, err = snapstore.GetSnapstore(&snapstore.Config{Container: path.Join(outputDir, "snapshotter_6.bkp")})
+							Expect(err).ShouldNot(HaveOccurred())
+							tlsConfig := etcdutil.NewTLSConfig(
+								certFile,
+								keyFile,
+								caFile,
+								insecureTransport,
+								insecureSkipVerify,
+								endpoints,
+								etcdUsername,
+								etcdPassword)
+							snapshotterConfig, err := NewSnapshotterConfig(
+								schedule,
+								store,
+								maxBackups,
+								deltaSnapshotIntervalSeconds,
+								DefaultDeltaSnapMemoryLimit,
+								etcdConnectionTimeout,
+								garbageCollectionPeriodSeconds,
+								GarbageCollectionPolicyExponential,
+								tlsConfig)
+							Expect(err).ShouldNot(HaveOccurred())
+
+							ssr = NewSnapshotter(
+								logger,
+								snapshotterConfig)
+
+							wg := &sync.WaitGroup{}
+							wg.Add(1)
+							// populating etcd so that snapshots will be taken
+							go populateEtcd(wg, logger, endpoints, errCh, populatorStopCh)
+
+							go func() {
+								<-time.After(testTimeout)
+								close(populatorStopCh)
+								wg.Wait()
+								close(ssrStopCh)
+							}()
+							err = ssr.Run(ssrStopCh, true)
+							Expect(err).ShouldNot(HaveOccurred())
+							list, err := store.List()
+							Expect(err).ShouldNot(HaveOccurred())
+							Expect(len(list)).ShouldNot(BeZero())
+							Expect(list[0].Kind).Should(Equal(snapstore.SnapshotKindFull))
+						})
 					})
 				})
 			})
-
 		})
 
 		Context("##GarbageCollector", func() {

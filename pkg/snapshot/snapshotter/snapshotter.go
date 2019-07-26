@@ -102,14 +102,34 @@ func NewSnapshotter(logger *logrus.Logger, config *Config) *Snapshotter {
 }
 
 // Run process loop for scheduled backup
+// Setting startWithFullSnapshot to false will start the snapshotter without
+// taking the first full snapshot.
 func (ssr *Snapshotter) Run(stopCh <-chan struct{}, startWithFullSnapshot bool) error {
 	if startWithFullSnapshot {
 		ssr.fullSnapshotTimer = time.NewTimer(0)
-	}
-	if ssr.config.deltaSnapshotIntervalSeconds < 1 {
-		ssr.deltaSnapshotTimer = time.NewTimer(time.Duration(DefaultDeltaSnapshotIntervalSeconds))
 	} else {
-		ssr.deltaSnapshotTimer = time.NewTimer(time.Duration(ssr.config.deltaSnapshotIntervalSeconds))
+		// for the case when snapshotter is run for the first time on
+		// a fresh etcd with startWithFullSnapshot set to false, we need
+		// to take the first delta snapshot(s) initially and then set
+		// the full snapshot schedule
+		if ssr.watchCh == nil {
+			ssrStopped, err := ssr.CollectEventsSincePrevSnapshot(stopCh)
+			if ssrStopped {
+				return nil
+			}
+			if err != nil {
+				return fmt.Errorf("Failed to collect events for first delta snapshot(s): %v", err)
+			}
+		}
+		if err := ssr.resetFullSnapshotTimer(); err != nil {
+			return fmt.Errorf("failed to reset full snapshot timer: %v", err)
+		}
+	}
+
+	ssr.deltaSnapshotTimer = time.NewTimer(time.Duration(DefaultDeltaSnapshotIntervalSeconds))
+	if ssr.config.deltaSnapshotIntervalSeconds >= 1 {
+		ssr.deltaSnapshotTimer.Stop()
+		ssr.deltaSnapshotTimer.Reset(time.Duration(ssr.config.deltaSnapshotIntervalSeconds))
 	}
 
 	defer ssr.stop()
@@ -117,7 +137,7 @@ func (ssr *Snapshotter) Run(stopCh <-chan struct{}, startWithFullSnapshot bool) 
 }
 
 // TriggerFullSnapshot sends the events to take full snapshot. This is to
-// trigger full snapshot externally out regular schedule.
+// trigger full snapshot externally out of regular schedule.
 func (ssr *Snapshotter) TriggerFullSnapshot() error {
 	ssr.SsrStateMutex.Lock()
 	defer ssr.SsrStateMutex.Unlock()
@@ -171,22 +191,8 @@ func (ssr *Snapshotter) TakeFullSnapshotAndResetTimer() error {
 		ssr.logger.Warnf("Taking scheduled snapshot failed: %v", err)
 		return err
 	}
-	now := time.Now()
-	effective := ssr.config.schedule.Next(now)
-	if effective.IsZero() {
-		ssr.logger.Info("There are no backup scheduled for future. Stopping now.")
-		return fmt.Errorf("error in full snapshot schedule")
-	}
-	if ssr.fullSnapshotTimer == nil {
-		ssr.fullSnapshotTimer = time.NewTimer(effective.Sub(now))
-	} else {
-		ssr.logger.Infof("Stopping full snapshot...")
-		ssr.fullSnapshotTimer.Stop()
-		ssr.logger.Infof("Resetting full snapshot to run after %s", effective.Sub(now))
-		ssr.fullSnapshotTimer.Reset(effective.Sub(now))
-	}
-	ssr.logger.Infof("Will take next full snapshot at time: %s", effective)
-	return nil
+
+	return ssr.resetFullSnapshotTimer()
 }
 
 // takeFullSnapshot will store full snapshot of etcd to snapstore.
@@ -440,4 +446,25 @@ func (ssr *Snapshotter) snapshotEventHandler(stopCh <-chan struct{}) error {
 			return nil
 		}
 	}
+}
+
+func (ssr *Snapshotter) resetFullSnapshotTimer() error {
+	now := time.Now()
+	effective := ssr.config.schedule.Next(now)
+	if effective.IsZero() {
+		ssr.logger.Info("There are no backups scheduled for the future. Stopping now.")
+		return fmt.Errorf("error in full snapshot schedule")
+	}
+	duration := effective.Sub(now)
+	if ssr.fullSnapshotTimer == nil {
+		ssr.fullSnapshotTimer = time.NewTimer(duration)
+	} else {
+		ssr.logger.Infof("Stopping full snapshot...")
+		ssr.fullSnapshotTimer.Stop()
+		ssr.logger.Infof("Resetting full snapshot to run after %s", duration)
+		ssr.fullSnapshotTimer.Reset(duration)
+	}
+	ssr.logger.Infof("Will take next full snapshot at time: %s", effective)
+
+	return nil
 }
