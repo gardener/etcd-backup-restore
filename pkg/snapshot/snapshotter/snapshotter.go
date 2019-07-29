@@ -21,7 +21,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
-	"math"
 	"path"
 	"sync"
 	"time"
@@ -78,7 +77,6 @@ func NewSnapshotter(logger *logrus.Logger, config *Config) *Snapshotter {
 	fullSnap, deltaSnapList, err := miscellaneous.GetLatestFullSnapshotAndDeltaSnapList(config.store)
 	if err != nil || fullSnap == nil {
 		prevSnapshot = snapstore.NewSnapshot(snapstore.SnapshotKindFull, 0, 0)
-		metrics.LatestSnapshotTimestamp.With(prometheus.Labels{metrics.LabelKind: prevSnapshot.Kind}).Set(math.NaN())
 	} else if len(deltaSnapList) == 0 {
 		prevSnapshot = fullSnap
 		metrics.LatestSnapshotTimestamp.With(prometheus.Labels{metrics.LabelKind: prevSnapshot.Kind}).Set(float64(prevSnapshot.CreatedOn.Unix()))

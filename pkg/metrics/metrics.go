@@ -15,6 +15,7 @@
 package metrics
 
 import (
+	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -34,6 +35,18 @@ const (
 )
 
 var (
+	labels = map[string][]string{
+		LabelKind: {
+			snapstore.SnapshotKindFull,
+			snapstore.SnapshotKindDelta,
+			snapstore.SnapshotKindChunk,
+		},
+		LabelSucceeded: {
+			ValueSucceededFalse,
+			ValueSucceededTrue,
+		},
+	}
+
 	// GCSnapshotCounter is metric to count the garbage collected snapshots.
 	GCSnapshotCounter = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
@@ -105,7 +118,133 @@ var (
 	)
 )
 
+// generateLabelCombinations generates combinations of label values for metrics
+func generateLabelCombinations(labelValues map[string][]string) []map[string]string {
+	var (
+		labels     []string
+		valuesList [][]string
+	)
+	for label, values := range labelValues {
+		labels = append(labels, label)
+		valuesList = append(valuesList, values)
+	}
+	combinations := getCombinations(valuesList)
+	var output []map[string]string
+	for _, combination := range combinations {
+		labelVals := make(map[string]string, len(labels))
+		for i := 0; i < len(labels); i++ {
+			labelVals[labels[i]] = combination[i]
+		}
+		output = append(output, labelVals)
+	}
+	return output
+}
+
+// getCombinations returns combinations of slice of string slices
+func getCombinations(valuesList [][]string) [][]string {
+	if len(valuesList) == 0 {
+		return [][]string{}
+	} else if len(valuesList) == 1 {
+		return wrapInSlice(valuesList[0])
+	}
+
+	return cartesianProduct(wrapInSlice(valuesList[0]), getCombinations(valuesList[1:]))
+}
+
+// cartesianProduct combines two slices of slice of strings while also
+// combining the sub-slices of strings into a single string
+// Ex:
+// a => [[p,q],[r,s]]
+// b => [[1,2],[3,4]]
+// Output => [[p,q,1,2],[p,q,3,4],[r,s,1,2],[r,s,3,4]]
+func cartesianProduct(a [][]string, b [][]string) [][]string {
+	var output [][]string
+	for i := 0; i < len(a); i++ {
+		for j := 0; j < len(b); j++ {
+			output = append(output, append(a[i], b[j]...))
+		}
+	}
+	return output
+}
+
+// wrapInSlice is a helper function to wrap a slice of strings within
+// a slice of slices of strings
+// Ex: [p,q,r] -> [[p],[q],[r]]
+func wrapInSlice(s []string) [][]string {
+	var output [][]string
+	for i := 0; i < len(s); i++ {
+		output = append(output, []string{s[i]})
+	}
+	return output
+}
+
 func init() {
+	// Metrics have to be initialized to zero-values
+	// GCSnapshotCounter
+	gcSnapshotCounterLabelValues := map[string][]string{
+		LabelKind:      labels[LabelKind],
+		LabelSucceeded: labels[LabelSucceeded],
+	}
+	gcSnapshotCounterCombinations := generateLabelCombinations(gcSnapshotCounterLabelValues)
+	for _, combination := range gcSnapshotCounterCombinations {
+		GCSnapshotCounter.With(prometheus.Labels(combination))
+	}
+
+	// LatestSnapshotRevision
+	latestSnapshotRevisionLabelValues := map[string][]string{
+		LabelKind: labels[LabelKind],
+	}
+	latestSnapshotRevisionCombinations := generateLabelCombinations(latestSnapshotRevisionLabelValues)
+	for _, combination := range latestSnapshotRevisionCombinations {
+		LatestSnapshotRevision.With(prometheus.Labels(combination))
+	}
+
+	// LatestSnapshotTimestamp
+	latestSnapshotTimestampLabelValues := map[string][]string{
+		LabelKind: labels[LabelKind],
+	}
+	latestSnapshotTimestampCombinations := generateLabelCombinations(latestSnapshotTimestampLabelValues)
+	for _, combination := range latestSnapshotTimestampCombinations {
+		LatestSnapshotTimestamp.With(prometheus.Labels(combination))
+	}
+
+	// SnapshotDurationSeconds
+	snapshotDurationSecondsLabelValues := map[string][]string{
+		LabelKind:      labels[LabelKind],
+		LabelSucceeded: labels[LabelSucceeded],
+	}
+	snapshotDurationSecondsCombinations := generateLabelCombinations(snapshotDurationSecondsLabelValues)
+	for _, combination := range snapshotDurationSecondsCombinations {
+		SnapshotDurationSeconds.With(prometheus.Labels(combination))
+	}
+
+	// ValidationDurationSeconds
+	validationDurationSecondsLabelValues := map[string][]string{
+		LabelSucceeded: labels[LabelSucceeded],
+	}
+	validationDurationSecondsCombinations := generateLabelCombinations(validationDurationSecondsLabelValues)
+	for _, combination := range validationDurationSecondsCombinations {
+		ValidationDurationSeconds.With(prometheus.Labels(combination))
+	}
+
+	// RestorationDurationSeconds
+	restorationDurationSecondsLabelValues := map[string][]string{
+		LabelSucceeded: labels[LabelSucceeded],
+	}
+	restorationDurationSecondsCombinations := generateLabelCombinations(restorationDurationSecondsLabelValues)
+	for _, combination := range restorationDurationSecondsCombinations {
+		RestorationDurationSeconds.With(prometheus.Labels(combination))
+	}
+
+	// DefragmentationDurationSeconds
+	defragmentationDurationSecondsLabelValues := map[string][]string{
+		LabelSucceeded: labels[LabelSucceeded],
+	}
+	defragmentationDurationSecondsCombinations := generateLabelCombinations(defragmentationDurationSecondsLabelValues)
+	for _, combination := range defragmentationDurationSecondsCombinations {
+		DefragmentationDurationSeconds.With(prometheus.Labels(combination))
+	}
+
 	// Metrics have to be registered to be exposed:
 	prometheus.MustRegister(GCSnapshotCounter)
 
