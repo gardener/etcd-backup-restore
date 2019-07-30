@@ -15,23 +15,33 @@
 package snapshotter_test
 
 import (
+	"context"
 	"fmt"
 	"os"
+	"strconv"
+	"sync"
 	"testing"
 	"time"
 
+	"github.com/coreos/etcd/clientv3"
 	"github.com/coreos/etcd/embed"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	"github.com/sirupsen/logrus"
 )
 
-var etcd *embed.Etcd
-var err error
+var (
+	etcd  *embed.Etcd
+	err   error
+	keyTo int
+)
 
 const (
-	outputDir = "../../../test/output"
-	etcdDir   = outputDir + "/default.etcd"
+	outputDir   = "../../../test/output"
+	etcdDir     = outputDir + "/default.etcd"
+	keyPrefix   = "key-"
+	valuePrefix = "val-"
+	keyFrom     = 1
 )
 
 func TestSnapshotter(t *testing.T) {
@@ -76,4 +86,46 @@ func startEmbeddedEtcd() (*embed.Etcd, error) {
 		return nil, fmt.Errorf("server took too long to start")
 	}
 	return e, nil
+}
+
+// populateEtcd sequentially puts key-value pairs into the embedded etcd, until stopped
+func populateEtcd(wg *sync.WaitGroup, logger *logrus.Logger, endpoints []string, errCh chan<- error, stopCh <-chan bool) {
+	defer wg.Done()
+
+	cli, err := clientv3.New(clientv3.Config{
+		Endpoints:   endpoints,
+		DialTimeout: 10 * time.Second,
+	})
+	if err != nil {
+		errCh <- fmt.Errorf("unable to start etcd client: %v", err)
+		return
+	}
+	defer cli.Close()
+
+	var (
+		key     string
+		value   string
+		currKey = 0
+	)
+
+	for {
+		select {
+		case _, more := <-stopCh:
+			if !more {
+				keyTo = currKey
+				logger.Infof("Populated data till key %s into embedded etcd", keyPrefix+strconv.Itoa(currKey))
+				return
+			}
+		default:
+			currKey++
+			key = keyPrefix + strconv.Itoa(currKey)
+			value = valuePrefix + strconv.Itoa(currKey)
+			_, err = cli.Put(context.TODO(), key, value)
+			if err != nil {
+				errCh <- fmt.Errorf("unable to put key-value pair (%s, %s) into embedded etcd: %v", key, value, err)
+				return
+			}
+			time.Sleep(time.Second * 1)
+		}
+	}
 }
