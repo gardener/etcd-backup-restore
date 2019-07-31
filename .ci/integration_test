@@ -27,7 +27,7 @@ VCS="github.com"
 ORGANIZATION="gardener"
 PROJECT="etcd-backup-restore"
 REPOSITORY=${VCS}/${ORGANIZATION}/${PROJECT}
-VERSION_FILE="$(readlink  -f "${SOURCE_PATH}/VERSION")"
+VERSION_FILE="$(readlink -f "${SOURCE_PATH}/VERSION")"
 VERSION="$(cat "${VERSION_FILE}")"
 
 export GOBIN="${SOURCE_PATH}/bin"
@@ -45,7 +45,7 @@ TEST_DIR=
 function setup_test_enviornment() {
   setup_ginkgo
   setup_etcd
-  setup_etcbrctl
+  setup_etcdbrctl
   setup_awscli
 }
 
@@ -69,9 +69,9 @@ function setup_etcd(){
     echo "Successfully installed etcd."
 }
 
-function setup_etcbrctl(){
+function setup_etcdbrctl(){
     echo "Installing etcdbrctl..."
-    go build \
+    GO111MODULE=on go build \
     -v \
     -o ${GOBIN}/etcdbrctl \
     -ldflags "-w -X ${REPOSITORY}/pkg/version.Version=${VERSION}" \

@@ -39,7 +39,7 @@ Main goal of this project to provide a solution to make [etcd] instance backing 
 
 ## Architecture
 
-![architecture](images/etcd-backup-restore.jpg)
+![architecture](../images/etcd-backup-restore.jpg)
 
 We will have a StatefulSet for etcd with two containers in it.
 
@@ -50,7 +50,7 @@ We will have a StatefulSet for etcd with two containers in it.
 ### ETCD Container
 
 - Request the sidecar to validate/initialize the data directory.
-- The etcd process is started only if the `initialize` request to sidecar returns a success. 
+- The etcd process is started only if the `initialize` request to sidecar returns a success.
 
 ### Sidecar Container
 
@@ -71,12 +71,12 @@ Sidecar container has two components
 - Probe is required to ensure that etcd is live before backups are triggered.
 - Schedule the backup operation (probably using cron library) which triggers full snapshot at regular intervals.
 - Store the snapshot in the configured cloud object store.
-  
+
 **Init container is not used for the validation/restoration of etcd data directory. The rationale behind the decision was to avoid baking in pod restart logic in sidecar container in the event etcd process had died. In case etcd container died, init-container had to be run before etcd container was run to ensure that data directory was valid. This required the pod to be restarted. With the current design, the sidecar handles the data directory validation/restoration and periodic backups. Pod restart is not required.**
 
 ## Workflow
 
-![sequence-diagram](images/etcd-backup-restore-sequence-diagram.jpg)
+![sequence-diagram](../images/etcd-backup-restore-sequence-diagram.jpg)
 
 ### Etcd container
 
@@ -92,15 +92,15 @@ Sidecar container has two components
     1. In case of data directory corruption, restore data directory from the latest cloud snapshot. Return success.
     2. In case data directory is valid, return success.
     3. In all other cases, return failure.
-3. Once the `initialize` request returns success, etcd process can be expected to start up in some time. The prober would then receive a successful probe of etcd's liveliness. 
-4. On successful probe, start taking periodic backup of etcd and store the snapshot to the cloud object store. Stop prober. 
+3. Once the `initialize` request returns success, etcd process can be expected to start up in some time. The prober would then receive a successful probe of etcd's liveliness.
+4. On successful probe, start taking periodic backup of etcd and store the snapshot to the cloud object store. Stop prober.
     - In case of a failure to take a backup, exit with error. (Container restarts)
 
 ### Handling of Different Scenarios/Issues
 
 - DNS latency: Should not matter for single member Etcd cluster.
 - Etcd upgrade and downgrade for K8s compatibility: Should not be issue for v3.* series released so far. Simply restart pod. No data format change.
-- Iaas issue: Issues like unreachable object store, will be taken care by init container and backup container. Both container will keep retrying to reach out object store with exponential timeouts.
+- IaaS issue: Issues like unreachable object store, will be taken care by init container and backup container. Both container will keep retrying to reach out object store with exponential timeouts.
 - Corrupt backup: StatefulSet go in restart loop, and human operator will with customers concern delete the last corrupt backup from object store manually. So that, in next iteration it will recover from previous non-corrupt backup.
 
 ## Outlook

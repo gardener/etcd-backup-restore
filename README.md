@@ -15,13 +15,13 @@ Etcd-backup-restore is collection of components to backup and restore the [etcd]
 
 ### Design and Proposals
 * [Core design](doc/proposals/design.md)
-* [Etcd data Validation ](doc/proposals/validation.md)
-* [High watch events ingress rate issue](doc.proposals/high_watch_event_ingress_rate.md)
+* [Etcd data validation ](doc/proposals/validation.md)
+* [High watch events ingress rate issue](doc/proposals/high_watch_event_ingress_rate.md)
 
 ### Development
 
-* [Setting up a local development environment](doc.development/local_setup.md)
-* [Testing and Dependency Management](doc.development/testing_and_dependencies.md)
+* [Setting up a local development environment](doc/development/local_setup.md)
+* [Testing and Dependency Management](doc/development/testing_and_dependencies.md)
 * [Adding support for a new cloud provider](doc/development/new_cp_support.md)
 
 
