@@ -151,8 +151,6 @@ github.com/golang/protobuf/protoc-gen-go/plugin
 github.com/google/btree
 # github.com/googleapis/gax-go v2.0.2+incompatible
 github.com/googleapis/gax-go
-# github.com/googleapis/google-cloud-go-testing v0.0.0-20181205230126-f773598aef76
-github.com/googleapis/google-cloud-go-testing/storage/stiface
 # github.com/gophercloud/gophercloud v0.0.0-20190212181753-892256c46858
 github.com/gophercloud/gophercloud
 github.com/gophercloud/gophercloud/openstack

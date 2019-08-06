@@ -27,7 +27,7 @@ import (
 	"sync"
 
 	"cloud.google.com/go/storage"
-	"github.com/googleapis/google-cloud-go-testing/storage/stiface"
+	stiface "github.com/gardener/etcd-backup-restore/pkg/snapstore/gcs"
 	"github.com/sirupsen/logrus"
 	"google.golang.org/api/iterator"
 )

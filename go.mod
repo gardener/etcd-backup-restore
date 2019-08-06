@@ -20,7 +20,8 @@ require (
 	github.com/golang/groupcache v0.0.0-20190702054246-869f871628b6 // indirect
 	github.com/golang/protobuf v1.3.1 // indirect
 	github.com/google/btree v1.0.0 // indirect
-	github.com/googleapis/google-cloud-go-testing v0.0.0-20181205230126-f773598aef76
+	github.com/google/martian v2.1.0+incompatible // indirect
+	github.com/googleapis/gax-go v2.0.2+incompatible // indirect
 	github.com/gophercloud/gophercloud v0.0.0-20190212181753-892256c46858
 	github.com/gophercloud/utils v0.0.0-20190527093828-25f1b77b8c03
 	github.com/gorilla/websocket v1.4.0 // indirect
