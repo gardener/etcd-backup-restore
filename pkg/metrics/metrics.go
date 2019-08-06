@@ -15,6 +15,8 @@
 package metrics
 
 import (
+	"sort"
+
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	"github.com/prometheus/client_golang/prometheus"
 )
@@ -120,22 +122,32 @@ var (
 
 // generateLabelCombinations generates combinations of label values for metrics
 func generateLabelCombinations(labelValues map[string][]string) []map[string]string {
-	var (
-		labels     []string
-		valuesList [][]string
-	)
-	for label, values := range labelValues {
-		labels = append(labels, label)
-		valuesList = append(valuesList, values)
+	labels := make([]string, len(labelValues))
+	valuesList := make([][]string, len(labelValues))
+	valueCounts := make([]int, len(labelValues))
+	i := 0
+	for label := range labelValues {
+		labels[i] = label
+		i++
+	}
+	sort.Strings(labels)
+	for i, label := range labels {
+		values := make([]string, len(labelValues[label]))
+		for j := range labelValues[label] {
+			values[j] = labelValues[label][j]
+		}
+		valuesList[i] = values
+		valueCounts[i] = len(values)
 	}
 	combinations := getCombinations(valuesList)
-	var output []map[string]string
-	for _, combination := range combinations {
+
+	output := make([]map[string]string, len(combinations))
+	for i, combination := range combinations {
 		labelVals := make(map[string]string, len(labels))
-		for i := 0; i < len(labels); i++ {
-			labelVals[labels[i]] = combination[i]
+		for j := 0; j < len(labels); j++ {
+			labelVals[labels[j]] = combination[j]
 		}
-		output = append(output, labelVals)
+		output[i] = labelVals
 	}
 	return output
 }
@@ -158,10 +170,20 @@ func getCombinations(valuesList [][]string) [][]string {
 // b => [[1,2],[3,4]]
 // Output => [[p,q,1,2],[p,q,3,4],[r,s,1,2],[r,s,3,4]]
 func cartesianProduct(a [][]string, b [][]string) [][]string {
-	var output [][]string
+	output := make([][]string, len(a)*len(b))
 	for i := 0; i < len(a); i++ {
 		for j := 0; j < len(b); j++ {
-			output = append(output, append(a[i], b[j]...))
+			arr := make([]string, len(a[i])+len(b[j]))
+			ctr := 0
+			for ii := 0; ii < len(a[i]); ii++ {
+				arr[ctr] = a[i][ii]
+				ctr++
+			}
+			for jj := 0; jj < len(b[j]); jj++ {
+				arr[ctr] = b[j][jj]
+				ctr++
+			}
+			output[(i*len(b))+j] = arr
 		}
 	}
 	return output
@@ -171,9 +193,11 @@ func cartesianProduct(a [][]string, b [][]string) [][]string {
 // a slice of slices of strings
 // Ex: [p,q,r] -> [[p],[q],[r]]
 func wrapInSlice(s []string) [][]string {
-	var output [][]string
-	for i := 0; i < len(s); i++ {
-		output = append(output, []string{s[i]})
+	output := make([][]string, len(s))
+	for i := 0; i < len(output); i++ {
+		elem := make([]string, 1)
+		elem[0] = s[i]
+		output[i] = elem
 	}
 	return output
 }
