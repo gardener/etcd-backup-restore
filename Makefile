@@ -28,6 +28,7 @@ revendor:
 .PHONY: update-dependencies
 update-dependencies:
 	@env GO111MODULE=on go get -u
+	@make revendor
 
 .PHONY: build
 build:

@@ -157,7 +157,7 @@ func (m *mockOSSBucket) ListObjects(options ...oss.Option) (oss.ListObjectsResul
 }
 
 // DeleteObject deletes the object from map for mock test
-func (m *mockOSSBucket) DeleteObject(objectKey string) error {
+func (m *mockOSSBucket) DeleteObject(objectKey string, options ...oss.Option) error {
 	delete(m.objects, objectKey)
 	return nil
 }

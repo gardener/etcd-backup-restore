@@ -34,7 +34,7 @@ type OSSBucket interface {
 	InitiateMultipartUpload(objectKey string, options ...oss.Option) (oss.InitiateMultipartUploadResult, error)
 	CompleteMultipartUpload(imur oss.InitiateMultipartUploadResult, parts []oss.UploadPart, options ...oss.Option) (oss.CompleteMultipartUploadResult, error)
 	ListObjects(options ...oss.Option) (oss.ListObjectsResult, error)
-	DeleteObject(objectKey string) error
+	DeleteObject(objectKey string, options ...oss.Option) error
 	UploadPart(imur oss.InitiateMultipartUploadResult, reader io.Reader, partSize int64, partNumber int, options ...oss.Option) (oss.UploadPart, error)
 	AbortMultipartUpload(imur oss.InitiateMultipartUploadResult, options ...oss.Option) error
 }
