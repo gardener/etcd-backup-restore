@@ -27,25 +27,10 @@ ORGANIZATION="gardener"
 PROJECT="etcd-backup-restore"
 REPOSITORY=${VCS}/${ORGANIZATION}/${PROJECT}
 
-# The `go <cmd>` commands requires to see the target repository to be part of a
-# Go workspace. Thus, if we are not yet in a Go workspace, let's create one
-# temporarily by using symbolic links.
-if [[ "${SOURCE_PATH}" != *"src/${REPOSITORY}" ]]; then
-  SOURCE_SYMLINK_PATH="${SOURCE_PATH}/tmp/src/${REPOSITORY}"
-  if [[ -d "${SOURCE_PATH}/tmp" ]]; then
-    rm -rf "${SOURCE_PATH}/tmp"
-  fi
-  mkdir -p "${SOURCE_PATH}/tmp/src/${VCS}/${ORGANIZATION}"
-  ln -s "${SOURCE_PATH}" "${SOURCE_SYMLINK_PATH}"
-  cd "${SOURCE_SYMLINK_PATH}"
-
-  export GOPATH="${SOURCE_PATH}/tmp"
-  export GOBIN="${SOURCE_PATH}/tmp/bin"
-  export PATH="${GOBIN}:${PATH}"
-fi
+cd "${SOURCE_PATH}"
 
 # Install Ginkgo (test framework) to be able to execute the tests.
-go get -u github.com/onsi/ginkgo/ginkgo
+GO111MODULE=off go get github.com/onsi/ginkgo/ginkgo
 
 ###############################################################################
 
@@ -57,7 +42,7 @@ function test_with_coverage() {
   ginkgo $GINKGO_COMMON_FLAGS --coverprofile ${coverprofile_file} -covermode=set -outputdir ${output_dir} ${TEST_PACKAGES}
   sed -i '/mode: set/d' ${output_dir}/${coverprofile_file}
   {( echo "mode: set"; cat ${output_dir}/${coverprofile_file} )} > ${output_dir}/${coverprofile_file}.temp
-  mv ${output_dir}/${coverprofile_file}.temp ${output_dir}/${coverprofile_file} 
+  mv ${output_dir}/${coverprofile_file}.temp ${output_dir}/${coverprofile_file}
   go tool cover -func ${output_dir}/${coverprofile_file}
 }
 
