@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/pprof"
+	"strconv"
 	"sync"
 	"sync/atomic"
 
@@ -57,7 +58,7 @@ const (
 
 // HTTPHandler is implementation to handle HTTP API exposed by server
 type HTTPHandler struct {
-	EtcdInitializer           initializer.EtcdInitializer
+	Initializer               initializer.Initializer
 	Snapshotter               *snapshotter.Snapshotter
 	Port                      int
 	server                    *http.Server
@@ -163,6 +164,20 @@ func (h *HTTPHandler) serveInitialize(rw http.ResponseWriter, req *http.Request)
 				<-h.AckCh
 			}
 
+			failBelowRevisionStr := req.URL.Query().Get("failbelowrevision")
+			h.Logger.Infof("Validation failBelowRevision: %s", failBelowRevisionStr)
+			var failBelowRevision int64
+			if len(failBelowRevisionStr) != 0 {
+				var err error
+				failBelowRevision, err = strconv.ParseInt(failBelowRevisionStr, 10, 64)
+				if err != nil {
+					h.initializationStatusMutex.Lock()
+					defer h.initializationStatusMutex.Unlock()
+					h.Logger.Errorf("Failed initialization due wrong parameter value `failbelowrevision`: %v", err)
+					h.initializationStatus = initializationStatusFailed
+					return
+				}
+			}
 			switch modeVal := req.URL.Query().Get("mode"); modeVal {
 			case string(validator.Full):
 				mode = validator.Full
@@ -172,7 +187,7 @@ func (h *HTTPHandler) serveInitialize(rw http.ResponseWriter, req *http.Request)
 				mode = validator.Full
 			}
 			h.Logger.Infof("Validation mode: %s", mode)
-			err := h.EtcdInitializer.Initialize(mode)
+			err := h.Initializer.Initialize(mode, failBelowRevision)
 			h.initializationStatusMutex.Lock()
 			defer h.initializationStatusMutex.Unlock()
 			if err != nil {
@@ -180,7 +195,7 @@ func (h *HTTPHandler) serveInitialize(rw http.ResponseWriter, req *http.Request)
 				h.initializationStatus = initializationStatusFailed
 				return
 			}
-			h.Logger.Infof("Successfully initialized data directory \"%s\" for etcd.", h.EtcdInitializer.Validator.Config.DataDir)
+			h.Logger.Info("Successfully initialized data directory for etcd.")
 			h.initializationStatus = initializationStatusSuccessful
 		}()
 	}

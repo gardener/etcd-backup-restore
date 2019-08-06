@@ -76,7 +76,7 @@ func (d *DataValidator) backendPath() string { return filepath.Join(d.snapDir(),
 //			- If data directory structure is invalid return DataDirectoryInvStruct status.
 //       * Check for data corruption.
 //			- return data directory corruption status.
-func (d *DataValidator) Validate(mode Mode) (DataDirStatus, error) {
+func (d *DataValidator) Validate(mode Mode, failBelowRevision int64) (DataDirStatus, error) {
 	dataDir := d.Config.DataDir
 	dirExists, err := directoryExist(dataDir)
 	if err != nil {
@@ -98,8 +98,12 @@ func (d *DataValidator) Validate(mode Mode) (DataDirStatus, error) {
 
 	if d.Config.SnapstoreConfig != nil {
 		d.Logger.Info("Checking for revision consistency...")
-		if err = checkRevisionConsistency(d.backendPath(), *d.Config.SnapstoreConfig); err != nil {
+		failBelowRevisionCheck, err := checkRevisionConsistency(d.backendPath(), *d.Config.SnapstoreConfig, failBelowRevision)
+		if err != nil {
 			d.Logger.Infof("Etcd revision inconsistent with latest snapshot revision: %v", err)
+			if failBelowRevisionCheck {
+				return FailBelowRevisionConsistencyError, nil
+			}
 			return RevisionConsistencyError, nil
 		}
 	} else {
@@ -338,36 +342,40 @@ func verifyDB(path string) error {
 }
 
 // checkRevisionConsistency compares the latest revisions on the etcd db file and the latest snapshot to verify that the etcd revision is not lesser than snapshot revision.
-func checkRevisionConsistency(dbPath string, config snapstore.Config) error {
+// Return true or false indicating whether it is due to failBelowRevision or latest snapshot revision for snapstore.
+func checkRevisionConsistency(dbPath string, config snapstore.Config, failBelowRevision int64) (bool, error) {
 	etcdRevision, err := getLatestEtcdRevision(dbPath)
 	if err != nil {
-		return fmt.Errorf("unable to get current etcd revision from backend db file: %v", err)
+		return false, fmt.Errorf("unable to get current etcd revision from backend db file: %v", err)
 	}
 
 	store, err := snapstore.GetSnapstore(&config)
 	if err != nil {
-		return fmt.Errorf("unable to fetch snapstore: %v", err)
+		return false, fmt.Errorf("unable to fetch snapstore: %v", err)
 	}
 
 	var latestSnapshotRevision int64
 	fullSnap, deltaSnaps, err := miscellaneous.GetLatestFullSnapshotAndDeltaSnapList(store)
 	if err != nil {
-		return fmt.Errorf("unable to get snapshots from store: %v", err)
+		return false, fmt.Errorf("unable to get snapshots from store: %v", err)
 	}
-	if fullSnap == nil {
-		logger.Infof("No snapshot found.")
-		return nil
-	} else if len(deltaSnaps) == 0 {
+	if len(deltaSnaps) != 0 {
+		latestSnapshotRevision = deltaSnaps[len(deltaSnaps)-1].LastRevision
+	} else if fullSnap != nil {
 		latestSnapshotRevision = fullSnap.LastRevision
 	} else {
-		latestSnapshotRevision = deltaSnaps[len(deltaSnaps)-1].LastRevision
+		logger.Infof("No snapshot found.")
+		if etcdRevision < failBelowRevision {
+			return true, fmt.Errorf("current etcd revision (%d) is less than fail below revision (%d): possible data loss", etcdRevision, failBelowRevision)
+		}
+		return false, nil
 	}
 
 	if etcdRevision < latestSnapshotRevision {
-		return fmt.Errorf("current etcd revision (%d) is less than latest snapshot revision (%d): possible data loss", etcdRevision, latestSnapshotRevision)
+		return false, fmt.Errorf("current etcd revision (%d) is less than latest snapshot revision (%d): possible data loss", etcdRevision, latestSnapshotRevision)
 	}
 
-	return nil
+	return false, nil
 }
 
 // getLatestEtcdRevision finds out the latest revision on the etcd db file without starting etcd server or an embedded etcd server.
