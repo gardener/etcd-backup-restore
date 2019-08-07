@@ -164,12 +164,12 @@ func startHTTPServer(etcdInitializer *initializer.EtcdInitializer, ssr *snapshot
 		EtcdInitializer: *etcdInitializer,
 		Snapshotter:     ssr,
 		Logger:          logger,
-		Status:          http.StatusServiceUnavailable,
 		StopCh:          make(chan struct{}),
 		EnableProfiling: enableProfiling,
 		ReqCh:           make(chan struct{}),
 		AckCh:           make(chan struct{}),
 	}
+	handler.SetStatus(http.StatusServiceUnavailable)
 	logger.Info("Registering the http request handlers...")
 	handler.RegisterHandler()
 	logger.Info("Starting the http server...")
@@ -206,7 +206,7 @@ func runEtcdProbeLoopWithSnapshotter(tlsConfig *etcdutil.TLSConfig, handler *ser
 		}
 		if err != nil {
 			logger.Errorf("Failed to probe etcd: %v", err)
-			handler.Status = http.StatusServiceUnavailable
+			handler.SetStatus(http.StatusServiceUnavailable)
 			continue
 		}
 
@@ -230,7 +230,7 @@ func runEtcdProbeLoopWithSnapshotter(tlsConfig *etcdutil.TLSConfig, handler *ser
 			if ssrStopped {
 				logger.Info("Snapshotter stopped.")
 				ackCh <- emptyStruct
-				handler.Status = http.StatusServiceUnavailable
+				handler.SetStatus(http.StatusServiceUnavailable)
 				logger.Info("Shutting down...")
 				return
 			}
@@ -253,7 +253,7 @@ func runEtcdProbeLoopWithSnapshotter(tlsConfig *etcdutil.TLSConfig, handler *ser
 
 		// set server's healthz endpoint status to OK so that
 		// etcd is marked as ready to serve traffic
-		handler.Status = http.StatusOK
+		handler.SetStatus(http.StatusOK)
 
 		ssr.SsrStateMutex.Lock()
 		ssr.SsrState = snapshotter.SnapshotterActive
@@ -270,7 +270,7 @@ func runEtcdProbeLoopWithSnapshotter(tlsConfig *etcdutil.TLSConfig, handler *ser
 		}
 		logger.Infof("Snapshotter stopped.")
 		ackCh <- emptyStruct
-		handler.Status = http.StatusServiceUnavailable
+		handler.SetStatus(http.StatusServiceUnavailable)
 		close(gcStopCh)
 	}
 }
@@ -290,13 +290,13 @@ func runEtcdProbeLoopWithoutSnapshotter(tlsConfig *etcdutil.TLSConfig, handler *
 		}
 		if err != nil {
 			logger.Errorf("Failed to probe etcd: %v", err)
-			handler.Status = http.StatusServiceUnavailable
+			handler.SetStatus(http.StatusServiceUnavailable)
 			continue
 		}
 
-		handler.Status = http.StatusOK
+		handler.SetStatus(http.StatusOK)
 		<-stopCh
-		handler.Status = http.StatusServiceUnavailable
+		handler.SetStatus(http.StatusServiceUnavailable)
 		logger.Infof("Received stop signal. Terminating !!")
 		return
 	}

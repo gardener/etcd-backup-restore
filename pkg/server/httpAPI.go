@@ -65,11 +65,24 @@ type HTTPHandler struct {
 	initializationStatusMutex sync.Mutex
 	AckState                  uint32
 	initializationStatus      string
-	Status                    int
+	status                    int
 	StopCh                    chan struct{}
 	EnableProfiling           bool
 	ReqCh                     chan struct{}
 	AckCh                     chan struct{}
+}
+
+// GetStatus returns the current status in the HTTPHandler
+func (h *HTTPHandler) GetStatus() int {
+	return h.status
+}
+
+// SetStatus sets the current status in the HTTPHandler
+func (h *HTTPHandler) SetStatus(status int) {
+	if h.Logger != nil {
+		h.Logger.Infof("Setting status to : %d", status)
+	}
+	h.status = status
 }
 
 // RegisterHandler registers the handler for different requests
@@ -126,8 +139,8 @@ func (h *HTTPHandler) Stop() error {
 // serveHealthz serves the health status of the server
 func (h *HTTPHandler) serveHealthz(rw http.ResponseWriter, req *http.Request) {
 
-	rw.WriteHeader(h.Status)
-	rw.Write([]byte(fmt.Sprintf("{\"health\":%v}", h.Status == http.StatusOK)))
+	rw.WriteHeader(h.GetStatus())
+	rw.Write([]byte(fmt.Sprintf("{\"health\":%v}", h.GetStatus() == http.StatusOK)))
 }
 
 // serveInitialize starts initialization for the configured Initializer
