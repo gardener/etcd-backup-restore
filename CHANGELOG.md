@@ -1,5 +1,97 @@
 # Changelog
 
+## 0.7.0
+
+Docker Image: __eu.gcr.io/gardener-project/gardener/etcdbrctl:0.7.0__
+
+### Most notable changes
+
+* *[USER]* Added command-line options `etcd-username` and `etcd-password` to connect to etcd with username-password if necessary. (#170, @ae6rt)
+* *[USER]* Updated etcd vendoring version to 3.3.13. (#155, @shreyas-s-rao)
+* *[USER]* Full snapshot on etcd startup will now be deferred in favour of an initial delta snapshot, followed by a full snapshot and subsequent delta snapshots. (#154, @shreyas-s-rao)
+* *[USER]* Added functionality to trigger on-demand full snapshots via the HTTP endpoint `/snapshot/full`. (#143, @shreyas-s-rao)
+
+### Improvements
+
+* *[USER]* All exposed metrics are initialised to zero values. (#180, @shreyas-s-rao)
+* *[USER]* In the case that initial delta snapshot fails, a full snapshot is tried instead. (#165, @shreyas-s-rao)
+* *[USER]* Fixed the sorting of snapshots. (#161, @swapnilgm)
+* *[OPERATOR]* Added new flag `experimental-fail-below-revision` flag for initializer and `/initialization/start` http call (#184, @swapnilgm)
+* *[OPERATOR]* The health status changes are now logged at `INFO` level to help debug issues with etcd readiness. (#182, @amshuman-kr)
+* *[OPERATOR]* Etcd-backup-restore now uses the go modules for its dependecy management. (#176, @kayrus)
+* *[OPERATOR]* Fixed liveness probe command in helm chart. (#172, @shreyas-s-rao)
+* *[OPERATOR]* Optimized WAL verification memory usage. (#155, @shreyas-s-rao)
+* *[OPERATOR]* Reduced etcd downtime by optimizing readiness probe. (#151, @shreyas-s-rao)
+* *[OPERATOR]* Updated the base image of alpine in docker container to 3.9.3. (#146, @swapnilgm)
+
+## 0.6.4
+
+Docker Image: __eu.gcr.io/gardener-project/gardener/etcdbrctl:0.6.4__
+
+### Improvements
+
+* *[USER]* In the case that initial delta snapshot fails, a full snapshot is tried instead. (#166, @swapnilgm)
+
+## 0.6.3
+
+Docker Image: __eu.gcr.io/gardener-project/gardener/etcdbrctl:0.6.3__
+
+### Improvements
+
+* *[USER]* Fixed the sorting of snapshots. (#162, @shreyas-s-rao)
+
+## 0.6.2
+
+Docker Image: __eu.gcr.io/gardener-project/gardener/etcdbrctl:0.6.2__
+
+### Most notable changes
+
+* *[USER]* Updated etcd vendoring version to 3.3.13. (#157, @shreyas-s-rao)
+* *[USER]* Full snapshot on etcd startup will now be deferred in favour of an initial delta snapshot, followed by a full snapshot and subsequent delta snapshots. (#157, @shreyas-s-rao)
+
+### Improvements
+
+* *[OPERATOR]* Optimized WAL verification memory usage. (#157, @shreyas-s-rao)
+
+## 0.6.1
+
+Docker Image: __eu.gcr.io/gardener-project/gardener/etcdbrctl:0.6.1__
+
+### Improvements
+
+* *[OPERATOR]* Reduced etcd downtime by optimizing readiness probe. (#153, @shreyas-s-rao)
+* *[OPERATOR]* Updated the base image of alpine in docker container to 3.9.3. (#153, @shreyas-s-rao)
+
+## 0.6.0
+
+Docker Image: __eu.gcr.io/gardener-project/gardener/etcdbrctl:0.6.0__
+
+### Most notable changes
+
+* *[USER]* Added the `embedded-etcd-quota-bytes` flag to allow configuring the backend quota size of the embedded etcd instance used during restoration of data. (#134, @shreyas-s-rao)
+* *[USER]* Unnecessary data validation will now be skipped, allowing for quicker etcd restarts. (#93, @georgekuruvillak)
+
+### Improvements
+
+* *[OPERATOR]* The golang version has been upgraded to `v1.12.0`. (#132, @ialidzhikov)
+* *[OPERATOR]* In case of storage provider is not configured, i.e. backup disabled, we skip the backup dependent sanity checks. (#122, @swapnilgm)
+
+## 0.5.2
+
+Docker Image: __eu.gcr.io/gardener-project/gardener/etcdbrctl:0.5.2__
+
+### Most notable changes
+
+* *[USER]* Added the `embedded-etcd-quota-bytes` flag to allow configuring the backend quota size of the embedded etcd instance used during restoration of data. (#136, @swapnilgm)
+
+## 0.5.1
+
+Docker Image: __eu.gcr.io/gardener-project/gardener/etcdbrctl:0.5.1__
+
+### Most notable changes
+
+* *[USER]* In case of storage provider is not configured, i.e. backup disabled, we skip the backup dependent sanity checks. (#123, @swapnilgm)
+
 ## 0.5.0
 
 Docker Image: __eu.gcr.io/gardener-project/gardener/etcdbrctl:0.5.0__
