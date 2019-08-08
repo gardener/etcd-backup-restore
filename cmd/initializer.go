@@ -81,7 +81,7 @@ func NewInitializeCommand(stopCh <-chan struct{}) *cobra.Command {
 				}
 			}
 			etcdInitializer := initializer.NewInitializer(options, snapstoreConfig, logger)
-			err = etcdInitializer.Initialize(mode)
+			err = etcdInitializer.Initialize(mode, failBelowRevision)
 			if err != nil {
 				logger.Fatalf("initializer failed. %v", err)
 			}
@@ -90,6 +90,7 @@ func NewInitializeCommand(stopCh <-chan struct{}) *cobra.Command {
 	initializeEtcdFlags(initializeCmd)
 	initializeSnapstoreFlags(initializeCmd)
 	initializeValidatorFlags(initializeCmd)
+	initializeCmd.Flags().Int64Var(&failBelowRevision, "experimental-fail-below-revision", 0, "minimum required etcd revision, below which validation fails")
 	return initializeCmd
 }
 

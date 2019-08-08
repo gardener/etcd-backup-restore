@@ -156,12 +156,12 @@ func NewServerCommand(stopCh <-chan struct{}) *cobra.Command {
 
 // startHTTPServer creates and starts the HTTP handler
 // with status 503 (Service Unavailable)
-func startHTTPServer(etcdInitializer *initializer.EtcdInitializer, ssr *snapshotter.Snapshotter) *server.HTTPHandler {
+func startHTTPServer(initializer initializer.Initializer, ssr *snapshotter.Snapshotter) *server.HTTPHandler {
 	// Start http handler with Error state and wait till snapshotter is up
 	// and running before setting the status to OK.
 	handler := &server.HTTPHandler{
 		Port:            port,
-		EtcdInitializer: *etcdInitializer,
+		Initializer:     initializer,
 		Snapshotter:     ssr,
 		Logger:          logger,
 		StopCh:          make(chan struct{}),

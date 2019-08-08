@@ -45,7 +45,7 @@ var _ = Describe("Running Datavalidator", func() {
 			tempDir := fmt.Sprintf("%s.%s", restoreDataDir, "temp")
 			err = os.Rename(restoreDataDir, tempDir)
 			Expect(err).ShouldNot(HaveOccurred())
-			dataDirStatus, err := validator.Validate(Full)
+			dataDirStatus, err := validator.Validate(Full, 0)
 			Expect(err).Should(HaveOccurred())
 			Expect(int(dataDirStatus)).Should(SatisfyAny(Equal(DataDirectoryNotExist), Equal(DataDirectoryError)))
 			err = os.Rename(tempDir, restoreDataDir)
@@ -61,7 +61,7 @@ var _ = Describe("Running Datavalidator", func() {
 					tempDir := fmt.Sprintf("%s.%s", memberDir, "temp")
 					err = os.Rename(memberDir, tempDir)
 					Expect(err).ShouldNot(HaveOccurred())
-					dataDirStatus, err := validator.Validate(Full)
+					dataDirStatus, err := validator.Validate(Full, 0)
 					Expect(err).ShouldNot(HaveOccurred())
 					Expect(int(dataDirStatus)).Should(SatisfyAny(Equal(DataDirectoryInvStruct), Equal(DataDirectoryError)))
 					err = os.Rename(tempDir, memberDir)
@@ -75,7 +75,7 @@ var _ = Describe("Running Datavalidator", func() {
 						tempDir := fmt.Sprintf("%s.%s", snapDir, "temp")
 						err = os.Rename(snapDir, tempDir)
 						Expect(err).ShouldNot(HaveOccurred())
-						dataDirStatus, err := validator.Validate(Full)
+						dataDirStatus, err := validator.Validate(Full, 0)
 						Expect(err).ShouldNot(HaveOccurred())
 						Expect(int(dataDirStatus)).Should(SatisfyAny(Equal(DataDirectoryInvStruct), Equal(DataDirectoryError)))
 						err = os.Rename(tempDir, snapDir)
@@ -88,7 +88,7 @@ var _ = Describe("Running Datavalidator", func() {
 						tempDir := fmt.Sprintf("%s.%s", walDir, "temp")
 						err = os.Rename(walDir, tempDir)
 						Expect(err).ShouldNot(HaveOccurred())
-						dataDirStatus, err := validator.Validate(Full)
+						dataDirStatus, err := validator.Validate(Full, 0)
 						Expect(err).ShouldNot(HaveOccurred())
 						Expect(int(dataDirStatus)).Should(SatisfyAny(Equal(DataDirectoryInvStruct), Equal(DataDirectoryError)))
 						err = os.Rename(tempDir, walDir)
@@ -104,7 +104,7 @@ var _ = Describe("Running Datavalidator", func() {
 						Expect(err).ShouldNot(HaveOccurred())
 						err = os.Mkdir(walDir, 0700)
 						Expect(err).ShouldNot(HaveOccurred())
-						dataDirStatus, err := validator.Validate(Sanity)
+						dataDirStatus, err := validator.Validate(Sanity, 0)
 						Expect(err).ShouldNot(HaveOccurred())
 						Expect(int(dataDirStatus)).Should(Equal(DataDirectoryValid))
 						err = os.RemoveAll(walDir)
@@ -138,7 +138,7 @@ var _ = Describe("Running Datavalidator", func() {
 					// newEtcdRevision: current revision number on etcd db
 					Expect(etcdRevision).To(BeNumerically(">=", newEtcdRevision))
 
-					dataDirStatus, err := validator.Validate(Full)
+					dataDirStatus, err := validator.Validate(Full, 0)
 					Expect(err).ShouldNot(HaveOccurred())
 					Expect(int(dataDirStatus)).Should(SatisfyAny(Equal(RevisionConsistencyError), Equal(DataDirectoryError)))
 
@@ -174,7 +174,7 @@ var _ = Describe("Running Datavalidator", func() {
 							_, err = file.Write(byteSlice)
 							Expect(err).ShouldNot(HaveOccurred())
 
-							dataDirStatus, err := validator.Validate(Full)
+							dataDirStatus, err := validator.Validate(Full, 0)
 							Expect(err).ShouldNot(HaveOccurred())
 							Expect(int(dataDirStatus)).Should(SatisfyAny(Equal(DataDirectoryCorrupt), Equal(DataDirectoryError), Equal(RevisionConsistencyError)))
 
@@ -187,10 +187,21 @@ var _ = Describe("Running Datavalidator", func() {
 					})
 				})
 				Context("with clean data directory", func() {
-					It("should return DataDirStatus as DataDirectoryValid, and nil error", func() {
-						dataDirStatus, err := validator.Validate(Full)
-						Expect(err).ShouldNot(HaveOccurred())
-						Expect(int(dataDirStatus)).Should(Equal(DataDirectoryValid))
+					Context("with fail below revision configured to low value", func() {
+						It("should return DataDirStatus as DataDirectoryValid, and nil error", func() {
+							dataDirStatus, err := validator.Validate(Full, 0)
+							Expect(err).ShouldNot(HaveOccurred())
+							Expect(int(dataDirStatus)).Should(Equal(DataDirectoryValid))
+						})
+					})
+
+					Context("with fail below revision configured to high value", func() {
+						It("should return DataDirStatus as FailBelowRevisionConsistencyError and nil error", func() {
+							validator.Config.SnapstoreConfig.Container = path.Join(snapstoreBackupDir, "tmp")
+							dataDirStatus, err := validator.Validate(Full, 1000000)
+							Expect(err).ShouldNot(HaveOccurred())
+							Expect(int(dataDirStatus)).Should(Equal(FailBelowRevisionConsistencyError))
+						})
 					})
 				})
 			})

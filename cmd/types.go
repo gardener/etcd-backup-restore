@@ -68,7 +68,8 @@ var (
 	snapstoreTempDir        string
 
 	//initializer flags
-	validationMode string
+	validationMode    string
+	failBelowRevision int64
 )
 
 var emptyStruct struct{}

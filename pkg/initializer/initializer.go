@@ -42,15 +42,20 @@ const (
 //       * Check if Latest snapshot available.
 //		   - Try to perform an Etcd data restoration from the latest snapshot.
 //		   - No snapshots are available, start etcd as a fresh installation.
-func (e *EtcdInitializer) Initialize(mode validator.Mode) error {
+func (e *EtcdInitializer) Initialize(mode validator.Mode, failBelowRevision int64) error {
 	start := time.Now()
-	dataDirStatus, err := e.Validator.Validate(mode)
+	dataDirStatus, err := e.Validator.Validate(mode, failBelowRevision)
 	if err != nil && dataDirStatus != validator.DataDirectoryNotExist {
 		metrics.ValidationDurationSeconds.With(prometheus.Labels{metrics.LabelSucceeded: metrics.ValueSucceededFalse}).Observe(time.Now().Sub(start).Seconds())
-		err = fmt.Errorf("error while initializing: %v", err)
-		return err
+		return fmt.Errorf("error while initializing: %v", err)
+	}
+
+	if dataDirStatus == validator.FailBelowRevisionConsistencyError {
+		metrics.ValidationDurationSeconds.With(prometheus.Labels{metrics.LabelSucceeded: metrics.ValueSucceededFalse}).Observe(time.Now().Sub(start).Seconds())
+		return fmt.Errorf("failed to initialize since fail below revision check failed")
 	}
 	metrics.ValidationDurationSeconds.With(prometheus.Labels{metrics.LabelSucceeded: metrics.ValueSucceededTrue}).Observe(time.Now().Sub(start).Seconds())
+
 	if dataDirStatus != validator.DataDirectoryValid {
 		start := time.Now()
 		if err := e.restoreCorruptData(); err != nil {

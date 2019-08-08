@@ -38,5 +38,5 @@ type EtcdInitializer struct {
 
 // Initializer is the interface for etcd initialization actions.
 type Initializer interface {
-	Initialize(validator.Mode) error
+	Initialize(validator.Mode, int64) error
 }
