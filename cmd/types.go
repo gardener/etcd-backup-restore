@@ -49,8 +49,10 @@ var (
 	defragmentationSchedule  string
 
 	//server flags
-	port            int
-	enableProfiling bool
+	port              int
+	enableProfiling   bool
+	serverTLSCertFile string
+	serverTLSKeyFile  string
 
 	//restore flags
 	restoreCluster         string

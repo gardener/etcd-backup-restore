@@ -71,6 +71,9 @@ type HTTPHandler struct {
 	EnableProfiling           bool
 	ReqCh                     chan struct{}
 	AckCh                     chan struct{}
+	EnableTLS                 bool
+	ServerTLSCertFile         string
+	ServerTLSKeyFile          string
 }
 
 // GetStatus returns the current status in the HTTPHandler
@@ -122,15 +125,34 @@ func registerPProfHandler(mux *http.ServeMux) {
 	mux.HandleFunc("/debug/pprof/mutex", pprof.Handler("mutex").ServeHTTP)
 }
 
+// checkAndSetSecurityHeaders serves the health status of the server
+func (h *HTTPHandler) checkAndSetSecurityHeaders(rw http.ResponseWriter) {
+	if h.EnableTLS {
+		rw.Header().Set("Strict-Transport-Security", "max-age=31536000")
+		rw.Header().Set("Content-Security-Policy", "default-src 'self'")
+	}
+}
+
 // Start starts the http server to listen for request
 func (h *HTTPHandler) Start() {
-	h.Logger.Infof("Starting Http server at addr: %s", h.server.Addr)
-	err := h.server.ListenAndServe()
-	if err != nil && err != http.ErrServerClosed {
-		h.Logger.Fatalf("Failed to start http server: %v", err)
+	h.Logger.Infof("Starting HTTP server at addr: %s", h.server.Addr)
+
+	if !h.EnableTLS {
+		err := h.server.ListenAndServe()
+		if err != nil && err != http.ErrServerClosed {
+			h.Logger.Fatalf("Failed to start http server: %v", err)
+		}
+		h.Logger.Infof("HTTP server closed gracefully.")
+		return
 	}
-	h.Logger.Infof("Http server closed gracefully.")
-	return
+
+	h.Logger.Infof("TLS enabled. Starting HTTPS server.")
+
+	err := h.server.ListenAndServeTLS(h.ServerTLSCertFile, h.ServerTLSKeyFile)
+	if err != nil && err != http.ErrServerClosed {
+		h.Logger.Fatalf("Failed to start HTTPS server: %v", err)
+	}
+	h.Logger.Infof("HTTPS server closed gracefully.")
 }
 
 // Stop stops the http server
@@ -140,13 +162,14 @@ func (h *HTTPHandler) Stop() error {
 
 // serveHealthz serves the health status of the server
 func (h *HTTPHandler) serveHealthz(rw http.ResponseWriter, req *http.Request) {
-
+	h.checkAndSetSecurityHeaders(rw)
 	rw.WriteHeader(h.GetStatus())
 	rw.Write([]byte(fmt.Sprintf("{\"health\":%v}", h.GetStatus() == http.StatusOK)))
 }
 
 // serveInitialize starts initialization for the configured Initializer
 func (h *HTTPHandler) serveInitialize(rw http.ResponseWriter, req *http.Request) {
+	h.checkAndSetSecurityHeaders(rw)
 	h.Logger.Info("Received start initialization request.")
 	h.initializationStatusMutex.Lock()
 	defer h.initializationStatusMutex.Unlock()
@@ -205,6 +228,7 @@ func (h *HTTPHandler) serveInitialize(rw http.ResponseWriter, req *http.Request)
 
 // serveInitializationStatus serves the etcd initialization progress status
 func (h *HTTPHandler) serveInitializationStatus(rw http.ResponseWriter, req *http.Request) {
+	h.checkAndSetSecurityHeaders(rw)
 	h.initializationStatusMutex.Lock()
 	defer h.initializationStatusMutex.Unlock()
 	h.Logger.Infof("Responding to status request with: %s", h.initializationStatus)
@@ -222,6 +246,7 @@ func (h *HTTPHandler) serveInitializationStatus(rw http.ResponseWriter, req *htt
 // serveFullSnapshotTrigger triggers an out-of-schedule full snapshot
 // for the configured Snapshotter
 func (h *HTTPHandler) serveFullSnapshotTrigger(rw http.ResponseWriter, req *http.Request) {
+	h.checkAndSetSecurityHeaders(rw)
 	if h.Snapshotter == nil {
 		h.Logger.Warnf("Ignoring out-of-schedule full snapshot request as snapshotter is not configured")
 		rw.WriteHeader(http.StatusMethodNotAllowed)

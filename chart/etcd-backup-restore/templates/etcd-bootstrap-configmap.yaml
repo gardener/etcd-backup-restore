@@ -13,6 +13,13 @@ data:
     #!/bin/sh
     VALIDATION_MARKER=/var/etcd/data/validation_marker
 
+{{- if .Values.backupRestoreTLS }}
+    # install wget from apk in order to pass --ca-certificate flag because
+    # busybox wget only has bare minimum features, without --ca-certificate option
+    apk update
+    apk add wget
+{{- end }}
+
     trap_and_propagate() {
         PID=$1
         shift
@@ -35,11 +42,11 @@ data:
     check_and_start_etcd(){
           while true;
           do
-            wget "http://localhost:{{ .Values.servicePorts.backupRestore }}/initialization/status" -S -O status;
+            wget {{ if .Values.backupRestoreTLS }}--ca-certificate=/var/etcdbr/ssl/ca/ca.crt "https{{ else }}"http{{ end }}://localhost:{{ .Values.servicePorts.backupRestore }}/initialization/status" -S -O status;
             STATUS=`cat status`;
             case $STATUS in
             "New")
-                  wget "http://localhost:{{ .Values.servicePorts.backupRestore }}/initialization/start?mode=$1{{- if .Values.backup.failBelowRevision }}&failbelowrevision={{ int $.Values.backup.failBelowRevision }}{{- end }}" -S -O - ;;
+                  wget {{ if .Values.backupRestoreTLS }}--ca-certificate=/var/etcdbr/ssl/ca/ca.crt "https{{ else }}"http{{ end }}://localhost:{{ .Values.servicePorts.backupRestore }}/initialization/start?mode=$1{{- if .Values.backup.failBelowRevision }}&failbelowrevision={{ int $.Values.backup.failBelowRevision }}{{- end }}" -S -O - ;;
             "Progress")
                   sleep 1;
                   continue;;
@@ -83,7 +90,7 @@ data:
     data-dir: /var/etcd/data/new.etcd
 
     # metrics configuration
-    metrics: {{ .Values.metrics }}
+    metrics: basic
 
     # Number of committed transactions to trigger a snapshot to disk.
     snapshot-count: 75000
@@ -95,11 +102,11 @@ data:
     {{- end }}
 
     # List of comma separated URLs to listen on for client traffic.
-    listen-client-urls: {{ if .Values.tls }}https{{ else }}http{{ end }}://0.0.0.0:{{ .Values.servicePorts.client }}
+    listen-client-urls: {{ if .Values.etcdTLS }}https{{ else }}http{{ end }}://0.0.0.0:{{ .Values.servicePorts.client }}
 
     # List of this member's client URLs to advertise to the public.
     # The URLs needed to be a comma-separated list.
-    advertise-client-urls: {{ if .Values.tls }}https{{ else }}http{{ end }}://0.0.0.0:{{ .Values.servicePorts.client }}
+    advertise-client-urls: {{ if .Values.etcdTLS }}https{{ else }}http{{ end }}://0.0.0.0:{{ .Values.servicePorts.client }}
 
     # Initial cluster token for the etcd cluster during bootstrap.
     initial-cluster-token: 'new'
@@ -107,7 +114,7 @@ data:
     # Initial cluster state ('new' or 'existing').
     initial-cluster-state: 'new'
 
-{{- if .Values.tls }}
+{{- if .Values.etcdTLS }}
     client-transport-security:
       # Path to the client server TLS cert file.
       cert-file: /var/etcd/ssl/tls/tls.crt

@@ -2,12 +2,12 @@ images:
   # etcd image to use
   etcd:
     repository: quay.io/coreos/etcd
-    tag: v3.3.12
+    tag: v3.3.13
     pullPolicy: IfNotPresent
   # etcd-backup-restore image to use
   etcdBackupRestore:
     repository: eu.gcr.io/gardener-project/gardener/etcdbrctl
-    tag: 0.7.0
+    tag: 0.8.0
     pullPolicy: IfNotPresent
 
 resources:
@@ -31,12 +31,7 @@ servicePorts:
   server: 2380
   backupRestore: 8080
 
-etcdAuth: {}
-   #username: username
-   #password: password
-
 backup:
-
   # schedule is cron standard schedule to take full snapshots.
   schedule: "0 */1 * * *"
 
@@ -90,23 +85,42 @@ backup:
   #   accessKeySecret: secret-access-key-with-object-storage-privileges
   #   accessKeyID: access-key-id-with-object-storage-privileges
 
-metrics: basic
+# etcdAuth field contains the pre-created username-password pair
+# for etcd. Comment this whole section if you dont want to use
+# password-based authentication for the etcd.
+etcdAuth: {}
+  # username: username
+  # password: password
 
-# tls field contains the pre-created secrets for etcd. Uncomment the
-# whole tls section if you dont want to use tls for the etcd.
-tls: {}
-  # caBundle: |
-      #   -----BEGIN CERTIFICATE-----
-      #   ...
-      #   -----END CERTIFICATE-----
-  # crt: |
-      #     -----BEGIN CERTIFICATE-----
-      #     ...
-      #     -----END CERTIFICATE-----
-  # key: |
-      #     -----BEGIN RSA PRIVATE KEY-----
-      #     ...
-      #     -----END RSA PRIVATE KEY-----
+etcdTLS: {}
+#   caBundle: |
+#         -----BEGIN CERTIFICATE-----
+#         ...
+#         -----END CERTIFICATE-----
+#   crt: |
+#         -----BEGIN CERTIFICATE-----
+#         ...
+#         -----END CERTIFICATE-----
+#   key: |
+#         -----BEGIN RSA PRIVATE KEY-----
+#         ...
+#         -----END RSA PRIVATE KEY-----
 
-# podAnnotations will be placed to the resulting etcd pod
+# backupRestoreTLS field contains the pre-created secrets for backup-restore server.
+# Comment this whole section if you dont want to use tls for the backup-restore server.
+backupRestoreTLS: {}
+#   caBundle: |
+#         -----BEGIN CERTIFICATE-----
+#         ...
+#         -----END CERTIFICATE-----
+#   crt: |
+#         -----BEGIN CERTIFICATE-----
+#         ...
+#         -----END CERTIFICATE-----
+#   key: |
+#         -----BEGIN RSA PRIVATE KEY-----
+#         ...
+#         -----END RSA PRIVATE KEY-----
+
+# podAnnotations that will be passed to the resulting etcd pod
 podAnnotations: {}

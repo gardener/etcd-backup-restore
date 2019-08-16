@@ -18,6 +18,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"os"
 	"path"
 	"sync/atomic"
 	"time"
@@ -102,18 +103,34 @@ func NewServerCommand(ctx context.Context) *cobra.Command {
 
 // startHTTPServer creates and starts the HTTP handler
 // with status 503 (Service Unavailable)
-func startHTTPServer(initializer initializer.Initializer, ssr *snapshotter.Snapshotter) *server.HTTPHandler {
+func startHTTPServer(initializer initializer.Initializer, ssr *snapshotter.Snapshotter) (*server.HTTPHandler, error) {
+	enableTLS := serverTLSCertFile != "" && serverTLSKeyFile != ""
+	if enableTLS {
+		// Check for existence of server cert and key files before proceeding
+		if _, err := os.Stat(serverTLSCertFile); err != nil {
+			logger.Errorf("TLS enabled but server TLS cert file is invalid. Will not start HTTPS server: %v", err)
+			return nil, err
+		}
+		if _, err := os.Stat(serverTLSKeyFile); err != nil {
+			logger.Errorf("TLS enabled but server TLS key file is invalid. Will not start HTTPS server: %v", err)
+			return nil, err
+		}
+	}
+
 	// Start http handler with Error state and wait till snapshotter is up
 	// and running before setting the status to OK.
 	handler := &server.HTTPHandler{
-		Port:            port,
-		Initializer:     initializer,
-		Snapshotter:     ssr,
-		Logger:          logger,
-		StopCh:          make(chan struct{}),
-		EnableProfiling: enableProfiling,
-		ReqCh:           make(chan struct{}),
-		AckCh:           make(chan struct{}),
+		Port:              port,
+		Initializer:       initializer,
+		Snapshotter:       ssr,
+		Logger:            logger,
+		StopCh:            make(chan struct{}),
+		EnableProfiling:   enableProfiling,
+		ReqCh:             make(chan struct{}),
+		AckCh:             make(chan struct{}),
+		EnableTLS:         enableTLS,
+		ServerTLSCertFile: serverTLSCertFile,
+		ServerTLSKeyFile:  serverTLSKeyFile,
 	}
 	handler.SetStatus(http.StatusServiceUnavailable)
 	logger.Info("Registering the http request handlers...")
@@ -121,7 +138,7 @@ func startHTTPServer(initializer initializer.Initializer, ssr *snapshotter.Snaps
 	logger.Info("Starting the http server...")
 	go handler.Start()
 
-	return handler
+	return handler, nil
 }
 
 // runServerWithoutSnapshotter runs the etcd-backup-restore
@@ -164,7 +181,10 @@ func runServerWithSnapshotter(ctx context.Context, tlsConfig *etcdutil.TLSConfig
 		snapshotterConfig,
 	)
 
-	handler := startHTTPServer(etcdInitializer, ssr)
+	handler, err := startHTTPServer(etcdInitializer, ssr)
+	if err != nil {
+		logger.Fatalf("Failed to start HTTP server: %v", err)
+	}
 	defer handler.Stop()
 
 	ssrStopCh := make(chan struct{})
@@ -274,7 +294,10 @@ func runServerWithoutSnapshotter(ctx context.Context, tlsConfig *etcdutil.TLSCon
 
 	// If no storage provider is given, snapshotter will be nil, in which
 	// case the status is set to OK as soon as etcd probe is successful
-	handler := startHTTPServer(etcdInitializer, nil)
+	handler, err := startHTTPServer(etcdInitializer, nil)
+	if err != nil {
+		logger.Fatalf("Failed to start HTTP server: %v", err)
+	}
 	defer handler.Stop()
 
 	// start defragmentation without trigerring full snapshot
@@ -309,12 +332,6 @@ func runEtcdProbeLoopWithoutSnapshotter(ctx context.Context, tlsConfig *etcdutil
 		logger.Infof("Received stop signal. Terminating !!")
 		return
 	}
-}
-
-// initializeServerFlags adds the flags to <cmd>
-func initializeServerFlags(serverCmd *cobra.Command) {
-	serverCmd.Flags().IntVarP(&port, "server-port", "p", defaultServerPort, "port on which server should listen")
-	serverCmd.Flags().BoolVar(&enableProfiling, "enable-profiling", false, "enable profiling")
 }
 
 // ProbeEtcd will make the snapshotter probe for etcd endpoint to be available
@@ -367,4 +384,12 @@ func handleSsrStopRequest(ctx context.Context, handler *server.HTTPHandler, ssr 
 			return
 		}
 	}
+}
+
+// initializeServerFlags adds the flags to <cmd>
+func initializeServerFlags(serverCmd *cobra.Command) {
+	serverCmd.Flags().IntVarP(&port, "server-port", "p", defaultServerPort, "port on which server should listen")
+	serverCmd.Flags().BoolVar(&enableProfiling, "enable-profiling", false, "enable profiling")
+	serverCmd.Flags().StringVar(&serverTLSCertFile, "server-cert", "", "TLS certificate file for backup-restore server")
+	serverCmd.Flags().StringVar(&serverTLSKeyFile, "server-key", "", "TLS key file for backup-restore server")
 }
