@@ -78,6 +78,9 @@ data:
     # Path to the data directory.
     data-dir: /var/etcd/data/new.etcd
 
+    # metrics configuration
+    metrics: {{ .Values.metrics }}
+
     # Number of committed transactions to trigger a snapshot to disk.
     snapshot-count: 75000
 

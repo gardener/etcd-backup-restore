@@ -46,7 +46,6 @@ We will have a StatefulSet for etcd with two containers in it.
 - ETCD container
 - Sidecar container
 
-
 ### ETCD Container
 
 - Request the sidecar to validate/initialize the data directory.

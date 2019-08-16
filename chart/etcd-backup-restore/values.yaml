@@ -6,8 +6,8 @@ images:
     pullPolicy: IfNotPresent
   # etcd-backup-restore image to use
   etcdBackupRestore:
-    repository:  eu.gcr.io/gardener-project/gardener/etcdbrctl
-    tag:  0.7.0
+    repository: eu.gcr.io/gardener-project/gardener/etcdbrctl
+    tag: 0.7.0
     pullPolicy: IfNotPresent
 
 resources:
@@ -89,6 +89,8 @@ backup:
   #   endpoint: oss-endpoint-url
   #   accessKeySecret: secret-access-key-with-object-storage-privileges
   #   accessKeyID: access-key-id-with-object-storage-privileges
+
+metrics: basic
 
 # tls field contains the pre-created secrets for etcd. Uncomment the
 # whole tls section if you dont want to use tls for the etcd.
