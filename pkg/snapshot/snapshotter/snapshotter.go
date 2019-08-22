@@ -377,6 +377,7 @@ func (ssr *Snapshotter) CollectEventsSincePrevSnapshot(stopCh <-chan struct{}) (
 				return false, nil
 			}
 		case <-stopCh:
+			ssr.cleanupInMemoryEvents()
 			return true, nil
 		}
 	}
@@ -441,6 +442,7 @@ func (ssr *Snapshotter) snapshotEventHandler(stopCh <-chan struct{}) error {
 				return err
 			}
 		case <-stopCh:
+			ssr.cleanupInMemoryEvents()
 			return nil
 		}
 	}
