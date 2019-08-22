@@ -120,7 +120,7 @@ The command mentioned above stores etcd snapshots as per the exponential policy 
 
 ### Etcd data directory initialization
 
-Sub-command `initialize` does the task of data directory validation. If the data directory is found to be corrupt, the controller will restore it from the latest snapshot in the cloud store. It restores the full snapshot first and then incrementally applies the delta snapshots.
+Sub-command `initialize` does the task of data directory validation. If the data directory is found to be corrupt, the controller will restore it from the latest snapshot in the cloud store. It restores the full snapshot first and then incrementally applies the delta snapshots. For more information regarding data restoration, please refer to [this guide](../proposals/restoration.md).
 
 ```console
 $ ./bin/etcdbrctl initialize \
