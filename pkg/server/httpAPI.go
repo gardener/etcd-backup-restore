@@ -97,6 +97,7 @@ func (h *HTTPHandler) RegisterHandler() {
 	mux.HandleFunc("/initialization/start", h.serveInitialize)
 	mux.HandleFunc("/initialization/status", h.serveInitializationStatus)
 	mux.HandleFunc("/snapshot/full", h.serveFullSnapshotTrigger)
+	mux.HandleFunc("/snapshot/delta", h.serveDeltaSnapshotTrigger)
 	mux.HandleFunc("/healthz", h.serveHealthz)
 	mux.Handle("/metrics", promhttp.Handler())
 
@@ -228,6 +229,22 @@ func (h *HTTPHandler) serveFullSnapshotTrigger(rw http.ResponseWriter, req *http
 	}
 	if err := h.Snapshotter.TriggerFullSnapshot(req.Context()); err != nil {
 		h.Logger.Warnf("Skipped triggering out-of-schedule full snapshot: %v", err)
+		rw.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	rw.WriteHeader(http.StatusOK)
+}
+
+// serveDeltaSnapshotTrigger triggers an out-of-schedule delta snapshot
+// for the configured Snapshotter
+func (h *HTTPHandler) serveDeltaSnapshotTrigger(rw http.ResponseWriter, req *http.Request) {
+	if h.Snapshotter == nil {
+		h.Logger.Warnf("Ignoring out-of-schedule delta snapshot request as snapshotter is not configured")
+		rw.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	if err := h.Snapshotter.TriggerDeltaSnapshot(); err != nil {
+		h.Logger.Warnf("Skipped triggering out-of-schedule delta snapshot: %v", err)
 		rw.WriteHeader(http.StatusInternalServerError)
 		return
 	}

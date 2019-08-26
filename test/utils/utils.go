@@ -109,7 +109,7 @@ func PopulateEtcd(ctx context.Context, logger *logrus.Entry, endpoints []string,
 		case <-time.After(time.Second):
 			response.KeyTo++
 			if response.KeyTo > keyTo {
-				logger.Infof("Populated data till key %s into embedded etcd with etcd end revision: %v", KeyPrefix+strconv.Itoa(response.KeyTo), response.EndRevision)
+				logger.Infof("Populated data till key %s into embedded etcd with etcd end revision: %v", KeyPrefix+strconv.Itoa(response.KeyTo-1), response.EndRevision)
 				return
 			}
 			key := KeyPrefix + strconv.Itoa(response.KeyTo)
