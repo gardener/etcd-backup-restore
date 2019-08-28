@@ -19,9 +19,6 @@ import (
 	"context"
 	"fmt"
 	"strings"
-
-	"k8s.io/apimachinery/pkg/runtime/schema"
-
 	"text/template"
 
 	"github.com/ghodss/yaml"
@@ -30,6 +27,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/dynamic"

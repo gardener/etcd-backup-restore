@@ -126,7 +126,7 @@ func (e *EtcdInitializer) restoreCorruptData() error {
 		return fmt.Errorf("failed to delete previous temporary data directory %s with err: %v", tempRestoreOptions.RestoreDataDir, err)
 	}
 
-	rs := restorer.NewRestorer(store, logger)
+	rs := restorer.NewRestorer(store, logrus.NewEntry(logger))
 	if err := rs.Restore(tempRestoreOptions); err != nil {
 		err = fmt.Errorf("Failed to restore snapshot: %v", err)
 		return err

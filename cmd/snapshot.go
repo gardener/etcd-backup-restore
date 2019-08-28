@@ -15,17 +15,20 @@
 package cmd
 
 import (
+	"context"
 	"path"
 	"time"
 
 	"github.com/gardener/etcd-backup-restore/pkg/etcdutil"
 	"github.com/gardener/etcd-backup-restore/pkg/snapshot/snapshotter"
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
+	cron "github.com/robfig/cron/v3"
+	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )
 
 // NewSnapshotCommand create cobra command for snapshot
-func NewSnapshotCommand(stopCh <-chan struct{}) *cobra.Command {
+func NewSnapshotCommand(ctx context.Context) *cobra.Command {
 	var command = &cobra.Command{
 		Use:   "snapshot",
 		Short: "takes the snapshot of etcd periodically.",
@@ -55,7 +58,7 @@ storing snapshots on various cloud storage providers as well as local disk locat
 				etcdUsername,
 				etcdPassword)
 			snapshotterConfig, err := snapshotter.NewSnapshotterConfig(
-				schedule,
+				fullSnapshotSchedule,
 				ss,
 				maxBackups,
 				deltaSnapshotIntervalSeconds,
@@ -68,21 +71,20 @@ storing snapshots on various cloud storage providers as well as local disk locat
 				logger.Fatalf("failed to create snapstore config: %v", err)
 			}
 			ssr := snapshotter.NewSnapshotter(
-				logger,
+				logrus.NewEntry(logger),
 				snapshotterConfig)
 
-			if defragmentationPeriodHours < 1 {
-				logger.Infof("Disabling defragmentation since defragmentation period [%d] is less than 1", defragmentationPeriodHours)
-			} else {
-				go etcdutil.DefragDataPeriodically(stopCh, tlsConfig, time.Duration(defragmentationPeriodHours)*time.Hour, time.Duration(etcdConnectionTimeout)*time.Second, ssr.TriggerFullSnapshot)
+			defragSchedule, err := cron.ParseStandard(defragmentationSchedule)
+			if err != nil {
+				logger.Fatalf("failed to parse defragmentation schedule: %v", err)
+				return
 			}
+			go etcdutil.DefragDataPeriodically(ctx, tlsConfig, defragSchedule, time.Duration(etcdConnectionTimeout)*time.Second, ssr.TriggerFullSnapshot, logrus.NewEntry(logger))
 
-			gcStopCh := make(chan struct{})
-			go ssr.RunGarbageCollector(gcStopCh)
-			if err := ssr.Run(stopCh, true); err != nil {
+			go ssr.RunGarbageCollector(ctx.Done())
+			if err := ssr.Run(ctx.Done(), true); err != nil {
 				logger.Fatalf("Snapshotter failed with error: %v", err)
 			}
-			close(gcStopCh)
 			logger.Info("Shutting down...")
 			return
 		},
@@ -95,7 +97,7 @@ storing snapshots on various cloud storage providers as well as local disk locat
 // initializeSnapshotterFlags adds snapshotter related flags to <cmd>
 func initializeSnapshotterFlags(cmd *cobra.Command) {
 	cmd.Flags().StringSliceVarP(&etcdEndpoints, "endpoints", "e", []string{"127.0.0.1:2379"}, "comma separated list of etcd endpoints")
-	cmd.Flags().StringVarP(&schedule, "schedule", "s", "* */1 * * *", "schedule for snapshots")
+	cmd.Flags().StringVarP(&fullSnapshotSchedule, "schedule", "s", "* */1 * * *", "schedule for snapshots")
 	cmd.Flags().IntVarP(&deltaSnapshotIntervalSeconds, "delta-snapshot-period-seconds", "i", snapshotter.DefaultDeltaSnapshotIntervalSeconds, "Period in seconds after which delta snapshot will be persisted. If this value is set to be lesser than 1, delta snapshotting will be disabled.")
 	cmd.Flags().IntVar(&deltaSnapshotMemoryLimit, "delta-snapshot-memory-limit", snapshotter.DefaultDeltaSnapMemoryLimit, "memory limit after which delta snapshots will be taken")
 	cmd.Flags().IntVarP(&maxBackups, "max-backups", "m", snapshotter.DefaultMaxBackups, "maximum number of previous backups to keep")
@@ -109,5 +111,5 @@ func initializeSnapshotterFlags(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&caFile, "cacert", "", "verify certificates of TLS-enabled secure servers using this CA bundle")
 	cmd.Flags().StringVar(&etcdUsername, "etcd-username", "", "etcd server username, if one is required")
 	cmd.Flags().StringVar(&etcdPassword, "etcd-password", "", "etcd server password, if one is required")
-	cmd.Flags().IntVar(&defragmentationPeriodHours, "defragmentation-period-hours", 72, "period after which we should defragment etcd data directory")
+	cmd.Flags().StringVar(&defragmentationSchedule, "defragmentation-schedule", "0 0 */3 * *", "schedule to defragment etcd data directory")
 }

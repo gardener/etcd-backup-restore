@@ -29,7 +29,7 @@ var (
 	logger  = logrus.New()
 	version bool
 	//snapshotter flags
-	schedule                       string
+	fullSnapshotSchedule           string
 	etcdEndpoints                  []string
 	etcdUsername                   string
 	etcdPassword                   string
@@ -44,7 +44,7 @@ var (
 	certFile                       string
 	keyFile                        string
 	caFile                         string
-	defragmentationPeriodHours     int
+	defragmentationSchedule        string
 
 	//server flags
 	port            int

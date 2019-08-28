@@ -30,7 +30,7 @@ const (
 
 // Restorer is a struct for etcd data directory restorer
 type Restorer struct {
-	logger *logrus.Logger
+	logger *logrus.Entry
 	store  snapstore.SnapStore
 }
 

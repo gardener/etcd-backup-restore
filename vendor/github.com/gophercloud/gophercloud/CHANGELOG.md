@@ -1,4 +1,26 @@
-## 0.4.0 (Unreleased)
+## 0.5.0 (Unreleased)
+
+## 0.4.0 (September 3, 2019)
+
+IMPROVEMENTS
+
+* Added `blockstorage/extensions/quotasets.results.QuotaSet.Groups` [GH-1668]
+* Added `blockstorage/extensions/quotasets.results.QuotaUsageSet.Groups` [GH-1668]
+* Added `containerinfra/v1/clusters.CreateOpts.FixedNetwork` [GH-1674]
+* Added `containerinfra/v1/clusters.CreateOpts.FixedSubnet` [GH-1676]
+* Added `containerinfra/v1/clusters.CreateOpts.FloatingIPEnabled` [GH-1677]
+* Added `CreatedAt` and `UpdatedAt` to `loadbalancers/v2/loadbalancers.LoadBalancer` [GH-1681]
+* Added `networking/v2/extensions/layer3/portforwarding.Create` [GH-1651]
+* Added `networking/v2/extensions/agents.ListDHCPNetworks` [GH-1686]
+* Added `networking/v2/extensions/layer3/portforwarding.Delete` [GH-1652]
+* Added `compute/v2/extensions/tags.List` [GH-1679]
+* Added `compute/v2/extensions/tags.Check` [GH-1679]
+
+BUG FIXES
+
+* Changed `identity/v3/endpoints.ListOpts.RegionID` from `int` to `string` [GH-1664](https://github.com/gophercloud/gophercloud/pull/1664)
+* Fixed issue where older time formats in some networking APIs/resources were unable to be parsed [GH-1671](https://github.com/gophercloud/gophercloud/pull/1664)
+* Changed `SATA`, `SCSI`, and `SAS` types to `InterfaceType` in `baremetal/v1/nodes` [GH-1683]
 
 ## 0.3.0 (July 31, 2019)
 

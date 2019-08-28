@@ -52,9 +52,9 @@ import (
 )
 
 // NewRestorer returns the restorer object.
-func NewRestorer(store snapstore.SnapStore, logger *logrus.Logger) *Restorer {
+func NewRestorer(store snapstore.SnapStore, logger *logrus.Entry) *Restorer {
 	return &Restorer{
-		logger: logger,
+		logger: logger.WithField("actor", "restorer"),
 		store:  store,
 	}
 }

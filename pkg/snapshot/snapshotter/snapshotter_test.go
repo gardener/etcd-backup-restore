@@ -15,6 +15,7 @@
 package snapshotter_test
 
 import (
+	"context"
 	"fmt"
 	"io/ioutil"
 	"path"
@@ -25,16 +26,15 @@ import (
 	"github.com/gardener/etcd-backup-restore/pkg/etcdutil"
 	. "github.com/gardener/etcd-backup-restore/pkg/snapshot/snapshotter"
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
+	"github.com/gardener/etcd-backup-restore/test/utils"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
-	"github.com/sirupsen/logrus"
 )
 
 var _ = Describe("Snapshotter", func() {
 	var (
 		endpoints                      []string
 		store                          snapstore.SnapStore
-		logger                         *logrus.Logger
 		etcdConnectionTimeout          time.Duration
 		garbageCollectionPeriodSeconds time.Duration
 		maxBackups                     int
@@ -50,7 +50,6 @@ var _ = Describe("Snapshotter", func() {
 	)
 	BeforeEach(func() {
 		endpoints = []string{"http://localhost:2379"}
-		logger = logrus.New()
 		etcdConnectionTimeout = 10
 		garbageCollectionPeriodSeconds = 30
 		schedule = "*/1 * * * *"
@@ -294,11 +293,6 @@ var _ = Describe("Snapshotter", func() {
 
 					Context("with snapshotter starting without first full snapshot", func() {
 						It("first snapshot should be a delta snapshot", func() {
-							var (
-								errCh           = make(chan error)
-								populatorStopCh = make(chan bool)
-								ssrStopCh       = make(chan struct{})
-							)
 							store, err = snapstore.GetSnapstore(&snapstore.Config{Container: path.Join(outputDir, "snapshotter_5.bkp")})
 							Expect(err).ShouldNot(HaveOccurred())
 							tlsConfig := etcdutil.NewTLSConfig(
@@ -325,20 +319,14 @@ var _ = Describe("Snapshotter", func() {
 							ssr = NewSnapshotter(
 								logger,
 								snapshotterConfig)
-
+							populatorCtx, cancelPopulator := context.WithTimeout(testCtx, testTimeout)
+							defer cancelPopulator()
 							wg := &sync.WaitGroup{}
 							wg.Add(1)
 							// populating etcd so that snapshots will be taken
-							go populateEtcd(wg, logger, endpoints, errCh, populatorStopCh)
-
-							go func() {
-								<-time.After(testTimeout)
-								close(populatorStopCh)
-								wg.Wait()
-								close(ssrStopCh)
-							}()
-
-							err = ssr.Run(ssrStopCh, false)
+							go utils.PopulateEtcdWithWaitGroup(populatorCtx, wg, logger, endpoints, nil)
+							ssrCtx := utils.ContextWithWaitGroup(testCtx, wg)
+							err = ssr.Run(ssrCtx.Done(), false)
 							Expect(err).ShouldNot(HaveOccurred())
 							list, err := store.List()
 							Expect(err).ShouldNot(HaveOccurred())
@@ -349,11 +337,6 @@ var _ = Describe("Snapshotter", func() {
 
 					Context("with snapshotter starting with full snapshot", func() {
 						It("should take periodic backups", func() {
-							var (
-								errCh           = make(chan error)
-								populatorStopCh = make(chan bool)
-								ssrStopCh       = make(chan struct{})
-							)
 							store, err = snapstore.GetSnapstore(&snapstore.Config{Container: path.Join(outputDir, "snapshotter_6.bkp")})
 							Expect(err).ShouldNot(HaveOccurred())
 							tlsConfig := etcdutil.NewTLSConfig(
@@ -377,22 +360,19 @@ var _ = Describe("Snapshotter", func() {
 								tlsConfig)
 							Expect(err).ShouldNot(HaveOccurred())
 
-							ssr = NewSnapshotter(
-								logger,
-								snapshotterConfig)
-
+							populatorCtx, cancelPopulator := context.WithTimeout(testCtx, testTimeout)
+							defer cancelPopulator()
 							wg := &sync.WaitGroup{}
 							wg.Add(1)
 							// populating etcd so that snapshots will be taken
-							go populateEtcd(wg, logger, endpoints, errCh, populatorStopCh)
+							go utils.PopulateEtcdWithWaitGroup(populatorCtx, wg, logger, endpoints, nil)
 
-							go func() {
-								<-time.After(testTimeout)
-								close(populatorStopCh)
-								wg.Wait()
-								close(ssrStopCh)
-							}()
-							err = ssr.Run(ssrStopCh, true)
+							ssr = NewSnapshotter(
+								logger,
+								snapshotterConfig)
+							ssrCtx := utils.ContextWithWaitGroup(testCtx, wg)
+							err = ssr.Run(ssrCtx.Done(), true)
+
 							Expect(err).ShouldNot(HaveOccurred())
 							list, err := store.List()
 							Expect(err).ShouldNot(HaveOccurred())
@@ -418,8 +398,7 @@ var _ = Describe("Snapshotter", func() {
 			})
 
 			It("should garbage collect exponentially", func() {
-				fmt.Println("creating expected output")
-				logger = logrus.New()
+				logger.Infoln("creating expected output")
 
 				// Prepare expected resultant snapshot list
 				var (
@@ -590,12 +569,9 @@ var _ = Describe("Snapshotter", func() {
 					logger,
 					snapshotterConfig)
 
-				gcStopCh := make(chan struct{})
-				go func() {
-					<-time.After(testTimeout)
-					close(gcStopCh)
-				}()
-				ssr.RunGarbageCollector(gcStopCh)
+				gcCtx, cancel := context.WithTimeout(testCtx, testTimeout)
+				defer cancel()
+				ssr.RunGarbageCollector(gcCtx.Done())
 
 				list, err := store.List()
 				Expect(err).ShouldNot(HaveOccurred())

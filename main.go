@@ -15,6 +15,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/signal"
@@ -30,30 +31,30 @@ func main() {
 		runtime.GOMAXPROCS(runtime.NumCPU())
 	}
 
-	stopCh := setupSignalHandler()
-	command := cmd.NewBackupRestoreCommand(stopCh)
+	ctx := setupSignalHandler()
+	command := cmd.NewBackupRestoreCommand(ctx)
 	if err := command.Execute(); err != nil {
 		fmt.Println(err)
 		os.Exit(1)
 	}
 }
 
-// SetupSignalHandler registered for SIGTERM and SIGINT. A stop channel is returned
-// which is closed on one of these signals. If a second signal is caught, the program
+// setupSignalHandler creates context carrying system signals. A context is returned
+// which is canceld on one of these signals. If a second signal is caught, the program
 // is terminated with exit code 1.
-func setupSignalHandler() <-chan struct{} {
+func setupSignalHandler() context.Context {
 	close(onlyOneSignalHandler) // panics when called twice
 
 	var shutdownSignals = []os.Signal{os.Interrupt}
-	stop := make(chan struct{})
+	ctx, cancel := context.WithCancel(context.Background())
 	c := make(chan os.Signal, 2)
 	signal.Notify(c, shutdownSignals...)
 	go func() {
 		<-c
-		close(stop)
+		cancel()
 		<-c
 		os.Exit(1) // second signal. Exit directly.
 	}()
 
-	return stop
+	return ctx
 }

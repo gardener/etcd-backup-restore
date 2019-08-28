@@ -45,8 +45,8 @@ backup:
   # deltaSnapshotMemoryLimit is memory limit in bytes after which delta snapshots will be taken out of schedule.
   deltaSnapshotMemoryLimit: 104857600 #100MB
 
-  # defragmentationPeriodHours is period after which the etcd data will defragmented. If this value is set to be lesser than 1, defragmentation will be disabled.
-  defragmentationPeriodHours: 72
+  # defragmentationSchedule is schedule on which the etcd data will defragmented. Value should follow standard cron format.
+  defragmentationSchedule: "* * */3 * *"
 
   # garbageCollectionPolicy mentions the policy for garbage collecting old backups. Allowed values are Exponential(default), LimitBased.
   garbageCollectionPolicy: Exponential

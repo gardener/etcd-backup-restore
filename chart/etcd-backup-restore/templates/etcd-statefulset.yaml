@@ -52,7 +52,7 @@ spec:
             - --endpoints={{ if .Values.tls }}https{{ else }}http{{ end }}://{{ .Release.Name }}-etcd-0:{{ .Values.servicePorts.client }}
 {{- if and .Values.etcdAuth.username .Values.etcdAuth.password }}
             - --user={{ .Values.etcdAuth.username }}:{{ .Values.etcdAuth.password }}
-{{- end }}            
+{{- end }}
             - get
             - foo
           initialDelaySeconds: 15
@@ -106,13 +106,16 @@ spec:
         - --insecure-skip-tls-verify=true
         - --endpoints=http://{{ .Release.Name }}-etcd-0:{{ .Values.servicePorts.client }}
 {{- end }}
+{{- if .Values.backup.defragmentationSchedule }}
+        - --defragmentation-schedule={{ .Values.backup.defragmentationSchedule }}
+{{- end }}
         - --etcd-connection-timeout={{ .Values.backup.etcdConnectionTimeout }}
         - --delta-snapshot-period-seconds={{ int $.Values.backup.deltaSnapshotPeriodSeconds }}
         - --delta-snapshot-memory-limit={{ int $.Values.backup.deltaSnapshotMemoryLimit }}
 {{- if and .Values.etcdAuth.username .Values.etcdAuth.password }}
         - --etcd-username={{ .Values.etcdAuth.username }}
         - --etcd-password={{ .Values.etcdAuth.password }}
-{{- end }}           
+{{- end }}
         image: {{ .Values.images.etcdBackupRestore.repository }}:{{ .Values.images.etcdBackupRestore.tag }}
         imagePullPolicy: {{ .Values.images.etcdBackupRestore.pullPolicy }}
         ports:

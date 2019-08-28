@@ -33,7 +33,7 @@ import (
 	"github.com/gardener/etcd-backup-restore/pkg/miscellaneous"
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/robfig/cron"
+	cron "github.com/robfig/cron/v3"
 	"github.com/sirupsen/logrus"
 )
 
@@ -71,7 +71,7 @@ func NewSnapshotterConfig(schedule string, store snapstore.SnapStore, maxBackups
 }
 
 // NewSnapshotter returns the snapshotter object.
-func NewSnapshotter(logger *logrus.Logger, config *Config) *Snapshotter {
+func NewSnapshotter(logger *logrus.Entry, config *Config) *Snapshotter {
 	// Create dummy previous snapshot
 	var prevSnapshot *snapstore.Snapshot
 	fullSnap, deltaSnapList, err := miscellaneous.GetLatestFullSnapshotAndDeltaSnapList(config.store)
@@ -88,7 +88,7 @@ func NewSnapshotter(logger *logrus.Logger, config *Config) *Snapshotter {
 	metrics.LatestSnapshotRevision.With(prometheus.Labels{metrics.LabelKind: prevSnapshot.Kind}).Set(float64(prevSnapshot.LastRevision))
 
 	return &Snapshotter{
-		logger:           logger,
+		logger:           logger.WithField("actor", "snapshotter"),
 		prevSnapshot:     prevSnapshot,
 		PrevFullSnapshot: fullSnap,
 		config:           config,
@@ -136,7 +136,7 @@ func (ssr *Snapshotter) Run(stopCh <-chan struct{}, startWithFullSnapshot bool) 
 
 // TriggerFullSnapshot sends the events to take full snapshot. This is to
 // trigger full snapshot externally out of regular schedule.
-func (ssr *Snapshotter) TriggerFullSnapshot() error {
+func (ssr *Snapshotter) TriggerFullSnapshot(ctx context.Context) error {
 	ssr.SsrStateMutex.Lock()
 	defer ssr.SsrStateMutex.Unlock()
 

@@ -22,7 +22,7 @@ import (
 	"github.com/coreos/etcd/clientv3"
 	"github.com/gardener/etcd-backup-restore/pkg/etcdutil"
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
-	"github.com/robfig/cron"
+	cron "github.com/robfig/cron/v3"
 	"github.com/sirupsen/logrus"
 )
 
@@ -51,7 +51,7 @@ type State int
 
 // Snapshotter is a struct for etcd snapshot taker
 type Snapshotter struct {
-	logger             *logrus.Logger
+	logger             *logrus.Entry
 	prevSnapshot       *snapstore.Snapshot
 	PrevFullSnapshot   *snapstore.Snapshot
 	config             *Config
