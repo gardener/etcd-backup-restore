@@ -249,6 +249,8 @@ func (ssr *Snapshotter) takeFullSnapshot() error {
 
 		metrics.LatestSnapshotRevision.With(prometheus.Labels{metrics.LabelKind: ssr.prevSnapshot.Kind}).Set(float64(ssr.prevSnapshot.LastRevision))
 		metrics.LatestSnapshotTimestamp.With(prometheus.Labels{metrics.LabelKind: ssr.prevSnapshot.Kind}).Set(float64(ssr.prevSnapshot.CreatedOn.Unix()))
+		metrics.SnapshotRequired.With(prometheus.Labels{metrics.LabelKind: snapstore.SnapshotKindFull}).Set(0)
+		metrics.SnapshotRequired.With(prometheus.Labels{metrics.LabelKind: snapstore.SnapshotKindDelta}).Set(0)
 
 		ssr.logger.Infof("Successfully saved full snapshot at: %s", path.Join(s.SnapDir, s.SnapName))
 	}
@@ -325,6 +327,7 @@ func (ssr *Snapshotter) TakeDeltaSnapshot() error {
 	ssr.prevSnapshot = snap
 	metrics.LatestSnapshotRevision.With(prometheus.Labels{metrics.LabelKind: ssr.prevSnapshot.Kind}).Set(float64(ssr.prevSnapshot.LastRevision))
 	metrics.LatestSnapshotTimestamp.With(prometheus.Labels{metrics.LabelKind: ssr.prevSnapshot.Kind}).Set(float64(ssr.prevSnapshot.CreatedOn.Unix()))
+	metrics.SnapshotRequired.With(prometheus.Labels{metrics.LabelKind: snapstore.SnapshotKindDelta}).Set(0)
 	ssr.logger.Infof("Successfully saved delta snapshot at: %s", path.Join(snap.SnapDir, snap.SnapName))
 	return nil
 }
@@ -351,10 +354,24 @@ func (ssr *Snapshotter) CollectEventsSincePrevSnapshot(stopCh <-chan struct{}) (
 	}
 	lastEtcdRevision := resp.Header.Revision
 
+	metrics.SnapshotRequired.With(prometheus.Labels{metrics.LabelKind: snapstore.SnapshotKindFull}).Set(0)
+	metrics.SnapshotRequired.With(prometheus.Labels{metrics.LabelKind: snapstore.SnapshotKindDelta}).Set(0)
+
+	// if etcd revision newer than latest full snapshot revision,
+	// set `required` metric for full snapshot to 1
+	if ssr.PrevFullSnapshot == nil || ssr.PrevFullSnapshot.LastRevision != lastEtcdRevision {
+		metrics.SnapshotRequired.With(prometheus.Labels{metrics.LabelKind: snapstore.SnapshotKindFull}).Set(1)
+	}
 	if ssr.prevSnapshot.LastRevision == lastEtcdRevision {
 		ssr.logger.Infof("No new events since last snapshot. Skipping initial delta snapshot.")
 		return false, nil
 	}
+
+	// need to take a delta snapshot here, because etcd revision is
+	// newer than latest snapshot revision. Also means, a subsequent
+	// full snapshot will be required later
+	metrics.SnapshotRequired.With(prometheus.Labels{metrics.LabelKind: snapstore.SnapshotKindDelta}).Set(1)
+	metrics.SnapshotRequired.With(prometheus.Labels{metrics.LabelKind: snapstore.SnapshotKindFull}).Set(1)
 
 	watchCtx, cancelWatch := context.WithCancel(context.TODO())
 	ssr.cancelWatch = cancelWatch
@@ -401,6 +418,8 @@ func (ssr *Snapshotter) handleDeltaWatchEvents(wr clientv3.WatchResponse) error 
 		}
 		ssr.events = append(ssr.events, jsonByte...)
 		ssr.lastEventRevision = ev.Kv.ModRevision
+		metrics.SnapshotRequired.With(prometheus.Labels{metrics.LabelKind: snapstore.SnapshotKindFull}).Set(1)
+		metrics.SnapshotRequired.With(prometheus.Labels{metrics.LabelKind: snapstore.SnapshotKindDelta}).Set(1)
 	}
 	ssr.logger.Debugf("Added events till revision: %d", ssr.lastEventRevision)
 	if len(ssr.events) >= ssr.config.deltaSnapshotMemoryLimit {
