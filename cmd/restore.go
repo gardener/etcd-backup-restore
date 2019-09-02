@@ -49,12 +49,17 @@ func NewRestoreCommand(stopCh <-chan struct{}) *cobra.Command {
 			if err != nil {
 				logger.Fatalf("failed parsing peers urls for restore cluster: %v", err)
 			}
+			credentials, err := GetSnapStoreConfig()
+			if err != nil {
+				logger.Fatalf("cannot read credentials: %s", err)
+			}
 			snapstoreConfig := &snapstore.Config{
 				Provider:                storageProvider,
 				Container:               storageContainer,
 				Prefix:                  path.Join(storagePrefix, backupFormatVersion),
 				MaxParallelChunkUploads: maxParallelChunkUploads,
 				TempDir:                 snapstoreTempDir,
+				Credentials:             credentials,
 			}
 			store, err := snapstore.GetSnapstore(snapstoreConfig)
 			if err != nil {

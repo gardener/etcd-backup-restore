@@ -26,6 +26,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/magiconair/properties"
 	"github.com/sirupsen/logrus"
 
 	"github.com/gophercloud/gophercloud"
@@ -50,10 +51,37 @@ const (
 )
 
 // NewSwiftSnapStore create new SwiftSnapStore from shared configuration with specified bucket
-func NewSwiftSnapStore(bucket, prefix, tempDir string, maxParallelChunkUploads int) (*SwiftSnapStore, error) {
-	authOpts, err := clientconfig.AuthOptions(nil)
-	if err != nil {
-		return nil, err
+func NewSwiftSnapStore(config *Config) (*SwiftSnapStore, error) {
+	bucket := config.Container
+	prefix := config.Prefix
+	tempDir := config.TempDir
+	maxParallelChunkUploads := config.MaxParallelChunkUploads
+
+	var authOpts *gophercloud.AuthOptions
+	var err error
+	if config.Credentials != nil {
+		clientOpts := new(clientconfig.ClientOpts)
+		authInfo := &clientconfig.AuthInfo{
+			AuthURL:        getDefaulted(config.Credentials, "OS_AUTH_URL", "authURL"),
+			Username:       getDefaulted(config.Credentials, "OS_USERNAME", "username"),
+			Password:       getDefaulted(config.Credentials, "OS_PASSWORD", "password"),
+			DomainName:     getDefaulted(config.Credentials, "OS_DOMAIN_NAME", "domainName"),
+			DomainID:       getDefaulted(config.Credentials, "OS_DOMAIN_ID", "domainID"),
+			ProjectName:    getDefaulted(config.Credentials, "OS_PROJECT_NAME", "projectName", "OS_TENANT_NAME", "tenantName"),
+			ProjectID:      getDefaulted(config.Credentials, "OS_PROJECT_ID", "projectID", "OS_TENANT_ID", "tenantID"),
+			UserDomainName: getDefaulted(config.Credentials, "OS_USER_DOMAIN_NAME", "userDomainName"),
+			UserDomainID:   getDefaulted(config.Credentials, "OS_USER_DOMAIN_ID", "userDomainID"),
+		}
+		clientOpts.AuthInfo = authInfo
+		authOpts, err = clientconfig.AuthOptions(clientOpts)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		authOpts, err = clientconfig.AuthOptions(nil)
+		if err != nil {
+			return nil, err
+		}
 	}
 	// AllowReauth should be set to true if you grant permission for Gophercloud to
 	// cache your credentials in memory, and to allow Gophercloud to attempt to
@@ -69,9 +97,16 @@ func NewSwiftSnapStore(bucket, prefix, tempDir string, maxParallelChunkUploads i
 		return nil, err
 
 	}
-
 	return NewSwiftSnapstoreFromClient(bucket, prefix, tempDir, maxParallelChunkUploads, client), nil
+}
 
+func getDefaulted(properties *properties.Properties, names ...string) string {
+	for _, name := range names {
+		if v, ok := properties.Get(name); ok {
+			return v
+		}
+	}
+	return ""
 }
 
 // NewSwiftSnapstoreFromClient will create the new Swift snapstore object from Swift client

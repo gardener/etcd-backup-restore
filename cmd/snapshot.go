@@ -33,12 +33,17 @@ func NewSnapshotCommand(stopCh <-chan struct{}) *cobra.Command {
 storing snapshots on various cloud storage providers as well as local disk location.`,
 		Run: func(cmd *cobra.Command, args []string) {
 			printVersionInfo()
+			credentials, err := GetSnapStoreConfig()
+			if err != nil {
+				logger.Fatalf("cannot read credentials: %s", err)
+			}
 			snapstoreConfig := &snapstore.Config{
 				Provider:                storageProvider,
 				Container:               storageContainer,
 				Prefix:                  path.Join(storagePrefix, backupFormatVersion),
 				MaxParallelChunkUploads: maxParallelChunkUploads,
 				TempDir:                 snapstoreTempDir,
+				Credentials:             credentials,
 			}
 			ss, err := snapstore.GetSnapstore(snapstoreConfig)
 			if err != nil {

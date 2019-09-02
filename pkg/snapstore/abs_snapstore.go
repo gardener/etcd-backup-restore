@@ -45,7 +45,11 @@ type ABSSnapStore struct {
 }
 
 // NewABSSnapStore create new ABSSnapStore from shared configuration with specified bucket
-func NewABSSnapStore(container, prefix, tempDir string, maxParallelChunkUploads int) (*ABSSnapStore, error) {
+func NewABSSnapStore(config *Config) (*ABSSnapStore, error) {
+	prefix := config.Prefix
+	tempDir := config.TempDir
+	container := config.Container
+	maxParallelChunkUploads := config.MaxParallelChunkUploads
 	storageAccount, err := GetEnvVarOrError(absStorageAccount)
 	if err != nil {
 		return nil, err

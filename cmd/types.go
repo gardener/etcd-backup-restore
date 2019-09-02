@@ -61,11 +61,13 @@ var (
 	embeddedEtcdQuotaBytes int64
 
 	//snapstore flags
-	storageProvider         string
-	storageContainer        string
-	storagePrefix           string
-	maxParallelChunkUploads int
-	snapstoreTempDir        string
+	storageProvider          string
+	storageContainer         string
+	storagePrefix            string
+	maxParallelChunkUploads  int
+	snapstoreTempDir         string
+	snapstoreCredentialsFile string
+	snapstoreCredentialsDir  string
 
 	//initializer flags
 	validationMode    string

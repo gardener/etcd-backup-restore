@@ -47,7 +47,11 @@ const (
 )
 
 // NewGCSSnapStore create new GCSSnapStore from shared configuration with specified bucket.
-func NewGCSSnapStore(bucket, prefix, tempDir string, maxParallelChunkUploads int) (*GCSSnapStore, error) {
+func NewGCSSnapStore(config *Config) (*GCSSnapStore, error) {
+	bucket := config.Container
+	prefix := config.Prefix
+	tempDir := config.TempDir
+	maxParallelChunkUploads := config.MaxParallelChunkUploads
 	ctx := context.TODO()
 	cli, err := storage.NewClient(ctx)
 	if err != nil {

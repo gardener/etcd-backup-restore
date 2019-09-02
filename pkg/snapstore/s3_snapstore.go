@@ -49,7 +49,11 @@ type S3SnapStore struct {
 }
 
 // NewS3SnapStore create new S3SnapStore from shared configuration with specified bucket
-func NewS3SnapStore(bucket, prefix, tempDir string, maxParallelChunkUploads int) (*S3SnapStore, error) {
+func NewS3SnapStore(config *Config) (*S3SnapStore, error) {
+	bucket := config.Container
+	prefix := config.Prefix
+	tempDir := config.TempDir
+	maxParallelChunkUploads := config.MaxParallelChunkUploads
 	return newS3FromSessionOpt(bucket, prefix, tempDir, maxParallelChunkUploads, session.Options{
 		// Setting this is equal to the AWS_SDK_LOAD_CONFIG environment variable was set.
 		// We want to save the work to set AWS_SDK_LOAD_CONFIG=1 outside.

@@ -17,6 +17,8 @@ package snapstore
 import (
 	"io"
 	"time"
+
+	"github.com/magiconair/properties"
 )
 
 // SnapStore is the interface to be implemented for different
@@ -98,6 +100,8 @@ type Config struct {
 	MaxParallelChunkUploads int
 	// Temporary Directory
 	TempDir string
+	// Credentials
+	Credentials *properties.Properties
 }
 
 type chunk struct {

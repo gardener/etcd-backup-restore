@@ -62,7 +62,11 @@ type OSSSnapStore struct {
 }
 
 // NewOSSSnapStore create new OSSSnapStore from shared configuration with specified bucket
-func NewOSSSnapStore(bucket, prefix, tempDir string, maxParallelChunkUploads int) (*OSSSnapStore, error) {
+func NewOSSSnapStore(config *Config) (*OSSSnapStore, error) {
+	bucket := config.Container
+	prefix := config.Prefix
+	tempDir := config.TempDir
+	maxParallelChunkUploads := config.MaxParallelChunkUploads
 	ao, err := authOptionsFromEnv()
 	if err != nil {
 		return nil, err

@@ -72,12 +72,17 @@ func NewInitializeCommand(stopCh <-chan struct{}) *cobra.Command {
 
 			var snapstoreConfig *snapstore.Config
 			if storageProvider != "" {
+				credentials, err := GetSnapStoreConfig()
+				if err != nil {
+					logger.Fatalf("cannot read credentials: %s", err)
+				}
 				snapstoreConfig = &snapstore.Config{
 					Provider:                storageProvider,
 					Container:               storageContainer,
 					Prefix:                  path.Join(storagePrefix, backupFormatVersion),
 					MaxParallelChunkUploads: maxParallelChunkUploads,
 					TempDir:                 snapstoreTempDir,
+					Credentials:             credentials,
 				}
 			}
 			etcdInitializer := initializer.NewInitializer(options, snapstoreConfig, logger)

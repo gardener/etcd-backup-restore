@@ -75,12 +75,17 @@ func NewServerCommand(stopCh <-chan struct{}) *cobra.Command {
 				logger.Warnf("No snapstore storage provider configured. Will not start backup schedule.")
 			} else {
 				snapshotterEnabled = true
+				credentials, err := GetSnapStoreConfig()
+				if err != nil {
+					logger.Fatalf("cannot read credentials: %s", err)
+				}
 				snapstoreConfig = &snapstore.Config{
 					Provider:                storageProvider,
 					Container:               storageContainer,
 					Prefix:                  path.Join(storagePrefix, backupFormatVersion),
 					MaxParallelChunkUploads: maxParallelChunkUploads,
 					TempDir:                 snapstoreTempDir,
+					Credentials:             credentials,
 				}
 			}
 
