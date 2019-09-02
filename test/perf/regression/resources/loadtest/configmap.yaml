@@ -1,0 +1,51 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: loadtest
+  namespace: {{ .namespace }}
+data:
+  dependency.sh: |-
+    #!/bin/sh
+  
+    export ETCDCTL_API=3
+    while true
+    do
+      MEMBERS=$(etcdctl --endpoints=http://etcd:2379 member list)
+      echo $MEMBERS | grep -i started && exit 0
+      echo "Waiting for etcd to start..."
+      sleep 10
+    done
+
+  entrypoint.sh: |-
+    #!/bin/bash
+    echo "Getting etcd benchmark..."
+    go get go.etcd.io/etcd/tools/benchmark
+
+    echo "Starting etcd benchmark..."
+    benchmark \
+      --endpoints=etcd:2379 \
+      --conns=100 \
+      --clients=500 \
+      put \
+      --key-size=256 \
+      --sequential-keys \
+      --total=800000 \
+      --val-size=512 \
+      | tee benchmark.log
+
+    echo "benchmark existed with error code $?"
+
+    echo "cat benchmark.log"
+    cat benchmark.log
+
+    grep "Error distribution" benchmark.log
+    ERROR=$?
+    if [ $ERROR -eq 0 ]; then
+      echo "Benchmark run completed with errors."
+      exit 255
+    fi
+
+    echo "Benchmark run completed without errors."
+    exit 0
+
+    

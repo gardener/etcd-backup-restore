@@ -1,0 +1,35 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: loadtest
+  namespace: {{ .namespace }}
+  labels:
+    name: loadtest
+spec:
+  template:
+    spec:
+      initContainers:
+      - name: init
+        image: {{ .etcdImage }}
+        command:
+        - "/scripts/dependency.sh"
+        volumeMounts:
+        - mountPath: /scripts
+          name: scripts
+      containers:
+      - name: loadtest
+        image: golang:1.12-stretch
+        command:
+        - "/scripts/entrypoint.sh"
+        #env:
+        #- name: GODEBUG
+        #  value: gctrace=1
+        volumeMounts:
+        - mountPath: /scripts
+          name: scripts
+      restartPolicy: Never
+      volumes:
+      - name: scripts
+        configMap:
+          defaultMode: 356
+          name: loadtest
