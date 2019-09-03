@@ -8,10 +8,9 @@ Follow the [Prometheus getting started doc][prometheus-getting-started] to spin 
 
 The naming of metrics follows the suggested [Prometheus best practices][prometheus-naming]. All etcd-backup-restore related metrics are put under namespace `etcdbr`.
 
-### ETCD metrics
+## ETCD metrics
 
 The metrics under the `etcd` prefix/namespace are carried forward from etcd library that we use. These metrics do not include details of the `etcd` deployment on which `etcd-backup-restore` utility operates. Instead, it helps in monitoring the `embedded etcd` we spawn during restoration process.
-
 
 ### Snapshot
 
@@ -23,12 +22,15 @@ These metrics describe the status of the snapshotter. In order to detect outages
 | etcdbr_snapshot_gc_total | Total number of garbage collected snapshots. | Counter |
 | etcdbr_snapshot_latest_revision | Revision number of latest snapshot taken. | Gauge |
 | etcdbr_snapshot_latest_timestamp | Timestamp of latest snapshot taken. | Gauge |
+| etcdbr_snapshot_required | Indicates whether a new snapshot is required to be taken. | Gauge |
 
 Abnormally high snapshot duration (`etcdbr_snapshot_duration_seconds`) indicates disk issues and low network bandwidth.
 
 `etcdbr_snapshot_latest_timestamp` indicates the time when last snapshot was taken. If it has been a long time since a snapshot has been taken, then it indicates either the snapshots are being skipped because of no updates on etcd or :warning: something fishy is going on and a possible data loss might occur on the next restoration.
 
 `etcdbr_snapshot_gc_total` gives the total number of snapshots garbage collected since bootstrap. You can use this in coordination with `etcdbr_snapshot_duration_seconds_count` to get number of snapshots in object store.
+
+`etcdbr_snapshot_required` indicates whether a new snapshot is required to be taken. Acts as a boolean flag where zero value implies 'false' and non-zero values imply 'true'. :warning: This metric does not work as expected for the case where delta snapshots are disabled (by setting the etcdbrctl flag `delta-snapshot-period-seconds` to 0).
 
 ### Defragmentation
 
@@ -58,7 +60,6 @@ All these metrics are under subsystem `network`.
 |------|-------------|------|
 | etcdbr_network_transmitted_bytes | The total number of bytes received over network. | Counter |
 | etcdbr_network_received_bytes | The total number of bytes received over network. | Counter |
-
 
 `etcdbr_network_transmitted_bytes` counts the total number of bytes transmitted. Usually this reflects the data uploaded to object store as part of snapshot uploads.
 

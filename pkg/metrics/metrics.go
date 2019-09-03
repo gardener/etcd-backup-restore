@@ -70,13 +70,25 @@ var (
 		},
 		[]string{LabelKind},
 	)
-	// LatestSnapshotTimestamp is metric expose latest snapshot timestamp.
+
+	// LatestSnapshotTimestamp is metric to expose latest snapshot timestamp.
 	LatestSnapshotTimestamp = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Namespace: namespaceEtcdBR,
 			Subsystem: subsystemSnapshot,
 			Name:      "latest_timestamp",
 			Help:      "Timestamp of latest snapshot taken.",
+		},
+		[]string{LabelKind},
+	)
+
+	// SnapshotRequired is metric to expose snapshot required flag.
+	SnapshotRequired = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Namespace: namespaceEtcdBR,
+			Subsystem: subsystemSnapshot,
+			Name:      "required",
+			Help:      "Indicates whether a snapshot is required to be taken.",
 		},
 		[]string{LabelKind},
 	)
@@ -91,6 +103,7 @@ var (
 		},
 		[]string{LabelKind, LabelSucceeded},
 	)
+
 	// ValidationDurationSeconds is metric to expose the duration required to validate the etcd data directory in seconds.
 	ValidationDurationSeconds = prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
@@ -232,6 +245,15 @@ func init() {
 		LatestSnapshotTimestamp.With(prometheus.Labels(combination))
 	}
 
+	// SnapshotRequired
+	snapshotRequiredLabelValues := map[string][]string{
+		LabelKind: labels[LabelKind],
+	}
+	snapshotRequiredCombinations := generateLabelCombinations(snapshotRequiredLabelValues)
+	for _, combination := range snapshotRequiredCombinations {
+		SnapshotRequired.With(prometheus.Labels(combination))
+	}
+
 	// SnapshotDurationSeconds
 	snapshotDurationSecondsLabelValues := map[string][]string{
 		LabelKind:      labels[LabelKind],
@@ -274,6 +296,7 @@ func init() {
 
 	prometheus.MustRegister(LatestSnapshotRevision)
 	prometheus.MustRegister(LatestSnapshotTimestamp)
+	prometheus.MustRegister(SnapshotRequired)
 
 	prometheus.MustRegister(SnapshotDurationSeconds)
 	prometheus.MustRegister(RestorationDurationSeconds)

@@ -26,10 +26,12 @@ import (
 	"github.com/gardener/etcd-backup-restore/pkg/errors"
 	"github.com/gardener/etcd-backup-restore/pkg/etcdutil"
 	"github.com/gardener/etcd-backup-restore/pkg/initializer"
+	"github.com/gardener/etcd-backup-restore/pkg/metrics"
 	"github.com/gardener/etcd-backup-restore/pkg/server"
 	"github.com/gardener/etcd-backup-restore/pkg/snapshot/restorer"
 	"github.com/gardener/etcd-backup-restore/pkg/snapshot/snapshotter"
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/spf13/cobra"
 )
 
@@ -245,6 +247,9 @@ func runEtcdProbeLoopWithSnapshotter(tlsConfig *etcdutil.TLSConfig, handler *ser
 			}
 		}
 		if !initialDeltaSnapshotTaken {
+			// need to take a full snapshot here
+			metrics.SnapshotRequired.With(prometheus.Labels{metrics.LabelKind: snapstore.SnapshotKindDelta}).Set(0)
+			metrics.SnapshotRequired.With(prometheus.Labels{metrics.LabelKind: snapstore.SnapshotKindFull}).Set(1)
 			if err := ssr.TakeFullSnapshotAndResetTimer(); err != nil {
 				logger.Errorf("Failed to take substitute first full snapshot: %v", err)
 				continue
