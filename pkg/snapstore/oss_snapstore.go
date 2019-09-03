@@ -223,7 +223,7 @@ func (s *OSSSnapStore) List() (SnapList, error) {
 
 	marker := ""
 	for {
-		lsRes, err := s.bucket.ListObjects(oss.Marker(marker))
+		lsRes, err := s.bucket.ListObjects(oss.Marker(marker), oss.Prefix(s.prefix))
 		if err != nil {
 			return nil, err
 		}
