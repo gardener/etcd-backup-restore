@@ -105,17 +105,7 @@ func cleanUp() {
 
 	//for the negative scenario for invalid restoredir set to "" we need to cleanup the member folder in the working directory
 	restoreDir := path.Clean("")
-	// info, err := os.Stat(fmt.Sprintf("%s/%s", restoreDir, "member"))
-	info, err := os.Stat(path.Join(restoreDir, "member"))
-	if err != nil {
-		if os.IsNotExist(err) {
-			return
-		} else {
-			Expect(err).ShouldNot(HaveOccurred())
-		}
-	}
-
-	err = os.RemoveAll(info.Name())
+	err = os.RemoveAll(path.Join(restoreDir, "member"))
 	Expect(err).ShouldNot(HaveOccurred())
 
 }
