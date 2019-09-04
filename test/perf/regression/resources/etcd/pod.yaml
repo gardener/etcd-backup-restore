@@ -1,0 +1,105 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: etcd
+  namespace: {{ .namespace }}
+  labels:
+    name: etcd
+spec:
+  containers:
+  - name: etcd
+    image: {{ .etcdImage }}
+    command:
+    - "/bootstrap/bootstrap.sh"
+    env:
+    - name: GODEBUG
+      value: gctrace=1
+    livenessProbe:
+      exec:
+        command:
+        - /bin/sh
+        - -ec
+        - ETCDCTL_API=3
+        - etcdctl
+        - --endpoints=http://localhost:2379
+        - get
+        - foo
+      failureThreshold: 3
+      initialDelaySeconds: 15
+      periodSeconds: 5
+      successThreshold: 1
+      timeoutSeconds: 1      
+    ports:
+    - containerPort: 2380
+      name: serverport
+      protocol: TCP
+    - containerPort: 2379
+      name: clientport
+      protocol: TCP
+    readinessProbe:
+      failureThreshold: 3
+      httpGet:
+        path: /healthz
+        port: 8080
+        scheme: HTTP
+      initialDelaySeconds: 5
+      periodSeconds: 5
+      successThreshold: 1
+      timeoutSeconds: 1
+    resources:
+      limits:
+        cpu: 1
+        memory: 500Mi
+      requests:
+        cpu: 200m
+        memory: 500Mi
+    volumeMounts:
+    - mountPath: /var/etcd/data
+      name: etcd
+    - mountPath: /bootstrap
+      name: bootstrap
+  - name: backup-restore
+    image: {{ .etcdbrImage }}
+    command:
+    - etcdbrctl
+    - server
+    # Full snapshot once in every 3m to ensure there are more than 2 full snapshots during the performance tests.
+    - --schedule=*/3 * * * *
+    - --data-dir=/var/etcd/data/new.etcd
+    - --storage-provider=Local
+    - --store-prefix=etcd
+    - --insecure-transport=true
+    - --insecure-skip-tls-verify=true
+    - --endpoints=http://localhost:2379
+    - --etcd-connection-timeout=300
+    # Delta snapshot once in every 30s to ensure there are enough delta spanshots between full snapshots.
+    - --delta-snapshot-period-seconds=30
+    - --delta-snapshot-memory-limit=10485760
+    - --garbage-collection-period-seconds=43200
+    - --snapstore-temp-directory=/var/etcd/data/temp
+    env:
+    - name: GODEBUG
+      value: gctrace=1
+    ports:
+    - containerPort: 8080
+      name: server
+      protocol: TCP
+    resources:
+      limits:
+        cpu: 1
+        memory: 100Mi
+      requests:
+        cpu: 100m
+        memory: 100Mi
+    volumeMounts:
+    - mountPath: /var/etcd/data
+      name: etcd
+  restartPolicy: Never
+  volumes:
+  - name: etcd
+    persistentVolumeClaim:
+      claimName: etcd
+  - name: bootstrap
+    configMap:
+      defaultMode: 356
+      name: etcd

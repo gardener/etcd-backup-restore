@@ -63,6 +63,10 @@ check:
 test:
 	@.ci/unit_test
 
+.PHONY: perf-regression-test
+perf-regression-test:
+	@.ci/performance_regression_test
+
 .PHONY: show-coverage
 show-coverage:
 	@if [ ! -f $(COVERPROFILE) ]; then echo "$(COVERPROFILE) is not yet built. Please run 'COVER=true make test'"; false; fi
