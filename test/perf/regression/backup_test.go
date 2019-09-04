@@ -30,7 +30,7 @@ import (
 const (
 	envSourcePath                = "SOURCE_PATH"
 	envTargetTimeoutDuration     = "TARGET_TIMEOUT_DURATION"
-	defaultTargetTimeoutDuration = "600s"
+	defaultTargetTimeoutDuration = "660s"
 	envEtcdImage                 = "ETCD_IMAGE"
 	envEtcdbrImage               = "ETCDBR_IMAGE"
 	resourcesBasePath            = "test/perf/regression/resources"

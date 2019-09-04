@@ -18,7 +18,7 @@ spec:
           name: scripts
       containers:
       - name: loadtest
-        image: golang:1.12-stretch
+        image: golang:1.13
         command:
         - "/scripts/entrypoint.sh"
         #env:

@@ -290,6 +290,21 @@ https://github.com/prometheus/client_golang.
 Copyright 2014 The Prometheus Authors.  
 Apache 2 license (https://github.com/prometheus/client_golang/blob/master/LICENSE)
 
+Schema of the external API types that are served by the Kubernetes API server.
+https://github.com/kubernetes/api.
+Copyright 2017 The Kubernetes Authors.
+Apache 2 license (https://github.com/kubernetes/api/blob/master/LICENSE)
+
+Scheme, typing, encoding, decoding, and conversion packages for Kubernetes and Kubernetes-like API objects.
+https://github.com/kubernetes/apimachinery.
+Copyright 2014 The Kubernetes Authors.
+Apache 2 license (https://github.com/kubernetes/apimachinery/blob/master/LICENSE)
+
+Go clients for talking to a kubernetes cluster.
+https://github.com/kubernetes/client-go.
+Copyright 2015 The Kubernetes Authors.
+Apache 2 license (https://github.com/kubernetes/client-go/blob/master/LICENSE)
+
 ------
 ## MIT License
 

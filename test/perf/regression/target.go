@@ -55,17 +55,15 @@ func (t *target) setup() error {
 		return fmt.Errorf("Cannot test with invalid images. etcdImage: %s, etcdbrImage: %s", t.etcdImage, t.etcdbrImage)
 	}
 
-	err := t.createNamespace()
-	if err != nil {
+	if err := t.createNamespace(); err != nil {
 		return err
 	}
 
-	err = t.createResources()
-	if err != nil {
+	if err := t.createResources(); err != nil {
 		return err
 	}
 
-	return err
+	return nil
 }
 
 func (t *target) teardown() {
@@ -224,13 +222,13 @@ func (t *target) watchForJob(ctx context.Context, jobSelector string, readyCh ch
 	}
 }
 
-func (t *target) doWatchForJob(ctx context.Context, jobSelector string, readyCh chan<- interface{}) (retry bool, err error) {
+func (t *target) doWatchForJob(ctx context.Context, jobSelector string, readyCh chan<- interface{}) (bool, error) {
 	t.logger.Infof("Starting watch on job with selector %s in the namespace %s", jobSelector, t.namespace)
 	wr, err := t.typedClient.BatchV1().Jobs(t.namespace).Watch(metav1.ListOptions{
 		LabelSelector: jobSelector,
 	})
 	if err != nil {
-		return
+		return false, err
 	}
 
 	defer wr.Stop()
@@ -246,15 +244,14 @@ func (t *target) doWatchForJob(ctx context.Context, jobSelector string, readyCh 
 
 			switch event.Type {
 			case watch.Deleted:
+				return false, fmt.Errorf("Unexpected event type %s in the namespace %s", event.Type, t.namespace)
 			case watch.Error:
-				err = fmt.Errorf("Unexpected event type %s in the namespace %s", event.Type, t.namespace)
-				return
+				return false, fmt.Errorf("Unexpected event type %s in the namespace %s", event.Type, t.namespace)
 			}
 
 			switch j := event.Object.(type) {
 			default:
-				err = fmt.Errorf("Unexpected event object of type %T in the namespace %s: %v", j, t.namespace, j)
-				return
+				return false, fmt.Errorf("Unexpected event object of type %T in the namespace %s: %v", j, t.namespace, j)
 			case *batchv1.Job:
 				if j.Status.Succeeded < 1 {
 					continue
@@ -265,15 +262,14 @@ func (t *target) doWatchForJob(ctx context.Context, jobSelector string, readyCh 
 					if cond.Type == batchv1.JobComplete && cond.Status == corev1.ConditionTrue {
 						t.logger.Infof("Job in the namespace %s is completed", t.namespace)
 						close(readyCh)
-						return
+						return false, nil
 					}
 				}
 
 				t.logger.Infof("Job in the namespace %s is not completed", t.namespace)
 			}
 		case <-ctx.Done():
-			err = ctx.Err()
-			return
+			return false, ctx.Err()
 		}
 	}
 }
