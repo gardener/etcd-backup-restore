@@ -67,6 +67,7 @@ func (r *Restorer) Restore(ro RestoreOptions) error {
 		r.logger.Infof("Quota size for etcd must be greater than 0. Input EmbeddedEtcdQuotaBytes: %d. Defaulting to 8GB.", ro.EmbeddedEtcdQuotaBytes)
 		ro.EmbeddedEtcdQuotaBytes = int64(8 * 1024 * 1024 * 1024)
 	}
+	ro.RestoreDataDir = path.Clean(ro.RestoreDataDir)
 	if err := r.restoreFromBaseSnapshot(ro); err != nil {
 		return fmt.Errorf("failed to restore from the base snapshot :%v", err)
 	}

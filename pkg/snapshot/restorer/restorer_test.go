@@ -186,7 +186,7 @@ var _ = Describe("Running Restorer", func() {
 					DeltaSnapList:          deltaSnapList,
 				}
 				err = rstr.Restore(restoreOptions)
-				Expect(err).Should(HaveOccurred())
+				Expect(err).ShouldNot(HaveOccurred())
 
 			})
 		})

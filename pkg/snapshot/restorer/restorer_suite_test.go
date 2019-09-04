@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"path"
 	"strconv"
 	"sync"
 	"testing"
@@ -101,6 +102,21 @@ func cleanUp() {
 
 	err = os.RemoveAll(snapstoreDir)
 	Expect(err).ShouldNot(HaveOccurred())
+
+	//for the negative scenario for invalid restoredir set to "" we need to cleanup the member folder in the working directory
+	restoreDir := path.Clean("")
+	info, err := os.Stat(fmt.Sprintf("%s/%s", restoreDir, "member"))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return
+		} else {
+			Expect(err).ShouldNot(HaveOccurred())
+		}
+	}
+	if info.IsDir() {
+		err = os.RemoveAll(info.Name())
+		Expect(err).ShouldNot(HaveOccurred())
+	}
 }
 
 // startEmbeddedEtcd starts an embedded etcd server
