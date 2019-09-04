@@ -39,8 +39,8 @@ function test_with_coverage() {
   local output_dir=test/output
   local coverprofile_file=coverprofile.out
   mkdir -p test/output
-  ginkgo $GINKGO_COMMON_FLAGS --coverprofile ${coverprofile_file} -covermode=set -outputdir ${output_dir} ${TEST_PACKAGES}
-  sed -i '/mode: set/d' ${output_dir}/${coverprofile_file}
+  ginkgo $GINKGO_COMMON_FLAGS  --coverprofile ${coverprofile_file} -covermode=set -outputdir ${output_dir} ${TEST_PACKAGES}
+  sed -i='' '/mode: set/d' ${output_dir}/${coverprofile_file}
   {( echo "mode: set"; cat ${output_dir}/${coverprofile_file} )} > ${output_dir}/${coverprofile_file}.temp
   mv ${output_dir}/${coverprofile_file}.temp ${output_dir}/${coverprofile_file}
   go tool cover -func ${output_dir}/${coverprofile_file}
@@ -49,10 +49,18 @@ function test_with_coverage() {
 ################################################################################
 
 TEST_PACKAGES="cmd pkg"
-GINKGO_COMMON_FLAGS="-r -timeout=1h0m0s --randomizeAllSpecs --randomizeSuites --failOnPending --progress"
+GINKGO_COMMON_FLAGS="-r -timeout=1h0m0s --progress"
+
 if [ -z $COVER ] || [ "$COVER" = false ] ; then
   echo "[INFO] Test coverage is disabled."
-  ginkgo -race -trace $GINKGO_COMMON_FLAGS ${TEST_PACKAGES}
+
+  # run everything which is not part of negative scenarios with randomizeAllSpecs parameters.
+  ginkgo -race -trace $GINKGO_COMMON_FLAGS --randomizeAllSpecs --randomizeSuites --failOnPending --skip="NEGATIVE\:.*" ${TEST_PACKAGES} 
+
+
+  #run negative scenario in a sequenced manner (removed failOnPending as one spec in restore test is marked as 'X' for excluding) 
+  ginkgo -race -trace $GINKGO_COMMON_FLAGS --focus="NEGATIVE\:.*" ${TEST_PACKAGES} 
+  
 else
   test_with_coverage
 fi
