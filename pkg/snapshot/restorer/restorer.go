@@ -379,7 +379,7 @@ func (r *Restorer) applyDeltaSnapshots(client *clientv3.Client, ro RestoreOption
 	if err == nil {
 		r.logger.Infof("Restoration complete.")
 	} else {
-		r.logger.Warnf("Restoration failed.")
+		r.logger.Errorf("Restoration failed.")
 	}
 
 	return err
