@@ -82,6 +82,8 @@ func GetSnapstore(config *Config) (SnapStore, error) {
 			return nil, fmt.Errorf("storage container name not specified")
 		}
 		return NewOSSSnapStore(config.Container, config.Prefix, config.TempDir, config.MaxParallelChunkUploads)
+	case SnapstoreProviderFakeFailed:
+		return NewFailedSnapStore(), nil
 	default:
 		return nil, fmt.Errorf("unsupported storage provider : %s", config.Provider)
 

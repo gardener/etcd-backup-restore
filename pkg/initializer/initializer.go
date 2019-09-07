@@ -45,7 +45,7 @@ const (
 func (e *EtcdInitializer) Initialize(mode validator.Mode, failBelowRevision int64) error {
 	start := time.Now()
 	dataDirStatus, err := e.Validator.Validate(mode, failBelowRevision)
-	if err != nil && dataDirStatus != validator.DataDirectoryNotExist {
+	if dataDirStatus == validator.DataDirectoryStatusUnknown {
 		metrics.ValidationDurationSeconds.With(prometheus.Labels{metrics.LabelSucceeded: metrics.ValueSucceededFalse}).Observe(time.Now().Sub(start).Seconds())
 		return fmt.Errorf("error while initializing: %v", err)
 	}
