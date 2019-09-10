@@ -23,6 +23,7 @@ import (
 	"io"
 	"io/ioutil"
 	"math"
+	"net/url"
 	"os"
 	"path"
 	"path/filepath"
@@ -76,7 +77,7 @@ func (r *Restorer) Restore(ro RestoreOptions) error {
 		return nil
 	}
 	r.logger.Infof("Starting embedded etcd server...")
-	e, err := startEmbeddedEtcd(ro)
+	e, err := startEmbeddedEtcd(r.logger, ro)
 	if err != nil {
 		return err
 	}
@@ -310,9 +311,22 @@ func makeWALAndSnap(waldir, snapdir string, cl *membership.RaftCluster, restoreN
 }
 
 // startEmbeddedEtcd starts the embedded etcd server.
-func startEmbeddedEtcd(ro RestoreOptions) (*embed.Etcd, error) {
+func startEmbeddedEtcd(logger *logrus.Logger, ro RestoreOptions) (*embed.Etcd, error) {
 	cfg := embed.NewConfig()
 	cfg.Dir = filepath.Join(ro.RestoreDataDir)
+	DefaultListenPeerURLs := "http://localhost:0"
+	DefaultListenClientURLs := "http://localhost:0"
+	DefaultInitialAdvertisePeerURLs := "http://localhost:0"
+	DefaultAdvertiseClientURLs := "http://localhost:0"
+	lpurl, _ := url.Parse(DefaultListenPeerURLs)
+	apurl, _ := url.Parse(DefaultInitialAdvertisePeerURLs)
+	lcurl, _ := url.Parse(DefaultListenClientURLs)
+	acurl, _ := url.Parse(DefaultAdvertiseClientURLs)
+	cfg.LPUrls = []url.URL{*lpurl}
+	cfg.LCUrls = []url.URL{*lcurl}
+	cfg.APUrls = []url.URL{*apurl}
+	cfg.ACUrls = []url.URL{*acurl}
+	cfg.InitialCluster = cfg.InitialClusterFromName(cfg.Name)
 	cfg.QuotaBackendBytes = ro.EmbeddedEtcdQuotaBytes
 	e, err := embed.StartEtcd(cfg)
 	if err != nil {
@@ -320,7 +334,7 @@ func startEmbeddedEtcd(ro RestoreOptions) (*embed.Etcd, error) {
 	}
 	select {
 	case <-e.Server.ReadyNotify():
-		fmt.Printf("Embedded server is ready!\n")
+		logger.Infof("Embedded server is ready to listen client at: %s", e.Clients[0].Addr())
 	case <-time.After(60 * time.Second):
 		e.Server.Stop() // trigger a shutdown
 		e.Close()
