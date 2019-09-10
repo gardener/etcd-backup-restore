@@ -110,7 +110,7 @@ spec:
         - --defragmentation-schedule={{ .Values.backup.defragmentationSchedule }}
 {{- end }}
         - --etcd-connection-timeout={{ .Values.backup.etcdConnectionTimeout }}
-        - --delta-snapshot-period-seconds={{ int $.Values.backup.deltaSnapshotPeriodSeconds }}
+        - --delta-snapshot-period={{ int $.Values.backup.deltaSnapshotPeriod }}
         - --delta-snapshot-memory-limit={{ int $.Values.backup.deltaSnapshotMemoryLimit }}
 {{- if and .Values.etcdAuth.username .Values.etcdAuth.password }}
         - --etcd-username={{ .Values.etcdAuth.username }}

@@ -30,7 +30,7 @@ Abnormally high snapshot duration (`etcdbr_snapshot_duration_seconds`) indicates
 
 `etcdbr_snapshot_gc_total` gives the total number of snapshots garbage collected since bootstrap. You can use this in coordination with `etcdbr_snapshot_duration_seconds_count` to get number of snapshots in object store.
 
-`etcdbr_snapshot_required` indicates whether a new snapshot is required to be taken. Acts as a boolean flag where zero value implies 'false' and non-zero values imply 'true'. :warning: This metric does not work as expected for the case where delta snapshots are disabled (by setting the etcdbrctl flag `delta-snapshot-period-seconds` to 0).
+`etcdbr_snapshot_required` indicates whether a new snapshot is required to be taken. Acts as a boolean flag where zero value implies 'false' and non-zero values imply 'true'. :warning: This metric does not work as expected for the case where delta snapshots are disabled (by setting the etcdbrctl flag `delta-snapshot-period` to 0).
 
 ### Defragmentation
 

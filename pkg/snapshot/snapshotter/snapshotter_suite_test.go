@@ -55,7 +55,6 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 }, func(data []byte) {})
 
 var _ = SynchronizedAfterSuite(func() {}, func() {
-	os.RemoveAll(outputDir)
 	etcd.Server.Stop()
 	etcd.Close()
 })

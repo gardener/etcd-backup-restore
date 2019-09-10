@@ -22,7 +22,7 @@ The procedure to provide credentials to access the cloud provider object store v
 
 ### Taking scheduled snapshot
 
-Sub-command `snapshot` takes scheduled backups, or `snapshots` of a running `etcd` cluster, which are pushed to one of the storage providers specified above (please note that `etcd` should already be running). One can apply standard cron format scheduling for regular backup of etcd. The cron schedule is used to take full backups. The delta snapshots are taken at regular intervals in the period in between full snapshots as indicated by the `delta-snapshot-period-seconds` flag. The default for the same is 10 seconds.
+Sub-command `snapshot` takes scheduled backups, or `snapshots` of a running `etcd` cluster, which are pushed to one of the storage providers specified above (please note that `etcd` should already be running). One can apply standard cron format scheduling for regular backup of etcd. The cron schedule is used to take full backups. The delta snapshots are taken at regular intervals in the period in between full snapshots as indicated by the `delta-snapshot-period` flag. The default for the same is 20 seconds.
 
 etcd-backup-restore has two garbage collection policies to clean up existing backups from the cloud bucket. The flag `garbage-collection-policy` is used to indicate the desired garbage collection policy.
 
@@ -37,7 +37,7 @@ $ ./bin/etcdbrctl snapshot  \
 --etcd-endpoints http://localhost:2379 \
 --schedule "*/1 * * * *" \
 --store-container="etcd-backup" \
---delta-snapshot-period-seconds=10 \
+--delta-snapshot-period=10s \
 --max-backups=10 \
 --garbage-collection-policy='LimitBased'
 
@@ -89,7 +89,7 @@ $ ./bin/etcdbrctl snapshot \
 --endpoints http://localhost:2379 \
 --schedule "*/1 * * * *" \
 --store-container="etcd-backup" \
---delta-snapshot-period-seconds=10 \
+--delta-snapshot-period=10s \
 --garbage-collection-policy='Exponential'
 
 INFO[0000] etcd-backup-restore Version: 0.7.0-dev

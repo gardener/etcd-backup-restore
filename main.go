@@ -40,7 +40,7 @@ func main() {
 }
 
 // setupSignalHandler creates context carrying system signals. A context is returned
-// which is canceld on one of these signals. If a second signal is caught, the program
+// which is cancelled on one of these signals. If a second signal is caught, the program
 // is terminated with exit code 1.
 func setupSignalHandler() context.Context {
 	close(onlyOneSignalHandler) // panics when called twice

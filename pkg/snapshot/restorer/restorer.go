@@ -311,7 +311,7 @@ func makeWALAndSnap(waldir, snapdir string, cl *membership.RaftCluster, restoreN
 }
 
 // startEmbeddedEtcd starts the embedded etcd server.
-func startEmbeddedEtcd(logger *logrus.Logger, ro RestoreOptions) (*embed.Etcd, error) {
+func startEmbeddedEtcd(logger *logrus.Entry, ro RestoreOptions) (*embed.Etcd, error) {
 	cfg := embed.NewConfig()
 	cfg.Dir = filepath.Join(ro.RestoreDataDir)
 	DefaultListenPeerURLs := "http://localhost:0"

@@ -28,19 +28,21 @@ import (
 var _ = Describe("Defrag", func() {
 	var (
 		tlsConfig             *TLSConfig
-		endpoints             = []string{"http://localhost:2379"}
-		etcdConnectionTimeout = time.Duration(30 * time.Second)
+		etcdConnectionTimeout = 30 * time.Second
 		keyPrefix             = "/defrag/key-"
 		valuePrefix           = "val"
 		etcdUsername          string
 		etcdPassword          string
 	)
-	tlsConfig = NewTLSConfig("", "", "", true, true, endpoints, etcdUsername, etcdPassword)
+	BeforeEach(func() {
+		tlsConfig = NewTLSConfig("", "", "", true, true, endpoints, etcdUsername, etcdPassword)
+	})
 	Context("Defragmentation", func() {
 		BeforeEach(func() {
 			now := time.Now().Unix()
 			client, err := GetTLSClientForEtcd(tlsConfig)
 			defer client.Close()
+			logger.Infof("TLSConfig %v, Endpoint %v", tlsConfig, endpoints)
 			Expect(err).ShouldNot(HaveOccurred())
 			for index := 0; index <= 1000; index++ {
 				ctx, cancel := context.WithTimeout(testCtx, etcdConnectionTimeout)
@@ -78,7 +80,7 @@ var _ = Describe("Defrag", func() {
 		})
 
 		It("should keep size of DB same in case of timeout", func() {
-			etcdConnectionTimeout = time.Duration(time.Second)
+			etcdConnectionTimeout = time.Second
 			client, err := GetTLSClientForEtcd(tlsConfig)
 			Expect(err).ShouldNot(HaveOccurred())
 			defer client.Close()
@@ -86,9 +88,10 @@ var _ = Describe("Defrag", func() {
 			oldStatus, err := client.Status(ctx, endpoints[0])
 			cancel()
 			Expect(err).ShouldNot(HaveOccurred())
+			oldDBSize := oldStatus.DbSize
 			oldRevision := oldStatus.Header.GetRevision()
 
-			defragmentorJob := NewDefragmentorJob(testCtx, tlsConfig, time.Duration(time.Microsecond), logger, nil)
+			defragmentorJob := NewDefragmentorJob(testCtx, tlsConfig, time.Microsecond, logger, nil)
 			defragmentorJob.Run()
 
 			ctx, cancel = context.WithTimeout(testCtx, etcdDialTimeout)
@@ -97,11 +100,12 @@ var _ = Describe("Defrag", func() {
 			Expect(err).ShouldNot(HaveOccurred())
 
 			Expect(newStatus.Header.GetRevision()).Should(BeNumerically("==", oldRevision))
+			Expect(newStatus.DbSize).Should(Equal(oldDBSize))
 		})
 
 		It("should defrag periodically with callback", func() {
 			defragCount := 0
-			expectedDefragCount := 2
+			minimumExpectedDefragCount := 2
 			defragSchedule, _ := cron.ParseStandard("*/1 * * * *")
 
 			client, err := GetTLSClientForEtcd(tlsConfig)
@@ -126,7 +130,7 @@ var _ = Describe("Defrag", func() {
 			cancelStatusReq()
 			Expect(err).ShouldNot(HaveOccurred())
 
-			Expect(defragCount).Should(BeNumerically("==", expectedDefragCount))
+			Expect(defragCount).Should(Or(Equal(minimumExpectedDefragCount), Equal(minimumExpectedDefragCount+1)))
 			Expect(newStatus.DbSize).Should(BeNumerically("<", oldDBSize))
 			Expect(newStatus.Header.GetRevision()).Should(BeNumerically("==", oldRevision))
 		})

@@ -27,8 +27,8 @@ import (
 
 // RunGarbageCollector basically consider the older backups as garbage and deletes it
 func (ssr *Snapshotter) RunGarbageCollector(stopCh <-chan struct{}) {
-	if ssr.config.garbageCollectionPeriodSeconds <= 0 {
-		ssr.logger.Infof("GC: Not running garbage collector since GarbageCollectionPeriodSeconds [%d] set to less than 1.", ssr.config.garbageCollectionPeriodSeconds)
+	if ssr.config.garbageCollectionPeriod <= time.Second {
+		ssr.logger.Infof("GC: Not running garbage collector since GarbageCollectionPeriod [%s] set to less than 1 second.", ssr.config.garbageCollectionPeriod)
 		return
 	}
 
@@ -37,7 +37,7 @@ func (ssr *Snapshotter) RunGarbageCollector(stopCh <-chan struct{}) {
 		case <-stopCh:
 			ssr.logger.Info("GC: Stop signal received. Closing garbage collector.")
 			return
-		case <-time.After(ssr.config.garbageCollectionPeriodSeconds * time.Second):
+		case <-time.After(ssr.config.garbageCollectionPeriod):
 			total := 0
 			ssr.logger.Info("GC: Executing garbage collection...")
 			snapList, err := ssr.config.store.List()

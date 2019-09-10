@@ -31,15 +31,15 @@ import (
 const (
 	outputDir       = "../../test/output"
 	etcdDir         = outputDir + "/default.etcd"
-	etcdEndpoint    = "http://localhost:2379"
 	etcdDialTimeout = time.Second * 30
 )
 
 var (
-	testCtx = context.Background()
-	logger  = logrus.New().WithField("suite", "etcdutil")
-	etcd    *embed.Etcd
-	err     error
+	testCtx   = context.Background()
+	logger    = logrus.New().WithField("suite", "etcdutil")
+	etcd      *embed.Etcd
+	endpoints []string
+	err       error
 )
 
 func TestEtcdutil(t *testing.T) {
@@ -48,11 +48,14 @@ func TestEtcdutil(t *testing.T) {
 }
 
 var _ = SynchronizedBeforeSuite(func() []byte {
+	logger.Logger.Out = GinkgoWriter
 	err = os.RemoveAll(outputDir)
 	Expect(err).ShouldNot(HaveOccurred())
 
 	etcd, err = utils.StartEmbeddedEtcd(testCtx, etcdDir, logger)
 	Expect(err).ShouldNot(HaveOccurred())
+	endpoints = []string{etcd.Clients[0].Addr().String()}
+	logger.Infof("endpoints: %s", endpoints)
 	var data []byte
 	return data
 }, func(data []byte) {})
@@ -60,5 +63,4 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 var _ = SynchronizedAfterSuite(func() {}, func() {
 	etcd.Server.Stop()
 	etcd.Close()
-	os.RemoveAll(outputDir)
 })

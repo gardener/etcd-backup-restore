@@ -36,7 +36,6 @@ const (
 	outputDir    = "../../../test/output"
 	etcdDir      = outputDir + "/default.etcd"
 	snapstoreDir = outputDir + "/snapshotter.bkp"
-	etcdEndpoint = "http://localhost:2379"
 )
 
 var (
@@ -45,7 +44,7 @@ var (
 	etcd      *embed.Etcd
 	err       error
 	keyTo     int
-	endpoints = []string{etcdEndpoint}
+	endpoints []string
 )
 
 func TestRestorer(t *testing.T) {
@@ -67,15 +66,17 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 		etcd.Server.Stop()
 		etcd.Close()
 	}()
-
+	endpoints = []string{etcd.Clients[0].Addr().String()}
+	logger.Infof("endpoints: %s", endpoints)
 	populatorCtx, cancelPopulator := context.WithTimeout(testCtx, 15*time.Second)
 	defer cancelPopulator()
 	resp := &utils.EtcdDataPopulationResponse{}
 	wg := &sync.WaitGroup{}
 	wg.Add(1)
 	go utils.PopulateEtcdWithWaitGroup(populatorCtx, wg, logger, endpoints, resp)
-	deltaSnapshotPeriod := 1
-	ctx := utils.ContextWithWaitGroupFollwedByGracePeriod(populatorCtx, wg, time.Duration(deltaSnapshotPeriod+2)*time.Second)
+
+	deltaSnapshotPeriod := time.Second
+	ctx := utils.ContextWithWaitGroupFollwedByGracePeriod(populatorCtx, wg, deltaSnapshotPeriod+2*time.Second)
 	err = runSnapshotter(logger, deltaSnapshotPeriod, endpoints, ctx.Done(), true)
 	Expect(err).ShouldNot(HaveOccurred())
 
@@ -101,21 +102,21 @@ func cleanUp() {
 }
 
 // runSnapshotter creates a snapshotter object and runs it for a duration specified by 'snapshotterDurationSeconds'
-func runSnapshotter(logger *logrus.Entry, deltaSnapshotPeriod int, endpoints []string, stopCh <-chan struct{}, startWithFullSnapshot bool) error {
+func runSnapshotter(logger *logrus.Entry, deltaSnapshotPeriod time.Duration, endpoints []string, stopCh <-chan struct{}, startWithFullSnapshot bool) error {
 	var (
-		store                          snapstore.SnapStore
-		certFile                       string
-		keyFile                        string
-		caFile                         string
-		insecureTransport              bool
-		insecureSkipVerify             bool
-		maxBackups                     = 1
-		etcdConnectionTimeout          = time.Duration(10)
-		garbageCollectionPeriodSeconds = time.Duration(60)
-		schedule                       = "0 0 1 1 *"
-		garbageCollectionPolicy        = snapshotter.GarbageCollectionPolicyLimitBased
-		etcdUsername                   string
-		etcdPassword                   string
+		store                   snapstore.SnapStore
+		certFile                string
+		keyFile                 string
+		caFile                  string
+		insecureTransport       = true
+		insecureSkipVerify      = true
+		maxBackups              = 1
+		etcdConnectionTimeout   = 10 * time.Second
+		garbageCollectionPeriod = 60 * time.Second
+		schedule                = "0 0 1 1 *"
+		garbageCollectionPolicy = snapshotter.GarbageCollectionPolicyLimitBased
+		etcdUsername            string
+		etcdPassword            string
 	)
 
 	store, err = snapstore.GetSnapstore(&snapstore.Config{Container: snapstoreDir, Provider: "Local"})
@@ -138,10 +139,10 @@ func runSnapshotter(logger *logrus.Entry, deltaSnapshotPeriod int, endpoints []s
 		schedule,
 		store,
 		maxBackups,
-		deltaSnapshotPeriod,
 		snapshotter.DefaultDeltaSnapMemoryLimit,
+		deltaSnapshotPeriod,
 		etcdConnectionTimeout,
-		garbageCollectionPeriodSeconds,
+		garbageCollectionPeriod,
 		garbageCollectionPolicy,
 		tlsConfig,
 	)

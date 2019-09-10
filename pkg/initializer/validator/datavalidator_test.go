@@ -39,6 +39,7 @@ var _ = Describe("Running Datavalidator", func() {
 			Logger: logger.Logger,
 		}
 	})
+
 	Context("with missing data directory", func() {
 		It("should return DataDirStatus as DataDirectoryNotExist, and non-nil error", func() {
 			tempDir := fmt.Sprintf("%s.%s", restoreDataDir, "temp")
@@ -189,8 +190,9 @@ var _ = Describe("Running Datavalidator", func() {
 			}()
 
 			// start etcd
-			etcd, err = utils.StartEmbeddedEtcd(testCtx, restoreDataDir, logger)
+			etcd, err := utils.StartEmbeddedEtcd(testCtx, restoreDataDir, logger)
 			Expect(err).ShouldNot(HaveOccurred())
+			endpoints := []string{etcd.Clients[0].Addr().String()}
 			// populate etcd but with lesser data than previous populate call, so that the new db has a lower revision
 			resp := &utils.EtcdDataPopulationResponse{}
 			utils.PopulateEtcd(testCtx, logger, endpoints, 0, int(keyTo/2), resp)

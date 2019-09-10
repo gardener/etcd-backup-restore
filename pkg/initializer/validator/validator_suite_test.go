@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 	"io/ioutil"
-	"math"
 	"os"
 	"path"
+	"sync"
 	"testing"
 	"time"
 
@@ -25,7 +25,6 @@ const (
 	outputDir    = "../../../test/output"
 	etcdDir      = outputDir + "/default.etcd"
 	snapstoreDir = outputDir + "/snapshotter.bkp"
-	etcdEndpoint = "http://localhost:2379"
 )
 
 var (
@@ -34,7 +33,7 @@ var (
 	etcd         *embed.Etcd
 	err          error
 	keyTo        int
-	endpoints    = []string{etcdEndpoint}
+	endpoints    []string
 	etcdRevision int64
 )
 
@@ -63,19 +62,20 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 		etcd.Server.Stop()
 		etcd.Close()
 	}()
+	endpoints = []string{etcd.Clients[0].Addr().String()}
 
-	populatorTimeout := time.Duration(15 * time.Second)
-	populatorCtx, cancelPopulator := context.WithTimeout(testCtx, populatorTimeout)
-	resp := &utils.EtcdDataPopulationResponse{}
-	go utils.PopulateEtcd(populatorCtx, logger, endpoints, 0, math.MaxInt64, resp)
+	populatorCtx, cancelPopulator := context.WithTimeout(testCtx, time.Duration(15*time.Second))
 	defer cancelPopulator()
+	resp := &utils.EtcdDataPopulationResponse{}
+	wg := &sync.WaitGroup{}
+	wg.Add(1)
+	go utils.PopulateEtcdWithWaitGroup(populatorCtx, wg, logger, endpoints, resp)
 
-	deltaSnapshotPeriod := 5
-	snapshotterTimeout := populatorTimeout + time.Duration(deltaSnapshotPeriod+2)*time.Second
-	ctx, cancel := context.WithTimeout(testCtx, snapshotterTimeout)
-	defer cancel()
+	deltaSnapshotPeriod := 5 * time.Second
+	ctx := utils.ContextWithWaitGroupFollwedByGracePeriod(populatorCtx, wg, deltaSnapshotPeriod+2*time.Second)
 	err = runSnapshotter(logger, deltaSnapshotPeriod, endpoints, ctx.Done())
 	Expect(err).ShouldNot(HaveOccurred())
+
 	keyTo = resp.KeyTo
 	etcdRevision = resp.EndRevision
 
@@ -85,27 +85,23 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 	return data
 }, func(data []byte) {})
 
-var _ = SynchronizedAfterSuite(func() {}, func() {
-	os.RemoveAll(outputDir)
-})
-
 // runSnapshotter creates a snapshotter object and runs it for a duration specified by 'snapshotterDurationSeconds'
-func runSnapshotter(logger *logrus.Entry, deltaSnapshotPeriod int, endpoints []string, stopCh chan struct{}) error {
+func runSnapshotter(logger *logrus.Entry, deltaSnapshotPeriod time.Duration, endpoints []string, stopCh <-chan struct{}) error {
 	var (
-		store                          snapstore.SnapStore
-		certFile                       string
-		keyFile                        string
-		caFile                         string
-		insecureTransport              bool
-		insecureSkipVerify             bool
-		maxBackups                     = 1
-		deltaSnapshotMemoryLimit       = 10 * 1024 * 1024 //10Mib
-		etcdConnectionTimeout          = time.Duration(10)
-		garbageCollectionPeriodSeconds = time.Duration(60)
-		schedule                       = "0 0 1 1 *"
-		garbageCollectionPolicy        = snapshotter.GarbageCollectionPolicyLimitBased
-		etcdUsername                   string
-		etcdPassword                   string
+		store                    snapstore.SnapStore
+		certFile                 string
+		keyFile                  string
+		caFile                   string
+		insecureTransport        = true
+		insecureSkipVerify       = true
+		maxBackups               = 1
+		deltaSnapshotMemoryLimit = 10 * 1024 * 1024 //10Mib
+		etcdConnectionTimeout    = 10 * time.Second
+		garbageCollectionPeriod  = 60 * time.Second
+		schedule                 = "0 0 1 1 *"
+		garbageCollectionPolicy  = snapshotter.GarbageCollectionPolicyLimitBased
+		etcdUsername             string
+		etcdPassword             string
 	)
 
 	store, err = snapstore.GetSnapstore(&snapstore.Config{Container: snapstoreDir, Provider: "Local"})
@@ -124,14 +120,15 @@ func runSnapshotter(logger *logrus.Entry, deltaSnapshotPeriod int, endpoints []s
 		etcdPassword,
 	)
 
+	logger.Infof("tlsconfig %v", tlsConfig)
 	snapshotterConfig, err := snapshotter.NewSnapshotterConfig(
 		schedule,
 		store,
 		maxBackups,
-		deltaSnapshotPeriod,
 		deltaSnapshotMemoryLimit,
+		deltaSnapshotPeriod,
 		etcdConnectionTimeout,
-		garbageCollectionPeriodSeconds,
+		garbageCollectionPeriod,
 		garbageCollectionPolicy,
 		tlsConfig,
 	)

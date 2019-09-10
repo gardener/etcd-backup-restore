@@ -38,7 +38,7 @@ import (
 )
 
 // NewSnapshotterConfig returns a config for the snapshotter.
-func NewSnapshotterConfig(schedule string, store snapstore.SnapStore, maxBackups, deltaSnapshotIntervalSeconds, deltaSnapshotMemoryLimit int, etcdConnectionTimeout, garbageCollectionPeriodSeconds time.Duration, garbageCollectionPolicy string, tlsConfig *etcdutil.TLSConfig) (*Config, error) {
+func NewSnapshotterConfig(schedule string, store snapstore.SnapStore, maxBackups, deltaSnapshotMemoryLimit int, deltaSnapshotInterval, etcdConnectionTimeout, garbageCollectionPeriod time.Duration, garbageCollectionPolicy string, tlsConfig *etcdutil.TLSConfig) (*Config, error) {
 	logrus.Printf("Validating schedule...")
 	sdl, err := cron.ParseStandard(schedule)
 	if err != nil {
@@ -49,8 +49,8 @@ func NewSnapshotterConfig(schedule string, store snapstore.SnapStore, maxBackups
 		logrus.Infof("Found garbage collection policy: [%s], and maximum backup value %d less than 1. Setting it to default: %d ", GarbageCollectionPolicyLimitBased, maxBackups, DefaultMaxBackups)
 		maxBackups = DefaultMaxBackups
 	}
-	if deltaSnapshotIntervalSeconds < 1 {
-		logrus.Infof("Found delta snapshot interval %d second less than 1 second. Disabling delta snapshotting. ", deltaSnapshotIntervalSeconds)
+	if deltaSnapshotInterval < time.Second {
+		logrus.Infof("Found delta snapshot interval %s less than 1 second. Disabling delta snapshotting. ", deltaSnapshotInterval)
 	}
 	if deltaSnapshotMemoryLimit < 1 {
 		logrus.Infof("Found delta snapshot memory limit %d bytes less than 1 byte. Setting it to default: %d ", deltaSnapshotMemoryLimit, DefaultDeltaSnapMemoryLimit)
@@ -58,15 +58,15 @@ func NewSnapshotterConfig(schedule string, store snapstore.SnapStore, maxBackups
 	}
 
 	return &Config{
-		schedule:                       sdl,
-		store:                          store,
-		deltaSnapshotIntervalSeconds:   deltaSnapshotIntervalSeconds,
-		deltaSnapshotMemoryLimit:       deltaSnapshotMemoryLimit,
-		etcdConnectionTimeout:          etcdConnectionTimeout,
-		garbageCollectionPeriodSeconds: garbageCollectionPeriodSeconds,
-		garbageCollectionPolicy:        garbageCollectionPolicy,
-		maxBackups:                     maxBackups,
-		tlsConfig:                      tlsConfig,
+		schedule:                 sdl,
+		store:                    store,
+		deltaSnapshotMemoryLimit: deltaSnapshotMemoryLimit,
+		deltaSnapshotInterval:    deltaSnapshotInterval,
+		etcdConnectionTimeout:    etcdConnectionTimeout,
+		garbageCollectionPeriod:  garbageCollectionPeriod,
+		garbageCollectionPolicy:  garbageCollectionPolicy,
+		maxBackups:               maxBackups,
+		tlsConfig:                tlsConfig,
 	}, nil
 }
 
@@ -125,10 +125,10 @@ func (ssr *Snapshotter) Run(stopCh <-chan struct{}, startWithFullSnapshot bool) 
 		}
 	}
 
-	ssr.deltaSnapshotTimer = time.NewTimer(time.Duration(DefaultDeltaSnapshotIntervalSeconds))
-	if ssr.config.deltaSnapshotIntervalSeconds >= 1 {
+	ssr.deltaSnapshotTimer = time.NewTimer(DefaultDeltaSnapshotInterval)
+	if ssr.config.deltaSnapshotInterval >= time.Second {
 		ssr.deltaSnapshotTimer.Stop()
-		ssr.deltaSnapshotTimer.Reset(time.Duration(ssr.config.deltaSnapshotIntervalSeconds))
+		ssr.deltaSnapshotTimer.Reset(ssr.config.deltaSnapshotInterval)
 	}
 
 	return ssr.snapshotEventHandler(stopCh)
@@ -213,7 +213,7 @@ func (ssr *Snapshotter) takeFullSnapshot() error {
 		}
 	}
 
-	ctx, cancel := context.WithTimeout(context.TODO(), ssr.config.etcdConnectionTimeout*time.Second)
+	ctx, cancel := context.WithTimeout(context.TODO(), ssr.config.etcdConnectionTimeout)
 	// Note: Although Get and snapshot call are not atomic, so revision number in snapshot file
 	// may be ahead of the revision found from GET call. But currently this is the only workaround available
 	// Refer: https://github.com/coreos/etcd/issues/9037
@@ -229,7 +229,7 @@ func (ssr *Snapshotter) takeFullSnapshot() error {
 	if ssr.prevSnapshot.Kind == snapstore.SnapshotKindFull && ssr.prevSnapshot.LastRevision == lastRevision {
 		ssr.logger.Infof("There are no updates since last snapshot, skipping full snapshot.")
 	} else {
-		ctx, cancel = context.WithTimeout(context.TODO(), ssr.config.etcdConnectionTimeout*time.Second)
+		ctx, cancel = context.WithTimeout(context.TODO(), ssr.config.etcdConnectionTimeout)
 		defer cancel()
 		rc, err := client.Snapshot(ctx)
 		if err != nil {
@@ -260,7 +260,7 @@ func (ssr *Snapshotter) takeFullSnapshot() error {
 		ssr.logger.Infof("Successfully saved full snapshot at: %s", path.Join(s.SnapDir, s.SnapName))
 	}
 
-	if ssr.config.deltaSnapshotIntervalSeconds < 1 {
+	if ssr.config.deltaSnapshotInterval < time.Second {
 		// return without creating a watch on events
 		return nil
 	}
@@ -288,12 +288,12 @@ func (ssr *Snapshotter) takeDeltaSnapshotAndResetTimer() error {
 	}
 
 	if ssr.deltaSnapshotTimer == nil {
-		ssr.deltaSnapshotTimer = time.NewTimer(time.Second * time.Duration(ssr.config.deltaSnapshotIntervalSeconds))
+		ssr.deltaSnapshotTimer = time.NewTimer(ssr.config.deltaSnapshotInterval)
 	} else {
 		ssr.logger.Infof("Stopping delta snapshot...")
 		ssr.deltaSnapshotTimer.Stop()
-		ssr.logger.Infof("Resetting delta snapshot to run after %d secs.", ssr.config.deltaSnapshotIntervalSeconds)
-		ssr.deltaSnapshotTimer.Reset(time.Second * time.Duration(ssr.config.deltaSnapshotIntervalSeconds))
+		ssr.logger.Infof("Resetting delta snapshot to run after %s.", ssr.config.deltaSnapshotInterval.String())
+		ssr.deltaSnapshotTimer.Reset(ssr.config.deltaSnapshotInterval)
 	}
 	return nil
 }
@@ -349,7 +349,7 @@ func (ssr *Snapshotter) CollectEventsSincePrevSnapshot(stopCh <-chan struct{}) (
 		}
 	}
 
-	ctx, cancel := context.WithTimeout(context.TODO(), ssr.config.etcdConnectionTimeout*time.Second)
+	ctx, cancel := context.WithTimeout(context.TODO(), ssr.config.etcdConnectionTimeout)
 	resp, err := client.Get(ctx, "", clientv3.WithLastRev()...)
 	cancel()
 	if err != nil {
@@ -454,7 +454,7 @@ func (ssr *Snapshotter) snapshotEventHandler(stopCh <-chan struct{}) error {
 				return err
 			}
 		case <-ssr.deltaSnapshotTimer.C:
-			if ssr.config.deltaSnapshotIntervalSeconds >= 1 {
+			if ssr.config.deltaSnapshotInterval >= time.Second {
 				if err := ssr.takeDeltaSnapshotAndResetTimer(); err != nil {
 					return err
 				}

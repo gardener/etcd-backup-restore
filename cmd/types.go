@@ -15,6 +15,8 @@
 package cmd
 
 import (
+	"time"
+
 	"github.com/sirupsen/logrus"
 )
 
@@ -29,22 +31,22 @@ var (
 	logger  = logrus.New()
 	version bool
 	//snapshotter flags
-	fullSnapshotSchedule           string
-	etcdEndpoints                  []string
-	etcdUsername                   string
-	etcdPassword                   string
-	deltaSnapshotIntervalSeconds   int
-	deltaSnapshotMemoryLimit       int
-	maxBackups                     int
-	etcdConnectionTimeout          int
-	garbageCollectionPeriodSeconds int
-	garbageCollectionPolicy        string
-	insecureTransport              bool
-	insecureSkipVerify             bool
-	certFile                       string
-	keyFile                        string
-	caFile                         string
-	defragmentationSchedule        string
+	fullSnapshotSchedule     string
+	etcdEndpoints            []string
+	etcdUsername             string
+	etcdPassword             string
+	deltaSnapshotMemoryLimit int
+	deltaSnapshotInterval    time.Duration
+	etcdConnectionTimeout    time.Duration
+	garbageCollectionPeriod  time.Duration
+	garbageCollectionPolicy  string
+	maxBackups               int
+	insecureTransport        bool
+	insecureSkipVerify       bool
+	certFile                 string
+	keyFile                  string
+	caFile                   string
+	defragmentationSchedule  string
 
 	//server flags
 	port            int

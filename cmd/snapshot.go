@@ -61,10 +61,10 @@ storing snapshots on various cloud storage providers as well as local disk locat
 				fullSnapshotSchedule,
 				ss,
 				maxBackups,
-				deltaSnapshotIntervalSeconds,
 				deltaSnapshotMemoryLimit,
-				time.Duration(etcdConnectionTimeout),
-				time.Duration(garbageCollectionPeriodSeconds),
+				deltaSnapshotInterval,
+				etcdConnectionTimeout,
+				garbageCollectionPeriod,
 				garbageCollectionPolicy,
 				tlsConfig)
 			if err != nil {
@@ -79,7 +79,7 @@ storing snapshots on various cloud storage providers as well as local disk locat
 				logger.Fatalf("failed to parse defragmentation schedule: %v", err)
 				return
 			}
-			go etcdutil.DefragDataPeriodically(ctx, tlsConfig, defragSchedule, time.Duration(etcdConnectionTimeout)*time.Second, ssr.TriggerFullSnapshot, logrus.NewEntry(logger))
+			go etcdutil.DefragDataPeriodically(ctx, tlsConfig, defragSchedule, etcdConnectionTimeout, ssr.TriggerFullSnapshot, logrus.NewEntry(logger))
 
 			go ssr.RunGarbageCollector(ctx.Done())
 			if err := ssr.Run(ctx.Done(), true); err != nil {
@@ -98,11 +98,11 @@ storing snapshots on various cloud storage providers as well as local disk locat
 func initializeSnapshotterFlags(cmd *cobra.Command) {
 	cmd.Flags().StringSliceVarP(&etcdEndpoints, "endpoints", "e", []string{"127.0.0.1:2379"}, "comma separated list of etcd endpoints")
 	cmd.Flags().StringVarP(&fullSnapshotSchedule, "schedule", "s", "* */1 * * *", "schedule for snapshots")
-	cmd.Flags().IntVarP(&deltaSnapshotIntervalSeconds, "delta-snapshot-period-seconds", "i", snapshotter.DefaultDeltaSnapshotIntervalSeconds, "Period in seconds after which delta snapshot will be persisted. If this value is set to be lesser than 1, delta snapshotting will be disabled.")
+	cmd.Flags().DurationVarP(&deltaSnapshotInterval, "delta-snapshot-period", "i", snapshotter.DefaultDeltaSnapshotInterval, "Period after which delta snapshot will be persisted. If this value is set to be lesser than 1 seconds, delta snapshotting will be disabled.")
 	cmd.Flags().IntVar(&deltaSnapshotMemoryLimit, "delta-snapshot-memory-limit", snapshotter.DefaultDeltaSnapMemoryLimit, "memory limit after which delta snapshots will be taken")
 	cmd.Flags().IntVarP(&maxBackups, "max-backups", "m", snapshotter.DefaultMaxBackups, "maximum number of previous backups to keep")
-	cmd.Flags().IntVar(&etcdConnectionTimeout, "etcd-connection-timeout", 30, "etcd client connection timeout")
-	cmd.Flags().IntVar(&garbageCollectionPeriodSeconds, "garbage-collection-period-seconds", 60, "Period in seconds for garbage collecting old backups")
+	cmd.Flags().DurationVar(&etcdConnectionTimeout, "etcd-connection-timeout", 30*time.Second, "etcd client connection timeout")
+	cmd.Flags().DurationVar(&garbageCollectionPeriod, "garbage-collection-period", 60*time.Second, "Period for garbage collecting old backups")
 	cmd.Flags().StringVar(&garbageCollectionPolicy, "garbage-collection-policy", snapshotter.GarbageCollectionPolicyExponential, "Policy for garbage collecting old backups")
 	cmd.Flags().BoolVar(&insecureTransport, "insecure-transport", true, "disable transport security for client connections")
 	cmd.Flags().BoolVar(&insecureSkipVerify, "insecure-skip-tls-verify", false, "skip server certificate verification")
