@@ -49,7 +49,7 @@ type Mode string
 const (
 	// Full Mode does complete validation including the data directory contents for corruption.
 	Full Mode = "full"
-	// Sanity Mode validates data directory against time efficient checks.
+	// Sanity Mode does a quick, partial validation of data directory using time-efficient checks.
 	Sanity Mode = "sanity"
 )
 

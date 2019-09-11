@@ -241,18 +241,25 @@ var _ = Describe("Running Datavalidator", func() {
 				Expect(int(dataDirStatus)).Should(Equal(FailBelowRevisionConsistencyError))
 			})
 		})
+	})
 
-		Context("without providing snapstore config", func() {
-			It("should return DataDirStatus as DataDirectoryValid and nil error", func() {
-				validator.Config.SnapstoreConfig = nil
-				dataDirStatus, err := validator.Validate(Sanity, failBelowRevision)
-				Expect(err).ShouldNot(HaveOccurred())
-				Expect(int(dataDirStatus)).Should(Equal(DataDirectoryValid))
-			})
+	Context("without providing snapstore config", func() {
+		It("should return DataDirStatus as DataDirectoryValid and nil error for low failBelowRevision", func() {
+			validator.Config.SnapstoreConfig = nil
+			dataDirStatus, err := validator.Validate(Sanity, 0)
+			Expect(err).ShouldNot(HaveOccurred())
+			Expect(int(dataDirStatus)).Should(Equal(DataDirectoryValid))
+		})
+
+		It("should return DataDirStatus as DataDirectoryValid and nil error for high failBelowRevision", func() {
+			validator.Config.SnapstoreConfig = nil
+			dataDirStatus, err := validator.Validate(Sanity, math.MaxInt64)
+			Expect(err).ShouldNot(HaveOccurred())
+			Expect(int(dataDirStatus)).Should(Equal(DataDirectoryValid))
 		})
 	})
 
-	Context("with failure on snapstore call", func() {
+	Context("with failure on snapstore call due to unknown snapstore provider", func() {
 		It("should return DataDirStatus as DataDirectoryStatusUnknown and error", func() {
 			//this is to fake the failure the snapstore call.
 			validator.Config.SnapstoreConfig.Provider = "unknown"
@@ -262,7 +269,7 @@ var _ = Describe("Running Datavalidator", func() {
 		})
 	})
 
-	Context("with failure on snapstore call", func() {
+	Context("with failure on snapstore call due to fake failing snapstore provider", func() {
 		It("should return DataDirStatus as DataDirectoryStatusUnknown and error", func() {
 			//this is to fake the failure the snapstore call.
 			validator.Config.SnapstoreConfig.Provider = snapstore.SnapstoreProviderFakeFailed
