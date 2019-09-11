@@ -103,6 +103,7 @@ func NewSnapshotter(logger *logrus.Logger, config *Config) *Snapshotter {
 // Setting startWithFullSnapshot to false will start the snapshotter without
 // taking the first full snapshot.
 func (ssr *Snapshotter) Run(stopCh <-chan struct{}, startWithFullSnapshot bool) error {
+	defer ssr.stop()
 	if startWithFullSnapshot {
 		ssr.fullSnapshotTimer = time.NewTimer(0)
 	} else {
@@ -130,7 +131,6 @@ func (ssr *Snapshotter) Run(stopCh <-chan struct{}, startWithFullSnapshot bool) 
 		ssr.deltaSnapshotTimer.Reset(time.Duration(ssr.config.deltaSnapshotIntervalSeconds))
 	}
 
-	defer ssr.stop()
 	return ssr.snapshotEventHandler(stopCh)
 }
 
@@ -170,7 +170,12 @@ func (ssr *Snapshotter) stop() {
 func (ssr *Snapshotter) closeEtcdClient() {
 	if ssr.cancelWatch != nil {
 		ssr.cancelWatch()
+		ssr.cancelWatch = nil
 	}
+	if ssr.watchCh != nil {
+		ssr.watchCh = nil
+	}
+
 	if ssr.etcdClient != nil {
 		if err := ssr.etcdClient.Close(); err != nil {
 			ssr.logger.Warnf("Error while closing etcd client connection, %v", err)
@@ -362,6 +367,13 @@ func (ssr *Snapshotter) CollectEventsSincePrevSnapshot(stopCh <-chan struct{}) (
 	if ssr.PrevFullSnapshot == nil || ssr.PrevFullSnapshot.LastRevision != lastEtcdRevision {
 		metrics.SnapshotRequired.With(prometheus.Labels{metrics.LabelKind: snapstore.SnapshotKindFull}).Set(1)
 	}
+
+	watchCtx, cancelWatch := context.WithCancel(context.TODO())
+	ssr.cancelWatch = cancelWatch
+	ssr.etcdClient = client
+	ssr.watchCh = client.Watch(watchCtx, "", clientv3.WithPrefix(), clientv3.WithRev(ssr.prevSnapshot.LastRevision+1))
+	ssr.logger.Infof("Applied watch on etcd from revision: %d", ssr.prevSnapshot.LastRevision+1)
+
 	if ssr.prevSnapshot.LastRevision == lastEtcdRevision {
 		ssr.logger.Infof("No new events since last snapshot. Skipping initial delta snapshot.")
 		return false, nil
@@ -372,12 +384,6 @@ func (ssr *Snapshotter) CollectEventsSincePrevSnapshot(stopCh <-chan struct{}) (
 	// full snapshot will be required later
 	metrics.SnapshotRequired.With(prometheus.Labels{metrics.LabelKind: snapstore.SnapshotKindDelta}).Set(1)
 	metrics.SnapshotRequired.With(prometheus.Labels{metrics.LabelKind: snapstore.SnapshotKindFull}).Set(1)
-
-	watchCtx, cancelWatch := context.WithCancel(context.TODO())
-	ssr.cancelWatch = cancelWatch
-	ssr.etcdClient = client
-	ssr.watchCh = client.Watch(watchCtx, "", clientv3.WithPrefix(), clientv3.WithRev(ssr.prevSnapshot.LastRevision+1))
-	ssr.logger.Infof("Applied watch on etcd from revision: %d", ssr.prevSnapshot.LastRevision+1)
 
 	for {
 		select {

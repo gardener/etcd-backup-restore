@@ -460,55 +460,6 @@ var _ = Describe("Running Restorer", func() {
 			})
 		})
 
-		Context("with etcd client is unavailable ", func() {
-			fmt.Println("Testing restore while etcd client is still in use")
-			It("Should fail to restore", func() {
-
-				deltaSnapshotPeriod := 1
-				wg.Add(1)
-				go populateEtcd(wg, logger, endpoints, errCh, populatorStopCh)
-				go stopLoaderAndSnapshotter(wg, 2, 2, populatorStopCh, ssrStopCh)
-
-				logger.Infoln("Starting snapshotter for etcd client deferred closing")
-				err = runSnapshotter(logger, deltaSnapshotPeriod, endpoints, ssrStopCh, true)
-				Expect(err).ShouldNot(HaveOccurred())
-				//this will ensure that etcd client is unavailable for the restore
-				defer func() {
-					etcd.Server.Stop()
-					etcd.Close()
-				}()
-				//time.Sleep(time.Duration(5 * time.Second))
-				err = corruptEtcdDir()
-				Expect(err).ShouldNot(HaveOccurred())
-				logger.Infoln("corrupted the etcd dir")
-
-				store, err = snapstore.GetSnapstore(&snapstore.Config{Container: snapstoreDir, Provider: "Local"})
-				Expect(err).ShouldNot(HaveOccurred())
-				baseSnapshot, deltaSnapList, err = miscellaneous.GetLatestFullSnapshotAndDeltaSnapList(store)
-				Expect(err).ShouldNot(HaveOccurred())
-
-				rstr = NewRestorer(store, logger)
-
-				RestoreOptions := RestoreOptions{
-					ClusterURLs:            clusterUrlsMap,
-					ClusterToken:           restoreClusterToken,
-					RestoreDataDir:         restoreDataDir,
-					PeerURLs:               peerUrls,
-					SkipHashCheck:          skipHashCheck,
-					Name:                   restoreName,
-					MaxFetchers:            maxFetchers,
-					EmbeddedEtcdQuotaBytes: embeddedEtcdQuotaBytes,
-					BaseSnapshot:           *baseSnapshot,
-					DeltaSnapList:          deltaSnapList,
-				}
-				logger.Infoln("starting restore while snapshotter is running")
-				err = rstr.Restore(RestoreOptions)
-				logger.Infof("Failed because : %s", err)
-				Expect(err).Should(HaveOccurred())
-
-			})
-		})
-
 		Context("with etcd data dir not cleaned up before restore", func() {
 			fmt.Println("Testing restore on an existing etcd data directory")
 			It("Should fail to restore", func() {

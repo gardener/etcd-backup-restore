@@ -31,8 +31,8 @@ const (
 	DataDirectoryInvStruct
 	// DataDirectoryCorrupt indicates data directory is corrupt.
 	DataDirectoryCorrupt
-	// DataDirectoryError indicates unknown error while validation.
-	DataDirectoryError
+	// DataDirectoryStatusUnknown indicates validator failed to check the data directory status.
+	DataDirectoryStatusUnknown
 	// RevisionConsistencyError indicates current etcd revision is inconsistent with latest snapshot revision.
 	RevisionConsistencyError
 	//FailBelowRevisionConsistencyError indicates the current etcd revision is inconsistent with failBelowRevision.
@@ -49,7 +49,7 @@ type Mode string
 const (
 	// Full Mode does complete validation including the data directory contents for corruption.
 	Full Mode = "full"
-	// Sanity Mode validates only the data revision against the revision in the backup store.
+	// Sanity Mode does a quick, partial validation of data directory using time-efficient checks.
 	Sanity Mode = "sanity"
 )
 
