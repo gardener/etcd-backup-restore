@@ -58,11 +58,14 @@ func (e *EtcdInitializer) Initialize(mode validator.Mode, failBelowRevision int6
 
 	if dataDirStatus != validator.DataDirectoryValid {
 		start := time.Now()
-		if err := e.restoreCorruptData(); err != nil {
+		restored, err := e.restoreCorruptData()
+		if err != nil {
 			metrics.RestorationDurationSeconds.With(prometheus.Labels{metrics.LabelSucceeded: metrics.ValueSucceededFalse}).Observe(time.Now().Sub(start).Seconds())
 			return fmt.Errorf("error while restoring corrupt data: %v", err)
 		}
-		metrics.RestorationDurationSeconds.With(prometheus.Labels{metrics.LabelSucceeded: metrics.ValueSucceededTrue}).Observe(time.Now().Sub(start).Seconds())
+		if restored {
+			metrics.RestorationDurationSeconds.With(prometheus.Labels{metrics.LabelSucceeded: metrics.ValueSucceededTrue}).Observe(time.Now().Sub(start).Seconds())
+		}
 	}
 	return nil
 }
@@ -88,32 +91,33 @@ func NewInitializer(options *restorer.RestoreOptions, snapstoreConfig *snapstore
 	return etcdInit
 }
 
-func (e *EtcdInitializer) restoreCorruptData() error {
+// restoreCorruptData attempts to restore a corrupted data directory.
+// It returns true only if restoration was successful, and false when
+// bootstrapping a new data directory or if restoration failed
+func (e *EtcdInitializer) restoreCorruptData() (bool, error) {
 	logger := e.Logger
 	dataDir := e.Config.RestoreOptions.RestoreDataDir
 
 	if e.Config.SnapstoreConfig == nil {
 		logger.Warnf("No snapstore storage provider configured.")
-		logger.Infof("Removing data directory(%s) for snapshot restoration.", dataDir)
-		if err := os.RemoveAll(filepath.Join(dataDir)); err != nil {
-			return fmt.Errorf("failed to delete data directory %s with err: %v", dataDir, err)
-		}
-		return nil
+		return e.restoreWithEmptySnapstore()
 	}
 	store, err := snapstore.GetSnapstore(e.Config.SnapstoreConfig)
 	if err != nil {
 		err = fmt.Errorf("failed to create snapstore from configured storage provider: %v", err)
-		return err
+		return false, err
 	}
 	logger.Info("Finding latest set of snapshot to recover from...")
 	baseSnap, deltaSnapList, err := miscellaneous.GetLatestFullSnapshotAndDeltaSnapList(store)
 	if err != nil {
 		logger.Errorf("failed to get latest set of snapshot: %v", err)
-		return err
+		return false, err
 	}
-	if baseSnap == nil {
-		logger.Infof("No snapshot found. Will do nothing.")
-		return nil
+	if baseSnap == nil && (deltaSnapList == nil || len(deltaSnapList) == 0) {
+		// Snapstore is considered to be the source of truth. Thus, if
+		// snapstore exists but is empty, data directory should be cleared.
+		logger.Infof("No snapshot found. Will remove the data directory.")
+		return e.restoreWithEmptySnapstore()
 	}
 
 	e.Config.RestoreOptions.BaseSnapshot = *baseSnap
@@ -121,33 +125,65 @@ func (e *EtcdInitializer) restoreCorruptData() error {
 	tempRestoreOptions := *e.Config.RestoreOptions
 	tempRestoreOptions.RestoreDataDir = fmt.Sprintf("%s.%s", tempRestoreOptions.RestoreDataDir, "part")
 
-	logger.Infof("Removing data directory(%s) for snapshot restoration.", tempRestoreOptions.RestoreDataDir)
-	if err := os.RemoveAll(filepath.Join(tempRestoreOptions.RestoreDataDir)); err != nil {
-		return fmt.Errorf("failed to delete previous temporary data directory %s with err: %v", tempRestoreOptions.RestoreDataDir, err)
+	if err := e.removeDir(tempRestoreOptions.RestoreDataDir); err != nil {
+		return false, fmt.Errorf("failed to delete previous temporary data directory: %v", err)
 	}
 
 	rs := restorer.NewRestorer(store, logger)
 	if err := rs.Restore(tempRestoreOptions); err != nil {
 		err = fmt.Errorf("Failed to restore snapshot: %v", err)
-		return err
+		return false, err
 	}
 
 	if err := e.removeContents(dataDir); err != nil {
-		return fmt.Errorf("failed to remove corrupt contents with restored snapshot: %v", err)
+		return false, fmt.Errorf("failed to remove corrupt contents with restored snapshot: %v", err)
 	}
 	logger.Infoln("Successfully restored the etcd data directory.")
-	return nil
+	return true, nil
+}
+
+// restoreWithEmptySnapstore removes the data directory as
+// part of restoration process for empty snapstore case.
+// It returns true if data directory removal is successful,
+// and false if directory removal failed or if directory
+// never existed (bootstrap case)
+func (e *EtcdInitializer) restoreWithEmptySnapstore() (bool, error) {
+	dataDir := e.Config.RestoreOptions.RestoreDataDir
+	e.Logger.Infof("Removing directory(%s) since snapstore is empty.", dataDir)
+
+	// If data directory doesn't exist, it means we are bootstrapping
+	// a new data directory, so no restoration occurs
+	if _, err := os.Stat(dataDir); err != nil {
+		if os.IsNotExist(err) {
+			return false, nil
+		}
+		return false, err
+	}
+
+	// If data directory already exists, then we remove it.
+	// This is considered an act of restoration because we
+	// act on the corrupted data directory by removing it
+	if err := e.removeDir(dataDir); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 func (e *EtcdInitializer) removeContents(dataDir string) error {
-	logger := e.Logger
-	logger.Infof("Removing data directory(%s) for snapshot restoration.", dataDir)
-	if err := os.RemoveAll(filepath.Join(dataDir)); err != nil {
-		return fmt.Errorf("failed to delete data directory %s with err: %v", dataDir, err)
+	if err := e.removeDir(dataDir); err != nil {
+		return err
 	}
 
 	if err := os.Rename(filepath.Join(fmt.Sprintf("%s.%s", dataDir, "part")), filepath.Join(dataDir)); err != nil {
 		return fmt.Errorf("Failed to rename temp restore directory %s to data directory %s with err: %v", filepath.Join(fmt.Sprintf("%s.%s", dataDir, "part")), dataDir, err)
+	}
+	return nil
+}
+
+func (e *EtcdInitializer) removeDir(dirname string) error {
+	e.Logger.Infof("Removing directory(%s).", dirname)
+	if err := os.RemoveAll(filepath.Join(dirname)); err != nil {
+		return fmt.Errorf("failed to remove directory %s with err: %v", dirname, err)
 	}
 	return nil
 }
