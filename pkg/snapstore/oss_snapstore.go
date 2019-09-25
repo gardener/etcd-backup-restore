@@ -57,12 +57,12 @@ type OSSSnapStore struct {
 	prefix                  string
 	bucket                  OSSBucket
 	multiPart               sync.Mutex
-	maxParallelChunkUploads int
+	maxParallelChunkUploads uint
 	tempDir                 string
 }
 
 // NewOSSSnapStore create new OSSSnapStore from shared configuration with specified bucket
-func NewOSSSnapStore(bucket, prefix, tempDir string, maxParallelChunkUploads int) (*OSSSnapStore, error) {
+func NewOSSSnapStore(bucket, prefix, tempDir string, maxParallelChunkUploads uint) (*OSSSnapStore, error) {
 	ao, err := authOptionsFromEnv()
 	if err != nil {
 		return nil, err
@@ -70,7 +70,7 @@ func NewOSSSnapStore(bucket, prefix, tempDir string, maxParallelChunkUploads int
 	return newOSSFromAuthOpt(bucket, prefix, tempDir, maxParallelChunkUploads, ao)
 }
 
-func newOSSFromAuthOpt(bucket, prefix, tempDir string, maxParallelChunkUploads int, ao authOptions) (*OSSSnapStore, error) {
+func newOSSFromAuthOpt(bucket, prefix, tempDir string, maxParallelChunkUploads uint, ao authOptions) (*OSSSnapStore, error) {
 	client, err := oss.New(ao.endpoint, ao.accessID, ao.accessKey)
 	if err != nil {
 		return nil, err
@@ -85,7 +85,7 @@ func newOSSFromAuthOpt(bucket, prefix, tempDir string, maxParallelChunkUploads i
 }
 
 // NewOSSFromBucket will create the new OSS snapstore object from OSS bucket
-func NewOSSFromBucket(prefix, tempDir string, maxParallelChunkUploads int, bucket OSSBucket) *OSSSnapStore {
+func NewOSSFromBucket(prefix, tempDir string, maxParallelChunkUploads uint, bucket OSSBucket) *OSSSnapStore {
 	return &OSSSnapStore{
 		prefix:                  prefix,
 		bucket:                  bucket,
@@ -151,7 +151,7 @@ func (s *OSSSnapStore) Save(snap Snapshot, rc io.ReadCloser) error {
 		wg             sync.WaitGroup
 	)
 
-	for i := 0; i < s.maxParallelChunkUploads; i++ {
+	for i := uint(0); i < s.maxParallelChunkUploads; i++ {
 		wg.Add(1)
 		go s.partUploader(&wg, imur, tmpfile, completedParts, chunkUploadCh, cancelCh, resCh)
 	}

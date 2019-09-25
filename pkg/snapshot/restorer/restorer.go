@@ -61,14 +61,6 @@ func NewRestorer(store snapstore.SnapStore, logger *logrus.Entry) *Restorer {
 
 // Restore restore the etcd data directory as per specified restore options.
 func (r *Restorer) Restore(ro RestoreOptions) error {
-	if ro.MaxFetchers < 1 {
-		return fmt.Errorf("Maximum number of fetchers should be greater than zero. Input MaxFetchers: %d", ro.MaxFetchers)
-	}
-	if ro.EmbeddedEtcdQuotaBytes <= 0 {
-		r.logger.Infof("Quota size for etcd must be greater than 0. Input EmbeddedEtcdQuotaBytes: %d. Defaulting to 8GB.", ro.EmbeddedEtcdQuotaBytes)
-		ro.EmbeddedEtcdQuotaBytes = int64(8 * 1024 * 1024 * 1024)
-	}
-	ro.RestoreDataDir = path.Clean(ro.RestoreDataDir)
 	if err := r.restoreFromBaseSnapshot(ro); err != nil {
 		return fmt.Errorf("failed to restore from the base snapshot :%v", err)
 	}
@@ -105,21 +97,21 @@ func (r *Restorer) restoreFromBaseSnapshot(ro RestoreOptions) error {
 	}
 	r.logger.Infof("Restoring from base snapshot: %s", path.Join(ro.BaseSnapshot.SnapDir, ro.BaseSnapshot.SnapName))
 	cfg := etcdserver.ServerConfig{
-		InitialClusterToken: ro.ClusterToken,
+		InitialClusterToken: ro.Config.InitialClusterToken,
 		InitialPeerURLsMap:  ro.ClusterURLs,
 		PeerURLs:            ro.PeerURLs,
-		Name:                ro.Name,
+		Name:                ro.Config.Name,
 	}
 	if err := cfg.VerifyBootstrap(); err != nil {
 		return err
 	}
 
-	cl, err := membership.NewClusterFromURLsMap(ro.ClusterToken, ro.ClusterURLs)
+	cl, err := membership.NewClusterFromURLsMap(ro.Config.InitialClusterToken, ro.ClusterURLs)
 	if err != nil {
 		return err
 	}
 
-	memberDir := filepath.Join(ro.RestoreDataDir, "member")
+	memberDir := filepath.Join(ro.Config.RestoreDataDir, "member")
 	if _, err := os.Stat(memberDir); err == nil {
 		return fmt.Errorf("member directory in data directory(%q) exists", memberDir)
 	}
@@ -129,7 +121,7 @@ func (r *Restorer) restoreFromBaseSnapshot(ro RestoreOptions) error {
 	if err = makeDB(snapdir, ro.BaseSnapshot, len(cl.Members()), r.store, false); err != nil {
 		return err
 	}
-	return makeWALAndSnap(walDir, snapdir, cl, ro.Name)
+	return makeWALAndSnap(walDir, snapdir, cl, ro.Config.Name)
 }
 
 // makeDB copies the database snapshot to the snapshot directory.
@@ -313,7 +305,7 @@ func makeWALAndSnap(waldir, snapdir string, cl *membership.RaftCluster, restoreN
 // startEmbeddedEtcd starts the embedded etcd server.
 func startEmbeddedEtcd(logger *logrus.Entry, ro RestoreOptions) (*embed.Etcd, error) {
 	cfg := embed.NewConfig()
-	cfg.Dir = filepath.Join(ro.RestoreDataDir)
+	cfg.Dir = filepath.Join(ro.Config.RestoreDataDir)
 	DefaultListenPeerURLs := "http://localhost:0"
 	DefaultListenClientURLs := "http://localhost:0"
 	DefaultInitialAdvertisePeerURLs := "http://localhost:0"
@@ -327,7 +319,7 @@ func startEmbeddedEtcd(logger *logrus.Entry, ro RestoreOptions) (*embed.Etcd, er
 	cfg.APUrls = []url.URL{*apurl}
 	cfg.ACUrls = []url.URL{*acurl}
 	cfg.InitialCluster = cfg.InitialClusterFromName(cfg.Name)
-	cfg.QuotaBackendBytes = ro.EmbeddedEtcdQuotaBytes
+	cfg.QuotaBackendBytes = ro.Config.EmbeddedEtcdQuotaBytes
 	e, err := embed.StartEtcd(cfg)
 	if err != nil {
 		return nil, err
@@ -346,7 +338,7 @@ func startEmbeddedEtcd(logger *logrus.Entry, ro RestoreOptions) (*embed.Etcd, er
 // applyDeltaSnapshots fetches the events from delta snapshots in parallel and applies them to the embedded etcd sequentially.
 func (r *Restorer) applyDeltaSnapshots(client *clientv3.Client, ro RestoreOptions) error {
 	snapList := ro.DeltaSnapList
-	numMaxFetchers := ro.MaxFetchers
+	numMaxFetchers := ro.Config.MaxFetchers
 
 	firstDeltaSnap := snapList[0]
 

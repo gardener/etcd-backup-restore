@@ -12,14 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package etcdutil_test
+package defragmentor_test
 
 import (
 	"context"
 	"fmt"
 	"time"
 
-	. "github.com/gardener/etcd-backup-restore/pkg/etcdutil"
+	"github.com/gardener/etcd-backup-restore/pkg/etcdutil"
+
+	. "github.com/gardener/etcd-backup-restore/pkg/defragmentor"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	cron "github.com/robfig/cron/v3"
@@ -27,37 +29,38 @@ import (
 
 var _ = Describe("Defrag", func() {
 	var (
-		tlsConfig             *TLSConfig
-		etcdConnectionTimeout = 30 * time.Second
-		keyPrefix             = "/defrag/key-"
-		valuePrefix           = "val"
-		etcdUsername          string
-		etcdPassword          string
+		etcdConnectionConfig *etcdutil.EtcdConnectionConfig
+		keyPrefix            = "/defrag/key-"
+		valuePrefix          = "val"
 	)
+
 	BeforeEach(func() {
-		tlsConfig = NewTLSConfig("", "", "", true, true, endpoints, etcdUsername, etcdPassword)
+		etcdConnectionConfig = etcdutil.NewEtcdConnectionConfig()
+		etcdConnectionConfig.Endpoints = endpoints
+		etcdConnectionConfig.ConnectionTimeout.Duration = 30 * time.Second
 	})
+
 	Context("Defragmentation", func() {
 		BeforeEach(func() {
 			now := time.Now().Unix()
-			client, err := GetTLSClientForEtcd(tlsConfig)
+			client, err := etcdutil.GetTLSClientForEtcd(etcdConnectionConfig)
 			defer client.Close()
-			logger.Infof("TLSConfig %v, Endpoint %v", tlsConfig, endpoints)
+			logger.Infof("etcdConnectionConfig %v, Endpoint %v", etcdConnectionConfig, endpoints)
 			Expect(err).ShouldNot(HaveOccurred())
 			for index := 0; index <= 1000; index++ {
-				ctx, cancel := context.WithTimeout(testCtx, etcdConnectionTimeout)
+				ctx, cancel := context.WithTimeout(testCtx, etcdConnectionConfig.ConnectionTimeout.Duration)
 				client.Put(ctx, fmt.Sprintf("%s%d%d", keyPrefix, now, index), valuePrefix)
 				cancel()
 			}
 			for index := 0; index <= 500; index++ {
-				ctx, cancel := context.WithTimeout(testCtx, etcdConnectionTimeout)
+				ctx, cancel := context.WithTimeout(testCtx, etcdConnectionConfig.ConnectionTimeout.Duration)
 				client.Delete(ctx, fmt.Sprintf("%s%d%d", keyPrefix, now, index))
 				cancel()
 			}
 		})
 
 		It("should defragment and reduce size of DB within time", func() {
-			client, err := GetTLSClientForEtcd(tlsConfig)
+			client, err := etcdutil.GetTLSClientForEtcd(etcdConnectionConfig)
 			Expect(err).ShouldNot(HaveOccurred())
 			defer client.Close()
 			ctx, cancel := context.WithTimeout(testCtx, etcdDialTimeout)
@@ -67,7 +70,7 @@ var _ = Describe("Defrag", func() {
 			oldDBSize := oldStatus.DbSize
 			oldRevision := oldStatus.Header.GetRevision()
 
-			defragmentorJob := NewDefragmentorJob(testCtx, tlsConfig, etcdConnectionTimeout, logger, nil)
+			defragmentorJob := NewDefragmentorJob(testCtx, etcdConnectionConfig, logger, nil)
 			defragmentorJob.Run()
 
 			ctx, cancel = context.WithTimeout(testCtx, etcdDialTimeout)
@@ -80,8 +83,8 @@ var _ = Describe("Defrag", func() {
 		})
 
 		It("should keep size of DB same in case of timeout", func() {
-			etcdConnectionTimeout = time.Second
-			client, err := GetTLSClientForEtcd(tlsConfig)
+			etcdConnectionConfig.ConnectionTimeout.Duration = time.Microsecond
+			client, err := etcdutil.GetTLSClientForEtcd(etcdConnectionConfig)
 			Expect(err).ShouldNot(HaveOccurred())
 			defer client.Close()
 			ctx, cancel := context.WithTimeout(testCtx, etcdDialTimeout)
@@ -91,7 +94,7 @@ var _ = Describe("Defrag", func() {
 			oldDBSize := oldStatus.DbSize
 			oldRevision := oldStatus.Header.GetRevision()
 
-			defragmentorJob := NewDefragmentorJob(testCtx, tlsConfig, time.Microsecond, logger, nil)
+			defragmentorJob := NewDefragmentorJob(testCtx, etcdConnectionConfig, logger, nil)
 			defragmentorJob.Run()
 
 			ctx, cancel = context.WithTimeout(testCtx, etcdDialTimeout)
@@ -108,7 +111,7 @@ var _ = Describe("Defrag", func() {
 			minimumExpectedDefragCount := 2
 			defragSchedule, _ := cron.ParseStandard("*/1 * * * *")
 
-			client, err := GetTLSClientForEtcd(tlsConfig)
+			client, err := etcdutil.GetTLSClientForEtcd(etcdConnectionConfig)
 			Expect(err).ShouldNot(HaveOccurred())
 			defer client.Close()
 			statusReqCtx, cancelStatusReq := context.WithTimeout(testCtx, etcdDialTimeout)
@@ -120,7 +123,7 @@ var _ = Describe("Defrag", func() {
 
 			defragThreadCtx, cancelDefragThread := context.WithTimeout(testCtx, time.Second*time.Duration(135))
 			defer cancelDefragThread()
-			DefragDataPeriodically(defragThreadCtx, tlsConfig, defragSchedule, etcdConnectionTimeout, func(_ context.Context) error {
+			DefragDataPeriodically(defragThreadCtx, etcdConnectionConfig, defragSchedule, func(_ context.Context) error {
 				defragCount++
 				return nil
 			}, logger)

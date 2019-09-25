@@ -36,17 +36,24 @@ type Restorer struct {
 
 // RestoreOptions hold all snapshot restore related fields
 type RestoreOptions struct {
-	ClusterURLs            types.URLsMap
-	ClusterToken           string
-	RestoreDataDir         string
-	PeerURLs               types.URLs
-	SkipHashCheck          bool
-	Name                   string
-	MaxFetchers            int
-	EmbeddedEtcdQuotaBytes int64
+	Config      *RestorationConfig
+	ClusterURLs types.URLsMap
+	PeerURLs    types.URLs
 	// Base full snapshot + delta snapshots to restore from
 	BaseSnapshot  snapstore.Snapshot
 	DeltaSnapList snapstore.SnapList
+}
+
+// RestorationConfig holds the restoration configuration.
+type RestorationConfig struct {
+	InitialCluster           string   `json:"initialCluster"`
+	InitialClusterToken      string   `json:"initialClusterToken,omitempty"`
+	RestoreDataDir           string   `json:"restoreDataDir,omitempty"`
+	InitialAdvertisePeerURLs []string `json:"initialAdvertisePeerURLs"`
+	Name                     string   `json:"name"`
+	SkipHashCheck            bool     `json:"skipHashCheck,omitempty"`
+	MaxFetchers              uint     `json:"maxFetchers,omitempty"`
+	EmbeddedEtcdQuotaBytes   int64    `json:"embeddedEtcdQuotaBytes,omitempty"`
 }
 
 type initIndex int

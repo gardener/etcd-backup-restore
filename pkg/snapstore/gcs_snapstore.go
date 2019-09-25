@@ -38,7 +38,7 @@ type GCSSnapStore struct {
 	prefix string
 	bucket string
 	// maxParallelChunkUploads hold the maximum number of parallel chunk uploads allowed.
-	maxParallelChunkUploads int
+	maxParallelChunkUploads uint
 	tempDir                 string
 }
 
@@ -47,7 +47,7 @@ const (
 )
 
 // NewGCSSnapStore create new GCSSnapStore from shared configuration with specified bucket.
-func NewGCSSnapStore(bucket, prefix, tempDir string, maxParallelChunkUploads int) (*GCSSnapStore, error) {
+func NewGCSSnapStore(bucket, prefix, tempDir string, maxParallelChunkUploads uint) (*GCSSnapStore, error) {
 	ctx := context.TODO()
 	cli, err := storage.NewClient(ctx)
 	if err != nil {
@@ -59,7 +59,7 @@ func NewGCSSnapStore(bucket, prefix, tempDir string, maxParallelChunkUploads int
 }
 
 // NewGCSSnapStoreFromClient create new GCSSnapStore from shared configuration with specified bucket.
-func NewGCSSnapStoreFromClient(bucket, prefix, tempDir string, maxParallelChunkUploads int, cli stiface.Client) *GCSSnapStore {
+func NewGCSSnapStoreFromClient(bucket, prefix, tempDir string, maxParallelChunkUploads uint, cli stiface.Client) *GCSSnapStore {
 	return &GCSSnapStore{
 		prefix:                  prefix,
 		client:                  cli,
@@ -108,7 +108,7 @@ func (s *GCSSnapStore) Save(snap Snapshot, rc io.ReadCloser) error {
 		cancelCh      = make(chan struct{})
 	)
 
-	for i := 0; i < s.maxParallelChunkUploads; i++ {
+	for i := uint(0); i < s.maxParallelChunkUploads; i++ {
 		wg.Add(1)
 		go s.componentUploader(&wg, cancelCh, &snap, tmpfile, chunkUploadCh, resCh)
 	}

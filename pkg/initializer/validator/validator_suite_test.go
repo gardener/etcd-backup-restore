@@ -87,59 +87,25 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 
 // runSnapshotter creates a snapshotter object and runs it for a duration specified by 'snapshotterDurationSeconds'
 func runSnapshotter(logger *logrus.Entry, deltaSnapshotPeriod time.Duration, endpoints []string, stopCh <-chan struct{}) error {
-	var (
-		store                    snapstore.SnapStore
-		certFile                 string
-		keyFile                  string
-		caFile                   string
-		insecureTransport        = true
-		insecureSkipVerify       = true
-		maxBackups               = 1
-		deltaSnapshotMemoryLimit = 10 * 1024 * 1024 //10Mib
-		etcdConnectionTimeout    = 10 * time.Second
-		garbageCollectionPeriod  = 60 * time.Second
-		schedule                 = "0 0 1 1 *"
-		garbageCollectionPolicy  = snapshotter.GarbageCollectionPolicyLimitBased
-		etcdUsername             string
-		etcdPassword             string
-	)
-
-	store, err = snapstore.GetSnapstore(&snapstore.Config{Container: snapstoreDir, Provider: "Local"})
+	store, err := snapstore.GetSnapstore(&snapstore.Config{Container: snapstoreDir, Provider: "Local"})
 	if err != nil {
 		return err
 	}
 
-	tlsConfig := etcdutil.NewTLSConfig(
-		certFile,
-		keyFile,
-		caFile,
-		insecureTransport,
-		insecureSkipVerify,
-		endpoints,
-		etcdUsername,
-		etcdPassword,
-	)
+	etcdConnectionConfig := etcdutil.NewEtcdConnectionConfig()
+	etcdConnectionConfig.Endpoints = endpoints
+	etcdConnectionConfig.ConnectionTimeout.Duration = 10 * time.Second
+	logger.Infof("etcdConnectionConfig %v", etcdConnectionConfig)
 
-	logger.Infof("tlsconfig %v", tlsConfig)
-	snapshotterConfig, err := snapshotter.NewSnapshotterConfig(
-		schedule,
-		store,
-		maxBackups,
-		deltaSnapshotMemoryLimit,
-		deltaSnapshotPeriod,
-		etcdConnectionTimeout,
-		garbageCollectionPeriod,
-		garbageCollectionPolicy,
-		tlsConfig,
-	)
+	snapshotterConfig := snapshotter.NewSnapshotterConfig()
+	snapshotterConfig.GarbageCollectionPolicy = snapshotter.GarbageCollectionPolicyLimitBased
+	snapshotterConfig.FullSnapshotSchedule = "0 0 1 1 *"
+	snapshotterConfig.MaxBackups = 1
+
+	ssr, err := snapshotter.NewSnapshotter(logger, snapshotterConfig, store, etcdConnectionConfig)
 	if err != nil {
 		return err
 	}
-
-	ssr := snapshotter.NewSnapshotter(
-		logger,
-		snapshotterConfig,
-	)
 
 	return ssr.Run(stopCh, true)
 }

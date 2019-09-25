@@ -92,15 +92,15 @@ type SnapList []*Snapshot
 // Config defines the configuration to create snapshot store.
 type Config struct {
 	// Provider indicated the cloud provider.
-	Provider string
+	Provider string `json:"provider,omitempty"`
 	// Container holds the name of bucket or container to which snapshot will be stored.
-	Container string
+	Container string `json:"container"`
 	// Prefix holds the prefix or directory under StorageContainer under which snapshot will be stored.
-	Prefix string
+	Prefix string `json:"prefix,omitempty"`
 	// MaxParallelChunkUploads hold the maximum number of parallel chunk uploads allowed.
-	MaxParallelChunkUploads int
+	MaxParallelChunkUploads uint `json:"maxParallelChunkUploads,omitempty"`
 	// Temporary Directory
-	TempDir string
+	TempDir string `json:"tempDir,omitempty"`
 }
 
 type chunk struct {

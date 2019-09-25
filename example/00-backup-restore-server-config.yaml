@@ -1,0 +1,45 @@
+etcdConnectionConfig:
+  endpoints:
+  - "http://localhost:2379"
+  # username: admin
+  # password: admin
+  connectionTimeout: 10s
+  # insecureTransport: true
+  # insecureSkipVerify: true
+  # certFile: "ssl/etcd/tls.crt"
+  # keyFile: "ssl/etcd/tls.key"
+  # caFile: "ssl/etcd/ca.crt"
+
+serverConfig:
+  port: 8080
+  # enableProfiling: true
+  # server-cert: "ssl/etcdbr/tls.crt"
+  # server-key: "ssl/etcdbr/tls.crt"
+
+snapshotterConfig:
+  schedule: "0 */1 * * *"
+  deltaSnapshotPeriod: 20s
+  # deltaSnapshotMemoryLimit: 10000000
+  # garbageCollectionPeriod: 1m
+  # garbageCollectionPolicy: "Exponential"
+  # maxBackups: 7
+
+snapstoreConfig:
+  provider: "Local"
+  #container: "backup"
+  # prefix: "etcd-test"
+  maxParallelChunkUploads: 5
+  tempDir: "/tmp"
+
+restorationConfig:
+  initialCluster: "default=http://localhost:2380"
+  initialClusterToken: "etcd-cluster"
+  restoreDataDir: "default.etcd"
+  initialAdvertisePeerURLs:
+    - "http://localhost:2380"
+  name: "default"
+  skipHashCheck: false
+  maxFetchers: 6
+  embeddedEtcdQuotaBytes: 8589934592
+
+defragmentationSchedule: "0 0 */3 * *"

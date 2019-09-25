@@ -19,6 +19,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/gardener/etcd-backup-restore/pkg/wrappers"
+
 	"github.com/coreos/etcd/clientv3"
 	"github.com/gardener/etcd-backup-restore/pkg/etcdutil"
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
@@ -52,10 +54,14 @@ type State int
 
 // Snapshotter is a struct for etcd snapshot taker
 type Snapshotter struct {
-	logger             *logrus.Entry
+	logger               *logrus.Entry
+	etcdConnectionConfig *etcdutil.EtcdConnectionConfig
+	store                snapstore.SnapStore
+	config               *Config
+
+	schedule           cron.Schedule
 	prevSnapshot       *snapstore.Snapshot
 	PrevFullSnapshot   *snapstore.Snapshot
-	config             *Config
 	fullSnapshotReqCh  chan struct{}
 	deltaSnapshotReqCh chan struct{}
 	fullSnapshotAckCh  chan error
@@ -71,17 +77,14 @@ type Snapshotter struct {
 	lastEventRevision  int64
 }
 
-// Config stores the configuration parameters for the snapshotter.
+// Config holds the snapshotter config.
 type Config struct {
-	schedule                 cron.Schedule
-	store                    snapstore.SnapStore
-	maxBackups               int
-	deltaSnapshotMemoryLimit int
-	deltaSnapshotInterval    time.Duration
-	etcdConnectionTimeout    time.Duration
-	garbageCollectionPeriod  time.Duration
-	garbageCollectionPolicy  string
-	tlsConfig                *etcdutil.TLSConfig
+	FullSnapshotSchedule     string            `json:"schedule,omitempty"`
+	DeltaSnapshotPeriod      wrappers.Duration `json:"deltaSnapshotPeriod,omitempty"`
+	DeltaSnapshotMemoryLimit uint              `json:"deltaSnapshotMemoryLimit,omitempty"`
+	GarbageCollectionPeriod  wrappers.Duration `json:"garbageCollectionPeriod,omitempty"`
+	GarbageCollectionPolicy  string            `json:"garbageCollectionPolicy,omitempty"`
+	MaxBackups               uint              `json:"maxBackups,omitempty"`
 }
 
 // event is wrapper over etcd event to keep track of time of event

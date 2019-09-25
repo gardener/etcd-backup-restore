@@ -29,10 +29,6 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-const (
-	backupFormatVersion = "v1"
-)
-
 // Initialize has the following steps:
 //   * Check if data directory exists.
 //     - If data directory exists
@@ -80,7 +76,7 @@ func NewInitializer(options *restorer.RestoreOptions, snapstoreConfig *snapstore
 		},
 		Validator: &validator.DataValidator{
 			Config: &validator.Config{
-				DataDir:         options.RestoreDataDir,
+				DataDir:         options.Config.RestoreDataDir,
 				SnapstoreConfig: snapstoreConfig,
 			},
 			Logger: logger,
@@ -96,7 +92,7 @@ func NewInitializer(options *restorer.RestoreOptions, snapstoreConfig *snapstore
 // bootstrapping a new data directory or if restoration failed
 func (e *EtcdInitializer) restoreCorruptData() (bool, error) {
 	logger := e.Logger
-	dataDir := e.Config.RestoreOptions.RestoreDataDir
+	dataDir := e.Config.RestoreOptions.Config.RestoreDataDir
 
 	if e.Config.SnapstoreConfig == nil {
 		logger.Warnf("No snapstore storage provider configured.")
@@ -123,9 +119,9 @@ func (e *EtcdInitializer) restoreCorruptData() (bool, error) {
 	e.Config.RestoreOptions.BaseSnapshot = *baseSnap
 	e.Config.RestoreOptions.DeltaSnapList = deltaSnapList
 	tempRestoreOptions := *e.Config.RestoreOptions
-	tempRestoreOptions.RestoreDataDir = fmt.Sprintf("%s.%s", tempRestoreOptions.RestoreDataDir, "part")
+	tempRestoreOptions.Config.RestoreDataDir = fmt.Sprintf("%s.%s", tempRestoreOptions.Config.RestoreDataDir, "part")
 
-	if err := e.removeDir(tempRestoreOptions.RestoreDataDir); err != nil {
+	if err := e.removeDir(tempRestoreOptions.Config.RestoreDataDir); err != nil {
 		return false, fmt.Errorf("failed to delete previous temporary data directory: %v", err)
 	}
 
@@ -148,7 +144,7 @@ func (e *EtcdInitializer) restoreCorruptData() (bool, error) {
 // and false if directory removal failed or if directory
 // never existed (bootstrap case)
 func (e *EtcdInitializer) restoreWithEmptySnapstore() (bool, error) {
-	dataDir := e.Config.RestoreOptions.RestoreDataDir
+	dataDir := e.Config.RestoreOptions.Config.RestoreDataDir
 	e.Logger.Infof("Removing directory(%s) since snapstore is empty.", dataDir)
 
 	// If data directory doesn't exist, it means we are bootstrapping

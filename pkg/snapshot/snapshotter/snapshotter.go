@@ -25,11 +25,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gardener/etcd-backup-restore/pkg/metrics"
-
 	"github.com/coreos/etcd/clientv3"
 	"github.com/gardener/etcd-backup-restore/pkg/errors"
 	"github.com/gardener/etcd-backup-restore/pkg/etcdutil"
+	"github.com/gardener/etcd-backup-restore/pkg/metrics"
 	"github.com/gardener/etcd-backup-restore/pkg/miscellaneous"
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	"github.com/prometheus/client_golang/prometheus"
@@ -37,44 +36,17 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-// NewSnapshotterConfig returns a config for the snapshotter.
-func NewSnapshotterConfig(schedule string, store snapstore.SnapStore, maxBackups, deltaSnapshotMemoryLimit int, deltaSnapshotInterval, etcdConnectionTimeout, garbageCollectionPeriod time.Duration, garbageCollectionPolicy string, tlsConfig *etcdutil.TLSConfig) (*Config, error) {
-	logrus.Printf("Validating schedule... [%s]", schedule)
-	sdl, err := cron.ParseStandard(schedule)
-	if err != nil {
-		return nil, fmt.Errorf("invalid schedule provied %s : %v", schedule, err)
-	}
-
-	if garbageCollectionPolicy == GarbageCollectionPolicyLimitBased && maxBackups < 1 {
-		logrus.Infof("Found garbage collection policy: [%s], and maximum backup value %d less than 1. Setting it to default: %d ", GarbageCollectionPolicyLimitBased, maxBackups, DefaultMaxBackups)
-		maxBackups = DefaultMaxBackups
-	}
-	if deltaSnapshotInterval < deltaSnapshotIntervalThreshold {
-		logrus.Infof("Found delta snapshot interval %s less than 1 second. Disabling delta snapshotting. ", deltaSnapshotInterval)
-	}
-	if deltaSnapshotMemoryLimit < 1 {
-		logrus.Infof("Found delta snapshot memory limit %d bytes less than 1 byte. Setting it to default: %d ", deltaSnapshotMemoryLimit, DefaultDeltaSnapMemoryLimit)
-		deltaSnapshotMemoryLimit = DefaultDeltaSnapMemoryLimit
-	}
-
-	return &Config{
-		schedule:                 sdl,
-		store:                    store,
-		deltaSnapshotMemoryLimit: deltaSnapshotMemoryLimit,
-		deltaSnapshotInterval:    deltaSnapshotInterval,
-		etcdConnectionTimeout:    etcdConnectionTimeout,
-		garbageCollectionPeriod:  garbageCollectionPeriod,
-		garbageCollectionPolicy:  garbageCollectionPolicy,
-		maxBackups:               maxBackups,
-		tlsConfig:                tlsConfig,
-	}, nil
-}
-
 // NewSnapshotter returns the snapshotter object.
-func NewSnapshotter(logger *logrus.Entry, config *Config) *Snapshotter {
+func NewSnapshotter(logger *logrus.Entry, config *Config, store snapstore.SnapStore, etcdConnectionConfig *etcdutil.EtcdConnectionConfig) (*Snapshotter, error) {
+	sdl, err := cron.ParseStandard(config.FullSnapshotSchedule)
+	if err != nil {
+		// Ideally this should be validated before.
+		return nil, fmt.Errorf("invalid schedule provied %s : %v", config.FullSnapshotSchedule, err)
+	}
+
 	// Create dummy previous snapshot
 	var prevSnapshot *snapstore.Snapshot
-	fullSnap, deltaSnapList, err := miscellaneous.GetLatestFullSnapshotAndDeltaSnapList(config.store)
+	fullSnap, deltaSnapList, err := miscellaneous.GetLatestFullSnapshotAndDeltaSnapList(store)
 	if err != nil || fullSnap == nil {
 		prevSnapshot = snapstore.NewSnapshot(snapstore.SnapshotKindFull, 0, 0)
 	} else if len(deltaSnapList) == 0 {
@@ -88,10 +60,14 @@ func NewSnapshotter(logger *logrus.Entry, config *Config) *Snapshotter {
 	metrics.LatestSnapshotRevision.With(prometheus.Labels{metrics.LabelKind: prevSnapshot.Kind}).Set(float64(prevSnapshot.LastRevision))
 
 	return &Snapshotter{
-		logger:             logger.WithField("actor", "snapshotter"),
+		logger:               logger.WithField("actor", "snapshotter"),
+		store:                store,
+		config:               config,
+		etcdConnectionConfig: etcdConnectionConfig,
+
+		schedule:           sdl,
 		prevSnapshot:       prevSnapshot,
 		PrevFullSnapshot:   fullSnap,
-		config:             config,
 		SsrState:           SnapshotterInactive,
 		SsrStateMutex:      &sync.Mutex{},
 		fullSnapshotReqCh:  make(chan struct{}),
@@ -99,7 +75,7 @@ func NewSnapshotter(logger *logrus.Entry, config *Config) *Snapshotter {
 		fullSnapshotAckCh:  make(chan error),
 		deltaSnapshotAckCh: make(chan error),
 		cancelWatch:        func() {},
-	}
+	}, nil
 }
 
 // Run process loop for scheduled backup
@@ -129,9 +105,9 @@ func (ssr *Snapshotter) Run(stopCh <-chan struct{}, startWithFullSnapshot bool) 
 	}
 
 	ssr.deltaSnapshotTimer = time.NewTimer(DefaultDeltaSnapshotInterval)
-	if ssr.config.deltaSnapshotInterval >= deltaSnapshotIntervalThreshold {
+	if ssr.config.DeltaSnapshotPeriod.Duration >= deltaSnapshotIntervalThreshold {
 		ssr.deltaSnapshotTimer.Stop()
-		ssr.deltaSnapshotTimer.Reset(ssr.config.deltaSnapshotInterval)
+		ssr.deltaSnapshotTimer.Reset(ssr.config.DeltaSnapshotPeriod.Duration)
 	}
 
 	return ssr.snapshotEventHandler(stopCh)
@@ -160,8 +136,8 @@ func (ssr *Snapshotter) TriggerDeltaSnapshot() error {
 	if ssr.SsrState != SnapshotterActive {
 		return fmt.Errorf("snapshotter is not active")
 	}
-	if ssr.config.deltaSnapshotInterval < deltaSnapshotIntervalThreshold {
-		return fmt.Errorf("Found delta snapshot interval %s less than %v. Delta snapshotting is disabled. ", ssr.config.deltaSnapshotInterval, time.Duration(deltaSnapshotIntervalThreshold))
+	if ssr.config.DeltaSnapshotPeriod.Duration < deltaSnapshotIntervalThreshold {
+		return fmt.Errorf("Found delta snapshot interval %s less than %v. Delta snapshotting is disabled. ", ssr.config.DeltaSnapshotPeriod.Duration, time.Duration(deltaSnapshotIntervalThreshold))
 	}
 	ssr.logger.Info("Triggering out of schedule delta snapshot...")
 	ssr.deltaSnapshotReqCh <- emptyStruct
@@ -225,14 +201,14 @@ func (ssr *Snapshotter) takeFullSnapshot() error {
 	// close previous watch and client.
 	ssr.closeEtcdClient()
 
-	client, err := etcdutil.GetTLSClientForEtcd(ssr.config.tlsConfig)
+	client, err := etcdutil.GetTLSClientForEtcd(ssr.etcdConnectionConfig)
 	if err != nil {
 		return &errors.EtcdError{
 			Message: fmt.Sprintf("failed to create etcd client: %v", err),
 		}
 	}
 
-	ctx, cancel := context.WithTimeout(context.TODO(), ssr.config.etcdConnectionTimeout)
+	ctx, cancel := context.WithTimeout(context.TODO(), ssr.etcdConnectionConfig.ConnectionTimeout.Duration)
 	// Note: Although Get and snapshot call are not atomic, so revision number in snapshot file
 	// may be ahead of the revision found from GET call. But currently this is the only workaround available
 	// Refer: https://github.com/coreos/etcd/issues/9037
@@ -248,7 +224,7 @@ func (ssr *Snapshotter) takeFullSnapshot() error {
 	if ssr.prevSnapshot.Kind == snapstore.SnapshotKindFull && ssr.prevSnapshot.LastRevision == lastRevision {
 		ssr.logger.Infof("There are no updates since last snapshot, skipping full snapshot.")
 	} else {
-		ctx, cancel = context.WithTimeout(context.TODO(), ssr.config.etcdConnectionTimeout)
+		ctx, cancel = context.WithTimeout(context.TODO(), ssr.etcdConnectionConfig.ConnectionTimeout.Duration)
 		defer cancel()
 		rc, err := client.Snapshot(ctx)
 		if err != nil {
@@ -259,7 +235,7 @@ func (ssr *Snapshotter) takeFullSnapshot() error {
 		ssr.logger.Infof("Successfully opened snapshot reader on etcd")
 		s := snapstore.NewSnapshot(snapstore.SnapshotKindFull, 0, lastRevision)
 		startTime := time.Now()
-		if err := ssr.config.store.Save(*s, rc); err != nil {
+		if err := ssr.store.Save(*s, rc); err != nil {
 			timeTaken := time.Now().Sub(startTime).Seconds()
 			metrics.SnapshotDurationSeconds.With(prometheus.Labels{metrics.LabelKind: snapstore.SnapshotKindFull, metrics.LabelSucceeded: metrics.ValueSucceededFalse}).Observe(timeTaken)
 			return &errors.SnapstoreError{
@@ -283,7 +259,7 @@ func (ssr *Snapshotter) takeFullSnapshot() error {
 	metrics.SnapshotRequired.With(prometheus.Labels{metrics.LabelKind: snapstore.SnapshotKindFull}).Set(0)
 	metrics.SnapshotRequired.With(prometheus.Labels{metrics.LabelKind: snapstore.SnapshotKindDelta}).Set(0)
 
-	if ssr.config.deltaSnapshotInterval < time.Second {
+	if ssr.config.DeltaSnapshotPeriod.Duration < time.Second {
 		// return without creating a watch on events
 		return nil
 	}
@@ -311,12 +287,12 @@ func (ssr *Snapshotter) takeDeltaSnapshotAndResetTimer() error {
 	}
 
 	if ssr.deltaSnapshotTimer == nil {
-		ssr.deltaSnapshotTimer = time.NewTimer(ssr.config.deltaSnapshotInterval)
+		ssr.deltaSnapshotTimer = time.NewTimer(ssr.config.DeltaSnapshotPeriod.Duration)
 	} else {
 		ssr.logger.Infof("Stopping delta snapshot...")
 		ssr.deltaSnapshotTimer.Stop()
-		ssr.logger.Infof("Resetting delta snapshot to run after %s.", ssr.config.deltaSnapshotInterval.String())
-		ssr.deltaSnapshotTimer.Reset(ssr.config.deltaSnapshotInterval)
+		ssr.logger.Infof("Resetting delta snapshot to run after %s.", ssr.config.DeltaSnapshotPeriod.Duration.String())
+		ssr.deltaSnapshotTimer.Reset(ssr.config.DeltaSnapshotPeriod.Duration)
 	}
 	return nil
 }
@@ -343,7 +319,7 @@ func (ssr *Snapshotter) TakeDeltaSnapshot() error {
 	}
 	ssr.events = hash.Sum(ssr.events)
 	startTime := time.Now()
-	if err := ssr.config.store.Save(*snap, ioutil.NopCloser(bytes.NewReader(ssr.events))); err != nil {
+	if err := ssr.store.Save(*snap, ioutil.NopCloser(bytes.NewReader(ssr.events))); err != nil {
 		timeTaken := time.Now().Sub(startTime).Seconds()
 		metrics.SnapshotDurationSeconds.With(prometheus.Labels{metrics.LabelKind: snapstore.SnapshotKindDelta, metrics.LabelSucceeded: metrics.ValueSucceededFalse}).Observe(timeTaken)
 		ssr.logger.Errorf("Error saving delta snapshots. %v", err)
@@ -364,15 +340,14 @@ func (ssr *Snapshotter) TakeDeltaSnapshot() error {
 func (ssr *Snapshotter) CollectEventsSincePrevSnapshot(stopCh <-chan struct{}) (bool, error) {
 	// close any previous watch and client.
 	ssr.closeEtcdClient()
-
-	client, err := etcdutil.GetTLSClientForEtcd(ssr.config.tlsConfig)
+	client, err := etcdutil.GetTLSClientForEtcd(ssr.etcdConnectionConfig)
 	if err != nil {
 		return false, &errors.EtcdError{
 			Message: fmt.Sprintf("failed to create etcd client: %v", err),
 		}
 	}
 
-	ctx, cancel := context.WithTimeout(context.TODO(), ssr.config.etcdConnectionTimeout)
+	ctx, cancel := context.WithTimeout(context.TODO(), ssr.etcdConnectionConfig.ConnectionTimeout.Duration)
 	resp, err := client.Get(ctx, "", clientv3.WithLastRev()...)
 	cancel()
 	if err != nil {
@@ -391,6 +366,7 @@ func (ssr *Snapshotter) CollectEventsSincePrevSnapshot(stopCh <-chan struct{}) (
 		metrics.SnapshotRequired.With(prometheus.Labels{metrics.LabelKind: snapstore.SnapshotKindFull}).Set(1)
 	}
 
+	// TODO: Use parent context. Passing parent context here directly requires some additional management of error handling.
 	watchCtx, cancelWatch := context.WithCancel(context.TODO())
 	ssr.cancelWatch = cancelWatch
 	ssr.etcdClient = client
@@ -451,7 +427,7 @@ func (ssr *Snapshotter) handleDeltaWatchEvents(wr clientv3.WatchResponse) error 
 		metrics.SnapshotRequired.With(prometheus.Labels{metrics.LabelKind: snapstore.SnapshotKindDelta}).Set(1)
 	}
 	ssr.logger.Debugf("Added events till revision: %d", ssr.lastEventRevision)
-	if len(ssr.events) >= ssr.config.deltaSnapshotMemoryLimit {
+	if len(ssr.events) >= int(ssr.config.DeltaSnapshotMemoryLimit) {
 		ssr.logger.Infof("Delta events memory crossed the memory limit: %d Bytes", len(ssr.events))
 		return ssr.takeDeltaSnapshotAndResetTimer()
 	}
@@ -488,7 +464,7 @@ func (ssr *Snapshotter) snapshotEventHandler(stopCh <-chan struct{}) error {
 			}
 
 		case <-ssr.deltaSnapshotTimer.C:
-			if ssr.config.deltaSnapshotInterval >= time.Second {
+			if ssr.config.DeltaSnapshotPeriod.Duration >= time.Second {
 				if err := ssr.takeDeltaSnapshotAndResetTimer(); err != nil {
 					return err
 				}
@@ -511,7 +487,7 @@ func (ssr *Snapshotter) snapshotEventHandler(stopCh <-chan struct{}) error {
 
 func (ssr *Snapshotter) resetFullSnapshotTimer() error {
 	now := time.Now()
-	effective := ssr.config.schedule.Next(now)
+	effective := ssr.schedule.Next(now)
 	if effective.IsZero() {
 		ssr.logger.Info("There are no backups scheduled for the future. Stopping now.")
 		return fmt.Errorf("error in full snapshot schedule")

@@ -40,12 +40,12 @@ type ABSSnapStore struct {
 	containerURL *azblob.ContainerURL
 	prefix       string
 	// maxParallelChunkUploads hold the maximum number of parallel chunk uploads allowed.
-	maxParallelChunkUploads int
+	maxParallelChunkUploads uint
 	tempDir                 string
 }
 
 // NewABSSnapStore create new ABSSnapStore from shared configuration with specified bucket
-func NewABSSnapStore(container, prefix, tempDir string, maxParallelChunkUploads int) (*ABSSnapStore, error) {
+func NewABSSnapStore(container, prefix, tempDir string, maxParallelChunkUploads uint) (*ABSSnapStore, error) {
 	storageAccount, err := GetEnvVarOrError(absStorageAccount)
 	if err != nil {
 		return nil, err
@@ -74,7 +74,7 @@ func NewABSSnapStore(container, prefix, tempDir string, maxParallelChunkUploads 
 }
 
 // GetABSSnapstoreFromClient returns a new ABS object for a given container using the supplied storageClient
-func GetABSSnapstoreFromClient(container, prefix, tempDir string, maxParallelChunkUploads int, containerURL *azblob.ContainerURL) (*ABSSnapStore, error) {
+func GetABSSnapstoreFromClient(container, prefix, tempDir string, maxParallelChunkUploads uint, containerURL *azblob.ContainerURL) (*ABSSnapStore, error) {
 	// Check if supplied container exists
 	ctx, cancel := context.WithTimeout(context.TODO(), providerConnectionTimeout)
 	defer cancel()
@@ -168,7 +168,7 @@ func (a *ABSSnapStore) Save(snap Snapshot, rc io.ReadCloser) error {
 		cancelCh      = make(chan struct{})
 	)
 
-	for i := 0; i < a.maxParallelChunkUploads; i++ {
+	for i := uint(0); i < a.maxParallelChunkUploads; i++ {
 		wg.Add(1)
 		go a.blockUploader(&wg, cancelCh, &snap, tmpfile, chunkUploadCh, resCh)
 	}

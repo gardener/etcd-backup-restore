@@ -38,43 +38,36 @@ import (
 
 var _ = Describe("Running Restorer", func() {
 	var (
-		store snapstore.SnapStore
-		rstr  *Restorer
-
-		restoreCluster         string
-		restoreClusterToken    string
-		restoreDataDir         string
-		restorePeerURLs        []string
-		restoreName            string
-		skipHashCheck          bool
-		maxFetchers            int
-		embeddedEtcdQuotaBytes int64
-
-		clusterUrlsMap types.URLsMap
-		peerUrls       types.URLs
-		baseSnapshot   *snapstore.Snapshot
-		deltaSnapList  snapstore.SnapList
-		wg             *sync.WaitGroup
+		store           snapstore.SnapStore
+		rstr            *Restorer
+		restorePeerURLs []string
+		clusterUrlsMap  types.URLsMap
+		peerUrls        types.URLs
+		baseSnapshot    *snapstore.Snapshot
+		deltaSnapList   snapstore.SnapList
+		wg              *sync.WaitGroup
+	)
+	const (
+		restoreName            string = "default"
+		restoreClusterToken    string = "etcd-cluster"
+		restoreCluster         string = "default=http://localhost:2380"
+		skipHashCheck          bool   = false
+		maxFetchers            uint   = 6
+		embeddedEtcdQuotaBytes int64  = 8 * 1024 * 1024 * 1024
 	)
 
 	BeforeEach(func() {
 		wg = &sync.WaitGroup{}
-		restoreDataDir = etcdDir
-		restoreClusterToken = "etcd-cluster"
-		restoreName = "default"
-		restoreCluster = restoreName + "=http://localhost:2380"
 		restorePeerURLs = []string{"http://localhost:2380"}
 		clusterUrlsMap, err = types.NewURLsMap(restoreCluster)
 		Expect(err).ShouldNot(HaveOccurred())
 		peerUrls, err = types.NewURLs(restorePeerURLs)
 		Expect(err).ShouldNot(HaveOccurred())
-		skipHashCheck = false
-		maxFetchers = 6
-		embeddedEtcdQuotaBytes = 8 * 1024 * 1024 * 1024
-
 	})
 
 	Describe("For pre-loaded Snapstore", func() {
+		var restoreOpts RestoreOptions
+
 		BeforeEach(func() {
 			err = corruptEtcdDir()
 			Expect(err).ShouldNot(HaveOccurred())
@@ -86,190 +79,103 @@ var _ = Describe("Running Restorer", func() {
 			Expect(err).ShouldNot(HaveOccurred())
 
 			rstr = NewRestorer(store, logger)
-		})
-
-		Context("with zero fetchers", func() {
-			It("should return error", func() {
-				maxFetchers = 0
-
-				restoreOptions := RestoreOptions{
-					ClusterURLs:            clusterUrlsMap,
-					ClusterToken:           restoreClusterToken,
-					RestoreDataDir:         restoreDataDir,
-					PeerURLs:               peerUrls,
-					SkipHashCheck:          skipHashCheck,
-					Name:                   restoreName,
-					MaxFetchers:            maxFetchers,
-					EmbeddedEtcdQuotaBytes: embeddedEtcdQuotaBytes,
-					BaseSnapshot:           *baseSnapshot,
-					DeltaSnapList:          deltaSnapList,
-				}
-				err = rstr.Restore(restoreOptions)
-				Expect(err).Should(HaveOccurred())
-			})
+			restoreOpts = RestoreOptions{
+				Config: &RestorationConfig{
+					RestoreDataDir:           etcdDir,
+					InitialClusterToken:      restoreClusterToken,
+					InitialCluster:           restoreCluster,
+					Name:                     restoreName,
+					InitialAdvertisePeerURLs: restorePeerURLs,
+					SkipHashCheck:            skipHashCheck,
+					MaxFetchers:              maxFetchers,
+					EmbeddedEtcdQuotaBytes:   embeddedEtcdQuotaBytes,
+				},
+				BaseSnapshot:  *baseSnapshot,
+				DeltaSnapList: deltaSnapList,
+				ClusterURLs:   clusterUrlsMap,
+				PeerURLs:      peerUrls,
+			}
 		})
 
 		Context("with embedded etcd quota not set", func() {
 			It("should be set to default value of 8 GB and restore", func() {
-				embeddedEtcdQuotaBytes = 0
+				restoreOpts.Config.EmbeddedEtcdQuotaBytes = 0
 
-				RestoreOptions := RestoreOptions{
-					ClusterURLs:            clusterUrlsMap,
-					ClusterToken:           restoreClusterToken,
-					RestoreDataDir:         restoreDataDir,
-					PeerURLs:               peerUrls,
-					SkipHashCheck:          skipHashCheck,
-					Name:                   restoreName,
-					MaxFetchers:            maxFetchers,
-					EmbeddedEtcdQuotaBytes: embeddedEtcdQuotaBytes,
-					BaseSnapshot:           *baseSnapshot,
-					DeltaSnapList:          deltaSnapList,
-				}
-				err = rstr.Restore(RestoreOptions)
-				Expect(err).ShouldNot(HaveOccurred())
-
+				err = restoreOpts.Config.Validate()
+				Expect(err).Should(HaveOccurred())
 			})
 		})
 
 		Context("with invalid cluster URLS", func() {
 			It("should fail with an error ", func() {
-				restoreCluster = restoreName + "=http://localhost:2390"
-				restorePeerURLs = []string{"http://localhost:2390"}
-				clusterUrlsMap, err = types.NewURLsMap(restoreCluster)
+				restoreOpts.Config.InitialCluster = restoreName + "=http://localhost:2390"
+				restoreOpts.Config.InitialAdvertisePeerURLs = []string{"http://localhost:2390"}
+				restoreOpts.ClusterURLs, err = types.NewURLsMap(restoreOpts.Config.InitialCluster)
 
-				RestoreOptions := RestoreOptions{
-					ClusterURLs:            clusterUrlsMap,
-					ClusterToken:           restoreClusterToken,
-					RestoreDataDir:         restoreDataDir,
-					PeerURLs:               peerUrls,
-					SkipHashCheck:          skipHashCheck,
-					Name:                   restoreName,
-					MaxFetchers:            maxFetchers,
-					EmbeddedEtcdQuotaBytes: embeddedEtcdQuotaBytes,
-					BaseSnapshot:           *baseSnapshot,
-					DeltaSnapList:          deltaSnapList,
-				}
-				err = rstr.Restore(RestoreOptions)
+				err = rstr.Restore(restoreOpts)
 				Expect(err).Should(HaveOccurred())
-
 			})
 		})
 
 		Context("with invalid restore directory", func() {
 			It("should fail to restore", func() {
+				restoreOpts.Config.RestoreDataDir = ""
 
-				restoreOptions := RestoreOptions{
-					ClusterURLs:            clusterUrlsMap,
-					ClusterToken:           restoreClusterToken,
-					RestoreDataDir:         "", //restoreDataDir,
-					PeerURLs:               peerUrls,
-					SkipHashCheck:          skipHashCheck,
-					Name:                   restoreName,
-					MaxFetchers:            maxFetchers,
-					EmbeddedEtcdQuotaBytes: embeddedEtcdQuotaBytes,
-					BaseSnapshot:           *baseSnapshot,
-					DeltaSnapList:          deltaSnapList,
-				}
-				err = rstr.Restore(restoreOptions)
-				Expect(err).ShouldNot(HaveOccurred())
-
+				err = rstr.Restore(restoreOpts)
+				Expect(err).Should(HaveOccurred())
 			})
 		})
 
 		Context("with invalid snapdir and snapname", func() {
 			It("should fail to restore", func() {
+				restoreOpts.BaseSnapshot.SnapDir = "test"
+				restoreOpts.BaseSnapshot.SnapName = "test"
 
-				restoreOptions := RestoreOptions{
-					ClusterURLs:            clusterUrlsMap,
-					ClusterToken:           restoreClusterToken,
-					RestoreDataDir:         restoreDataDir,
-					PeerURLs:               peerUrls,
-					SkipHashCheck:          skipHashCheck,
-					Name:                   restoreName,
-					MaxFetchers:            maxFetchers,
-					EmbeddedEtcdQuotaBytes: embeddedEtcdQuotaBytes,
-					BaseSnapshot:           *baseSnapshot,
-					DeltaSnapList:          deltaSnapList,
-				}
-				restoreOptions.BaseSnapshot.SnapDir = "test"
-				restoreOptions.BaseSnapshot.SnapName = "test"
-				err := rstr.Restore(restoreOptions)
+				err := rstr.Restore(restoreOpts)
 				Expect(err).Should(HaveOccurred())
+			})
+		})
 
+		Context("with zero fetchers", func() {
+			It("should return error", func() {
+				restoreOpts.Config.MaxFetchers = 0
+
+				err = restoreOpts.Config.Validate()
+				Expect(err).Should(HaveOccurred())
 			})
 		})
 
 		Context("with maximum of one fetcher allowed", func() {
-			const maxFetchers = 1
-
 			It("should restore etcd data directory", func() {
-				logger.Infof("Testing for max-fetchers: %d", maxFetchers)
-				restoreOptions := RestoreOptions{
-					ClusterURLs:            clusterUrlsMap,
-					ClusterToken:           restoreClusterToken,
-					RestoreDataDir:         restoreDataDir,
-					PeerURLs:               peerUrls,
-					SkipHashCheck:          skipHashCheck,
-					Name:                   restoreName,
-					MaxFetchers:            maxFetchers,
-					EmbeddedEtcdQuotaBytes: embeddedEtcdQuotaBytes,
-					BaseSnapshot:           *baseSnapshot,
-					DeltaSnapList:          deltaSnapList,
-				}
-				err = rstr.Restore(restoreOptions)
+				restoreOpts.Config.MaxFetchers = 1
+				err = rstr.Restore(restoreOpts)
 				Expect(err).ShouldNot(HaveOccurred())
 
-				err = checkDataConsistency(testCtx, restoreDataDir, logger)
+				err = checkDataConsistency(testCtx, restoreOpts.Config.RestoreDataDir, logger)
 				Expect(err).ShouldNot(HaveOccurred())
 			})
 		})
 
 		Context("with maximum of four fetchers allowed", func() {
-			const maxFetchers = 4
-
 			It("should restore etcd data directory", func() {
-				logger.Infof("Testing for max-fetchers: %d", maxFetchers)
-				restoreOptions := RestoreOptions{
-					ClusterURLs:            clusterUrlsMap,
-					ClusterToken:           restoreClusterToken,
-					RestoreDataDir:         restoreDataDir,
-					PeerURLs:               peerUrls,
-					SkipHashCheck:          skipHashCheck,
-					Name:                   restoreName,
-					MaxFetchers:            maxFetchers,
-					EmbeddedEtcdQuotaBytes: embeddedEtcdQuotaBytes,
-					BaseSnapshot:           *baseSnapshot,
-					DeltaSnapList:          deltaSnapList,
-				}
-				err = rstr.Restore(restoreOptions)
+				restoreOpts.Config.MaxFetchers = 4
+
+				err = rstr.Restore(restoreOpts)
 				Expect(err).ShouldNot(HaveOccurred())
 
-				err = checkDataConsistency(testCtx, restoreDataDir, logger)
+				err = checkDataConsistency(testCtx, restoreOpts.Config.RestoreDataDir, logger)
 				Expect(err).ShouldNot(HaveOccurred())
 			})
 		})
 
 		Context("with maximum of hundred fetchers allowed", func() {
-			const maxFetchers = 100
-
 			It("should restore etcd data directory", func() {
-				logger.Infof("Testing for max-fetchers: %d", maxFetchers)
-				restoreOptions := RestoreOptions{
-					ClusterURLs:            clusterUrlsMap,
-					ClusterToken:           restoreClusterToken,
-					RestoreDataDir:         restoreDataDir,
-					PeerURLs:               peerUrls,
-					SkipHashCheck:          skipHashCheck,
-					Name:                   restoreName,
-					MaxFetchers:            maxFetchers,
-					EmbeddedEtcdQuotaBytes: embeddedEtcdQuotaBytes,
-					BaseSnapshot:           *baseSnapshot,
-					DeltaSnapList:          deltaSnapList,
-				}
-				err = rstr.Restore(restoreOptions)
+				restoreOpts.Config.MaxFetchers = 100
+
+				err = rstr.Restore(restoreOpts)
 				Expect(err).ShouldNot(HaveOccurred())
 
-				err = checkDataConsistency(testCtx, restoreDataDir, logger)
+				err = checkDataConsistency(testCtx, restoreOpts.Config.RestoreDataDir, logger)
 				Expect(err).ShouldNot(HaveOccurred())
 			})
 		})
@@ -280,6 +186,7 @@ var _ = Describe("Running Restorer", func() {
 			store               snapstore.SnapStore
 			deltaSnapshotPeriod time.Duration
 			endpoints           []string
+			restorationConfig   *RestorationConfig
 		)
 
 		BeforeEach(func() {
@@ -290,6 +197,17 @@ var _ = Describe("Running Restorer", func() {
 
 			store, err = snapstore.GetSnapstore(&snapstore.Config{Container: snapstoreDir, Provider: "Local"})
 			Expect(err).ShouldNot(HaveOccurred())
+
+			restorationConfig = &RestorationConfig{
+				RestoreDataDir:           etcdDir,
+				InitialClusterToken:      restoreClusterToken,
+				InitialCluster:           restoreCluster,
+				Name:                     restoreName,
+				InitialAdvertisePeerURLs: restorePeerURLs,
+				SkipHashCheck:            skipHashCheck,
+				MaxFetchers:              maxFetchers,
+				EmbeddedEtcdQuotaBytes:   embeddedEtcdQuotaBytes,
+			}
 		})
 
 		AfterEach(func() {
@@ -324,23 +242,20 @@ var _ = Describe("Running Restorer", func() {
 				logger.Infof("Base snapshot is %v", baseSnapshot)
 
 				rstr = NewRestorer(store, logger)
-				restoreOptions := RestoreOptions{
-					ClusterURLs:            clusterUrlsMap,
-					ClusterToken:           restoreClusterToken,
-					RestoreDataDir:         restoreDataDir,
-					PeerURLs:               peerUrls,
-					SkipHashCheck:          skipHashCheck,
-					Name:                   restoreName,
-					MaxFetchers:            maxFetchers,
-					EmbeddedEtcdQuotaBytes: embeddedEtcdQuotaBytes,
-					DeltaSnapList:          deltaSnapList,
+				restoreOpts := RestoreOptions{
+					Config:        restorationConfig,
+					DeltaSnapList: deltaSnapList,
+					ClusterURLs:   clusterUrlsMap,
+					PeerURLs:      peerUrls,
 				}
-				restoreOptions.BaseSnapshot.SnapDir = ""
-				restoreOptions.BaseSnapshot.SnapName = ""
-				err := rstr.Restore(restoreOptions)
+
+				restoreOpts.BaseSnapshot.SnapDir = ""
+				restoreOpts.BaseSnapshot.SnapName = ""
+
+				err := rstr.Restore(restoreOpts)
 
 				Expect(err).ShouldNot(HaveOccurred())
-				err = checkDataConsistency(testCtx, restoreDataDir, logger)
+				err = checkDataConsistency(testCtx, restoreOpts.Config.RestoreDataDir, logger)
 				Expect(err).ShouldNot(HaveOccurred())
 			})
 		})
@@ -368,19 +283,15 @@ var _ = Describe("Running Restorer", func() {
 
 				rstr = NewRestorer(store, logger)
 
-				RestoreOptions := RestoreOptions{
-					ClusterURLs:            clusterUrlsMap,
-					ClusterToken:           restoreClusterToken,
-					RestoreDataDir:         restoreDataDir,
-					PeerURLs:               peerUrls,
-					SkipHashCheck:          skipHashCheck,
-					Name:                   restoreName,
-					MaxFetchers:            maxFetchers,
-					EmbeddedEtcdQuotaBytes: embeddedEtcdQuotaBytes,
-					BaseSnapshot:           *baseSnapshot,
-					DeltaSnapList:          deltaSnapList,
+				restoreOpts := RestoreOptions{
+					Config:        restorationConfig,
+					BaseSnapshot:  *baseSnapshot,
+					DeltaSnapList: deltaSnapList,
+					ClusterURLs:   clusterUrlsMap,
+					PeerURLs:      peerUrls,
 				}
-				err = rstr.Restore(RestoreOptions)
+
+				err = rstr.Restore(restoreOpts)
 
 				Expect(err).ShouldNot(HaveOccurred())
 
@@ -414,24 +325,19 @@ var _ = Describe("Running Restorer", func() {
 
 				rstr = NewRestorer(store, logger)
 
-				RestoreOptions := RestoreOptions{
-					ClusterURLs:            clusterUrlsMap,
-					ClusterToken:           restoreClusterToken,
-					RestoreDataDir:         restoreDataDir,
-					PeerURLs:               peerUrls,
-					SkipHashCheck:          skipHashCheck,
-					Name:                   restoreName,
-					MaxFetchers:            maxFetchers,
-					EmbeddedEtcdQuotaBytes: embeddedEtcdQuotaBytes,
-					BaseSnapshot:           *baseSnapshot,
-					DeltaSnapList:          deltaSnapList,
+				restoreOpts := RestoreOptions{
+					Config:        restorationConfig,
+					BaseSnapshot:  *baseSnapshot,
+					DeltaSnapList: deltaSnapList,
+					ClusterURLs:   clusterUrlsMap,
+					PeerURLs:      peerUrls,
 				}
 
-				err = rstr.Restore(RestoreOptions)
+				err = rstr.Restore(restoreOpts)
 				Expect(err).Should(HaveOccurred())
 				// the below consistency fails with index out of range error hence commented,
 				// but the etcd directory is filled partially as part of the restore which should be relooked.
-				// err = checkDataConsistency(restoreDataDir, logger)
+				// err = checkDataConsistency(restoreOptions.Config.RestoreDataDir, logger)
 				// Expect(err).Should(HaveOccurred())
 
 			})
@@ -454,20 +360,16 @@ var _ = Describe("Running Restorer", func() {
 
 				rstr = NewRestorer(store, logger)
 
-				RestoreOptions := RestoreOptions{
-					ClusterURLs:            clusterUrlsMap,
-					ClusterToken:           restoreClusterToken,
-					RestoreDataDir:         restoreDataDir,
-					PeerURLs:               peerUrls,
-					SkipHashCheck:          skipHashCheck,
-					Name:                   restoreName,
-					MaxFetchers:            maxFetchers,
-					EmbeddedEtcdQuotaBytes: embeddedEtcdQuotaBytes,
-					BaseSnapshot:           *baseSnapshot,
-					DeltaSnapList:          deltaSnapList,
+				restoreOpts := RestoreOptions{
+					Config:        restorationConfig,
+					BaseSnapshot:  *baseSnapshot,
+					DeltaSnapList: deltaSnapList,
+					ClusterURLs:   clusterUrlsMap,
+					PeerURLs:      peerUrls,
 				}
+
 				logger.Infoln("starting restore, restore directory exists already")
-				err = rstr.Restore(RestoreOptions)
+				err = rstr.Restore(restoreOpts)
 				logger.Infof("Failed to restore because :: %s", err)
 
 				Expect(err).Should(HaveOccurred())
@@ -504,22 +406,18 @@ var _ = Describe("Running Restorer", func() {
 
 				rstr = NewRestorer(store, logger)
 
-				RestoreOptions := RestoreOptions{
-					ClusterURLs:            clusterUrlsMap,
-					ClusterToken:           restoreClusterToken,
-					RestoreDataDir:         restoreDataDir,
-					PeerURLs:               peerUrls,
-					SkipHashCheck:          skipHashCheck,
-					Name:                   restoreName,
-					MaxFetchers:            maxFetchers,
-					EmbeddedEtcdQuotaBytes: embeddedEtcdQuotaBytes,
-					BaseSnapshot:           *baseSnapshot,
-					DeltaSnapList:          deltaSnapList,
+				restoreOpts := RestoreOptions{
+					Config:        restorationConfig,
+					BaseSnapshot:  *baseSnapshot,
+					DeltaSnapList: deltaSnapList,
+					ClusterURLs:   clusterUrlsMap,
+					PeerURLs:      peerUrls,
 				}
+
 				logger.Infoln("starting restore while snapshotter is running")
-				err = rstr.Restore(RestoreOptions)
+				err = rstr.Restore(restoreOpts)
 				Expect(err).ShouldNot(HaveOccurred())
-				err = checkDataConsistency(testCtx, restoreDataDir, logger)
+				err = checkDataConsistency(testCtx, restoreOpts.Config.RestoreDataDir, logger)
 				Expect(err).ShouldNot(HaveOccurred())
 
 				// Although the test has passed but the logic currently doesn't stop snapshotter explicitly but assumes that restore
