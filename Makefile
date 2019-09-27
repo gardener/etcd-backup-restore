@@ -61,7 +61,7 @@ check:
 
 .PHONY: test
 test:
-	@env COVER=true .ci/unit_test
+	.ci/unit_test
 
 .PHONY: perf-regression-test
 perf-regression-test:

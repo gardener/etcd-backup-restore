@@ -285,7 +285,7 @@ var _ = Describe("Snapshotter", func() {
 						}
 					})
 
-					It("should fail on triggering out-of-schedule full snapshot", func() {
+					It("should fail on triggering out-of-schedule delta snapshot", func() {
 						store, err = snapstore.GetSnapstore(&snapstore.Config{Container: path.Join(outputDir, "snapshotter_4.bkp")})
 						Expect(err).ShouldNot(HaveOccurred())
 						tlsConfig := etcdutil.NewTLSConfig(
@@ -339,7 +339,7 @@ var _ = Describe("Snapshotter", func() {
 								etcdUsername,
 								etcdPassword)
 							snapshotterConfig, err := NewSnapshotterConfig(
-								fmt.Sprintf("59 %d * * *", currentHour+1), // This make sure that full snapshot timer doesn't trigger full snapshot.
+								fmt.Sprintf("59 %d * * *", (currentHour+1)%24), // This make sure that full snapshot timer doesn't trigger full snapshot.
 								store,
 								maxBackups,
 								DefaultDeltaSnapMemoryLimit,

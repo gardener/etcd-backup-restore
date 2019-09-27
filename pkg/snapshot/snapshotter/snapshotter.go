@@ -161,7 +161,7 @@ func (ssr *Snapshotter) TriggerDeltaSnapshot() error {
 		return fmt.Errorf("snapshotter is not active")
 	}
 	if ssr.config.deltaSnapshotInterval < deltaSnapshotIntervalThreshold {
-		return fmt.Errorf("Found delta snapshot interval %s less than 1 second. Delta snapshotting is disabled. ", ssr.config.deltaSnapshotInterval)
+		return fmt.Errorf("Found delta snapshot interval %s less than %v. Delta snapshotting is disabled. ", ssr.config.deltaSnapshotInterval, time.Duration(deltaSnapshotIntervalThreshold))
 	}
 	ssr.logger.Info("Triggering out of schedule delta snapshot...")
 	ssr.deltaSnapshotReqCh <- emptyStruct
