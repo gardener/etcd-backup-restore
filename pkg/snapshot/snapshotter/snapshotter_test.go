@@ -284,6 +284,38 @@ var _ = Describe("Snapshotter", func() {
 							Expect(snapshot.Kind).ShouldNot(Equal(snapstore.SnapshotKindDelta))
 						}
 					})
+
+					It("should fail on triggering out-of-schedule delta snapshot", func() {
+						store, err = snapstore.GetSnapstore(&snapstore.Config{Container: path.Join(outputDir, "snapshotter_4.bkp")})
+						Expect(err).ShouldNot(HaveOccurred())
+						tlsConfig := etcdutil.NewTLSConfig(
+							certFile,
+							keyFile,
+							caFile,
+							insecureTransport,
+							insecureSkipVerify,
+							endpoints,
+							etcdUsername,
+							etcdPassword)
+						snapshotterConfig, err := NewSnapshotterConfig(
+							schedule,
+							store,
+							maxBackups,
+							DefaultDeltaSnapMemoryLimit,
+							deltaSnapshotInterval,
+							etcdConnectionTimeout,
+							garbageCollectionPeriod,
+							GarbageCollectionPolicyExponential,
+							tlsConfig)
+						Expect(err).ShouldNot(HaveOccurred())
+
+						ssr = NewSnapshotter(
+							logger,
+							snapshotterConfig)
+
+						err = ssr.TriggerDeltaSnapshot()
+						Expect(err).Should(HaveOccurred())
+					})
 				})
 
 				Context("with delta snapshots enabled", func() {
@@ -294,6 +326,7 @@ var _ = Describe("Snapshotter", func() {
 
 					Context("with snapshotter starting without first full snapshot", func() {
 						It("first snapshot should be a delta snapshot", func() {
+							currentHour := time.Now().Hour()
 							store, err = snapstore.GetSnapstore(&snapstore.Config{Container: path.Join(outputDir, "snapshotter_5.bkp")})
 							Expect(err).ShouldNot(HaveOccurred())
 							tlsConfig := etcdutil.NewTLSConfig(
@@ -306,7 +339,7 @@ var _ = Describe("Snapshotter", func() {
 								etcdUsername,
 								etcdPassword)
 							snapshotterConfig, err := NewSnapshotterConfig(
-								schedule,
+								fmt.Sprintf("59 %d * * *", (currentHour+1)%24), // This make sure that full snapshot timer doesn't trigger full snapshot.
 								store,
 								maxBackups,
 								DefaultDeltaSnapMemoryLimit,

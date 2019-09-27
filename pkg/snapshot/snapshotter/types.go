@@ -27,6 +27,7 @@ import (
 )
 
 const (
+	deltaSnapshotIntervalThreshold = time.Second
 	// GarbageCollectionPolicyExponential defines the exponential policy for garbage collecting old backups
 	GarbageCollectionPolicyExponential = "Exponential"
 	// GarbageCollectionPolicyLimitBased defines the limit based policy for garbage collecting old backups
@@ -55,7 +56,10 @@ type Snapshotter struct {
 	prevSnapshot       *snapstore.Snapshot
 	PrevFullSnapshot   *snapstore.Snapshot
 	config             *Config
-	fullSnapshotCh     chan struct{}
+	fullSnapshotReqCh  chan struct{}
+	deltaSnapshotReqCh chan struct{}
+	fullSnapshotAckCh  chan error
+	deltaSnapshotAckCh chan error
 	fullSnapshotTimer  *time.Timer
 	deltaSnapshotTimer *time.Timer
 	events             []byte

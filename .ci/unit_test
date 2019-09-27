@@ -49,18 +49,18 @@ function test_with_coverage() {
 ################################################################################
 
 TEST_PACKAGES="cmd pkg"
-GINKGO_COMMON_FLAGS="-r -timeout=1h0m0s --progress"
+GINKGO_COMMON_FLAGS="-r -timeout=1h0m0s --progress -slowSpecThreshold=180"
 
 if [ -z $COVER ] || [ "$COVER" = false ] ; then
   echo "[INFO] Test coverage is disabled."
 
   # run everything which is not part of negative scenarios with randomizeAllSpecs parameters.
-  ginkgo -race -trace $GINKGO_COMMON_FLAGS --randomizeAllSpecs --randomizeSuites --failOnPending --skip="NEGATIVE\:.*" ${TEST_PACKAGES} 
+  ginkgo -race -trace $GINKGO_COMMON_FLAGS --randomizeAllSpecs --randomizeSuites --failOnPending --skip="NEGATIVE\:.*" ${TEST_PACKAGES}
 
 
-  #run negative scenario in a sequenced manner (removed failOnPending as one spec in restore test is marked as 'X' for excluding) 
-  ginkgo -race -trace $GINKGO_COMMON_FLAGS --focus="NEGATIVE\:.*" ${TEST_PACKAGES} 
-  
+  #run negative scenario in a sequenced manner (removed failOnPending as one spec in restore test is marked as 'X' for excluding)
+  ginkgo -race -trace $GINKGO_COMMON_FLAGS --focus="NEGATIVE\:.*" ${TEST_PACKAGES}
+
 else
   test_with_coverage
 fi

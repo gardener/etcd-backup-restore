@@ -39,7 +39,7 @@ import (
 
 // NewSnapshotterConfig returns a config for the snapshotter.
 func NewSnapshotterConfig(schedule string, store snapstore.SnapStore, maxBackups, deltaSnapshotMemoryLimit int, deltaSnapshotInterval, etcdConnectionTimeout, garbageCollectionPeriod time.Duration, garbageCollectionPolicy string, tlsConfig *etcdutil.TLSConfig) (*Config, error) {
-	logrus.Printf("Validating schedule...")
+	logrus.Printf("Validating schedule... [%s]", schedule)
 	sdl, err := cron.ParseStandard(schedule)
 	if err != nil {
 		return nil, fmt.Errorf("invalid schedule provied %s : %v", schedule, err)
@@ -49,7 +49,7 @@ func NewSnapshotterConfig(schedule string, store snapstore.SnapStore, maxBackups
 		logrus.Infof("Found garbage collection policy: [%s], and maximum backup value %d less than 1. Setting it to default: %d ", GarbageCollectionPolicyLimitBased, maxBackups, DefaultMaxBackups)
 		maxBackups = DefaultMaxBackups
 	}
-	if deltaSnapshotInterval < time.Second {
+	if deltaSnapshotInterval < deltaSnapshotIntervalThreshold {
 		logrus.Infof("Found delta snapshot interval %s less than 1 second. Disabling delta snapshotting. ", deltaSnapshotInterval)
 	}
 	if deltaSnapshotMemoryLimit < 1 {
@@ -88,14 +88,17 @@ func NewSnapshotter(logger *logrus.Entry, config *Config) *Snapshotter {
 	metrics.LatestSnapshotRevision.With(prometheus.Labels{metrics.LabelKind: prevSnapshot.Kind}).Set(float64(prevSnapshot.LastRevision))
 
 	return &Snapshotter{
-		logger:           logger.WithField("actor", "snapshotter"),
-		prevSnapshot:     prevSnapshot,
-		PrevFullSnapshot: fullSnap,
-		config:           config,
-		SsrState:         SnapshotterInactive,
-		SsrStateMutex:    &sync.Mutex{},
-		fullSnapshotCh:   make(chan struct{}),
-		cancelWatch:      func() {},
+		logger:             logger.WithField("actor", "snapshotter"),
+		prevSnapshot:       prevSnapshot,
+		PrevFullSnapshot:   fullSnap,
+		config:             config,
+		SsrState:           SnapshotterInactive,
+		SsrStateMutex:      &sync.Mutex{},
+		fullSnapshotReqCh:  make(chan struct{}),
+		deltaSnapshotReqCh: make(chan struct{}),
+		fullSnapshotAckCh:  make(chan error),
+		deltaSnapshotAckCh: make(chan error),
+		cancelWatch:        func() {},
 	}
 }
 
@@ -126,7 +129,7 @@ func (ssr *Snapshotter) Run(stopCh <-chan struct{}, startWithFullSnapshot bool) 
 	}
 
 	ssr.deltaSnapshotTimer = time.NewTimer(DefaultDeltaSnapshotInterval)
-	if ssr.config.deltaSnapshotInterval >= time.Second {
+	if ssr.config.deltaSnapshotInterval >= deltaSnapshotIntervalThreshold {
 		ssr.deltaSnapshotTimer.Stop()
 		ssr.deltaSnapshotTimer.Reset(ssr.config.deltaSnapshotInterval)
 	}
@@ -144,9 +147,25 @@ func (ssr *Snapshotter) TriggerFullSnapshot(ctx context.Context) error {
 		return fmt.Errorf("snapshotter is not active")
 	}
 	ssr.logger.Info("Triggering out of schedule full snapshot...")
-	ssr.fullSnapshotCh <- emptyStruct
+	ssr.fullSnapshotReqCh <- emptyStruct
+	return <-ssr.fullSnapshotAckCh
+}
 
-	return nil
+// TriggerDeltaSnapshot sends the events to take delta snapshot. This is to
+// trigger delta snapshot externally out of regular schedule.
+func (ssr *Snapshotter) TriggerDeltaSnapshot() error {
+	ssr.SsrStateMutex.Lock()
+	defer ssr.SsrStateMutex.Unlock()
+
+	if ssr.SsrState != SnapshotterActive {
+		return fmt.Errorf("snapshotter is not active")
+	}
+	if ssr.config.deltaSnapshotInterval < deltaSnapshotIntervalThreshold {
+		return fmt.Errorf("Found delta snapshot interval %s less than %v. Delta snapshotting is disabled. ", ssr.config.deltaSnapshotInterval, time.Duration(deltaSnapshotIntervalThreshold))
+	}
+	ssr.logger.Info("Triggering out of schedule delta snapshot...")
+	ssr.deltaSnapshotReqCh <- emptyStruct
+	return <-ssr.deltaSnapshotAckCh
 }
 
 // stop stops the snapshotter. Once stopped any subsequent calls will
@@ -445,20 +464,32 @@ func newEvent(e *clientv3.Event) *event {
 func (ssr *Snapshotter) snapshotEventHandler(stopCh <-chan struct{}) error {
 	for {
 		select {
-		case <-ssr.fullSnapshotCh:
+		case <-ssr.fullSnapshotReqCh:
 			if err := ssr.TakeFullSnapshotAndResetTimer(); err != nil {
+				ssr.fullSnapshotAckCh <- err
 				return err
 			}
+			ssr.fullSnapshotAckCh <- nil
+
+		case <-ssr.deltaSnapshotReqCh:
+			if err := ssr.takeDeltaSnapshotAndResetTimer(); err != nil {
+				ssr.deltaSnapshotAckCh <- err
+				return err
+			}
+			ssr.deltaSnapshotAckCh <- nil
+
 		case <-ssr.fullSnapshotTimer.C:
 			if err := ssr.TakeFullSnapshotAndResetTimer(); err != nil {
 				return err
 			}
+
 		case <-ssr.deltaSnapshotTimer.C:
 			if ssr.config.deltaSnapshotInterval >= time.Second {
 				if err := ssr.takeDeltaSnapshotAndResetTimer(); err != nil {
 					return err
 				}
 			}
+
 		case wr, ok := <-ssr.watchCh:
 			if !ok {
 				return fmt.Errorf("watch channel closed")
@@ -466,6 +497,7 @@ func (ssr *Snapshotter) snapshotEventHandler(stopCh <-chan struct{}) error {
 			if err := ssr.handleDeltaWatchEvents(wr); err != nil {
 				return err
 			}
+
 		case <-stopCh:
 			ssr.cleanupInMemoryEvents()
 			return nil
