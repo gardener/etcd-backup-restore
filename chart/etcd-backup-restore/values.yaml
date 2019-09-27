@@ -40,20 +40,20 @@ backup:
   # schedule is cron standard schedule to take full snapshots.
   schedule: "0 */1 * * *"
 
-  # deltaSnapshotPeriodSeconds is Period in seconds after which delta snapshot will be persisted. If this value is set to be lesser than 1, delta snapshotting will be disabled.
-  deltaSnapshotPeriodSeconds: 60
+  # deltaSnapshotPeriod is Period after which delta snapshot will be persisted. If this value is set to be lesser than 1 second, delta snapshotting will be disabled.
+  deltaSnapshotPeriod: "60s"
   # deltaSnapshotMemoryLimit is memory limit in bytes after which delta snapshots will be taken out of schedule.
   deltaSnapshotMemoryLimit: 104857600 #100MB
 
-  # defragmentationPeriodHours is period after which the etcd data will defragmented. If this value is set to be lesser than 1, defragmentation will be disabled.
-  defragmentationPeriodHours: 72
+  # defragmentationSchedule is schedule on which the etcd data will defragmented. Value should follow standard cron format.
+  defragmentationSchedule: "0 0 */3 * *"
 
   # garbageCollectionPolicy mentions the policy for garbage collecting old backups. Allowed values are Exponential(default), LimitBased.
   garbageCollectionPolicy: Exponential
   # maxBackups is the maximum number of backups to keep (may change in future). This is interpreted in case of garbageCollectionPolicy set to LimitBased.
   maxBackups: 7
 
-  etcdConnectionTimeout: 300
+  etcdConnectionTimeout: "30s"
   # etcdQuotaBytes used to Raise alarms when backend DB size exceeds the given quota bytes
   etcdQuotaBytes: 8589934592 #8GB
 

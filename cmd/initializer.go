@@ -15,6 +15,7 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"path"
 
@@ -29,7 +30,7 @@ import (
 
 // NewInitializeCommand returns the command to initialize etcd by validating the data
 // directory and restoring from cloud store if needed.
-func NewInitializeCommand(stopCh <-chan struct{}) *cobra.Command {
+func NewInitializeCommand(ctx context.Context) *cobra.Command {
 
 	// restoreCmd represents the restore command
 	initializeCmd := &cobra.Command{

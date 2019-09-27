@@ -15,11 +15,13 @@
 package cmd
 
 import (
+	"context"
+
 	"github.com/spf13/cobra"
 )
 
 // NewBackupRestoreCommand represents the base command when called without any subcommands
-func NewBackupRestoreCommand(stopCh <-chan struct{}) *cobra.Command {
+func NewBackupRestoreCommand(ctx context.Context) *cobra.Command {
 	var RootCmd = &cobra.Command{
 		Use:   "etcdbrctl",
 		Short: "command line utility for etcd backup restore",
@@ -34,9 +36,9 @@ from previously taken snapshot.`,
 		},
 	}
 	RootCmd.Flags().BoolVarP(&version, "version", "v", false, "print version info")
-	RootCmd.AddCommand(NewSnapshotCommand(stopCh),
-		NewRestoreCommand(stopCh),
-		NewInitializeCommand(stopCh),
-		NewServerCommand(stopCh))
+	RootCmd.AddCommand(NewSnapshotCommand(ctx),
+		NewRestoreCommand(ctx),
+		NewInitializeCommand(ctx),
+		NewServerCommand(ctx))
 	return RootCmd
 }

@@ -9,6 +9,7 @@ import (
 	"io"
 	"io/ioutil"
 	"log"
+	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -175,9 +176,9 @@ func (client Client) IsBucketExist(bucketName string) (bool, error) {
 //
 // error    it's nil if no error, otherwise it's an error object.
 //
-func (client Client) DeleteBucket(bucketName string) error {
+func (client Client) DeleteBucket(bucketName string, options ...Option) error {
 	params := map[string]interface{}{}
-	resp, err := client.do("DELETE", bucketName, params, nil, nil)
+	resp, err := client.do("DELETE", bucketName, params, nil, nil, options...)
 	if err != nil {
 		return err
 	}
@@ -675,11 +676,11 @@ func (client Client) GetBucketCORS(bucketName string) (GetBucketCORSResult, erro
 //
 // error    it's nil if no error, otherwise it's an error object.
 //
-func (client Client) GetBucketInfo(bucketName string) (GetBucketInfoResult, error) {
+func (client Client) GetBucketInfo(bucketName string, options ...Option) (GetBucketInfoResult, error) {
 	var out GetBucketInfoResult
 	params := map[string]interface{}{}
 	params["bucketInfo"] = nil
-	resp, err := client.do("GET", bucketName, params, nil, nil)
+	resp, err := client.do("GET", bucketName, params, nil, nil, options...)
 	if err != nil {
 		return out, err
 	}
@@ -1275,19 +1276,25 @@ func SetLogger(Logger *log.Logger) ClientOption {
 	}
 }
 
-// SetAKInterface sets funciton for get the user's ak
-//
+// SetCredentialsProvider sets funciton for get the user's ak
 func SetCredentialsProvider(provider CredentialsProvider) ClientOption {
 	return func(client *Client) {
 		client.Config.CredentialsProvider = provider
 	}
 }
 
+// SetLocalAddr sets funciton for local addr
+func SetLocalAddr(localAddr net.Addr) ClientOption {
+	return func(client *Client) {
+		client.Config.LocalAddr = localAddr
+	}
+}
+
 // Private
 func (client Client) do(method, bucketName string, params map[string]interface{},
 	headers map[string]string, data io.Reader, options ...Option) (*Response, error) {
-	resp, err := client.Conn.Do(method, bucketName, "", params,
-		headers, data, 0, nil)
+
+	resp, err := client.Conn.Do(method, bucketName, "", params, headers, data, 0, nil)
 
 	// get response header
 	respHeader, _ := findOption(options, responseHeader, nil)

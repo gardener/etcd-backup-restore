@@ -7,7 +7,7 @@ import (
 	"path"
 
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
-	"github.com/sirupsen/logrus"
+	"github.com/gardener/etcd-backup-restore/test/utils"
 
 	. "github.com/gardener/etcd-backup-restore/pkg/initializer/validator"
 	. "github.com/onsi/ginkgo"
@@ -19,12 +19,10 @@ var _ = Describe("Running Datavalidator", func() {
 		restoreDataDir     string
 		snapstoreBackupDir string
 		snapstoreConfig    *snapstore.Config
-		logger             *logrus.Logger
 		validator          *DataValidator
 	)
 
 	BeforeEach(func() {
-		logger = logrus.New()
 		restoreDataDir = path.Clean(etcdDir)
 		snapstoreBackupDir = path.Clean(snapstoreDir)
 
@@ -38,9 +36,10 @@ var _ = Describe("Running Datavalidator", func() {
 				DataDir:         restoreDataDir,
 				SnapstoreConfig: snapstoreConfig,
 			},
-			Logger: logger,
+			Logger: logger.Logger,
 		}
 	})
+
 	Context("with missing data directory", func() {
 		It("should return DataDirStatus as DataDirectoryNotExist, and non-nil error", func() {
 			tempDir := fmt.Sprintf("%s.%s", restoreDataDir, "temp")
@@ -183,26 +182,26 @@ var _ = Describe("Running Datavalidator", func() {
 			tempDir := fmt.Sprintf("%s.%s", restoreDataDir, "temp")
 			err = os.Rename(restoreDataDir, tempDir)
 			Expect(err).ShouldNot(HaveOccurred())
-
-			// start etcd
-			etcd, err = startEmbeddedEtcd(restoreDataDir, logger)
-			Expect(err).ShouldNot(HaveOccurred())
-			// populate etcd but with lesser data than previous populate call, so that the new db has a lower revision
-			newEtcdRevision, err := populateEtcdFinite(logger, endpoints, keyFrom, int(keyTo/2))
-			Expect(err).ShouldNot(HaveOccurred())
-
-			etcd.Server.Stop()
-			etcd.Close()
-
-			// etcdRevision: latest revision number on the snapstore (etcd backup)
-			// newEtcdRevision: current revision number on etcd db
-			Expect(etcdRevision).To(BeNumerically(">=", newEtcdRevision))
 			defer func() {
 				err = os.RemoveAll(restoreDataDir)
 				Expect(err).ShouldNot(HaveOccurred())
 				err = os.Rename(tempDir, restoreDataDir)
 				Expect(err).ShouldNot(HaveOccurred())
 			}()
+
+			// start etcd
+			etcd, err := utils.StartEmbeddedEtcd(testCtx, restoreDataDir, logger)
+			Expect(err).ShouldNot(HaveOccurred())
+			endpoints := []string{etcd.Clients[0].Addr().String()}
+			// populate etcd but with lesser data than previous populate call, so that the new db has a lower revision
+			resp := &utils.EtcdDataPopulationResponse{}
+			utils.PopulateEtcd(testCtx, logger, endpoints, 0, int(keyTo/2), resp)
+			Expect(resp.Err).ShouldNot(HaveOccurred())
+			etcd.Close()
+
+			// etcdRevision: latest revision number on the snapstore (etcd backup)
+			// resp.EndRevision: current revision number on etcd db
+			Expect(etcdRevision).To(BeNumerically(">=", resp.EndRevision))
 
 			dataDirStatus, err := validator.Validate(Full, 0)
 			Expect(err).ShouldNot(HaveOccurred())

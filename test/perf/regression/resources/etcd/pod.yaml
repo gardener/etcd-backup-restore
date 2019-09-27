@@ -28,7 +28,7 @@ spec:
       initialDelaySeconds: 15
       periodSeconds: 5
       successThreshold: 1
-      timeoutSeconds: 1      
+      timeoutSeconds: 1
     ports:
     - containerPort: 2380
       name: serverport
@@ -71,11 +71,11 @@ spec:
     - --insecure-transport=true
     - --insecure-skip-tls-verify=true
     - --endpoints=http://localhost:2379
-    - --etcd-connection-timeout=300
+    - --etcd-connection-timeout=30s
     # Delta snapshot once in every 30s to ensure there are enough delta spanshots between full snapshots.
-    - --delta-snapshot-period-seconds=30
+    - --delta-snapshot-period=30s
     - --delta-snapshot-memory-limit=10485760
-    - --garbage-collection-period-seconds=43200
+    - --garbage-collection-period=12h
     - --snapstore-temp-directory=/var/etcd/data/temp
     env:
     - name: GODEBUG

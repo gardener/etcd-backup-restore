@@ -22,7 +22,7 @@ import (
 	"github.com/coreos/etcd/clientv3"
 	"github.com/gardener/etcd-backup-restore/pkg/etcdutil"
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
-	"github.com/robfig/cron"
+	cron "github.com/robfig/cron/v3"
 	"github.com/sirupsen/logrus"
 )
 
@@ -40,8 +40,8 @@ const (
 	SnapshotterActive State = 1
 	// DefaultDeltaSnapMemoryLimit is default memory limit for delta snapshots.
 	DefaultDeltaSnapMemoryLimit = 10 * 1024 * 1024 //10Mib
-	// DefaultDeltaSnapshotIntervalSeconds is the default interval for delta snapshots in seconds.
-	DefaultDeltaSnapshotIntervalSeconds = 20
+	// DefaultDeltaSnapshotInterval is the default interval for delta snapshots.
+	DefaultDeltaSnapshotInterval = 20 * time.Second
 )
 
 var emptyStruct struct{}
@@ -51,7 +51,7 @@ type State int
 
 // Snapshotter is a struct for etcd snapshot taker
 type Snapshotter struct {
-	logger             *logrus.Logger
+	logger             *logrus.Entry
 	prevSnapshot       *snapstore.Snapshot
 	PrevFullSnapshot   *snapstore.Snapshot
 	config             *Config
@@ -69,15 +69,15 @@ type Snapshotter struct {
 
 // Config stores the configuration parameters for the snapshotter.
 type Config struct {
-	schedule                       cron.Schedule
-	store                          snapstore.SnapStore
-	maxBackups                     int
-	deltaSnapshotIntervalSeconds   int
-	deltaSnapshotMemoryLimit       int
-	etcdConnectionTimeout          time.Duration
-	garbageCollectionPeriodSeconds time.Duration
-	garbageCollectionPolicy        string
-	tlsConfig                      *etcdutil.TLSConfig
+	schedule                 cron.Schedule
+	store                    snapstore.SnapStore
+	maxBackups               int
+	deltaSnapshotMemoryLimit int
+	deltaSnapshotInterval    time.Duration
+	etcdConnectionTimeout    time.Duration
+	garbageCollectionPeriod  time.Duration
+	garbageCollectionPolicy  string
+	tlsConfig                *etcdutil.TLSConfig
 }
 
 // event is wrapper over etcd event to keep track of time of event

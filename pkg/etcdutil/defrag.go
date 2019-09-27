@@ -16,74 +16,104 @@ package etcdutil
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"github.com/gardener/etcd-backup-restore/pkg/metrics"
 	"github.com/prometheus/client_golang/prometheus"
+	cron "github.com/robfig/cron/v3"
 	"github.com/sirupsen/logrus"
 )
 
-// defragData defragments the data directory of each etcd member.
-func defragData(tlsConfig *TLSConfig, etcdConnectionTimeout time.Duration) error {
-	client, err := GetTLSClientForEtcd(tlsConfig)
+// CallbackFunc is type decalration for callback function for defragmentor
+type CallbackFunc func(ctx context.Context) error
+
+// defragmentorJob implement the cron.Job for etcd defragmentation.
+type defragmentorJob struct {
+	ctx                   context.Context
+	tlsConfig             *TLSConfig
+	etcdConnectionTimeout time.Duration
+	logger                *logrus.Entry
+	callback              CallbackFunc
+}
+
+// NewDefragmentorJob returns the new defragmentor job.
+func NewDefragmentorJob(ctx context.Context, tlsConfig *TLSConfig, etcdConnectionTimeout time.Duration, logger *logrus.Entry, callback CallbackFunc) cron.Job {
+	return &defragmentorJob{
+		ctx:                   ctx,
+		tlsConfig:             tlsConfig,
+		etcdConnectionTimeout: etcdConnectionTimeout,
+		logger:                logger.WithField("job", "defragmentor"),
+		callback:              callback,
+	}
+}
+
+func (d *defragmentorJob) Run() {
+	if err := d.defragData(); err != nil {
+		d.logger.Warnf("Failed to defrag data with error: %v", err)
+	} else {
+		if d.callback != nil {
+			if err = d.callback(d.ctx); err != nil {
+				d.logger.Warnf("defragmentation callback failed with error: %v", err)
+			}
+		}
+	}
+}
+
+// defragData defragment the data directory of each etcd member.
+func (d *defragmentorJob) defragData() error {
+	client, err := GetTLSClientForEtcd(d.tlsConfig)
 	if err != nil {
-		return fmt.Errorf("failed to create etcd client for defragmentation: %v", err)
+		d.logger.Warnf("failed to create etcd client for defragmentation")
+		return err
 	}
 	defer client.Close()
 
-	for _, ep := range tlsConfig.endpoints {
+	for _, ep := range d.tlsConfig.endpoints {
 		var dbSizeBeforeDefrag, dbSizeAfterDefrag int64
-		logrus.Infof("Defragmenting etcd member[%s]", ep)
-		ctx, cancel := context.WithTimeout(context.TODO(), etcdDialTimeout)
-		status, err := client.Status(ctx, ep)
+		d.logger.Infof("Defragmenting etcd member[%s]", ep)
+		statusReqCtx, cancel := context.WithTimeout(d.ctx, etcdDialTimeout)
+		status, err := client.Status(statusReqCtx, ep)
 		cancel()
 		if err != nil {
-			logrus.Warnf("Failed to get status of etcd member[%s] with error: %v", ep, err)
+			d.logger.Warnf("Failed to get status of etcd member[%s] with error: %v", ep, err)
 		} else {
 			dbSizeBeforeDefrag = status.DbSize
 		}
 		start := time.Now()
-		ctx, cancel = context.WithTimeout(context.TODO(), etcdConnectionTimeout)
-		_, err = client.Defragment(ctx, ep)
+		defragCtx, cancel := context.WithTimeout(d.ctx, d.etcdConnectionTimeout)
+		_, err = client.Defragment(defragCtx, ep)
 		cancel()
 		if err != nil {
 			metrics.DefragmentationDurationSeconds.With(prometheus.Labels{metrics.LabelSucceeded: metrics.ValueSucceededFalse}).Observe(time.Now().Sub(start).Seconds())
-			return fmt.Errorf("Failed to defragment etcd member[%s] with error: %v", ep, err)
+			d.logger.Errorf("Failed to defragment etcd member[%s] with error: %v", ep, err)
+			return err
 		}
 		metrics.DefragmentationDurationSeconds.With(prometheus.Labels{metrics.LabelSucceeded: metrics.ValueSucceededTrue}).Observe(time.Now().Sub(start).Seconds())
-		logrus.Infof("Finished defragmenting etcd member[%s]", ep)
+		d.logger.Infof("Finished defragmenting etcd member[%s]", ep)
 		// Since below request for status races with other etcd operations. So, size returned in
 		// status might vary from the precise size just after defragmentation.
-		ctx, cancel = context.WithTimeout(context.TODO(), etcdDialTimeout)
-		status, err = client.Status(ctx, ep)
+		statusReqCtx, cancel = context.WithTimeout(d.ctx, etcdDialTimeout)
+		status, err = client.Status(statusReqCtx, ep)
 		cancel()
 		if err != nil {
-			logrus.Warnf("Failed to get status of etcd member[%s] with error: %v", ep, err)
+			d.logger.Warnf("Failed to get status of etcd member[%s] with error: %v", ep, err)
 		} else {
 			dbSizeAfterDefrag = status.DbSize
+			d.logger.Infof("Probable DB size change for etcd member [%s]:  %dB -> %dB after defragmentation", ep, dbSizeBeforeDefrag, dbSizeAfterDefrag)
 		}
-		logrus.Infof("Probable DB size change for etcd member [%s]:  %dB -> %dB after defragmentation", ep, dbSizeBeforeDefrag, dbSizeAfterDefrag)
 	}
 	return nil
 }
 
 // DefragDataPeriodically defragments the data directory of each etcd member.
-func DefragDataPeriodically(stopCh <-chan struct{}, tlsConfig *TLSConfig, defragmentationPeriod, etcdConnectionTimeout time.Duration, callback func() error) {
-	logrus.Infof("Defragmentation period :%d hours", defragmentationPeriod/time.Hour)
-	for {
-		select {
-		case <-stopCh:
-			logrus.Infof("Stopping the defragmentation thread.")
-			return
-		case <-time.After(defragmentationPeriod):
-			if err := defragData(tlsConfig, etcdConnectionTimeout); err != nil {
-				logrus.Warnf("Failed to defrag data with error: %v", err)
-			} else {
-				if err = callback(); err != nil {
-					logrus.Warnf("Failed to trigger full snapshot: %v", err)
-				}
-			}
-		}
-	}
+func DefragDataPeriodically(ctx context.Context, tlsConfig *TLSConfig, defragmentationSchedule cron.Schedule, etcdConnectionTimeout time.Duration, callback CallbackFunc, logger *logrus.Entry) {
+	defragmentorJob := NewDefragmentorJob(ctx, tlsConfig, etcdConnectionTimeout, logger, callback)
+	jobRunner := cron.New(cron.WithChain(cron.SkipIfStillRunning(cron.DefaultLogger)))
+	jobRunner.Schedule(defragmentationSchedule, defragmentorJob)
+
+	jobRunner.Start()
+
+	<-ctx.Done()
+	jobRunnerCtx := jobRunner.Stop()
+	<-jobRunnerCtx.Done()
 }

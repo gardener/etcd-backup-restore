@@ -52,9 +52,9 @@ import (
 )
 
 // NewRestorer returns the restorer object.
-func NewRestorer(store snapstore.SnapStore, logger *logrus.Logger) *Restorer {
+func NewRestorer(store snapstore.SnapStore, logger *logrus.Entry) *Restorer {
 	return &Restorer{
-		logger: logger,
+		logger: logger.WithField("actor", "restorer"),
 		store:  store,
 	}
 }
@@ -311,7 +311,7 @@ func makeWALAndSnap(waldir, snapdir string, cl *membership.RaftCluster, restoreN
 }
 
 // startEmbeddedEtcd starts the embedded etcd server.
-func startEmbeddedEtcd(logger *logrus.Logger, ro RestoreOptions) (*embed.Etcd, error) {
+func startEmbeddedEtcd(logger *logrus.Entry, ro RestoreOptions) (*embed.Etcd, error) {
 	cfg := embed.NewConfig()
 	cfg.Dir = filepath.Join(ro.RestoreDataDir)
 	DefaultListenPeerURLs := "http://localhost:0"

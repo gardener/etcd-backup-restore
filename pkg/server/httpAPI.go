@@ -226,7 +226,7 @@ func (h *HTTPHandler) serveFullSnapshotTrigger(rw http.ResponseWriter, req *http
 		rw.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
-	if err := h.Snapshotter.TriggerFullSnapshot(); err != nil {
+	if err := h.Snapshotter.TriggerFullSnapshot(req.Context()); err != nil {
 		h.Logger.Warnf("Skipped triggering out-of-schedule full snapshot: %v", err)
 		rw.WriteHeader(http.StatusInternalServerError)
 		return
