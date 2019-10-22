@@ -35,6 +35,9 @@ spec:
         - /var/etcd/bin/bootstrap.sh
         readinessProbe:
           httpGet:
+{{- if .Values.backupRestoreTLS }}
+            scheme: HTTPS
+{{- end }}
             path: /healthz
             port: {{ .Values.servicePorts.backupRestore }}
           initialDelaySeconds: 5
@@ -46,10 +49,12 @@ spec:
             - -ec
             - ETCDCTL_API=3
             - etcdctl
+{{ if .Values.etcdTLS }}
             - --cert=/var/etcd/ssl/tls/tls.crt
             - --key=/var/etcd/ssl/tls/tls.key
             - --cacert=/var/etcd/ssl/ca/ca.crt
-            - --endpoints={{ if .Values.tls }}https{{ else }}http{{ end }}://{{ .Release.Name }}-etcd-0:{{ .Values.servicePorts.client }}
+{{ end }}
+            - --endpoints={{ if .Values.etcdTLS }}https{{ else }}http{{ end }}://{{ .Release.Name }}-etcd-0:{{ .Values.servicePorts.client }}
 {{- if and .Values.etcdAuth.username .Values.etcdAuth.password }}
             - --user={{ .Values.etcdAuth.username }}:{{ .Values.etcdAuth.password }}
 {{- end }}
@@ -73,11 +78,15 @@ spec:
           mountPath: /var/etcd/bin/
         - name: etcd-config-file
           mountPath: /var/etcd/config/
-{{- if .Values.tls }}
+{{- if .Values.etcdTLS }}
         - name: ca-etcd
           mountPath: /var/etcd/ssl/ca
         - name: etcd-tls
           mountPath: /var/etcd/ssl/tls
+{{- end }}
+{{- if .Values.backupRestoreTLS }}
+        - name: ca-etcdbr
+          mountPath: /var/etcdbr/ssl/ca
 {{- end }}
       - name: backup-restore
         command:
@@ -94,7 +103,7 @@ spec:
 {{- if .Values.backup.etcdQuotaBytes }}
         - --embedded-etcd-quota-bytes={{ int $.Values.backup.etcdQuotaBytes }}
 {{- end }}
-{{- if .Values.tls }}
+{{- if .Values.etcdTLS }}
         - --cert=/var/etcd/ssl/tls/tls.crt
         - --key=/var/etcd/ssl/tls/tls.key
         - --cacert=/var/etcd/ssl/ca/ca.crt
@@ -115,6 +124,10 @@ spec:
 {{- if and .Values.etcdAuth.username .Values.etcdAuth.password }}
         - --etcd-username={{ .Values.etcdAuth.username }}
         - --etcd-password={{ .Values.etcdAuth.password }}
+{{- end }}
+{{- if .Values.backupRestoreTLS }}
+        - --server-cert=/var/etcdbr/ssl/tls/tls.crt
+        - --server-key=/var/etcdbr/ssl/tls/tls.key
 {{- end }}
         image: {{ .Values.images.etcdBackupRestore.repository }}:{{ .Values.images.etcdBackupRestore.tag }}
         imagePullPolicy: {{ .Values.images.etcdBackupRestore.pullPolicy }}
@@ -205,11 +218,17 @@ spec:
           mountPath: /var/etcd/data/
         - name: etcd-config-file
           mountPath: /var/etcd/config/
-{{- if .Values.tls }}
+{{- if .Values.etcdTLS }}
         - name: ca-etcd
           mountPath: /var/etcd/ssl/ca
         - name: etcd-tls
           mountPath: /var/etcd/ssl/tls
+{{- end }}
+{{- if .Values.backupRestoreTLS }}
+        - name: ca-etcdbr
+          mountPath: /var/etcdbr/ssl/ca
+        - name: etcdbr-tls
+          mountPath: /var/etcdbr/ssl/tls
 {{- end }}
 {{- if eq .Values.backup.storageProvider "GCS" }}
         - name: etcd-backup
@@ -230,13 +249,21 @@ spec:
           items:
           - key: etcd.conf.yaml
             path: etcd.conf.yaml
-{{- if .Values.tls }}
-      - name: etcd-tls
-        secret:
-          secretName: {{ .Release.Name }}-etcd-tls
+{{- if .Values.etcdTLS }}
       - name: ca-etcd
         secret:
           secretName: {{ .Release.Name }}-etcd-ca
+      - name: etcd-tls
+        secret:
+          secretName: {{ .Release.Name }}-etcd-tls
+{{- end }}
+{{- if .Values.backupRestoreTLS }}
+      - name: ca-etcdbr
+        secret:
+          secretName: {{ .Release.Name }}-etcdbr-ca
+      - name: etcdbr-tls
+        secret:
+          secretName: {{ .Release.Name }}-etcdbr-tls
 {{- end }}
 {{- if and .Values.backup.storageProvider (not (eq .Values.backup.storageProvider "Local")) }}
       - name: etcd-backup
