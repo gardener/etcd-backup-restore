@@ -16,6 +16,7 @@ package cmd
 
 import (
 	"context"
+	"os"
 
 	"github.com/spf13/cobra"
 )
@@ -32,6 +33,7 @@ from previously taken snapshot.`,
 		Run: func(cmd *cobra.Command, args []string) {
 			if version {
 				printVersionInfo()
+				os.Exit(0)
 			}
 		},
 	}

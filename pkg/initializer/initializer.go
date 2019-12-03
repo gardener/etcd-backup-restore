@@ -29,6 +29,27 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+//NewInitializer creates an etcd initializer object.
+func NewInitializer(options *restorer.RestoreOptions, snapstoreConfig *snapstore.Config, logger *logrus.Logger) *EtcdInitializer {
+
+	etcdInit := &EtcdInitializer{
+		Config: &Config{
+			SnapstoreConfig: snapstoreConfig,
+			RestoreOptions:  options,
+		},
+		Validator: &validator.DataValidator{
+			Config: &validator.Config{
+				DataDir:         options.Config.RestoreDataDir,
+				SnapstoreConfig: snapstoreConfig,
+			},
+			Logger: logger,
+		},
+		Logger: logger,
+	}
+
+	return etcdInit
+}
+
 // Initialize has the following steps:
 //   * Check if data directory exists.
 //     - If data directory exists
@@ -64,27 +85,6 @@ func (e *EtcdInitializer) Initialize(mode validator.Mode, failBelowRevision int6
 		}
 	}
 	return nil
-}
-
-//NewInitializer creates an etcd initializer object.
-func NewInitializer(options *restorer.RestoreOptions, snapstoreConfig *snapstore.Config, logger *logrus.Logger) *EtcdInitializer {
-
-	etcdInit := &EtcdInitializer{
-		Config: &Config{
-			SnapstoreConfig: snapstoreConfig,
-			RestoreOptions:  options,
-		},
-		Validator: &validator.DataValidator{
-			Config: &validator.Config{
-				DataDir:         options.Config.RestoreDataDir,
-				SnapstoreConfig: snapstoreConfig,
-			},
-			Logger: logger,
-		},
-		Logger: logger,
-	}
-
-	return etcdInit
 }
 
 // restoreCorruptData attempts to restore a corrupted data directory.

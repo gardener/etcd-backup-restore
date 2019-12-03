@@ -19,7 +19,7 @@ import (
 	"os"
 
 	"github.com/gardener/etcd-backup-restore/pkg/etcdutil"
-
+	"github.com/gardener/etcd-backup-restore/pkg/leaderelection"
 	"github.com/gardener/etcd-backup-restore/pkg/snapshot/restorer"
 	"github.com/gardener/etcd-backup-restore/pkg/snapshot/snapshotter"
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
@@ -31,10 +31,11 @@ import (
 func NewBackupRestoreComponentConfig() *BackupRestoreComponentConfig {
 	return &BackupRestoreComponentConfig{
 		EtcdConnectionConfig:    etcdutil.NewEtcdConnectionConfig(),
+		LeaderElectionConfig:    leaderelection.NewLeaderEletionConfig(),
+		RestorationConfig:       restorer.NewRestorationConfig(),
 		ServerConfig:            NewHTTPServerConfig(),
 		SnapshotterConfig:       snapshotter.NewSnapshotterConfig(),
 		SnapstoreConfig:         snapstore.NewSnapstoreConfig(),
-		RestorationConfig:       restorer.NewRestorationConfig(),
 		DefragmentationSchedule: defaultDefragmentationSchedule,
 	}
 }
@@ -42,10 +43,11 @@ func NewBackupRestoreComponentConfig() *BackupRestoreComponentConfig {
 // AddFlags adds the flags to flagset.
 func (c *BackupRestoreComponentConfig) AddFlags(fs *flag.FlagSet) {
 	c.EtcdConnectionConfig.AddFlags(fs)
+	c.LeaderElectionConfig.AddFlags(fs)
+	c.RestorationConfig.AddFlags(fs)
 	c.ServerConfig.AddFlags(fs)
 	c.SnapshotterConfig.AddFlags(fs)
 	c.SnapstoreConfig.AddFlags(fs)
-	c.RestorationConfig.AddFlags(fs)
 
 	// Miscellaneous
 	fs.StringVar(&c.DefragmentationSchedule, "defragmentation-schedule", c.DefragmentationSchedule, "schedule to defragment etcd data directory")
@@ -56,6 +58,12 @@ func (c *BackupRestoreComponentConfig) Validate() error {
 	if err := c.EtcdConnectionConfig.Validate(); err != nil {
 		return err
 	}
+	if err := c.LeaderElectionConfig.Validate(); err != nil {
+		return err
+	}
+	if err := c.RestorationConfig.Validate(); err != nil {
+		return err
+	}
 	if err := c.ServerConfig.Validate(); err != nil {
 		return err
 	}
@@ -63,9 +71,6 @@ func (c *BackupRestoreComponentConfig) Validate() error {
 		return err
 	}
 	if err := c.SnapstoreConfig.Validate(); err != nil {
-		return err
-	}
-	if err := c.RestorationConfig.Validate(); err != nil {
 		return err
 	}
 	if _, err := cron.ParseStandard(c.DefragmentationSchedule); err != nil {

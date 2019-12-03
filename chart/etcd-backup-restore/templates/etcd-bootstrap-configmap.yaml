@@ -87,7 +87,7 @@ data:
     fi
   etcd.conf.yaml: |-
     # Human-readable name for this member.
-    name: {{ .Release.Name }}-etcd
+    name: "{{ .Values.etcd.name }}"
 
     # Path to the data directory.
     data-dir: /var/etcd/data/new.etcd
@@ -104,15 +104,24 @@ data:
     quota-backend-bytes: {{ int $.Values.backup.etcdQuotaBytes }}
     {{- end }}
 
+    # List of comma separated URLs to listen on for peer traffic.
+    listen-peer-urls: {{ if .Values.etcdTLS }}https{{ else }}http{{ end }}://0.0.0.0:{{ .Values.servicePorts.server }}
+
     # List of comma separated URLs to listen on for client traffic.
     listen-client-urls: {{ if .Values.etcdTLS }}https{{ else }}http{{ end }}://0.0.0.0:{{ .Values.servicePorts.client }}
+
+    # List of this member's peer URLs to advertise to the rest of the cluster.
+    # The URLs needed to be a comma-separated list.
+    initial-advertise-peer-urls: {{ if .Values.etcdTLS }}https{{ else }}http{{ end }}://{{ .Release.Name}}-etcd-client:{{ .Values.servicePorts.server }}
 
     # List of this member's client URLs to advertise to the public.
     # The URLs needed to be a comma-separated list.
     advertise-client-urls: {{ if .Values.etcdTLS }}https{{ else }}http{{ end }}://0.0.0.0:{{ .Values.servicePorts.client }}
 
+    # Initial cluster configuration for bootstrapping.
+    initial-cluster: "{{ .Values.etcd.initialCluster }}"
     # Initial cluster token for the etcd cluster during bootstrap.
-    initial-cluster-token: 'new'
+    initial-cluster-token: "{{ .Values.etcd.initialClusterToken }}"
 
     # Initial cluster state ('new' or 'existing').
     initial-cluster-state: 'new'
@@ -130,4 +139,68 @@ data:
 
       # Path to the client server TLS trusted CA cert file.
       trusted-ca-file: /var/etcd/ssl/ca/ca.crt
+{{- end }}
+
+  etcdbr.conf.yaml: |-
+    # etcd-connection-config
+    etcdConnectionConfig:
+      connectionTimeout: "{{ .Values.backup.etcdConnectionTimeout }}"
+{{- if and .Values.etcdAuth.username .Values.etcdAuth.password }}
+      username: "{{ .Values.etcdAuth.username }}"
+      password: "{{ .Values.etcdAuth.password }}"
+{{- end }}
+{{- if .Values.etcdTLS }}
+      endpoints:
+        - "https://localhost:{{ .Values.servicePorts.client }}"
+      insecureTransport: false
+      insecureSkipVerify: false
+      certFile: "/var/etcd/ssl/tls/tls.crt"
+      keyFile: "/var/etcd/ssl/tls/tls.key"
+      caFile: "/var/etcd/ssl/ca/ca.crt"
+{{ else }}
+      endpoints:
+        - "http://localhost:{{ .Values.servicePorts.client }}"
+{{- end }}
+
+    leaderElectionConfig:
+      retryPeriod: "5s"
+
+    serverConfig:
+      port: 8080
+      # enableProfiling: false
+{{- if .Values.backupRestoreTLS }}
+      server-cert: "/var/etcdbr/ssl/tls/tls.crt"
+      server-key: "/var/etcdbr/ssl/tls/tls.key"
+{{- end }}
+    snapshotterConfig:
+      schedule: "{{ .Values.backup.schedule }}"
+      deltaSnapshotPeriod: {{ .Values.backup.deltaSnapshotPeriod }}
+      deltaSnapshotMemoryLimit: {{ int $.Values.backup.deltaSnapshotMemoryLimit }}
+      garbageCollectionPeriod: 1m
+      garbageCollectionPolicy: {{ .Values.garbageCollectionPolicy }}
+{{- if eq .Values.backup.garbageCollectionPolicy "LimitBased" }}
+      maxBackups: {{ .Values.backup.maxBackups }}
+{{- end }}
+
+    snapstoreConfig:
+      provider: {{ .Values.backup.storageProvider }}
+      container: {{ .Values.backup.storageContainer }}
+      prefix: {{ .Release.Name }}-etcd
+      maxParallelChunkUploads: 5
+      tempDir: "/tmp"
+
+    restorationConfig:
+      initialCluster: "{{ .Values.etcd.initialCluster }}"
+      initialClusterToken: "{{ .Values.etcd.initialClusterToken }}"
+      restoreDataDir: /var/etcd/data/new.etcd
+      initialAdvertisePeerURLs:
+        - {{ if .Values.etcdTLS }}https{{ else }}http{{ end }}://{{ .Release.Name}}-etcd-client:{{ .Values.servicePorts.server }}
+      name: {{ .Values.etcd.name }}
+      # skipHashCheck: false
+      # maxFetchers: 6
+{{- if .Values.backup.etcdQuotaBytes }}
+      embeddedEtcdQuotaBytes: {{ int $.Values.backup.etcdQuotaBytes }}
+{{- end }}
+{{- if .Values.backup.defragmentationSchedule }}
+    defragmentationSchedule: "0 0 */3 * *"
 {{- end }}

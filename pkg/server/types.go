@@ -16,6 +16,7 @@ package server
 
 import (
 	"github.com/gardener/etcd-backup-restore/pkg/etcdutil"
+	"github.com/gardener/etcd-backup-restore/pkg/leaderelection"
 	"github.com/gardener/etcd-backup-restore/pkg/snapshot/restorer"
 	"github.com/gardener/etcd-backup-restore/pkg/snapshot/snapshotter"
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
@@ -26,14 +27,30 @@ const (
 	defaultDefragmentationSchedule = "0 0 */3 * *"
 )
 
+type initializationStatus string
+
+const (
+	initializationStatusNew        initializationStatus = "New"
+	initializationStatusProgress   initializationStatus = "Progress"
+	initializationStatusSuccessful initializationStatus = "Successful"
+	initializationStatusFailed     initializationStatus = "Failed"
+)
+
 // BackupRestoreComponentConfig holds the component configuration.
 type BackupRestoreComponentConfig struct {
 	EtcdConnectionConfig    *etcdutil.EtcdConnectionConfig `json:"etcdConnectionConfig,omitempty"`
+	LeaderElectionConfig    *leaderelection.Config         `json:"leaderElectionConfig,omitempty"`
+	RestorationConfig       *restorer.RestorationConfig    `json:"restorationConfig,omitempty"`
 	ServerConfig            *HTTPServerConfig              `json:"serverConfig,omitempty"`
 	SnapshotterConfig       *snapshotter.Config            `json:"snapshotterConfig,omitempty"`
 	SnapstoreConfig         *snapstore.Config              `json:"snapstoreConfig,omitempty"`
-	RestorationConfig       *restorer.RestorationConfig    `json:"restorationConfig,omitempty"`
-	DefragmentationSchedule string                         `json:"defragmentationSchedule"`
+	DefragmentationSchedule string                         `json:"defragmentationSchedule,omitempty"`
+}
+
+// backupRestoreComponentStatus holds the component status reflecting current state.
+type backupRestoreComponentStatus struct {
+	health               bool
+	initializationStatus initializationStatus
 }
 
 // latestSnapshotMetadata holds snapshot details of latest full and delta snapshots

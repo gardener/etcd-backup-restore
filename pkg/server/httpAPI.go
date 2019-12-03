@@ -23,18 +23,12 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/gardener/etcd-backup-restore/pkg/initializer"
 	"github.com/gardener/etcd-backup-restore/pkg/initializer/validator"
+
+	"github.com/gardener/etcd-backup-restore/pkg/initializer"
 	"github.com/gardener/etcd-backup-restore/pkg/snapshot/snapshotter"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/sirupsen/logrus"
-)
-
-const (
-	initializationStatusNew        = "New"
-	initializationStatusProgress   = "Progress"
-	initializationStatusSuccessful = "Successful"
-	initializationStatusFailed     = "Failed"
 )
 
 var emptyStruct struct{}
@@ -66,9 +60,8 @@ type HTTPHandler struct {
 	Logger                    *logrus.Entry
 	initializationStatusMutex sync.Mutex
 	AckState                  uint32
-	initializationStatus      string
+	initializationStatus      initializationStatus
 	status                    int
-	StopCh                    chan struct{}
 	EnableProfiling           bool
 	ReqCh                     chan struct{}
 	AckCh                     chan struct{}
@@ -172,15 +165,23 @@ func (h *HTTPHandler) serveHealthz(rw http.ResponseWriter, req *http.Request) {
 // serveInitialize starts initialization for the configured Initializer
 func (h *HTTPHandler) serveInitialize(rw http.ResponseWriter, req *http.Request) {
 	h.checkAndSetSecurityHeaders(rw)
+
 	h.Logger.Info("Received start initialization request.")
+	mode, failBelowRevision, err := parseInitializationRequestParameter(req)
+	if err != nil {
+		h.Logger.Errorf("failed to parse initialization request parameters: %v", err)
+		rw.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	h.Logger.Infof("FailBelowRevision: %d", failBelowRevision)
+	h.Logger.Infof("Validation mode: %s", mode)
 	h.initializationStatusMutex.Lock()
 	defer h.initializationStatusMutex.Unlock()
 	if h.initializationStatus == initializationStatusNew {
 		h.Logger.Infof("Updating status from %s to %s", h.initializationStatus, initializationStatusProgress)
 		h.initializationStatus = initializationStatusProgress
 		go func() {
-			var mode validator.Mode
-
 			// This is needed to stop the currently running snapshotter.
 			if h.Snapshotter != nil {
 				atomic.StoreUint32(&h.AckState, HandlerAckWaiting)
@@ -190,29 +191,6 @@ func (h *HTTPHandler) serveInitialize(rw http.ResponseWriter, req *http.Request)
 				<-h.AckCh
 			}
 
-			failBelowRevisionStr := req.URL.Query().Get("failbelowrevision")
-			h.Logger.Infof("Validation failBelowRevision: %s", failBelowRevisionStr)
-			var failBelowRevision int64
-			if len(failBelowRevisionStr) != 0 {
-				var err error
-				failBelowRevision, err = strconv.ParseInt(failBelowRevisionStr, 10, 64)
-				if err != nil {
-					h.initializationStatusMutex.Lock()
-					defer h.initializationStatusMutex.Unlock()
-					h.Logger.Errorf("Failed initialization due wrong parameter value `failbelowrevision`: %v", err)
-					h.initializationStatus = initializationStatusFailed
-					return
-				}
-			}
-			switch modeVal := req.URL.Query().Get("mode"); modeVal {
-			case string(validator.Full):
-				mode = validator.Full
-			case string(validator.Sanity):
-				mode = validator.Sanity
-			default:
-				mode = validator.Full
-			}
-			h.Logger.Infof("Validation mode: %s", mode)
 			err := h.Initializer.Initialize(mode, failBelowRevision)
 			h.initializationStatusMutex.Lock()
 			defer h.initializationStatusMutex.Unlock()
@@ -314,3 +292,66 @@ func (h *HTTPHandler) serveLatestSnapshotMetadata(rw http.ResponseWriter, req *h
 	rw.Write(json)
 	return
 }
+
+// Acknowledge acknowledges the handler if its waiting for acknowledgement.
+func (h *HTTPHandler) Acknowledge() {
+	if atomic.CompareAndSwapUint32(&h.AckState, HandlerAckWaiting, HandlerAckDone) {
+		h.AckCh <- emptyStruct
+	}
+}
+
+// parseInitializationRequestParameter parses the initializer request parameter
+func parseInitializationRequestParameter(req *http.Request) (validator.Mode, int64, error) {
+	var (
+		failBelowRevision int64
+		mode              validator.Mode
+	)
+
+	failBelowRevisionStr := req.URL.Query().Get("failbelowrevision")
+	if len(failBelowRevisionStr) != 0 {
+		var err error
+		failBelowRevision, err = strconv.ParseInt(failBelowRevisionStr, 10, 64)
+		if err != nil {
+			return mode, failBelowRevision, fmt.Errorf("failed to parse `failbelowrevision` parameter: %v", err)
+		}
+	}
+
+	switch modeVal := req.URL.Query().Get("mode"); modeVal {
+	case string(validator.Full):
+		mode = validator.Full
+	case string(validator.Sanity):
+		mode = validator.Sanity
+	default:
+		mode = validator.Full
+	}
+
+	return mode, failBelowRevision, nil
+}
+
+// func(h *HTTPHandler) initializeInCoordinationWithSnapshotter(mode validator.Mode, failBelowRevision int64) {
+// 	// This is needed to stop the currently running snapshotter.
+// 	if h.Snapshotter != nil {
+// 		h.Logger.Info("Changed handler state.")
+// 		h.Snapshotter.SsrStateMutex.Lock()
+// 		if handler.Snapshotter.SsrState == snapshotter.SnapshotterActive {
+// 			atomic.StoreUint32(&h.AckState, HandlerAckWaiting)
+// 			handler.Snapshotter.SsrStateMutex.Unlock()
+// 			ssrStopCh <- emptyStruct
+// 			h.Logger.Info("Waiting for acknowledgment...")
+// 			<-h.AckCh
+// 		} else {
+// 			handler.Snapshotter.SsrStateMutex.Unlock()
+// 		}
+// 	}
+
+// 	err := h.Initializer.Initialize(mode, failBelowRevision)
+// 	h.initializationStatusMutex.Lock()
+// 	defer h.initializationStatusMutex.Unlock()
+// 	if err != nil {
+// 		h.Logger.Errorf("Failed initialization: %v", err)
+// 		h.initializationStatus = initializationStatusFailed
+// 		return
+// 	}
+// 	h.Logger.Info("Successfully initialized data directory for etcd.")
+// 	h.initializationStatus = initializationStatusSuccessful
+// }

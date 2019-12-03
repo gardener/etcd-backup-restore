@@ -86,7 +86,7 @@ func (o *serverOptions) loadConfigFromFile() error {
 }
 
 func (o *serverOptions) run(ctx context.Context) error {
-	brServer, err := server.NewBackupRestoreServer(o.Logger, o.Config)
+	brServer, err := server.NewBackupRestoreServer(logrus.NewEntry(o.Logger), o.Config)
 	if err != nil {
 		return err
 	}

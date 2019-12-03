@@ -10,6 +10,9 @@ etcdConnectionConfig:
   # keyFile: "ssl/etcd/tls.key"
   # caFile: "ssl/etcd/ca.crt"
 
+leaderElectionConfig:
+  retryPeriod: "5s"
+
 serverConfig:
   port: 8080
   # enableProfiling: true

@@ -18,41 +18,49 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"sync/atomic"
 	"time"
-
-	"github.com/gardener/etcd-backup-restore/pkg/errors"
-	"github.com/gardener/etcd-backup-restore/pkg/metrics"
-	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/coreos/etcd/pkg/types"
 	"github.com/gardener/etcd-backup-restore/pkg/defragmentor"
+	"github.com/gardener/etcd-backup-restore/pkg/errors"
 	"github.com/gardener/etcd-backup-restore/pkg/etcdutil"
 	"github.com/gardener/etcd-backup-restore/pkg/initializer"
+	"github.com/gardener/etcd-backup-restore/pkg/leaderelection"
+	"github.com/gardener/etcd-backup-restore/pkg/metrics"
 	"github.com/gardener/etcd-backup-restore/pkg/snapshot/restorer"
 	"github.com/gardener/etcd-backup-restore/pkg/snapshot/snapshotter"
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
+	"github.com/prometheus/client_golang/prometheus"
 	cron "github.com/robfig/cron/v3"
 	"github.com/sirupsen/logrus"
 )
 
 // BackupRestoreServer holds the details for backup-restore server.
 type BackupRestoreServer struct {
-	config                  *BackupRestoreComponentConfig
+	config *BackupRestoreComponentConfig
+	status *backupRestoreComponentStatus
+
 	logger                  *logrus.Entry
 	defragmentationSchedule cron.Schedule
+	handler                 *HTTPHandler
+	leaderElector           *leaderelection.LeaderElector
 }
 
 // NewBackupRestoreServer return new backup restore server.
-func NewBackupRestoreServer(logger *logrus.Logger, config *BackupRestoreComponentConfig) (*BackupRestoreServer, error) {
+func NewBackupRestoreServer(logger *logrus.Entry, config *BackupRestoreComponentConfig) (*BackupRestoreServer, error) {
 	parsedDefragSchedule, err := cron.ParseStandard(config.DefragmentationSchedule)
 	if err != nil {
-		// Ideally this case should not occur, since this check is done at the config validaitions.
+		// Ideally this case should not occur, since this check is done at the config validations.
 		return nil, err
 	}
 	return &BackupRestoreServer{
-		logger:                  logger.WithField("actor", "backup-restore-server"),
-		config:                  config,
+		logger: logger.WithField("actor", "backup-restore-server"),
+		config: config,
+		status: &backupRestoreComponentStatus{
+			health:               false,
+			initializationStatus: initializationStatusNew,
+		},
+
 		defragmentationSchedule: parsedDefragSchedule,
 	}, nil
 }
@@ -71,7 +79,7 @@ func (b *BackupRestoreServer) Run(ctx context.Context) error {
 		b.logger.Fatalf("failed creating url map for restore cluster: %v", err)
 	}
 
-	options := &restorer.RestoreOptions{
+	restoreOpts := &restorer.RestoreOptions{
 		Config:      b.config.RestorationConfig,
 		ClusterURLs: clusterURLsMap,
 		PeerURLs:    peerURLs,
@@ -79,10 +87,10 @@ func (b *BackupRestoreServer) Run(ctx context.Context) error {
 
 	if b.config.SnapstoreConfig == nil || len(b.config.SnapstoreConfig.Provider) == 0 {
 		b.logger.Warnf("No snapstore storage provider configured. Will not start backup schedule.")
-		b.runServerWithoutSnapshotter(ctx, options)
+		b.runServerWithoutSnapshotter(ctx, restoreOpts)
 		return nil
 	}
-	return b.runServerWithSnapshotter(ctx, options)
+	return b.runServerWithSnapshotter(ctx, restoreOpts)
 }
 
 // startHTTPServer creates and starts the HTTP handler
@@ -95,7 +103,6 @@ func (b *BackupRestoreServer) startHTTPServer(initializer initializer.Initialize
 		Initializer:       initializer,
 		Snapshotter:       ssr,
 		Logger:            b.logger,
-		StopCh:            make(chan struct{}),
 		EnableProfiling:   b.config.ServerConfig.EnableProfiling,
 		ReqCh:             make(chan struct{}),
 		AckCh:             make(chan struct{}),
@@ -103,7 +110,8 @@ func (b *BackupRestoreServer) startHTTPServer(initializer initializer.Initialize
 		ServerTLSCertFile: b.config.ServerConfig.TLSCertFile,
 		ServerTLSKeyFile:  b.config.ServerConfig.TLSKeyFile,
 	}
-	handler.SetStatus(http.StatusServiceUnavailable)
+	//handler.SetStatus(http.StatusServiceUnavailable)
+	handler.SetStatus(http.StatusOK)
 	b.logger.Info("Registering the http request handlers...")
 	handler.RegisterHandler()
 	b.logger.Info("Starting the http server...")
@@ -132,38 +140,45 @@ func (b *BackupRestoreServer) runServerWithoutSnapshotter(ctx context.Context, r
 // runServerWithoutSnapshotter runs the etcd-backup-restore
 // for the case where snapshotter is configured correctly
 func (b *BackupRestoreServer) runServerWithSnapshotter(ctx context.Context, restoreOpts *restorer.RestoreOptions) error {
-	ackCh := make(chan struct{})
 
 	etcdInitializer := initializer.NewInitializer(restoreOpts, b.config.SnapstoreConfig, b.logger.Logger)
-
 	b.logger.Infof("Creating snapstore from provider: %s", b.config.SnapstoreConfig.Provider)
 	ss, err := snapstore.GetSnapstore(b.config.SnapstoreConfig)
 	if err != nil {
 		return fmt.Errorf("failed to create snapstore from configured storage provider: %v", err)
 	}
 
-	b.logger.Infof("Creating snapshotter...")
-	ssr, err := snapshotter.NewSnapshotter(b.logger, b.config.SnapshotterConfig, ss, b.config.EtcdConnectionConfig)
-	if err != nil {
-		return err
-	}
+	ssr, _ := snapshotter.NewSnapshotter(b.logger, b.config.SnapshotterConfig, ss, b.config.EtcdConnectionConfig)
 
 	handler := b.startHTTPServer(etcdInitializer, ssr)
 	defer handler.Stop()
 
 	ssrStopCh := make(chan struct{})
-	go handleSsrStopRequest(ctx, handler, ssr, ackCh, ssrStopCh)
-	go handleAckState(handler, ackCh)
-
+	leStopCh := make(chan struct{})
+	go handleSsrStopRequest(ctx, handler, leStopCh, ssrStopCh)
 	go defragmentor.DefragDataPeriodically(ctx, b.config.EtcdConnectionConfig, b.defragmentationSchedule, ssr.TriggerFullSnapshot, b.logger)
 
-	b.runEtcdProbeLoopWithSnapshotter(ctx, handler, ssr, ssrStopCh, ackCh)
-	return nil
+	leaderCallbacks := &leaderelection.LeaderCallbacks{
+		OnStartedLeading: func(ctx context.Context) {
+			b.logger.Infof("Started leading...")
+			handler.Snapshotter.LoadPreviousSnapshotState()
+			b.runEtcdProbeLoopWithSnapshotter(ctx, handler, ssr, ssrStopCh)
+		},
+		OnStoppedLeading: func() {
+			b.logger.Infof("Stopped leading...")
+			leStopCh <- emptyStruct
+			//TODO: simplify this
+		},
+	}
+
+	b.leaderElector = leaderelection.NewLeaderElector(b.logger, b.config.LeaderElectionConfig, b.config.EtcdConnectionConfig, leaderCallbacks)
+
+	return b.leaderElector.Run(ctx)
 }
 
-// runEtcdProbeLoopWithoutSnapshotter runs the etcd probe loop
+// runEtcdProbeLoopWithSnapshotter runs the etcd probe loop
 // for the case where snapshotter is configured correctly
-func (b *BackupRestoreServer) runEtcdProbeLoopWithSnapshotter(ctx context.Context, handler *HTTPHandler, ssr *snapshotter.Snapshotter, ssrStopCh chan struct{}, ackCh chan struct{}) {
+func (b *BackupRestoreServer) runEtcdProbeLoopWithSnapshotter(ctx context.Context, handler *HTTPHandler, ssr *snapshotter.Snapshotter, ssrStopCh <-chan struct{}) {
 	var (
 		err                       error
 		initialDeltaSnapshotTaken bool
@@ -180,7 +195,7 @@ func (b *BackupRestoreServer) runEtcdProbeLoopWithSnapshotter(ctx context.Contex
 		}
 		if err != nil {
 			b.logger.Errorf("Failed to probe etcd: %v", err)
-			handler.SetStatus(http.StatusServiceUnavailable)
+			//handler.SetStatus(http.StatusServiceUnavailable)
 			continue
 		}
 
@@ -205,8 +220,8 @@ func (b *BackupRestoreServer) runEtcdProbeLoopWithSnapshotter(ctx context.Contex
 			ssrStopped, err := ssr.CollectEventsSincePrevSnapshot(ssrStopCh)
 			if ssrStopped {
 				b.logger.Info("Snapshotter stopped.")
-				ackCh <- emptyStruct
-				handler.SetStatus(http.StatusServiceUnavailable)
+				handler.Acknowledge()
+				//	handler.SetStatus(http.StatusServiceUnavailable)
 				b.logger.Info("Shutting down...")
 				return
 			}
@@ -232,7 +247,7 @@ func (b *BackupRestoreServer) runEtcdProbeLoopWithSnapshotter(ctx context.Contex
 
 		// set server's healthz endpoint status to OK so that
 		// etcd is marked as ready to serve traffic
-		handler.SetStatus(http.StatusOK)
+		//handler.SetStatus(http.StatusOK)
 
 		ssr.SsrStateMutex.Lock()
 		ssr.SsrState = snapshotter.SnapshotterActive
@@ -249,11 +264,25 @@ func (b *BackupRestoreServer) runEtcdProbeLoopWithSnapshotter(ctx context.Contex
 			}
 		}
 		b.logger.Infof("Snapshotter stopped.")
-		ackCh <- emptyStruct
-		handler.SetStatus(http.StatusServiceUnavailable)
+		handler.Acknowledge()
+		//handler.SetStatus(http.StatusServiceUnavailable)
 		close(gcStopCh)
 	}
 }
+
+// func (b *BackupRestoreServer) stopSnapshotter() {
+// 	if  b.snapshotter != nil {
+// 	ssr := b.snapshotter
+// 	ssr.SsrStateMutex.Lock()
+// 		if ssr.SsrState == snapshotter.SnapshotterActive {
+// 			ssr.SsrStateMutex.Unlock()
+// 			ssrStopCh <- emptyStruct
+// 		} else {
+// 			ssr.SsrState = snapshotter.SnapshotterInactive
+// 			ssr.SsrStateMutex.Unlock()
+// 		}
+// 	}
+// }
 
 // runEtcdProbeLoopWithoutSnapshotter runs the etcd probe loop
 // for the case where snapshotter is not configured
@@ -270,13 +299,13 @@ func (b *BackupRestoreServer) runEtcdProbeLoopWithoutSnapshotter(ctx context.Con
 		}
 		if err != nil {
 			b.logger.Errorf("Failed to probe etcd: %v", err)
-			handler.SetStatus(http.StatusServiceUnavailable)
+			//handler.SetStatus(http.StatusServiceUnavailable)
 			continue
 		}
 
 		handler.SetStatus(http.StatusOK)
 		<-ctx.Done()
-		handler.SetStatus(http.StatusServiceUnavailable)
+		//handler.SetStatus(http.StatusServiceUnavailable)
 		b.logger.Infof("Received stop signal. Terminating !!")
 		return
 	}
@@ -301,32 +330,25 @@ func (b *BackupRestoreServer) probeEtcd(ctx context.Context) error {
 	return nil
 }
 
-func handleAckState(handler *HTTPHandler, ackCh chan struct{}) {
-	for {
-		<-ackCh
-		if atomic.CompareAndSwapUint32(&handler.AckState, HandlerAckWaiting, HandlerAckDone) {
-			handler.AckCh <- emptyStruct
-		}
-	}
-}
-
 // handleSsrStopRequest responds to handlers request and stop interrupt.
-func handleSsrStopRequest(ctx context.Context, handler *HTTPHandler, ssr *snapshotter.Snapshotter, ackCh, ssrStopCh chan struct{}) {
+func handleSsrStopRequest(ctx context.Context, handler *HTTPHandler, leStopCh <-chan struct{}, ssrStopCh chan<- struct{}) {
 	for {
 		var ok bool
 		select {
 		case _, ok = <-handler.ReqCh:
+		case _, ok = <-leStopCh:
 		case _, ok = <-ctx.Done():
 		}
 
-		ssr.SsrStateMutex.Lock()
-		if ssr.SsrState == snapshotter.SnapshotterActive {
-			ssr.SsrStateMutex.Unlock()
+		handler.Snapshotter.SsrStateMutex.Lock()
+		if handler.Snapshotter.SsrState == snapshotter.SnapshotterActive {
+			handler.Snapshotter.SsrStateMutex.Unlock()
+			handler.Logger.Infof("Sending stop signal to ssr ")
 			ssrStopCh <- emptyStruct
 		} else {
-			ssr.SsrState = snapshotter.SnapshotterInactive
-			ssr.SsrStateMutex.Unlock()
-			ackCh <- emptyStruct
+			handler.Snapshotter.SsrState = snapshotter.SnapshotterInactive
+			handler.Snapshotter.SsrStateMutex.Unlock()
+			handler.Acknowledge()
 		}
 		if !ok {
 			return

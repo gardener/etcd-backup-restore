@@ -25,11 +25,12 @@ import (
 	"sync"
 	"time"
 
+	"github.com/gardener/etcd-backup-restore/pkg/miscellaneous"
+
 	"github.com/coreos/etcd/clientv3"
 	"github.com/gardener/etcd-backup-restore/pkg/errors"
 	"github.com/gardener/etcd-backup-restore/pkg/etcdutil"
 	"github.com/gardener/etcd-backup-restore/pkg/metrics"
-	"github.com/gardener/etcd-backup-restore/pkg/miscellaneous"
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	"github.com/prometheus/client_golang/prometheus"
 	cron "github.com/robfig/cron/v3"
@@ -44,10 +45,33 @@ func NewSnapshotter(logger *logrus.Entry, config *Config, store snapstore.SnapSt
 		return nil, fmt.Errorf("invalid schedule provied %s : %v", config.FullSnapshotSchedule, err)
 	}
 
-	var prevSnapshot *snapstore.Snapshot
-	fullSnap, deltaSnapList, err := miscellaneous.GetLatestFullSnapshotAndDeltaSnapList(store)
-	if err != nil {
+	ssr := &Snapshotter{
+		logger:               logger.WithField("actor", "snapshotter"),
+		store:                store,
+		config:               config,
+		etcdConnectionConfig: etcdConnectionConfig,
+
+		schedule:           sdl,
+		SsrState:           SnapshotterInactive,
+		SsrStateMutex:      &sync.Mutex{},
+		fullSnapshotReqCh:  make(chan struct{}),
+		deltaSnapshotReqCh: make(chan struct{}),
+		fullSnapshotAckCh:  make(chan result),
+		deltaSnapshotAckCh: make(chan result),
+		cancelWatch:        func() {},
+	}
+	if err := ssr.LoadPreviousSnapshotState(); err != nil {
 		return nil, err
+	}
+	return ssr, nil
+}
+
+// LoadPreviousSnapshotState load the previous snapshot state for ssr
+func (ssr *Snapshotter) LoadPreviousSnapshotState() error {
+	var prevSnapshot *snapstore.Snapshot
+	fullSnap, deltaSnapList, err := miscellaneous.GetLatestFullSnapshotAndDeltaSnapList(ssr.store)
+	if err != nil {
+		return err
 	} else if fullSnap != nil && len(deltaSnapList) == 0 {
 		prevSnapshot = fullSnap
 		// setting timestamps of both full and delta to prev full snapshot's timestamp
@@ -64,24 +88,11 @@ func NewSnapshotter(logger *logrus.Entry, config *Config, store snapstore.SnapSt
 
 	metrics.LatestSnapshotRevision.With(prometheus.Labels{metrics.LabelKind: prevSnapshot.Kind}).Set(float64(prevSnapshot.LastRevision))
 
-	return &Snapshotter{
-		logger:               logger.WithField("actor", "snapshotter"),
-		store:                store,
-		config:               config,
-		etcdConnectionConfig: etcdConnectionConfig,
+	ssr.prevSnapshot = prevSnapshot
+	ssr.PrevFullSnapshot = fullSnap
+	ssr.PrevDeltaSnapshots = deltaSnapList
 
-		schedule:           sdl,
-		prevSnapshot:       prevSnapshot,
-		PrevFullSnapshot:   fullSnap,
-		PrevDeltaSnapshots: deltaSnapList,
-		SsrState:           SnapshotterInactive,
-		SsrStateMutex:      &sync.Mutex{},
-		fullSnapshotReqCh:  make(chan struct{}),
-		deltaSnapshotReqCh: make(chan struct{}),
-		fullSnapshotAckCh:  make(chan result),
-		deltaSnapshotAckCh: make(chan result),
-		cancelWatch:        func() {},
-	}, nil
+	return nil
 }
 
 // Run process loop for scheduled backup

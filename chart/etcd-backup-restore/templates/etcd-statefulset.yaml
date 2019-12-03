@@ -32,16 +32,16 @@ spec:
         image: {{ .Values.images.etcd.repository }}:{{ .Values.images.etcd.tag }}
         imagePullPolicy: {{ .Values.images.etcd.pullPolicy }}
         command:
-        - /var/etcd/bin/bootstrap.sh
-        readinessProbe:
-          httpGet:
-{{- if .Values.backupRestoreTLS }}
-            scheme: HTTPS
-{{- end }}
-            path: /healthz
-            port: {{ .Values.servicePorts.backupRestore }}
-          initialDelaySeconds: 5
-          periodSeconds: 5
+          - /var/etcd/bin/bootstrap.sh
+#         readinessProbe:
+#           httpGet:
+# {{- if .Values.backupRestoreTLS }}
+#             scheme: HTTPS
+# {{- end }}
+#             path: /healthz
+#             port: {{ .Values.servicePorts.backupRestore }}
+#           initialDelaySeconds: 5
+#           periodSeconds: 5
         livenessProbe:
           exec:
             command:
@@ -90,45 +90,9 @@ spec:
 {{- end }}
       - name: backup-restore
         command:
-        - etcdbrctl
-        - server
-        - --schedule={{ .Values.backup.schedule }}
-{{- if eq .Values.backup.garbageCollectionPolicy "LimitBased" }}
-        - --max-backups={{ .Values.backup.maxBackups }}
-        - --garbage-collection-policy={{ .Values.garbageCollectionPolicy }}
-{{- end }}
-        - --data-dir=/var/etcd/data/new.etcd
-        - --storage-provider={{ .Values.backup.storageProvider }}
-        - --store-prefix={{ .Release.Name }}-etcd
-{{- if .Values.backup.etcdQuotaBytes }}
-        - --embedded-etcd-quota-bytes={{ int $.Values.backup.etcdQuotaBytes }}
-{{- end }}
-{{- if .Values.etcdTLS }}
-        - --cert=/var/etcd/ssl/tls/tls.crt
-        - --key=/var/etcd/ssl/tls/tls.key
-        - --cacert=/var/etcd/ssl/ca/ca.crt
-        - --insecure-transport=false
-        - --insecure-skip-tls-verify=false
-        - --endpoints=https://{{ .Release.Name }}-etcd-0:{{ .Values.servicePorts.client }}
-{{ else }}
-        - --insecure-transport=true
-        - --insecure-skip-tls-verify=true
-        - --endpoints=http://{{ .Release.Name }}-etcd-0:{{ .Values.servicePorts.client }}
-{{- end }}
-{{- if .Values.backup.defragmentationSchedule }}
-        - --defragmentation-schedule={{ .Values.backup.defragmentationSchedule }}
-{{- end }}
-        - --etcd-connection-timeout={{ .Values.backup.etcdConnectionTimeout }}
-        - --delta-snapshot-period={{ .Values.backup.deltaSnapshotPeriod }}
-        - --delta-snapshot-memory-limit={{ int $.Values.backup.deltaSnapshotMemoryLimit }}
-{{- if and .Values.etcdAuth.username .Values.etcdAuth.password }}
-        - --etcd-username={{ .Values.etcdAuth.username }}
-        - --etcd-password={{ .Values.etcdAuth.password }}
-{{- end }}
-{{- if .Values.backupRestoreTLS }}
-        - --server-cert=/var/etcdbr/ssl/tls/tls.crt
-        - --server-key=/var/etcdbr/ssl/tls/tls.key
-{{- end }}
+          - etcdbrctl
+          - server
+          - --config-file=/var/etcdbr/config/etcdbr.conf.yaml
         image: {{ .Values.images.etcdBackupRestore.repository }}:{{ .Values.images.etcdBackupRestore.tag }}
         imagePullPolicy: {{ .Values.images.etcdBackupRestore.pullPolicy }}
         ports:
@@ -218,6 +182,8 @@ spec:
           mountPath: /var/etcd/data/
         - name: etcd-config-file
           mountPath: /var/etcd/config/
+        - name: etcdbr-config-file
+          mountPath: /var/etcdbr/config/
 {{- if .Values.etcdTLS }}
         - name: ca-etcd
           mountPath: /var/etcd/ssl/ca
@@ -249,6 +215,13 @@ spec:
           items:
           - key: etcd.conf.yaml
             path: etcd.conf.yaml
+      - name: etcdbr-config-file
+        configMap:
+          name: {{ .Release.Name }}-etcd-bootstrap
+          defaultMode: 0644
+          items:
+          - key: etcdbr.conf.yaml
+            path: etcdbr.conf.yaml
 {{- if .Values.etcdTLS }}
       - name: ca-etcd
         secret:

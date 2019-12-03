@@ -31,6 +31,11 @@ servicePorts:
   server: 2380
   backupRestore: 8080
 
+etcd:
+  name: "default"
+  initialCluster: "default=http://localhost:2380"
+  initialClusterToken: "garden"
+
 backup:
   # schedule is cron standard schedule to take full snapshots.
   schedule: "0 */1 * * *"
