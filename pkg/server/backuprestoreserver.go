@@ -104,14 +104,12 @@ func (b *BackupRestoreServer) startHTTPServer(initializer initializer.Initialize
 		Snapshotter:       ssr,
 		Logger:            b.logger,
 		EnableProfiling:   b.config.ServerConfig.EnableProfiling,
-		ReqCh:             make(chan struct{}),
 		AckCh:             make(chan struct{}),
 		EnableTLS:         (b.config.ServerConfig.TLSCertFile != "" && b.config.ServerConfig.TLSKeyFile != ""),
 		ServerTLSCertFile: b.config.ServerConfig.TLSCertFile,
 		ServerTLSKeyFile:  b.config.ServerConfig.TLSKeyFile,
 	}
-	//handler.SetStatus(http.StatusServiceUnavailable)
-	handler.SetStatus(http.StatusOK)
+	handler.SetStatus(http.StatusServiceUnavailable)
 	b.logger.Info("Registering the http request handlers...")
 	handler.RegisterHandler()
 	b.logger.Info("Starting the http server...")
@@ -195,7 +193,7 @@ func (b *BackupRestoreServer) runEtcdProbeLoopWithSnapshotter(ctx context.Contex
 		}
 		if err != nil {
 			b.logger.Errorf("Failed to probe etcd: %v", err)
-			//handler.SetStatus(http.StatusServiceUnavailable)
+			handler.SetStatus(http.StatusServiceUnavailable)
 			continue
 		}
 
@@ -221,7 +219,7 @@ func (b *BackupRestoreServer) runEtcdProbeLoopWithSnapshotter(ctx context.Contex
 			if ssrStopped {
 				b.logger.Info("Snapshotter stopped.")
 				handler.Acknowledge()
-				//	handler.SetStatus(http.StatusServiceUnavailable)
+				handler.SetStatus(http.StatusServiceUnavailable)
 				b.logger.Info("Shutting down...")
 				return
 			}
@@ -247,7 +245,7 @@ func (b *BackupRestoreServer) runEtcdProbeLoopWithSnapshotter(ctx context.Contex
 
 		// set server's healthz endpoint status to OK so that
 		// etcd is marked as ready to serve traffic
-		//handler.SetStatus(http.StatusOK)
+		handler.SetStatus(http.StatusOK)
 
 		ssr.SsrStateMutex.Lock()
 		ssr.SsrState = snapshotter.SnapshotterActive
@@ -265,7 +263,7 @@ func (b *BackupRestoreServer) runEtcdProbeLoopWithSnapshotter(ctx context.Contex
 		}
 		b.logger.Infof("Snapshotter stopped.")
 		handler.Acknowledge()
-		//handler.SetStatus(http.StatusServiceUnavailable)
+		handler.SetStatus(http.StatusServiceUnavailable)
 		close(gcStopCh)
 	}
 }
@@ -299,13 +297,13 @@ func (b *BackupRestoreServer) runEtcdProbeLoopWithoutSnapshotter(ctx context.Con
 		}
 		if err != nil {
 			b.logger.Errorf("Failed to probe etcd: %v", err)
-			//handler.SetStatus(http.StatusServiceUnavailable)
+			handler.SetStatus(http.StatusServiceUnavailable)
 			continue
 		}
 
 		handler.SetStatus(http.StatusOK)
 		<-ctx.Done()
-		//handler.SetStatus(http.StatusServiceUnavailable)
+		handler.SetStatus(http.StatusServiceUnavailable)
 		b.logger.Infof("Received stop signal. Terminating !!")
 		return
 	}

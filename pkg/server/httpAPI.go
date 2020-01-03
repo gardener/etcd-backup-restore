@@ -181,27 +181,7 @@ func (h *HTTPHandler) serveInitialize(rw http.ResponseWriter, req *http.Request)
 	if h.initializationStatus == initializationStatusNew {
 		h.Logger.Infof("Updating status from %s to %s", h.initializationStatus, initializationStatusProgress)
 		h.initializationStatus = initializationStatusProgress
-		go func() {
-			// This is needed to stop the currently running snapshotter.
-			if h.Snapshotter != nil {
-				atomic.StoreUint32(&h.AckState, HandlerAckWaiting)
-				h.Logger.Info("Changed handler state.")
-				h.ReqCh <- emptyStruct
-				h.Logger.Info("Waiting for acknowledgment...")
-				<-h.AckCh
-			}
-
-			err := h.Initializer.Initialize(mode, failBelowRevision)
-			h.initializationStatusMutex.Lock()
-			defer h.initializationStatusMutex.Unlock()
-			if err != nil {
-				h.Logger.Errorf("Failed initialization: %v", err)
-				h.initializationStatus = initializationStatusFailed
-				return
-			}
-			h.Logger.Info("Successfully initialized data directory for etcd.")
-			h.initializationStatus = initializationStatusSuccessful
-		}()
+		go h.initializeInCoordinationWithSnapshotter(mode, failBelowRevision)
 	}
 	rw.WriteHeader(http.StatusOK)
 }
@@ -328,30 +308,25 @@ func parseInitializationRequestParameter(req *http.Request) (validator.Mode, int
 	return mode, failBelowRevision, nil
 }
 
-// func(h *HTTPHandler) initializeInCoordinationWithSnapshotter(mode validator.Mode, failBelowRevision int64) {
-// 	// This is needed to stop the currently running snapshotter.
-// 	if h.Snapshotter != nil {
-// 		h.Logger.Info("Changed handler state.")
-// 		h.Snapshotter.SsrStateMutex.Lock()
-// 		if handler.Snapshotter.SsrState == snapshotter.SnapshotterActive {
-// 			atomic.StoreUint32(&h.AckState, HandlerAckWaiting)
-// 			handler.Snapshotter.SsrStateMutex.Unlock()
-// 			ssrStopCh <- emptyStruct
-// 			h.Logger.Info("Waiting for acknowledgment...")
-// 			<-h.AckCh
-// 		} else {
-// 			handler.Snapshotter.SsrStateMutex.Unlock()
-// 		}
-// 	}
+func (h *HTTPHandler) initializeInCoordinationWithSnapshotter(mode validator.Mode, failBelowRevision int64) {
+	// This is needed to stop the currently running snapshotter.
+	if h.Snapshotter != nil {
+		atomic.StoreUint32(&h.AckState, HandlerAckWaiting)
+		h.Logger.Info("Changed handler state.")
+		h.ReqCh <- emptyStruct
 
-// 	err := h.Initializer.Initialize(mode, failBelowRevision)
-// 	h.initializationStatusMutex.Lock()
-// 	defer h.initializationStatusMutex.Unlock()
-// 	if err != nil {
-// 		h.Logger.Errorf("Failed initialization: %v", err)
-// 		h.initializationStatus = initializationStatusFailed
-// 		return
-// 	}
-// 	h.Logger.Info("Successfully initialized data directory for etcd.")
-// 	h.initializationStatus = initializationStatusSuccessful
-// }
+		h.Logger.Info("Waiting for acknowledgment...")
+		<-h.AckCh
+	}
+
+	err := h.Initializer.Initialize(mode, failBelowRevision)
+	h.initializationStatusMutex.Lock()
+	defer h.initializationStatusMutex.Unlock()
+	if err != nil {
+		h.Logger.Errorf("Failed initialization: %v", err)
+		h.initializationStatus = initializationStatusFailed
+		return
+	}
+	h.Logger.Info("Successfully initialized data directory for etcd.")
+	h.initializationStatus = initializationStatusSuccessful
+}
