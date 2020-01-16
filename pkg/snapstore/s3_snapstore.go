@@ -79,7 +79,7 @@ func NewS3FromClient(bucket, prefix, tempDir string, maxParallelChunkUploads uin
 }
 
 // Fetch should open reader for the snapshot file from store
-func (s *S3SnapStore) Fetch(snap Snapshot) (io.ReadCloser, error) {
+func (s *S3SnapStore) Fetch(ctx context.Context, snap Snapshot) (io.ReadCloser, error) {
 	resp, err := s.client.GetObject(&s3.GetObjectInput{
 		Bucket: aws.String(s.bucket),
 		Key:    aws.String(path.Join(s.prefix, snap.SnapDir, snap.SnapName)),
@@ -91,7 +91,7 @@ func (s *S3SnapStore) Fetch(snap Snapshot) (io.ReadCloser, error) {
 }
 
 // Save will write the snapshot to store
-func (s *S3SnapStore) Save(snap Snapshot, rc io.ReadCloser) error {
+func (s *S3SnapStore) Save(ctx context.Context, snap Snapshot, rc io.ReadCloser) error {
 	tmpfile, err := ioutil.TempFile(s.tempDir, tmpBackupFilePrefix)
 	if err != nil {
 		rc.Close()
@@ -112,7 +112,6 @@ func (s *S3SnapStore) Save(snap Snapshot, rc io.ReadCloser) error {
 		return err
 	}
 	// Initiate multi part upload
-	ctx := context.TODO()
 	ctx, cancel := context.WithTimeout(ctx, chunkUploadTimeout)
 	defer cancel()
 	uploadOutput, err := s.client.CreateMultipartUploadWithContext(ctx, &s3.CreateMultipartUploadInput{
@@ -247,7 +246,7 @@ func (s *S3SnapStore) partUploader(wg *sync.WaitGroup, stopCh <-chan struct{}, s
 }
 
 // List will list the snapshots from store
-func (s *S3SnapStore) List() (SnapList, error) {
+func (s *S3SnapStore) List(ctx context.Context) (SnapList, error) {
 	var snapList SnapList
 	in := &s3.ListObjectsInput{
 		Bucket: aws.String(s.bucket),
@@ -275,7 +274,7 @@ func (s *S3SnapStore) List() (SnapList, error) {
 }
 
 // Delete should delete the snapshot file from store
-func (s *S3SnapStore) Delete(snap Snapshot) error {
+func (s *S3SnapStore) Delete(ctx context.Context, snap Snapshot) error {
 	_, err := s.client.DeleteObject(&s3.DeleteObjectInput{
 		Bucket: aws.String(s.bucket),
 		Key:    aws.String(path.Join(s.prefix, snap.SnapDir, snap.SnapName)),

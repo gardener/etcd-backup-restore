@@ -98,7 +98,7 @@ func GetABSSnapstoreFromClient(container, prefix, tempDir string, maxParallelChu
 }
 
 // Fetch should open reader for the snapshot file from store
-func (a *ABSSnapStore) Fetch(snap Snapshot) (io.ReadCloser, error) {
+func (a *ABSSnapStore) Fetch(ctx context.Context, snap Snapshot) (io.ReadCloser, error) {
 	blobName := path.Join(a.prefix, snap.SnapDir, snap.SnapName)
 	blob := a.containerURL.NewBlobURL(blobName)
 	resp, err := blob.Download(context.Background(), io.SeekStart, azblob.CountToEnd, azblob.BlobAccessConditions{}, false)
@@ -109,7 +109,7 @@ func (a *ABSSnapStore) Fetch(snap Snapshot) (io.ReadCloser, error) {
 }
 
 // List will list all snapshot files on store
-func (a *ABSSnapStore) List() (SnapList, error) {
+func (a *ABSSnapStore) List(ctx context.Context) (SnapList, error) {
 	var snapList SnapList
 	opts := azblob.ListBlobsSegmentOptions{Prefix: path.Join(a.prefix, "/")}
 	for marker := (azblob.Marker{}); marker.NotDone(); {
@@ -136,7 +136,7 @@ func (a *ABSSnapStore) List() (SnapList, error) {
 }
 
 // Save will write the snapshot to store
-func (a *ABSSnapStore) Save(snap Snapshot, rc io.ReadCloser) error {
+func (a *ABSSnapStore) Save(ctx context.Context, snap Snapshot, rc io.ReadCloser) error {
 	// Save it locally
 	tmpfile, err := ioutil.TempFile(a.tempDir, tmpBackupFilePrefix)
 	if err != nil {
@@ -253,7 +253,7 @@ func (a *ABSSnapStore) blockUploader(wg *sync.WaitGroup, stopCh <-chan struct{},
 }
 
 // Delete should delete the snapshot file from store
-func (a *ABSSnapStore) Delete(snap Snapshot) error {
+func (a *ABSSnapStore) Delete(ctx context.Context, snap Snapshot) error {
 	blobName := path.Join(a.prefix, snap.SnapDir, snap.SnapName)
 	blob := a.containerURL.NewBlobURL(blobName)
 	if _, err := blob.Delete(context.TODO(), azblob.DeleteSnapshotsOptionInclude, azblob.BlobAccessConditions{}); err != nil {

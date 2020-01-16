@@ -75,7 +75,7 @@ var _ = Describe("Running Restorer", func() {
 			store, err = snapstore.GetSnapstore(&snapstore.Config{Container: snapstoreDir, Provider: "Local"})
 			Expect(err).ShouldNot(HaveOccurred())
 
-			baseSnapshot, deltaSnapList, err = miscellaneous.GetLatestFullSnapshotAndDeltaSnapList(store)
+			baseSnapshot, deltaSnapList, err = miscellaneous.GetLatestFullSnapshotAndDeltaSnapList(testCtx, store)
 			Expect(err).ShouldNot(HaveOccurred())
 
 			rstr = NewRestorer(store, logger)
@@ -112,7 +112,7 @@ var _ = Describe("Running Restorer", func() {
 				restoreOpts.Config.InitialAdvertisePeerURLs = []string{"http://localhost:2390"}
 				restoreOpts.ClusterURLs, err = types.NewURLsMap(restoreOpts.Config.InitialCluster)
 
-				err = rstr.Restore(restoreOpts)
+				err = rstr.Restore(testCtx, restoreOpts)
 				Expect(err).Should(HaveOccurred())
 			})
 		})
@@ -121,7 +121,7 @@ var _ = Describe("Running Restorer", func() {
 			It("should fail to restore", func() {
 				restoreOpts.Config.RestoreDataDir = ""
 
-				err = rstr.Restore(restoreOpts)
+				err = rstr.Restore(testCtx, restoreOpts)
 				Expect(err).Should(HaveOccurred())
 			})
 		})
@@ -131,7 +131,7 @@ var _ = Describe("Running Restorer", func() {
 				restoreOpts.BaseSnapshot.SnapDir = "test"
 				restoreOpts.BaseSnapshot.SnapName = "test"
 
-				err := rstr.Restore(restoreOpts)
+				err := rstr.Restore(testCtx, restoreOpts)
 				Expect(err).Should(HaveOccurred())
 			})
 		})
@@ -148,7 +148,7 @@ var _ = Describe("Running Restorer", func() {
 		Context("with maximum of one fetcher allowed", func() {
 			It("should restore etcd data directory", func() {
 				restoreOpts.Config.MaxFetchers = 1
-				err = rstr.Restore(restoreOpts)
+				err = rstr.Restore(testCtx, restoreOpts)
 				Expect(err).ShouldNot(HaveOccurred())
 
 				err = checkDataConsistency(testCtx, restoreOpts.Config.RestoreDataDir, logger)
@@ -160,7 +160,7 @@ var _ = Describe("Running Restorer", func() {
 			It("should restore etcd data directory", func() {
 				restoreOpts.Config.MaxFetchers = 4
 
-				err = rstr.Restore(restoreOpts)
+				err = rstr.Restore(testCtx, restoreOpts)
 				Expect(err).ShouldNot(HaveOccurred())
 
 				err = checkDataConsistency(testCtx, restoreOpts.Config.RestoreDataDir, logger)
@@ -172,7 +172,7 @@ var _ = Describe("Running Restorer", func() {
 			It("should restore etcd data directory", func() {
 				restoreOpts.Config.MaxFetchers = 100
 
-				err = rstr.Restore(restoreOpts)
+				err = rstr.Restore(testCtx, restoreOpts)
 				Expect(err).ShouldNot(HaveOccurred())
 
 				err = checkDataConsistency(testCtx, restoreOpts.Config.RestoreDataDir, logger)
@@ -228,15 +228,14 @@ var _ = Describe("Running Restorer", func() {
 				defer cancelPopulator()
 				logger.Infoln("Starting snapshotter with basesnapshot set to false")
 				ssrCtx := utils.ContextWithWaitGroupFollwedByGracePeriod(testCtx, wg, 2)
-				err = runSnapshotter(logger, deltaSnapshotPeriod, endpoints, ssrCtx.Done(), startWithFullSnapshot)
-				Expect(err).ShouldNot(HaveOccurred())
+				runSnapshotter(ssrCtx, logger, deltaSnapshotPeriod, endpoints, startWithFullSnapshot)
 				etcd.Server.Stop()
 				etcd.Close()
 
 				err = corruptEtcdDir()
 				Expect(err).ShouldNot(HaveOccurred())
 
-				baseSnapshot, deltaSnapList, err = miscellaneous.GetLatestFullSnapshotAndDeltaSnapList(store)
+				baseSnapshot, deltaSnapList, err = miscellaneous.GetLatestFullSnapshotAndDeltaSnapList(testCtx, store)
 				Expect(err).ShouldNot(HaveOccurred())
 				logger.Infof("No of delta snapshots: %d", deltaSnapList.Len())
 				logger.Infof("Base snapshot is %v", baseSnapshot)
@@ -252,7 +251,7 @@ var _ = Describe("Running Restorer", func() {
 				restoreOpts.BaseSnapshot.SnapDir = ""
 				restoreOpts.BaseSnapshot.SnapName = ""
 
-				err := rstr.Restore(restoreOpts)
+				err := rstr.Restore(testCtx, restoreOpts)
 
 				Expect(err).ShouldNot(HaveOccurred())
 				err = checkDataConsistency(testCtx, restoreOpts.Config.RestoreDataDir, logger)
@@ -269,7 +268,7 @@ var _ = Describe("Running Restorer", func() {
 				go utils.PopulateEtcdWithWaitGroup(populatorCtx, wg, logger, endpoints, nil)
 				defer cancelPopulator()
 				ssrCtx := utils.ContextWithWaitGroupFollwedByGracePeriod(testCtx, wg, time.Second)
-				err = runSnapshotter(logger, deltaSnapshotPeriod, endpoints, ssrCtx.Done(), true)
+				err = runSnapshotter(ssrCtx, logger, deltaSnapshotPeriod, endpoints, true)
 				Expect(err).ShouldNot(HaveOccurred())
 				etcd.Server.Stop()
 				etcd.Close()
@@ -277,7 +276,7 @@ var _ = Describe("Running Restorer", func() {
 				err = corruptEtcdDir()
 				Expect(err).ShouldNot(HaveOccurred())
 
-				baseSnapshot, deltaSnapList, err = miscellaneous.GetLatestFullSnapshotAndDeltaSnapList(store)
+				baseSnapshot, deltaSnapList, err = miscellaneous.GetLatestFullSnapshotAndDeltaSnapList(testCtx, store)
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(deltaSnapList.Len()).Should(BeZero())
 
@@ -291,7 +290,7 @@ var _ = Describe("Running Restorer", func() {
 					PeerURLs:      peerUrls,
 				}
 
-				err = rstr.Restore(restoreOpts)
+				err = rstr.Restore(testCtx, restoreOpts)
 
 				Expect(err).ShouldNot(HaveOccurred())
 
@@ -306,14 +305,14 @@ var _ = Describe("Running Restorer", func() {
 				go utils.PopulateEtcdWithWaitGroup(populatorCtx, wg, logger, endpoints, nil)
 				defer cancelPopulator()
 				ssrCtx := utils.ContextWithWaitGroupFollwedByGracePeriod(testCtx, wg, time.Second)
-				err = runSnapshotter(logger, deltaSnapshotPeriod, endpoints, ssrCtx.Done(), true)
+				err = runSnapshotter(ssrCtx, logger, deltaSnapshotPeriod, endpoints, true)
 				Expect(err).ShouldNot(HaveOccurred())
 				etcd.Close()
 
 				err = corruptEtcdDir()
 				Expect(err).ShouldNot(HaveOccurred())
 
-				baseSnapshot, deltaSnapList, err = miscellaneous.GetLatestFullSnapshotAndDeltaSnapList(store)
+				baseSnapshot, deltaSnapList, err = miscellaneous.GetLatestFullSnapshotAndDeltaSnapList(testCtx, store)
 				Expect(err).ShouldNot(HaveOccurred())
 				logger.Infof("No. of delta snapshots: %d", deltaSnapList.Len())
 
@@ -333,7 +332,7 @@ var _ = Describe("Running Restorer", func() {
 					PeerURLs:      peerUrls,
 				}
 
-				err = rstr.Restore(restoreOpts)
+				err = rstr.Restore(testCtx, restoreOpts)
 				Expect(err).Should(HaveOccurred())
 				// the below consistency fails with index out of range error hence commented,
 				// but the etcd directory is filled partially as part of the restore which should be relooked.
@@ -351,11 +350,11 @@ var _ = Describe("Running Restorer", func() {
 				go utils.PopulateEtcdWithWaitGroup(populatorCtx, wg, logger, endpoints, nil)
 				defer cancelPopulator()
 				ssrCtx := utils.ContextWithWaitGroupFollwedByGracePeriod(testCtx, wg, 2*time.Second)
-				err = runSnapshotter(logger, deltaSnapshotPeriod, endpoints, ssrCtx.Done(), true)
+				err = runSnapshotter(ssrCtx, logger, deltaSnapshotPeriod, endpoints, true)
 				Expect(err).ShouldNot(HaveOccurred())
 				etcd.Close()
 
-				baseSnapshot, deltaSnapList, err = miscellaneous.GetLatestFullSnapshotAndDeltaSnapList(store)
+				baseSnapshot, deltaSnapList, err = miscellaneous.GetLatestFullSnapshotAndDeltaSnapList(testCtx, store)
 				Expect(err).ShouldNot(HaveOccurred())
 
 				rstr = NewRestorer(store, logger)
@@ -369,7 +368,7 @@ var _ = Describe("Running Restorer", func() {
 				}
 
 				logger.Infoln("starting restore, restore directory exists already")
-				err = rstr.Restore(restoreOpts)
+				err = rstr.Restore(testCtx, restoreOpts)
 				logger.Infof("Failed to restore because :: %s", err)
 
 				Expect(err).Should(HaveOccurred())
@@ -388,7 +387,7 @@ var _ = Describe("Running Restorer", func() {
 				ssrCtx := utils.ContextWithWaitGroupFollwedByGracePeriod(testCtx, wg, 15*time.Second)
 
 				logger.Infoln("Starting snapshotter while loading is happening")
-				err = runSnapshotter(logger, deltaSnapshotPeriod, endpoints, ssrCtx.Done(), true)
+				err = runSnapshotter(ssrCtx, logger, deltaSnapshotPeriod, endpoints, true)
 				Expect(err).ShouldNot(HaveOccurred())
 
 				time.Sleep(time.Duration(5 * time.Second))
@@ -401,7 +400,7 @@ var _ = Describe("Running Restorer", func() {
 
 				store, err = snapstore.GetSnapstore(&snapstore.Config{Container: snapstoreDir, Provider: "Local"})
 				Expect(err).ShouldNot(HaveOccurred())
-				baseSnapshot, deltaSnapList, err = miscellaneous.GetLatestFullSnapshotAndDeltaSnapList(store)
+				baseSnapshot, deltaSnapList, err = miscellaneous.GetLatestFullSnapshotAndDeltaSnapList(testCtx, store)
 				Expect(err).ShouldNot(HaveOccurred())
 
 				rstr = NewRestorer(store, logger)
@@ -415,7 +414,7 @@ var _ = Describe("Running Restorer", func() {
 				}
 
 				logger.Infoln("starting restore while snapshotter is running")
-				err = rstr.Restore(restoreOpts)
+				err = rstr.Restore(testCtx, restoreOpts)
 				Expect(err).ShouldNot(HaveOccurred())
 				err = checkDataConsistency(testCtx, restoreOpts.Config.RestoreDataDir, logger)
 				Expect(err).ShouldNot(HaveOccurred())

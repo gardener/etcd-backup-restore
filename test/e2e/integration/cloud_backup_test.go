@@ -16,6 +16,7 @@ package integration_test
 
 import (
 	"bufio"
+	"context"
 	"io"
 	"net/http"
 	"os"
@@ -117,6 +118,7 @@ var _ = Describe("CloudBackup", func() {
 
 	var snapstoreConfig *snapstore.Config
 	var store snapstore.SnapStore
+	var ctx = context.TODO()
 
 	BeforeEach(func() {
 		snapstoreConfig = &snapstore.Config{
@@ -137,10 +139,10 @@ var _ = Describe("CloudBackup", func() {
 			store, err = snapstore.GetSnapstore(snapstoreConfig)
 			Expect(err).ShouldNot(HaveOccurred())
 
-			snapList, err := store.List()
+			snapList, err := store.List(ctx)
 			Expect(err).ShouldNot(HaveOccurred())
 			for _, snap := range snapList {
-				store.Delete(*snap)
+				store.Delete(ctx, *snap)
 			}
 
 			cmdEtcd, etcdErrChan = startEtcd()
@@ -158,13 +160,13 @@ var _ = Describe("CloudBackup", func() {
 
 		Context("taken at 1 minute interval", func() {
 			It("should take periodic backups.", func() {
-				snaplist, err := store.List()
+				snaplist, err := store.List(ctx)
 				Expect(snaplist).Should(BeEmpty())
 				Expect(err).ShouldNot(HaveOccurred())
 
 				time.Sleep(70 * time.Second)
 
-				snaplist, err = store.List()
+				snaplist, err = store.List(ctx)
 				Expect(snaplist).ShouldNot(BeEmpty())
 				Expect(err).ShouldNot(HaveOccurred())
 			})
@@ -172,13 +174,13 @@ var _ = Describe("CloudBackup", func() {
 
 		Context("taken at 1 minute interval", func() {
 			It("should take periodic backups and limit based garbage collect backups over maxBackups configured", func() {
-				snaplist, err := store.List()
+				snaplist, err := store.List(ctx)
 				Expect(snaplist).Should(BeEmpty())
 				Expect(err).ShouldNot(HaveOccurred())
 
 				time.Sleep(190 * time.Second)
 
-				snaplist, err = store.List()
+				snaplist, err = store.List(ctx)
 				Expect(err).ShouldNot(HaveOccurred())
 				count := 0
 				for _, snap := range snaplist {
@@ -216,7 +218,7 @@ var _ = Describe("CloudBackup", func() {
 						SnapstoreConfig: snapstoreConfig,
 					},
 				}
-				dataDirStatus, err := dataValidator.Validate(validator.Full, 0)
+				dataDirStatus, err := dataValidator.Validate(ctx, validator.Full, 0)
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(dataDirStatus).Should(Equal(validator.DataDirStatus(validator.DataDirectoryValid)))
 			})
@@ -248,7 +250,7 @@ var _ = Describe("CloudBackup", func() {
 						SnapstoreConfig: snapstoreConfig,
 					},
 				}
-				dataDirStatus, err := dataValidator.Validate(validator.Full, 0)
+				dataDirStatus, err := dataValidator.Validate(ctx, validator.Full, 0)
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(dataDirStatus).Should(SatisfyAny(Equal(validator.DataDirStatus(validator.DataDirectoryCorrupt)), Equal(validator.DataDirStatus(validator.RevisionConsistencyError))))
 			})

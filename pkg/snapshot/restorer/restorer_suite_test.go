@@ -79,7 +79,7 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 
 	deltaSnapshotPeriod := time.Second
 	ctx := utils.ContextWithWaitGroupFollwedByGracePeriod(populatorCtx, wg, deltaSnapshotPeriod+2*time.Second)
-	err = runSnapshotter(logger, deltaSnapshotPeriod, endpoints, ctx.Done(), true)
+	err = runSnapshotter(ctx, logger, deltaSnapshotPeriod, endpoints, true)
 	Expect(err).ShouldNot(HaveOccurred())
 
 	keyTo = resp.KeyTo
@@ -104,7 +104,7 @@ func cleanUp() {
 }
 
 // runSnapshotter creates a snapshotter object and runs it for a duration specified by 'snapshotterDurationSeconds'
-func runSnapshotter(logger *logrus.Entry, deltaSnapshotPeriod time.Duration, endpoints []string, stopCh <-chan struct{}, startWithFullSnapshot bool) error {
+func runSnapshotter(ctx context.Context, logger *logrus.Entry, deltaSnapshotPeriod time.Duration, endpoints []string, startWithFullSnapshot bool) error {
 	store, err := snapstore.GetSnapstore(&snapstore.Config{Container: snapstoreDir, Provider: "Local"})
 	if err != nil {
 		return err
@@ -123,10 +123,10 @@ func runSnapshotter(logger *logrus.Entry, deltaSnapshotPeriod time.Duration, end
 		MaxBackups:               1,
 	}
 
-	ssr, err := snapshotter.NewSnapshotter(logger, snapshotterConfig, store, etcdConnectionConfig)
+	ssr, err := snapshotter.NewSnapshotter(ctx, logger, snapshotterConfig, store, etcdConnectionConfig)
 	if err != nil {
 		return err
 	}
 
-	return ssr.Run(stopCh, startWithFullSnapshot)
+	return ssr.Run(ctx, startWithFullSnapshot)
 }

@@ -71,7 +71,7 @@ func NewInitializeCommand(ctx context.Context) *cobra.Command {
 			}
 
 			etcdInitializer := initializer.NewInitializer(restoreOptions, opts.restorerOptions.snapstoreConfig, logger)
-			if err := etcdInitializer.Initialize(mode, opts.validatorOptions.FailBelowRevision); err != nil {
+			if err := etcdInitializer.Initialize(ctx, mode, opts.validatorOptions.FailBelowRevision); err != nil {
 				logger.Fatalf("initializer failed. %v", err)
 			}
 		},

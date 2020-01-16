@@ -16,6 +16,7 @@ package snapstore
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -86,13 +87,13 @@ func NewSwiftSnapstoreFromClient(bucket, prefix, tempDir string, maxParallelChun
 }
 
 // Fetch should open reader for the snapshot file from store
-func (s *SwiftSnapStore) Fetch(snap Snapshot) (io.ReadCloser, error) {
+func (s *SwiftSnapStore) Fetch(ctx context.Context, snap Snapshot) (io.ReadCloser, error) {
 	resp := objects.Download(s.client, s.bucket, path.Join(s.prefix, snap.SnapDir, snap.SnapName), nil)
 	return resp.Body, resp.Err
 }
 
 // Save will write the snapshot to store
-func (s *SwiftSnapStore) Save(snap Snapshot, rc io.ReadCloser) error {
+func (s *SwiftSnapStore) Save(ctx context.Context, snap Snapshot, rc io.ReadCloser) error {
 	// Save it locally
 	tmpfile, err := ioutil.TempFile(s.tempDir, tmpBackupFilePrefix)
 	if err != nil {
@@ -203,7 +204,7 @@ func (s *SwiftSnapStore) chunkUploader(wg *sync.WaitGroup, stopCh <-chan struct{
 }
 
 // List will list the snapshots from store
-func (s *SwiftSnapStore) List() (SnapList, error) {
+func (s *SwiftSnapStore) List(ctx context.Context) (SnapList, error) {
 	opts := &objects.ListOpts{
 		Full:   false,
 		Prefix: s.prefix,
@@ -241,7 +242,7 @@ func (s *SwiftSnapStore) List() (SnapList, error) {
 }
 
 // Delete should delete the snapshot file from store
-func (s *SwiftSnapStore) Delete(snap Snapshot) error {
+func (s *SwiftSnapStore) Delete(ctx context.Context, snap Snapshot) error {
 	result := objects.Delete(s.client, s.bucket, path.Join(s.prefix, snap.SnapDir, snap.SnapName), nil)
 	return result.Err
 }

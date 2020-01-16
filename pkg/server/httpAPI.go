@@ -15,6 +15,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -181,7 +182,8 @@ func (h *HTTPHandler) serveInitialize(rw http.ResponseWriter, req *http.Request)
 	if h.initializationStatus == initializationStatusNew {
 		h.Logger.Infof("Updating status from %s to %s", h.initializationStatus, initializationStatusProgress)
 		h.initializationStatus = initializationStatusProgress
-		go h.initializeInCoordinationWithSnapshotter(mode, failBelowRevision)
+		// Context passed here cannot be same as the req.Context() since this asynchronous call.
+		go h.initializeInCoordinationWithSnapshotter(context.TODO(), mode, failBelowRevision)
 	}
 	rw.WriteHeader(http.StatusOK)
 }
@@ -308,7 +310,7 @@ func parseInitializationRequestParameter(req *http.Request) (validator.Mode, int
 	return mode, failBelowRevision, nil
 }
 
-func (h *HTTPHandler) initializeInCoordinationWithSnapshotter(mode validator.Mode, failBelowRevision int64) {
+func (h *HTTPHandler) initializeInCoordinationWithSnapshotter(ctx context.Context, mode validator.Mode, failBelowRevision int64) {
 	// This is needed to stop the currently running snapshotter.
 	if h.Snapshotter != nil {
 		atomic.StoreUint32(&h.AckState, HandlerAckWaiting)
@@ -319,7 +321,7 @@ func (h *HTTPHandler) initializeInCoordinationWithSnapshotter(mode validator.Mod
 		<-h.AckCh
 	}
 
-	err := h.Initializer.Initialize(mode, failBelowRevision)
+	err := h.Initializer.Initialize(ctx, mode, failBelowRevision)
 	h.initializationStatusMutex.Lock()
 	defer h.initializationStatusMutex.Unlock()
 	if err != nil {

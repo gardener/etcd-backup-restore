@@ -15,6 +15,7 @@
 package snapstore
 
 import (
+	"context"
 	"fmt"
 	"io"
 )
@@ -30,22 +31,22 @@ func NewFailedSnapStore() *FailedSnapStore {
 }
 
 // Fetch should open reader for the snapshot file from store
-func (f *FailedSnapStore) Fetch(snap Snapshot) (io.ReadCloser, error) {
+func (f *FailedSnapStore) Fetch(ctx context.Context, snap Snapshot) (io.ReadCloser, error) {
 	return nil, fmt.Errorf("failed to fetch snapshot %s", snap.SnapName)
 }
 
 // Save will write the snapshot to store
-func (f *FailedSnapStore) Save(snap Snapshot, rc io.ReadCloser) error {
+func (f *FailedSnapStore) Save(ctx context.Context, snap Snapshot, rc io.ReadCloser) error {
 	return fmt.Errorf("failed to save snapshot %s", snap.SnapName)
 }
 
 // List will list the snapshots from store
-func (f *FailedSnapStore) List() (SnapList, error) {
+func (f *FailedSnapStore) List(ctx context.Context) (SnapList, error) {
 	var snapList SnapList
 	return snapList, fmt.Errorf("failed to list the snapshots")
 }
 
 // Delete should delete the snapshot file from store
-func (f *FailedSnapStore) Delete(snap Snapshot) error {
+func (f *FailedSnapStore) Delete(ctx context.Context, snap Snapshot) error {
 	return fmt.Errorf("failed to delete snapshot %s", snap.SnapName)
 }

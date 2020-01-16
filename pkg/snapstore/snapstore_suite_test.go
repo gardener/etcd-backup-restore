@@ -15,6 +15,7 @@
 package snapstore_test
 
 import (
+	"context"
 	"testing"
 
 	"github.com/sirupsen/logrus"
@@ -29,6 +30,7 @@ import (
 var (
 	testObj    *testing.T
 	swiftStore snapstore.SnapStore
+	testCtx    = context.TODO()
 )
 
 func TestSnapstore(t *testing.T) {

@@ -15,6 +15,7 @@
 package miscellaneous
 
 import (
+	"context"
 	"sort"
 
 	"github.com/gardener/etcd-backup-restore/pkg/metrics"
@@ -23,12 +24,12 @@ import (
 )
 
 // GetLatestFullSnapshotAndDeltaSnapList returns the latest snapshot
-func GetLatestFullSnapshotAndDeltaSnapList(store snapstore.SnapStore) (*snapstore.Snapshot, snapstore.SnapList, error) {
+func GetLatestFullSnapshotAndDeltaSnapList(ctx context.Context, store snapstore.SnapStore) (*snapstore.Snapshot, snapstore.SnapList, error) {
 	var (
 		fullSnapshot  *snapstore.Snapshot
 		deltaSnapList snapstore.SnapList
 	)
-	snapList, err := store.List()
+	snapList, err := store.List(ctx)
 	if err != nil {
 		return nil, nil, err
 	}

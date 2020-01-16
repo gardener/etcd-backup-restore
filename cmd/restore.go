@@ -63,7 +63,7 @@ func NewRestoreCommand(ctx context.Context) *cobra.Command {
 			}
 
 			logger.Info("Finding latest set of snapshot to recover from...")
-			baseSnap, deltaSnapList, err := miscellaneous.GetLatestFullSnapshotAndDeltaSnapList(store)
+			baseSnap, deltaSnapList, err := miscellaneous.GetLatestFullSnapshotAndDeltaSnapList(ctx, store)
 			if err != nil {
 				logger.Fatalf("failed to get latest snapshot: %v", err)
 			}
@@ -82,7 +82,7 @@ func NewRestoreCommand(ctx context.Context) *cobra.Command {
 				PeerURLs:      peerUrls,
 			}
 
-			if err := rs.Restore(*options); err != nil {
+			if err := rs.Restore(ctx, *options); err != nil {
 				logger.Fatalf("Failed to restore snapshot: %v", err)
 				return
 			}

@@ -15,6 +15,8 @@
 package initializer
 
 import (
+	"context"
+
 	"github.com/gardener/etcd-backup-restore/pkg/initializer/validator"
 	"github.com/gardener/etcd-backup-restore/pkg/snapshot/restorer"
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
@@ -38,5 +40,5 @@ type EtcdInitializer struct {
 
 // Initializer is the interface for etcd initialization actions.
 type Initializer interface {
-	Initialize(validator.Mode, int64) error
+	Initialize(context.Context, validator.Mode, int64) error
 }

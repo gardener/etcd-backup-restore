@@ -15,6 +15,7 @@
 package validator
 
 import (
+	"context"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -65,8 +66,8 @@ func (d *DataValidator) snapDir() string { return filepath.Join(d.memberDir(), "
 func (d *DataValidator) backendPath() string { return filepath.Join(d.snapDir(), "db") }
 
 // Validate performs the steps required to validate data for Etcd instance.
-func (d *DataValidator) Validate(mode Mode, failBelowRevision int64) (DataDirStatus, error) {
-	status, err := d.sanityCheck(failBelowRevision)
+func (d *DataValidator) Validate(ctx context.Context, mode Mode, failBelowRevision int64) (DataDirStatus, error) {
+	status, err := d.sanityCheck(ctx, failBelowRevision)
 	if status != DataDirectoryValid {
 		return status, err
 	}
@@ -83,7 +84,7 @@ func (d *DataValidator) Validate(mode Mode, failBelowRevision int64) (DataDirSta
 	return DataDirectoryValid, nil
 }
 
-func (d *DataValidator) sanityCheck(failBelowRevision int64) (DataDirStatus, error) {
+func (d *DataValidator) sanityCheck(ctx context.Context, failBelowRevision int64) (DataDirStatus, error) {
 	dataDir := d.Config.DataDir
 	dirExists, err := directoryExist(dataDir)
 	if err != nil {
@@ -114,7 +115,7 @@ func (d *DataValidator) sanityCheck(failBelowRevision int64) (DataDirStatus, err
 		return DataDirectoryCorrupt, nil
 	}
 	d.Logger.Info("Checking for revision consistency...")
-	return d.checkRevisionConsistency(etcdRevision, failBelowRevision)
+	return d.checkRevisionConsistency(ctx, etcdRevision, failBelowRevision)
 }
 
 // checkForDataCorruption will check for corruption of different files used by etcd.
@@ -230,14 +231,14 @@ func verifyDB(path string) error {
 
 // checkRevisionConsistency compares the latest revisions on the etcd db file and the latest snapshot to verify that the etcd revision is not lesser than snapshot revision.
 // Return DataDirStatus indicating whether it is due to failBelowRevision or latest snapshot revision for snapstore.
-func (d *DataValidator) checkRevisionConsistency(etcdRevision, failBelowRevision int64) (DataDirStatus, error) {
+func (d *DataValidator) checkRevisionConsistency(ctx context.Context, etcdRevision, failBelowRevision int64) (DataDirStatus, error) {
 	store, err := snapstore.GetSnapstore(d.Config.SnapstoreConfig)
 	if err != nil {
 		return DataDirectoryStatusUnknown, fmt.Errorf("unable to fetch snapstore: %v", err)
 	}
 
 	var latestSnapshotRevision int64
-	fullSnap, deltaSnaps, err := miscellaneous.GetLatestFullSnapshotAndDeltaSnapList(store)
+	fullSnap, deltaSnaps, err := miscellaneous.GetLatestFullSnapshotAndDeltaSnapList(ctx, store)
 	if err != nil {
 		return DataDirectoryStatusUnknown, fmt.Errorf("unable to get snapshots from store: %v", err)
 	}

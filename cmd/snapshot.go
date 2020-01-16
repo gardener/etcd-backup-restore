@@ -49,7 +49,7 @@ storing snapshots on various cloud storage providers as well as local disk locat
 				logger.Fatalf("Failed to create snapstore from configured storage provider: %v", err)
 			}
 
-			ssr, err := snapshotter.NewSnapshotter(logger, opts.snapshotterConfig, ss, opts.etcdConnectionConfig)
+			ssr, err := snapshotter.NewSnapshotter(ctx, logger, opts.snapshotterConfig, ss, opts.etcdConnectionConfig)
 			if err != nil {
 				logger.Fatalf("Failed to create snapshotter: %v", err)
 			}
@@ -62,8 +62,8 @@ storing snapshots on various cloud storage providers as well as local disk locat
 
 			go defragmentor.DefragDataPeriodically(ctx, opts.etcdConnectionConfig, defragSchedule, ssr.TriggerFullSnapshot, logger)
 
-			go ssr.RunGarbageCollector(ctx.Done())
-			if err := ssr.Run(ctx.Done(), true); err != nil {
+			go ssr.RunGarbageCollector(ctx)
+			if err := ssr.Run(ctx, true); err != nil {
 				logger.Fatalf("Snapshotter failed with error: %v", err)
 			}
 			logger.Info("Shutting down...")

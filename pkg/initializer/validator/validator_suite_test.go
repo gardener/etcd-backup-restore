@@ -73,7 +73,7 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 
 	deltaSnapshotPeriod := 5 * time.Second
 	ctx := utils.ContextWithWaitGroupFollwedByGracePeriod(populatorCtx, wg, deltaSnapshotPeriod+2*time.Second)
-	err = runSnapshotter(logger, deltaSnapshotPeriod, endpoints, ctx.Done())
+	err = runSnapshotter(ctx, logger, deltaSnapshotPeriod, endpoints)
 	Expect(err).ShouldNot(HaveOccurred())
 
 	keyTo = resp.KeyTo
@@ -86,7 +86,7 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 }, func(data []byte) {})
 
 // runSnapshotter creates a snapshotter object and runs it for a duration specified by 'snapshotterDurationSeconds'
-func runSnapshotter(logger *logrus.Entry, deltaSnapshotPeriod time.Duration, endpoints []string, stopCh <-chan struct{}) error {
+func runSnapshotter(ctx context.Context, logger *logrus.Entry, deltaSnapshotPeriod time.Duration, endpoints []string) error {
 	store, err := snapstore.GetSnapstore(&snapstore.Config{Container: snapstoreDir, Provider: "Local"})
 	if err != nil {
 		return err
@@ -102,12 +102,12 @@ func runSnapshotter(logger *logrus.Entry, deltaSnapshotPeriod time.Duration, end
 	snapshotterConfig.FullSnapshotSchedule = "0 0 1 1 *"
 	snapshotterConfig.MaxBackups = 1
 
-	ssr, err := snapshotter.NewSnapshotter(logger, snapshotterConfig, store, etcdConnectionConfig)
+	ssr, err := snapshotter.NewSnapshotter(ctx, logger, snapshotterConfig, store, etcdConnectionConfig)
 	if err != nil {
 		return err
 	}
 
-	return ssr.Run(stopCh, true)
+	return ssr.Run(ctx, true)
 }
 
 // copyFile copies the contents of the file at sourceFilePath into the file at destinationFilePath. If no file exists at destinationFilePath, a new file is created before copying

@@ -15,6 +15,7 @@
 package snapstore
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -43,12 +44,12 @@ func NewLocalSnapStore(prefix string) (*LocalSnapStore, error) {
 }
 
 // Fetch should open reader for the snapshot file from store
-func (s *LocalSnapStore) Fetch(snap Snapshot) (io.ReadCloser, error) {
+func (s *LocalSnapStore) Fetch(ctx context.Context, snap Snapshot) (io.ReadCloser, error) {
 	return os.Open(path.Join(s.prefix, snap.SnapDir, snap.SnapName))
 }
 
 // Save will write the snapshot to store
-func (s *LocalSnapStore) Save(snap Snapshot, rc io.ReadCloser) error {
+func (s *LocalSnapStore) Save(ctx context.Context, snap Snapshot, rc io.ReadCloser) error {
 	defer rc.Close()
 	err := os.MkdirAll(path.Join(s.prefix, snap.SnapDir), 0700)
 	if err != nil && !os.IsExist(err) {
@@ -67,7 +68,7 @@ func (s *LocalSnapStore) Save(snap Snapshot, rc io.ReadCloser) error {
 }
 
 // List will list the snapshots from store
-func (s *LocalSnapStore) List() (SnapList, error) {
+func (s *LocalSnapStore) List(ctx context.Context) (SnapList, error) {
 	snapList := SnapList{}
 	directories, err := ioutil.ReadDir(s.prefix)
 	if err != nil {
@@ -96,7 +97,7 @@ func (s *LocalSnapStore) List() (SnapList, error) {
 }
 
 // Delete should delete the snapshot file from store
-func (s *LocalSnapStore) Delete(snap Snapshot) error {
+func (s *LocalSnapStore) Delete(ctx context.Context, snap Snapshot) error {
 	if err := os.Remove(path.Join(s.prefix, snap.SnapDir, snap.SnapName)); err != nil {
 		return err
 	}

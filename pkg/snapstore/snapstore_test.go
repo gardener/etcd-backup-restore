@@ -104,7 +104,7 @@ var _ = Describe("Snapstore", func() {
 				resetObjectMap()
 				objectMap[path.Join(prefix, snap1.SnapDir, snap1.SnapName)] = &expectedVal1
 				objectMap[path.Join(prefix, snap2.SnapDir, snap2.SnapName)] = &expectedVal2
-				rc, err := snapStore.Fetch(snap1)
+				rc, err := snapStore.Fetch(testCtx, snap1)
 				defer rc.Close()
 				Expect(err).ShouldNot(HaveOccurred())
 				buf := new(bytes.Buffer)
@@ -121,7 +121,7 @@ var _ = Describe("Snapstore", func() {
 				logrus.Infof("Running tests for %s", key)
 				resetObjectMap()
 				dummyData := make([]byte, 6*1024*1024)
-				err := snapStore.Save(snap3, ioutil.NopCloser(bytes.NewReader(dummyData)))
+				err := snapStore.Save(testCtx, snap3, ioutil.NopCloser(bytes.NewReader(dummyData)))
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(len(objectMap)).Should(BeNumerically(">", 0))
 			}
@@ -135,7 +135,7 @@ var _ = Describe("Snapstore", func() {
 				resetObjectMap()
 				objectMap[path.Join(prefix, snap1.SnapDir, snap1.SnapName)] = &expectedVal1
 				objectMap[path.Join(prefix, snap2.SnapDir, snap2.SnapName)] = &expectedVal2
-				snapList, err := snapStore.List()
+				snapList, err := snapStore.List(testCtx)
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(snapList.Len()).To(Equal(2))
 				Expect(snapList[0].SnapName).To(Equal(snap1.SnapName))
@@ -151,7 +151,7 @@ var _ = Describe("Snapstore", func() {
 				objectMap[path.Join(prefix, snap1.SnapDir, snap1.SnapName)] = &expectedVal1
 				objectMap[path.Join(prefix, snap2.SnapDir, snap2.SnapName)] = &expectedVal2
 				prevLen := len(objectMap)
-				err := snapStore.Delete(snap2)
+				err := snapStore.Delete(testCtx, snap2)
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(len(objectMap)).To(Equal(prevLen - 1))
 			}

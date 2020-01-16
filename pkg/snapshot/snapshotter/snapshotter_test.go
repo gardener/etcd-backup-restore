@@ -67,7 +67,7 @@ var _ = Describe("Snapshotter", func() {
 					MaxBackups:               1,
 				}
 
-				_, err := NewSnapshotter(logger, snapshotterConfig, store, etcdConnectionConfig)
+				_, err := NewSnapshotter(testCtx, logger, snapshotterConfig, store, etcdConnectionConfig)
 				Expect(err).Should(HaveOccurred())
 			})
 		})
@@ -84,7 +84,7 @@ var _ = Describe("Snapshotter", func() {
 					MaxBackups:               1,
 				}
 
-				_, err := NewSnapshotter(logger, snapshotterConfig, store, etcdConnectionConfig)
+				_, err := NewSnapshotter(testCtx, logger, snapshotterConfig, store, etcdConnectionConfig)
 				Expect(err).ShouldNot(HaveOccurred())
 			})
 		})
@@ -116,14 +116,14 @@ var _ = Describe("Snapshotter", func() {
 					MaxBackups:               maxBackups,
 				}
 
-				ssr, err := NewSnapshotter(logger, snapshotterConfig, store, etcdConnectionConfig)
+				ssr, err := NewSnapshotter(testCtx, logger, snapshotterConfig, store, etcdConnectionConfig)
 				Expect(err).ShouldNot(HaveOccurred())
 
 				ctx, cancel := context.WithTimeout(testCtx, testTimeout)
 				defer cancel()
-				err = ssr.Run(ctx.Done(), true)
+				err = ssr.Run(ctx, true)
 				Expect(err).Should(HaveOccurred())
-				list, err := store.List()
+				list, err := store.List(testCtx)
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(len(list)).Should(BeZero())
 			})
@@ -151,16 +151,16 @@ var _ = Describe("Snapshotter", func() {
 						MaxBackups:               maxBackups,
 					}
 
-					ssr, err = NewSnapshotter(logger, snapshotterConfig, store, etcdConnectionConfig)
+					ssr, err = NewSnapshotter(testCtx, logger, snapshotterConfig, store, etcdConnectionConfig)
 					Expect(err).ShouldNot(HaveOccurred())
 					ctx, cancel := context.WithTimeout(testCtx, testTimeout)
 					defer cancel()
-					err = ssr.Run(ctx.Done(), true)
+					err = ssr.Run(ctx, true)
 					Expect(err).Should(HaveOccurred())
 				})
 
 				It("should not take any snapshot", func() {
-					list, err := store.List()
+					list, err := store.List(testCtx)
 					count := 0
 					for _, snap := range list {
 						if snap.Kind == snapstore.SnapshotKindFull {
@@ -205,14 +205,14 @@ var _ = Describe("Snapshotter", func() {
 							MaxBackups:               maxBackups,
 						}
 
-						ssr, err = NewSnapshotter(logger, snapshotterConfig, store, etcdConnectionConfig)
+						ssr, err = NewSnapshotter(testCtx, logger, snapshotterConfig, store, etcdConnectionConfig)
 						Expect(err).ShouldNot(HaveOccurred())
 
 						ctx, cancel := context.WithTimeout(testCtx, testTimeout)
 						defer cancel()
-						err = ssr.Run(ctx.Done(), true)
+						err = ssr.Run(ctx, true)
 						Expect(err).ShouldNot(HaveOccurred())
-						list, err := store.List()
+						list, err := store.List(testCtx)
 						Expect(err).ShouldNot(HaveOccurred())
 						Expect(len(list)).ShouldNot(BeZero())
 						for _, snapshot := range list {
@@ -232,7 +232,7 @@ var _ = Describe("Snapshotter", func() {
 							MaxBackups:               maxBackups,
 						}
 
-						ssr, err = NewSnapshotter(logger, snapshotterConfig, store, etcdConnectionConfig)
+						ssr, err = NewSnapshotter(testCtx, logger, snapshotterConfig, store, etcdConnectionConfig)
 						Expect(err).ShouldNot(HaveOccurred())
 
 						_, err = ssr.TriggerDeltaSnapshot()
@@ -260,7 +260,7 @@ var _ = Describe("Snapshotter", func() {
 								MaxBackups:               maxBackups,
 							}
 
-							ssr, err = NewSnapshotter(logger, snapshotterConfig, store, etcdConnectionConfig)
+							ssr, err = NewSnapshotter(testCtx, logger, snapshotterConfig, store, etcdConnectionConfig)
 							Expect(err).ShouldNot(HaveOccurred())
 							populatorCtx, cancelPopulator := context.WithTimeout(testCtx, testTimeout)
 							defer cancelPopulator()
@@ -269,9 +269,9 @@ var _ = Describe("Snapshotter", func() {
 							// populating etcd so that snapshots will be taken
 							go utils.PopulateEtcdWithWaitGroup(populatorCtx, wg, logger, etcdConnectionConfig.Endpoints, nil)
 							ssrCtx := utils.ContextWithWaitGroup(testCtx, wg)
-							err = ssr.Run(ssrCtx.Done(), false)
+							err = ssr.Run(ssrCtx, false)
 							Expect(err).ShouldNot(HaveOccurred())
-							list, err := store.List()
+							list, err := store.List(testCtx)
 							Expect(err).ShouldNot(HaveOccurred())
 							Expect(len(list)).ShouldNot(BeZero())
 							Expect(list[0].Kind).Should(Equal(snapstore.SnapshotKindDelta))
@@ -298,13 +298,13 @@ var _ = Describe("Snapshotter", func() {
 							// populating etcd so that snapshots will be taken
 							go utils.PopulateEtcdWithWaitGroup(populatorCtx, wg, logger, etcdConnectionConfig.Endpoints, nil)
 
-							ssr, err = NewSnapshotter(logger, snapshotterConfig, store, etcdConnectionConfig)
+							ssr, err = NewSnapshotter(testCtx, logger, snapshotterConfig, store, etcdConnectionConfig)
 							Expect(err).ShouldNot(HaveOccurred())
 							ssrCtx := utils.ContextWithWaitGroup(testCtx, wg)
-							err = ssr.Run(ssrCtx.Done(), true)
+							err = ssr.Run(ssrCtx, true)
 
 							Expect(err).ShouldNot(HaveOccurred())
-							list, err := store.List()
+							list, err := store.List(testCtx)
 							Expect(err).ShouldNot(HaveOccurred())
 							Expect(len(list)).ShouldNot(BeZero())
 							Expect(list[0].Kind).Should(Equal(snapstore.SnapshotKindFull))
@@ -436,14 +436,14 @@ var _ = Describe("Snapshotter", func() {
 					MaxBackups:               maxBackups,
 				}
 
-				ssr, err := NewSnapshotter(logger, snapshotterConfig, store, etcdConnectionConfig)
+				ssr, err := NewSnapshotter(testCtx, logger, snapshotterConfig, store, etcdConnectionConfig)
 				Expect(err).ShouldNot(HaveOccurred())
 
 				gcCtx, cancel := context.WithTimeout(testCtx, testTimeout)
 				defer cancel()
-				ssr.RunGarbageCollector(gcCtx.Done())
+				ssr.RunGarbageCollector(gcCtx)
 
-				list, err := store.List()
+				list, err := store.List(testCtx)
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(len(list)).Should(Equal(len(expectedSnapList)))
 
@@ -466,14 +466,14 @@ var _ = Describe("Snapshotter", func() {
 					MaxBackups:               maxBackups,
 				}
 
-				ssr, err := NewSnapshotter(logger, snapshotterConfig, store, etcdConnectionConfig)
+				ssr, err := NewSnapshotter(testCtx, logger, snapshotterConfig, store, etcdConnectionConfig)
 				Expect(err).ShouldNot(HaveOccurred())
 
 				gcCtx, cancel := context.WithTimeout(testCtx, testTimeout)
 				defer cancel()
-				ssr.RunGarbageCollector(gcCtx.Done())
+				ssr.RunGarbageCollector(gcCtx)
 
-				list, err := store.List()
+				list, err := store.List(testCtx)
 				Expect(err).ShouldNot(HaveOccurred())
 
 				incr := false
@@ -521,7 +521,7 @@ func prepareStoreForGarbageCollection(forTime time.Time, storeContainer string) 
 		snap.GenerateSnapshotDirectory()
 		snap.GenerateSnapshotName()
 		snapTime = snapTime.Add(time.Duration(time.Minute * 10))
-		store.Save(snap, ioutil.NopCloser(strings.NewReader(fmt.Sprintf("dummy-snapshot-content for snap created on %s", snap.CreatedOn))))
+		store.Save(testCtx, snap, ioutil.NopCloser(strings.NewReader(fmt.Sprintf("dummy-snapshot-content for snap created on %s", snap.CreatedOn))))
 	}
 	return store
 }

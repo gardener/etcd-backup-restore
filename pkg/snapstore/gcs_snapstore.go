@@ -70,14 +70,13 @@ func NewGCSSnapStoreFromClient(bucket, prefix, tempDir string, maxParallelChunkU
 }
 
 // Fetch should open reader for the snapshot file from store.
-func (s *GCSSnapStore) Fetch(snap Snapshot) (io.ReadCloser, error) {
+func (s *GCSSnapStore) Fetch(ctx context.Context, snap Snapshot) (io.ReadCloser, error) {
 	objectName := path.Join(s.prefix, snap.SnapDir, snap.SnapName)
-	ctx := context.TODO()
 	return s.client.Bucket(s.bucket).Object(objectName).NewReader(ctx)
 }
 
 // Save will write the snapshot to store.
-func (s *GCSSnapStore) Save(snap Snapshot, rc io.ReadCloser) error {
+func (s *GCSSnapStore) Save(ctx context.Context, snap Snapshot, rc io.ReadCloser) error {
 	tmpfile, err := ioutil.TempFile(s.tempDir, tmpBackupFilePrefix)
 	if err != nil {
 		rc.Close()
@@ -197,7 +196,7 @@ func (s *GCSSnapStore) componentUploader(wg *sync.WaitGroup, stopCh <-chan struc
 }
 
 // List will list the snapshots from store.
-func (s *GCSSnapStore) List() (SnapList, error) {
+func (s *GCSSnapStore) List(ctx context.Context) (SnapList, error) {
 	it := s.client.Bucket(s.bucket).Objects(context.TODO(), &storage.Query{Prefix: s.prefix})
 
 	var attrs []*storage.ObjectAttrs
@@ -230,7 +229,7 @@ func (s *GCSSnapStore) List() (SnapList, error) {
 }
 
 // Delete should delete the snapshot file from store.
-func (s *GCSSnapStore) Delete(snap Snapshot) error {
+func (s *GCSSnapStore) Delete(ctx context.Context, snap Snapshot) error {
 	objectName := path.Join(s.prefix, snap.SnapDir, snap.SnapName)
 	return s.client.Bucket(s.bucket).Object(objectName).Delete(context.TODO())
 }
