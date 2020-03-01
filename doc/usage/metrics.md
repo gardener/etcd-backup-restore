@@ -50,6 +50,17 @@ Two major steps in initialization of etcd data directory are validation and rest
 | etcdbr_validation_duration_seconds | Total latency distribution of validating data directory. | Histogram |
 | etcdbr_restoration_duration_seconds | Total latency distribution of restoring from snapshot. | Histogram |
 
+### Snapstore
+
+These bucket-related metrics provide information about the latest set of delta snapshots stored in the snapstore. They provide a rough estimation of the amount of time required to perform a restoration from the latest set of snapshots.
+
+| Name | Description | Type |
+|------|-------------|------|
+| etcdbr_snapstore_latest_deltas_total | Total number of delta snapshots taken since the latest full snapshot. | Gauge |
+| etcdbr_snapstore_latest_deltas_revisions_total | Total number of revisions stored in delta snapshots taken since the latest full snapshot. | Gauge |
+
+`etcdbr_snapstore_latest_deltas_revisions_total` indicates the total number of etcd revisions (events) stored in the latest set of delta snapshots. The amount of time it would take to perform an etcd data restoration with the latest set of snapshots is directly proportional to this value.
+
 ### Network
 
 These metrics describe the status of the network usage. We use `/proc/<etcdbr-pid>/net/dev` to get network usage details for the etcdbr process. Currently these metrics are only supported on linux-based distributions.
