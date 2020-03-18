@@ -35,7 +35,7 @@ func NewBackupRestoreComponentConfig() *BackupRestoreComponentConfig {
 		SnapshotterConfig:       snapshotter.NewSnapshotterConfig(),
 		SnapstoreConfig:         snapstore.NewSnapstoreConfig(),
 		RestorationConfig:       restorer.NewRestorationConfig(),
-		DefragmentationSchedule: "0 0 */3 * *",
+		DefragmentationSchedule: defaultDefragmentationSchedule,
 	}
 }
 

@@ -22,7 +22,8 @@ import (
 )
 
 const (
-	defaultServerPort = 8080
+	defaultServerPort              = 8080
+	defaultDefragmentationSchedule = "0 0 */3 * *"
 )
 
 // BackupRestoreComponentConfig holds the component configuration.

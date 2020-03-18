@@ -22,22 +22,17 @@ import (
 	flag "github.com/spf13/pflag"
 )
 
-const (
-	defaultName                     = "default"
-	defaultInitialAdvertisePeerURLs = "http://localhost:2380"
-)
-
 // NewRestorationConfig returns the restoration config.
 func NewRestorationConfig() *RestorationConfig {
 	return &RestorationConfig{
 		InitialCluster:           initialClusterFromName(defaultName),
-		InitialClusterToken:      "etcd-cluster",
+		InitialClusterToken:      defaultInitialClusterToken,
 		RestoreDataDir:           fmt.Sprintf("%s.etcd", defaultName),
 		InitialAdvertisePeerURLs: []string{defaultInitialAdvertisePeerURLs},
 		Name:                     defaultName,
 		SkipHashCheck:            false,
-		MaxFetchers:              6,
-		EmbeddedEtcdQuotaBytes:   int64(8 * 1024 * 1024 * 1024),
+		MaxFetchers:              defaultMaxFetchers,
+		EmbeddedEtcdQuotaBytes:   int64(defaultEmbeddedEtcdQuotaBytes),
 	}
 }
 

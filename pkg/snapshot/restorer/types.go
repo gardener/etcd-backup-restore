@@ -26,6 +26,12 @@ import (
 const (
 	tmpDir                  = "/tmp"
 	tmpEventsDataFilePrefix = "etcd-restore-"
+
+	defaultName                     = "default"
+	defaultInitialAdvertisePeerURLs = "http://localhost:2380"
+	defaultInitialClusterToken      = "etcd-cluster"
+	defaultMaxFetchers              = 6
+	defaultEmbeddedEtcdQuotaBytes   = 8 * 1024 * 1024 * 1024 //8Gib
 )
 
 // Restorer is a struct for etcd data directory restorer

@@ -14,7 +14,7 @@ serverConfig:
   port: 8080
   # enableProfiling: true
   # server-cert: "ssl/etcdbr/tls.crt"
-  # server-key: "ssl/etcdbr/tls.crt"
+  # server-key: "ssl/etcdbr/tls.key"
 
 snapshotterConfig:
   schedule: "0 */1 * * *"

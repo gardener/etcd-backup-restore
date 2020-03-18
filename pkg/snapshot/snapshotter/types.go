@@ -34,6 +34,7 @@ const (
 	GarbageCollectionPolicyExponential = "Exponential"
 	// GarbageCollectionPolicyLimitBased defines the limit based policy for garbage collecting old backups
 	GarbageCollectionPolicyLimitBased = "LimitBased"
+	defaultGarbageCollectionPeriod    = time.Minute
 	// DefaultMaxBackups is default number of maximum backups for limit based garbage collection policy.
 	DefaultMaxBackups = 7
 
@@ -41,6 +42,8 @@ const (
 	SnapshotterInactive State = 0
 	// SnapshotterActive is set when the snapshotter has started taking snapshots.
 	SnapshotterActive State = 1
+
+	defaultFullSnapshotSchedule string = "0 */1 * * *"
 	// DefaultDeltaSnapMemoryLimit is default memory limit for delta snapshots.
 	DefaultDeltaSnapMemoryLimit = 10 * 1024 * 1024 //10Mib
 	// DefaultDeltaSnapshotInterval is the default interval for delta snapshots.

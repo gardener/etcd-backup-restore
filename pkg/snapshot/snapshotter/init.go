@@ -16,7 +16,6 @@ package snapshotter
 
 import (
 	"fmt"
-	"time"
 
 	"github.com/gardener/etcd-backup-restore/pkg/wrappers"
 	cron "github.com/robfig/cron/v3"
@@ -27,12 +26,12 @@ import (
 // NewSnapshotterConfig returns the snapshotter config.
 func NewSnapshotterConfig() *Config {
 	return &Config{
-		FullSnapshotSchedule:     "0 */1 * * *",
-		DeltaSnapshotPeriod:      wrappers.Duration{Duration: 20 * time.Second},
-		DeltaSnapshotMemoryLimit: 10 * 1024 * 1024, //10Mib
-		GarbageCollectionPeriod:  wrappers.Duration{Duration: time.Minute},
+		FullSnapshotSchedule:     defaultFullSnapshotSchedule,
+		DeltaSnapshotPeriod:      wrappers.Duration{Duration: DefaultDeltaSnapshotInterval},
+		DeltaSnapshotMemoryLimit: DefaultDeltaSnapMemoryLimit,
+		GarbageCollectionPeriod:  wrappers.Duration{Duration: defaultGarbageCollectionPeriod},
 		GarbageCollectionPolicy:  GarbageCollectionPolicyExponential,
-		MaxBackups:               7,
+		MaxBackups:               DefaultMaxBackups,
 	}
 }
 

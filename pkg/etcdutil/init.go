@@ -25,7 +25,7 @@ import (
 // NewEtcdConnectionConfig returns etcd connection config.
 func NewEtcdConnectionConfig() *EtcdConnectionConfig {
 	return &EtcdConnectionConfig{
-		Endpoints:          []string{"127.0.0.1:2379"},
+		Endpoints:          []string{defaultEtcdConnectionEndpoint},
 		ConnectionTimeout:  wrappers.Duration{Duration: 30 * time.Second},
 		InsecureTransport:  true,
 		InsecureSkipVerify: false,

@@ -18,6 +18,8 @@ import (
 	"github.com/gardener/etcd-backup-restore/pkg/wrappers"
 )
 
+const defaultEtcdConnectionEndpoint string = "127.0.0.1:2379"
+
 // EtcdConnectionConfig holds the etcd connection config.
 type EtcdConnectionConfig struct {
 	// Endpoints are the endpoints from which the backup will be take or defragmentation will be called.
