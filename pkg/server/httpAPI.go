@@ -15,6 +15,7 @@
 package server
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/pprof"
@@ -252,12 +253,15 @@ func (h *HTTPHandler) serveFullSnapshotTrigger(rw http.ResponseWriter, req *http
 		rw.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
-	if err := h.Snapshotter.TriggerFullSnapshot(req.Context()); err != nil {
+	s, err := h.Snapshotter.TriggerFullSnapshot(req.Context())
+	if err != nil {
 		h.Logger.Warnf("Skipped triggering out-of-schedule full snapshot: %v", err)
 		rw.WriteHeader(http.StatusInternalServerError)
 		return
 	}
+	json, err := json.Marshal(s)
 	rw.WriteHeader(http.StatusOK)
+	rw.Write(json)
 }
 
 // serveDeltaSnapshotTrigger triggers an out-of-schedule delta snapshot
@@ -268,10 +272,19 @@ func (h *HTTPHandler) serveDeltaSnapshotTrigger(rw http.ResponseWriter, req *htt
 		rw.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
-	if err := h.Snapshotter.TriggerDeltaSnapshot(); err != nil {
+	s, err := h.Snapshotter.TriggerDeltaSnapshot()
+	if err != nil {
 		h.Logger.Warnf("Skipped triggering out-of-schedule delta snapshot: %v", err)
 		rw.WriteHeader(http.StatusInternalServerError)
 		return
 	}
+
+	json, err := json.Marshal(s)
+	if err != nil {
+		h.Logger.Warnf("Unable to marshal out-of-schedule delta snapshot to json: %v", err)
+		rw.WriteHeader(http.StatusInternalServerError)
+		return
+	}
 	rw.WriteHeader(http.StatusOK)
+	rw.Write(json)
 }

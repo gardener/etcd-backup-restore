@@ -72,8 +72,8 @@ func NewSnapshotter(logger *logrus.Entry, config *Config, store snapstore.SnapSt
 		SsrStateMutex:      &sync.Mutex{},
 		fullSnapshotReqCh:  make(chan struct{}),
 		deltaSnapshotReqCh: make(chan struct{}),
-		fullSnapshotAckCh:  make(chan error),
-		deltaSnapshotAckCh: make(chan error),
+		fullSnapshotAckCh:  make(chan result),
+		deltaSnapshotAckCh: make(chan result),
 		cancelWatch:        func() {},
 	}, nil
 }
@@ -115,33 +115,41 @@ func (ssr *Snapshotter) Run(stopCh <-chan struct{}, startWithFullSnapshot bool) 
 
 // TriggerFullSnapshot sends the events to take full snapshot. This is to
 // trigger full snapshot externally out of regular schedule.
-func (ssr *Snapshotter) TriggerFullSnapshot(ctx context.Context) error {
+func (ssr *Snapshotter) TriggerFullSnapshot(ctx context.Context) (*snapstore.Snapshot, error) {
 	ssr.SsrStateMutex.Lock()
 	defer ssr.SsrStateMutex.Unlock()
 
 	if ssr.SsrState != SnapshotterActive {
-		return fmt.Errorf("snapshotter is not active")
+		return nil, fmt.Errorf("snapshotter is not active")
 	}
 	ssr.logger.Info("Triggering out of schedule full snapshot...")
 	ssr.fullSnapshotReqCh <- emptyStruct
-	return <-ssr.fullSnapshotAckCh
+	res := <-ssr.fullSnapshotAckCh
+	if res.Err != nil {
+		return nil, res.Err
+	}
+	return res.Snapshot, nil
 }
 
 // TriggerDeltaSnapshot sends the events to take delta snapshot. This is to
 // trigger delta snapshot externally out of regular schedule.
-func (ssr *Snapshotter) TriggerDeltaSnapshot() error {
+func (ssr *Snapshotter) TriggerDeltaSnapshot() (*snapstore.Snapshot, error) {
 	ssr.SsrStateMutex.Lock()
 	defer ssr.SsrStateMutex.Unlock()
 
 	if ssr.SsrState != SnapshotterActive {
-		return fmt.Errorf("snapshotter is not active")
+		return nil, fmt.Errorf("snapshotter is not active")
 	}
 	if ssr.config.DeltaSnapshotPeriod.Duration < deltaSnapshotIntervalThreshold {
-		return fmt.Errorf("Found delta snapshot interval %s less than %v. Delta snapshotting is disabled. ", ssr.config.DeltaSnapshotPeriod.Duration, time.Duration(deltaSnapshotIntervalThreshold))
+		return nil, fmt.Errorf("Found delta snapshot interval %s less than %v. Delta snapshotting is disabled. ", ssr.config.DeltaSnapshotPeriod.Duration, time.Duration(deltaSnapshotIntervalThreshold))
 	}
 	ssr.logger.Info("Triggering out of schedule delta snapshot...")
 	ssr.deltaSnapshotReqCh <- emptyStruct
-	return <-ssr.deltaSnapshotAckCh
+	res := <-ssr.deltaSnapshotAckCh
+	if res.Err != nil {
+		return nil, res.Err
+	}
+	return res.Snapshot, nil
 }
 
 // stop stops the snapshotter. Once stopped any subsequent calls will
@@ -181,29 +189,30 @@ func (ssr *Snapshotter) closeEtcdClient() {
 
 // TakeFullSnapshotAndResetTimer takes a full snapshot and resets the full snapshot
 // timer as per the schedule.
-func (ssr *Snapshotter) TakeFullSnapshotAndResetTimer() error {
+func (ssr *Snapshotter) TakeFullSnapshotAndResetTimer() (*snapstore.Snapshot, error) {
 	ssr.logger.Infof("Taking scheduled snapshot for time: %s", time.Now().Local())
-	if err := ssr.takeFullSnapshot(); err != nil {
+	s, err := ssr.takeFullSnapshot()
+	if err != nil {
 		// As per design principle, in business critical service if backup is not working,
 		// it's better to fail the process. So, we are quiting here.
 		ssr.logger.Warnf("Taking scheduled snapshot failed: %v", err)
-		return err
+		return nil, err
 	}
 
-	return ssr.resetFullSnapshotTimer()
+	return s, ssr.resetFullSnapshotTimer()
 }
 
 // takeFullSnapshot will store full snapshot of etcd to snapstore.
 // It basically will connect to etcd. Then ask for snapshot. And finally
 // store it to underlying snapstore on the fly.
-func (ssr *Snapshotter) takeFullSnapshot() error {
+func (ssr *Snapshotter) takeFullSnapshot() (*snapstore.Snapshot, error) {
 	defer ssr.cleanupInMemoryEvents()
 	// close previous watch and client.
 	ssr.closeEtcdClient()
 
 	client, err := etcdutil.GetTLSClientForEtcd(ssr.etcdConnectionConfig)
 	if err != nil {
-		return &errors.EtcdError{
+		return nil, &errors.EtcdError{
 			Message: fmt.Sprintf("failed to create etcd client: %v", err),
 		}
 	}
@@ -215,7 +224,7 @@ func (ssr *Snapshotter) takeFullSnapshot() error {
 	resp, err := client.Get(ctx, "", clientv3.WithLastRev()...)
 	cancel()
 	if err != nil {
-		return &errors.EtcdError{
+		return nil, &errors.EtcdError{
 			Message: fmt.Sprintf("failed to get etcd latest revision: %v", err),
 		}
 	}
@@ -228,7 +237,7 @@ func (ssr *Snapshotter) takeFullSnapshot() error {
 		defer cancel()
 		rc, err := client.Snapshot(ctx)
 		if err != nil {
-			return &errors.EtcdError{
+			return nil, &errors.EtcdError{
 				Message: fmt.Sprintf("failed to create etcd snapshot: %v", err),
 			}
 		}
@@ -238,7 +247,7 @@ func (ssr *Snapshotter) takeFullSnapshot() error {
 		if err := ssr.store.Save(*s, rc); err != nil {
 			timeTaken := time.Now().Sub(startTime).Seconds()
 			metrics.SnapshotDurationSeconds.With(prometheus.Labels{metrics.LabelKind: snapstore.SnapshotKindFull, metrics.LabelSucceeded: metrics.ValueSucceededFalse}).Observe(timeTaken)
-			return &errors.SnapstoreError{
+			return nil, &errors.SnapstoreError{
 				Message: fmt.Sprintf("failed to save snapshot: %v", err),
 			}
 		}
@@ -261,7 +270,7 @@ func (ssr *Snapshotter) takeFullSnapshot() error {
 
 	if ssr.config.DeltaSnapshotPeriod.Duration < time.Second {
 		// return without creating a watch on events
-		return nil
+		return ssr.prevSnapshot, nil
 	}
 
 	watchCtx, cancelWatch := context.WithCancel(context.TODO())
@@ -270,7 +279,7 @@ func (ssr *Snapshotter) takeFullSnapshot() error {
 	ssr.watchCh = client.Watch(watchCtx, "", clientv3.WithPrefix(), clientv3.WithRev(ssr.prevSnapshot.LastRevision+1))
 	ssr.logger.Infof("Applied watch on etcd from revision: %d", ssr.prevSnapshot.LastRevision+1)
 
-	return nil
+	return ssr.prevSnapshot, nil
 }
 
 func (ssr *Snapshotter) cleanupInMemoryEvents() {
@@ -278,12 +287,13 @@ func (ssr *Snapshotter) cleanupInMemoryEvents() {
 	ssr.lastEventRevision = -1
 }
 
-func (ssr *Snapshotter) takeDeltaSnapshotAndResetTimer() error {
-	if err := ssr.TakeDeltaSnapshot(); err != nil {
+func (ssr *Snapshotter) takeDeltaSnapshotAndResetTimer() (*snapstore.Snapshot, error) {
+	s, err := ssr.TakeDeltaSnapshot()
+	if err != nil {
 		// As per design principle, in business critical service if backup is not working,
 		// it's better to fail the process. So, we are quiting here.
 		ssr.logger.Warnf("Taking delta snapshot failed: %v", err)
-		return err
+		return nil, err
 	}
 
 	if ssr.deltaSnapshotTimer == nil {
@@ -294,18 +304,18 @@ func (ssr *Snapshotter) takeDeltaSnapshotAndResetTimer() error {
 		ssr.logger.Infof("Resetting delta snapshot to run after %s.", ssr.config.DeltaSnapshotPeriod.Duration.String())
 		ssr.deltaSnapshotTimer.Reset(ssr.config.DeltaSnapshotPeriod.Duration)
 	}
-	return nil
+	return s, nil
 }
 
 // TakeDeltaSnapshot takes a delta snapshot that contains
 // the etcd events collected up till now
-func (ssr *Snapshotter) TakeDeltaSnapshot() error {
+func (ssr *Snapshotter) TakeDeltaSnapshot() (*snapstore.Snapshot, error) {
 	defer ssr.cleanupInMemoryEvents()
 	ssr.logger.Infof("Taking delta snapshot for time: %s", time.Now().Local())
 
 	if len(ssr.events) == 0 {
 		ssr.logger.Infof("No events received to save snapshot. Skipping delta snapshot.")
-		return nil
+		return nil, nil
 	}
 	ssr.events = append(ssr.events, byte(']'))
 
@@ -315,7 +325,7 @@ func (ssr *Snapshotter) TakeDeltaSnapshot() error {
 	// compute hash
 	hash := sha256.New()
 	if _, err := hash.Write(ssr.events); err != nil {
-		return fmt.Errorf("failed to compute hash of events: %v", err)
+		return nil, fmt.Errorf("failed to compute hash of events: %v", err)
 	}
 	ssr.events = hash.Sum(ssr.events)
 	startTime := time.Now()
@@ -323,7 +333,7 @@ func (ssr *Snapshotter) TakeDeltaSnapshot() error {
 		timeTaken := time.Now().Sub(startTime).Seconds()
 		metrics.SnapshotDurationSeconds.With(prometheus.Labels{metrics.LabelKind: snapstore.SnapshotKindDelta, metrics.LabelSucceeded: metrics.ValueSucceededFalse}).Observe(timeTaken)
 		ssr.logger.Errorf("Error saving delta snapshots. %v", err)
-		return err
+		return nil, err
 	}
 	timeTaken := time.Now().Sub(startTime).Seconds()
 	metrics.SnapshotDurationSeconds.With(prometheus.Labels{metrics.LabelKind: snapstore.SnapshotKindDelta, metrics.LabelSucceeded: metrics.ValueSucceededTrue}).Observe(timeTaken)
@@ -333,7 +343,7 @@ func (ssr *Snapshotter) TakeDeltaSnapshot() error {
 	metrics.LatestSnapshotTimestamp.With(prometheus.Labels{metrics.LabelKind: ssr.prevSnapshot.Kind}).Set(float64(ssr.prevSnapshot.CreatedOn.Unix()))
 	metrics.SnapshotRequired.With(prometheus.Labels{metrics.LabelKind: snapstore.SnapshotKindDelta}).Set(0)
 	ssr.logger.Infof("Successfully saved delta snapshot at: %s", path.Join(snap.SnapDir, snap.SnapName))
-	return nil
+	return snap, nil
 }
 
 // CollectEventsSincePrevSnapshot takes the first delta snapshot on etcd startup.
@@ -429,7 +439,8 @@ func (ssr *Snapshotter) handleDeltaWatchEvents(wr clientv3.WatchResponse) error 
 	ssr.logger.Debugf("Added events till revision: %d", ssr.lastEventRevision)
 	if len(ssr.events) >= int(ssr.config.DeltaSnapshotMemoryLimit) {
 		ssr.logger.Infof("Delta events memory crossed the memory limit: %d Bytes", len(ssr.events))
-		return ssr.takeDeltaSnapshotAndResetTimer()
+		_, err := ssr.takeDeltaSnapshotAndResetTimer()
+		return err
 	}
 	return nil
 }
@@ -445,27 +456,38 @@ func (ssr *Snapshotter) snapshotEventHandler(stopCh <-chan struct{}) error {
 	for {
 		select {
 		case <-ssr.fullSnapshotReqCh:
-			if err := ssr.TakeFullSnapshotAndResetTimer(); err != nil {
-				ssr.fullSnapshotAckCh <- err
+			s, err := ssr.TakeFullSnapshotAndResetTimer()
+			res := result{
+				Snapshot: s,
+				Err:      err,
+			}
+			if err != nil {
+				ssr.fullSnapshotAckCh <- res
 				return err
 			}
-			ssr.fullSnapshotAckCh <- nil
+			ssr.fullSnapshotAckCh <- res
 
 		case <-ssr.deltaSnapshotReqCh:
-			if err := ssr.takeDeltaSnapshotAndResetTimer(); err != nil {
-				ssr.deltaSnapshotAckCh <- err
+			s, err := ssr.takeDeltaSnapshotAndResetTimer()
+			res := result{
+				Snapshot: nil,
+				Err:      err,
+			}
+			if err != nil {
+				ssr.deltaSnapshotAckCh <- res
 				return err
 			}
-			ssr.deltaSnapshotAckCh <- nil
+			res.Snapshot = s
+			ssr.deltaSnapshotAckCh <- res
 
 		case <-ssr.fullSnapshotTimer.C:
-			if err := ssr.TakeFullSnapshotAndResetTimer(); err != nil {
+			if _, err := ssr.TakeFullSnapshotAndResetTimer(); err != nil {
 				return err
 			}
 
 		case <-ssr.deltaSnapshotTimer.C:
 			if ssr.config.DeltaSnapshotPeriod.Duration >= time.Second {
-				if err := ssr.takeDeltaSnapshotAndResetTimer(); err != nil {
+				if _, err := ssr.takeDeltaSnapshotAndResetTimer(); err != nil {
 					return err
 				}
 			}

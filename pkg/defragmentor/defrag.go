@@ -20,6 +20,7 @@ import (
 
 	"github.com/gardener/etcd-backup-restore/pkg/etcdutil"
 	"github.com/gardener/etcd-backup-restore/pkg/metrics"
+	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	"github.com/prometheus/client_golang/prometheus"
 	cron "github.com/robfig/cron/v3"
 	"github.com/sirupsen/logrus"
@@ -30,7 +31,7 @@ const (
 )
 
 // CallbackFunc is type decalration for callback function for defragmentor
-type CallbackFunc func(ctx context.Context) error
+type CallbackFunc func(ctx context.Context) (*snapstore.Snapshot, error)
 
 // defragmentorJob implement the cron.Job for etcd defragmentation.
 type defragmentorJob struct {
@@ -55,7 +56,7 @@ func (d *defragmentorJob) Run() {
 		d.logger.Warnf("Failed to defrag data with error: %v", err)
 	} else {
 		if d.callback != nil {
-			if err = d.callback(d.ctx); err != nil {
+			if _, err = d.callback(d.ctx); err != nil {
 				d.logger.Warnf("defragmentation callback failed with error: %v", err)
 			}
 		}

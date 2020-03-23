@@ -235,7 +235,7 @@ var _ = Describe("Snapshotter", func() {
 						ssr, err = NewSnapshotter(logger, snapshotterConfig, store, etcdConnectionConfig)
 						Expect(err).ShouldNot(HaveOccurred())
 
-						err = ssr.TriggerDeltaSnapshot()
+						_, err = ssr.TriggerDeltaSnapshot()
 						Expect(err).Should(HaveOccurred())
 					})
 				})
