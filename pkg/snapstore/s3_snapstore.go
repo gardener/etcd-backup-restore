@@ -44,12 +44,12 @@ type S3SnapStore struct {
 	bucket    string
 	multiPart sync.Mutex
 	// maxParallelChunkUploads hold the maximum number of parallel chunk uploads allowed.
-	maxParallelChunkUploads int
+	maxParallelChunkUploads uint
 	tempDir                 string
 }
 
 // NewS3SnapStore create new S3SnapStore from shared configuration with specified bucket
-func NewS3SnapStore(bucket, prefix, tempDir string, maxParallelChunkUploads int) (*S3SnapStore, error) {
+func NewS3SnapStore(bucket, prefix, tempDir string, maxParallelChunkUploads uint) (*S3SnapStore, error) {
 	return newS3FromSessionOpt(bucket, prefix, tempDir, maxParallelChunkUploads, session.Options{
 		// Setting this is equal to the AWS_SDK_LOAD_CONFIG environment variable was set.
 		// We want to save the work to set AWS_SDK_LOAD_CONFIG=1 outside.
@@ -58,7 +58,7 @@ func NewS3SnapStore(bucket, prefix, tempDir string, maxParallelChunkUploads int)
 }
 
 // newS3FromSessionOpt will create the new S3 snapstore object from S3 session options
-func newS3FromSessionOpt(bucket, prefix, tempDir string, maxParallelChunkUploads int, so session.Options) (*S3SnapStore, error) {
+func newS3FromSessionOpt(bucket, prefix, tempDir string, maxParallelChunkUploads uint, so session.Options) (*S3SnapStore, error) {
 	sess, err := session.NewSessionWithOptions(so)
 	if err != nil {
 		return nil, fmt.Errorf("new AWS session failed: %v", err)
@@ -68,7 +68,7 @@ func newS3FromSessionOpt(bucket, prefix, tempDir string, maxParallelChunkUploads
 }
 
 // NewS3FromClient will create the new S3 snapstore object from S3 client
-func NewS3FromClient(bucket, prefix, tempDir string, maxParallelChunkUploads int, cli s3iface.S3API) *S3SnapStore {
+func NewS3FromClient(bucket, prefix, tempDir string, maxParallelChunkUploads uint, cli s3iface.S3API) *S3SnapStore {
 	return &S3SnapStore{
 		bucket:                  bucket,
 		prefix:                  prefix,
@@ -139,7 +139,7 @@ func (s *S3SnapStore) Save(snap Snapshot, rc io.ReadCloser) error {
 		cancelCh       = make(chan struct{})
 	)
 
-	for i := 0; i < s.maxParallelChunkUploads; i++ {
+	for i := uint(0); i < s.maxParallelChunkUploads; i++ {
 		wg.Add(1)
 		go s.partUploader(&wg, cancelCh, &snap, tmpfile, uploadOutput.UploadId, completedParts, chunkUploadCh, resCh)
 	}

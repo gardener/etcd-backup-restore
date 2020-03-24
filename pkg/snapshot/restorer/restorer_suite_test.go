@@ -22,6 +22,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gardener/etcd-backup-restore/pkg/wrappers"
+
 	"github.com/coreos/etcd/embed"
 	"github.com/gardener/etcd-backup-restore/pkg/etcdutil"
 	"github.com/gardener/etcd-backup-restore/pkg/snapshot/snapshotter"
@@ -103,57 +105,28 @@ func cleanUp() {
 
 // runSnapshotter creates a snapshotter object and runs it for a duration specified by 'snapshotterDurationSeconds'
 func runSnapshotter(logger *logrus.Entry, deltaSnapshotPeriod time.Duration, endpoints []string, stopCh <-chan struct{}, startWithFullSnapshot bool) error {
-	var (
-		store                   snapstore.SnapStore
-		certFile                string
-		keyFile                 string
-		caFile                  string
-		insecureTransport       = true
-		insecureSkipVerify      = true
-		maxBackups              = 1
-		etcdConnectionTimeout   = 10 * time.Second
-		garbageCollectionPeriod = 60 * time.Second
-		schedule                = "0 0 1 1 *"
-		garbageCollectionPolicy = snapshotter.GarbageCollectionPolicyLimitBased
-		etcdUsername            string
-		etcdPassword            string
-	)
-
-	store, err = snapstore.GetSnapstore(&snapstore.Config{Container: snapstoreDir, Provider: "Local"})
+	store, err := snapstore.GetSnapstore(&snapstore.Config{Container: snapstoreDir, Provider: "Local"})
 	if err != nil {
 		return err
 	}
 
-	tlsConfig := etcdutil.NewTLSConfig(
-		certFile,
-		keyFile,
-		caFile,
-		insecureTransport,
-		insecureSkipVerify,
-		endpoints,
-		etcdUsername,
-		etcdPassword,
-	)
+	etcdConnectionConfig := etcdutil.NewEtcdConnectionConfig()
+	etcdConnectionConfig.ConnectionTimeout.Duration = 10 * time.Second
+	etcdConnectionConfig.Endpoints = endpoints
 
-	snapshotterConfig, err := snapshotter.NewSnapshotterConfig(
-		schedule,
-		store,
-		maxBackups,
-		snapshotter.DefaultDeltaSnapMemoryLimit,
-		deltaSnapshotPeriod,
-		etcdConnectionTimeout,
-		garbageCollectionPeriod,
-		garbageCollectionPolicy,
-		tlsConfig,
-	)
+	snapshotterConfig := &snapshotter.Config{
+		FullSnapshotSchedule:     "0 0 1 1 *",
+		DeltaSnapshotPeriod:      wrappers.Duration{Duration: deltaSnapshotPeriod},
+		DeltaSnapshotMemoryLimit: snapshotter.DefaultDeltaSnapMemoryLimit,
+		GarbageCollectionPeriod:  wrappers.Duration{Duration: time.Minute},
+		GarbageCollectionPolicy:  snapshotter.GarbageCollectionPolicyLimitBased,
+		MaxBackups:               1,
+	}
+
+	ssr, err := snapshotter.NewSnapshotter(logger, snapshotterConfig, store, etcdConnectionConfig)
 	if err != nil {
 		return err
 	}
-
-	ssr := snapshotter.NewSnapshotter(
-		logger,
-		snapshotterConfig,
-	)
 
 	return ssr.Run(stopCh, startWithFullSnapshot)
 }

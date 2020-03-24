@@ -19,6 +19,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/gardener/etcd-backup-restore/pkg/wrappers"
+
 	"github.com/coreos/etcd/clientv3"
 	"github.com/gardener/etcd-backup-restore/pkg/etcdutil"
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
@@ -32,6 +34,7 @@ const (
 	GarbageCollectionPolicyExponential = "Exponential"
 	// GarbageCollectionPolicyLimitBased defines the limit based policy for garbage collecting old backups
 	GarbageCollectionPolicyLimitBased = "LimitBased"
+	defaultGarbageCollectionPeriod    = time.Minute
 	// DefaultMaxBackups is default number of maximum backups for limit based garbage collection policy.
 	DefaultMaxBackups = 7
 
@@ -39,6 +42,8 @@ const (
 	SnapshotterInactive State = 0
 	// SnapshotterActive is set when the snapshotter has started taking snapshots.
 	SnapshotterActive State = 1
+
+	defaultFullSnapshotSchedule string = "0 */1 * * *"
 	// DefaultDeltaSnapMemoryLimit is default memory limit for delta snapshots.
 	DefaultDeltaSnapMemoryLimit = 10 * 1024 * 1024 //10Mib
 	// DefaultDeltaSnapshotInterval is the default interval for delta snapshots.
@@ -52,10 +57,14 @@ type State int
 
 // Snapshotter is a struct for etcd snapshot taker
 type Snapshotter struct {
-	logger             *logrus.Entry
+	logger               *logrus.Entry
+	etcdConnectionConfig *etcdutil.EtcdConnectionConfig
+	store                snapstore.SnapStore
+	config               *Config
+
+	schedule           cron.Schedule
 	prevSnapshot       *snapstore.Snapshot
 	PrevFullSnapshot   *snapstore.Snapshot
-	config             *Config
 	fullSnapshotReqCh  chan struct{}
 	deltaSnapshotReqCh chan struct{}
 	fullSnapshotAckCh  chan error
@@ -71,17 +80,14 @@ type Snapshotter struct {
 	lastEventRevision  int64
 }
 
-// Config stores the configuration parameters for the snapshotter.
+// Config holds the snapshotter config.
 type Config struct {
-	schedule                 cron.Schedule
-	store                    snapstore.SnapStore
-	maxBackups               int
-	deltaSnapshotMemoryLimit int
-	deltaSnapshotInterval    time.Duration
-	etcdConnectionTimeout    time.Duration
-	garbageCollectionPeriod  time.Duration
-	garbageCollectionPolicy  string
-	tlsConfig                *etcdutil.TLSConfig
+	FullSnapshotSchedule     string            `json:"schedule,omitempty"`
+	DeltaSnapshotPeriod      wrappers.Duration `json:"deltaSnapshotPeriod,omitempty"`
+	DeltaSnapshotMemoryLimit uint              `json:"deltaSnapshotMemoryLimit,omitempty"`
+	GarbageCollectionPeriod  wrappers.Duration `json:"garbageCollectionPeriod,omitempty"`
+	GarbageCollectionPolicy  string            `json:"garbageCollectionPolicy,omitempty"`
+	MaxBackups               uint              `json:"maxBackups,omitempty"`
 }
 
 // event is wrapper over etcd event to keep track of time of event

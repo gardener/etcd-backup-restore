@@ -12,17 +12,35 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package cmd
+package wrappers
 
 import (
-	"runtime"
-
-	ver "github.com/gardener/etcd-backup-restore/pkg/version"
+	"encoding/json"
+	"time"
 )
 
-func printVersionInfo() {
-	logger.Infof("etcd-backup-restore Version: %s", ver.Version)
-	logger.Infof("Git SHA: %s", ver.GitSHA)
-	logger.Infof("Go Version: %s", runtime.Version())
-	logger.Infof("Go OS/Arch: %s/%s", runtime.GOOS, runtime.GOARCH)
+// Duration is a wrapper around time.Duration which supports correct
+// marshaling to YAML and JSON.
+type Duration struct {
+	time.Duration
+}
+
+// UnmarshalJSON implements the json.Unmarshaller interface.
+func (d *Duration) UnmarshalJSON(b []byte) error {
+	var str string
+	if err := json.Unmarshal(b, &str); err != nil {
+		return err
+	}
+
+	pd, err := time.ParseDuration(str)
+	if err != nil {
+		return err
+	}
+	d.Duration = pd
+	return nil
+}
+
+// MarshalJSON implements the json.Marshaler interface.
+func (d *Duration) MarshalJSON() ([]byte, error) {
+	return json.Marshal(d.Duration.String())
 }

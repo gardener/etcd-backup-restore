@@ -20,6 +20,8 @@ BUILD_DIR           := build
 BIN_DIR             := bin
 COVERPROFILE        := test/output/coverprofile.out
 
+.DEFAULT_GOAL := build-local
+
 .PHONY: revendor
 revendor:
 	@env GO111MODULE=on go mod vendor -v

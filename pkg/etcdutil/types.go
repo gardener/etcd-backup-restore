@@ -1,4 +1,4 @@
-// Copyright (c) 2018 SAP SE or an SAP affiliate company. All rights reserved. This file is licensed under the Apache Software License, v. 2 except as noted otherwise in the LICENSE file.
+// Copyright (c) 2019 SAP SE or an SAP affiliate company. All rights reserved. This file is licensed under the Apache Software License, v. 2 except as noted otherwise in the LICENSE file.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -15,19 +15,22 @@
 package etcdutil
 
 import (
-	"time"
+	"github.com/gardener/etcd-backup-restore/pkg/wrappers"
 )
 
-const etcdDialTimeout = time.Second * 30
+const defaultEtcdConnectionEndpoint string = "127.0.0.1:2379"
 
-// TLSConfig holds cert information and settings for TLS.
-type TLSConfig struct {
-	cert       string
-	key        string
-	caCert     string
-	insecureTr bool
-	skipVerify bool
-	endpoints  []string
-	username   string
-	password   string
+// EtcdConnectionConfig holds the etcd connection config.
+type EtcdConnectionConfig struct {
+	// Endpoints are the endpoints from which the backup will be take or defragmentation will be called.
+	// This need not be necessary match the entire etcd cluster.
+	Endpoints          []string          `json:"endpoints"`
+	Username           string            `json:"username,omitempty"`
+	Password           string            `json:"password,omitempty"`
+	ConnectionTimeout  wrappers.Duration `json:"connectionTimeout,omitempty"`
+	InsecureTransport  bool              `json:"insecureTransport,omitempty"`
+	InsecureSkipVerify bool              `json:"insecureSkipVerify,omitempty"`
+	CertFile           string            `json:"certFile,omitempty"`
+	KeyFile            string            `json:"keyFile,omitempty"`
+	CaFile             string            `json:"caFile,omitempty"`
 }

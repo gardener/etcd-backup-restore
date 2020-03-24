@@ -17,7 +17,6 @@ package cmd
 import (
 	"context"
 	"fmt"
-	"path"
 
 	"github.com/coreos/etcd/pkg/types"
 	"github.com/gardener/etcd-backup-restore/pkg/miscellaneous"
@@ -29,7 +28,7 @@ import (
 
 // NewRestoreCommand returns the command to restore
 func NewRestoreCommand(ctx context.Context) *cobra.Command {
-
+	opts := newRestorerOptions()
 	// restoreCmd represents the restore command
 	restoreCmd := &cobra.Command{
 		Use:   "restore",
@@ -41,26 +40,28 @@ func NewRestoreCommand(ctx context.Context) *cobra.Command {
 			- Restore etcd data diretory from full snapshot.
 			*/
 			logger := logrus.New()
-			clusterUrlsMap, err := types.NewURLsMap(restoreCluster)
+			if err := opts.validate(); err != nil {
+				logger.Fatalf("failed to validate the options: %v", err)
+				return
+			}
+
+			opts.complete()
+
+			clusterUrlsMap, err := types.NewURLsMap(opts.restorationConfig.InitialCluster)
 			if err != nil {
 				logger.Fatalf("failed creating url map for restore cluster: %v", err)
 			}
 
-			peerUrls, err := types.NewURLs(restorePeerURLs)
+			peerUrls, err := types.NewURLs(opts.restorationConfig.InitialAdvertisePeerURLs)
 			if err != nil {
 				logger.Fatalf("failed parsing peers urls for restore cluster: %v", err)
 			}
-			snapstoreConfig := &snapstore.Config{
-				Provider:                storageProvider,
-				Container:               storageContainer,
-				Prefix:                  path.Join(storagePrefix, backupFormatVersion),
-				MaxParallelChunkUploads: maxParallelChunkUploads,
-				TempDir:                 snapstoreTempDir,
-			}
-			store, err := snapstore.GetSnapstore(snapstoreConfig)
+
+			store, err := snapstore.GetSnapstore(opts.snapstoreConfig)
 			if err != nil {
 				logger.Fatalf("failed to create snapstore from configured storage provider: %v", err)
 			}
+
 			logger.Info("Finding latest set of snapshot to recover from...")
 			baseSnap, deltaSnapList, err := miscellaneous.GetLatestFullSnapshotAndDeltaSnapList(store)
 			if err != nil {
@@ -74,20 +75,14 @@ func NewRestoreCommand(ctx context.Context) *cobra.Command {
 			rs := restorer.NewRestorer(store, logrus.NewEntry(logger))
 
 			options := &restorer.RestoreOptions{
-				RestoreDataDir:         path.Clean(restoreDataDir),
-				Name:                   restoreName,
-				BaseSnapshot:           *baseSnap,
-				DeltaSnapList:          deltaSnapList,
-				ClusterURLs:            clusterUrlsMap,
-				PeerURLs:               peerUrls,
-				ClusterToken:           restoreClusterToken,
-				SkipHashCheck:          skipHashCheck,
-				MaxFetchers:            restoreMaxFetchers,
-				EmbeddedEtcdQuotaBytes: embeddedEtcdQuotaBytes,
+				Config:        opts.restorationConfig,
+				BaseSnapshot:  *baseSnap,
+				DeltaSnapList: deltaSnapList,
+				ClusterURLs:   clusterUrlsMap,
+				PeerURLs:      peerUrls,
 			}
 
-			err = rs.Restore(*options)
-			if err != nil {
+			if err := rs.Restore(*options); err != nil {
 				logger.Fatalf("Failed to restore snapshot: %v", err)
 				return
 			}
@@ -95,27 +90,6 @@ func NewRestoreCommand(ctx context.Context) *cobra.Command {
 		},
 	}
 
-	initializeSnapstoreFlags(restoreCmd)
-	initializeEtcdFlags(restoreCmd)
+	opts.addFlags(restoreCmd.Flags())
 	return restoreCmd
-}
-
-// initializeEtcdFlags adds the etcd related flags to <cmd>
-func initializeEtcdFlags(cmd *cobra.Command) {
-	cmd.Flags().StringVarP(&restoreDataDir, "data-dir", "d", fmt.Sprintf("%s.etcd", defaultName), "path to the data directory")
-	cmd.Flags().StringVar(&restoreCluster, "initial-cluster", initialClusterFromName(defaultName), "initial cluster configuration for restore bootstrap")
-	cmd.Flags().StringVar(&restoreClusterToken, "initial-cluster-token", "etcd-cluster", "initial cluster token for the etcd cluster during restore bootstrap")
-	cmd.Flags().StringArrayVar(&restorePeerURLs, "initial-advertise-peer-urls", []string{defaultInitialAdvertisePeerURLs}, "list of this member's peer URLs to advertise to the rest of the cluster")
-	cmd.Flags().StringVar(&restoreName, "name", defaultName, "human-readable name for this member")
-	cmd.Flags().BoolVar(&skipHashCheck, "skip-hash-check", false, "ignore snapshot integrity hash value (required if copied from data directory)")
-	cmd.Flags().IntVar(&restoreMaxFetchers, "max-fetchers", 6, "maximum number of threads that will fetch delta snapshots in parallel")
-	cmd.Flags().Int64Var(&embeddedEtcdQuotaBytes, "embedded-etcd-quota-bytes", int64(8*1024*1024*1024), "maximum backend quota for the embedded etcd used for applying delta snapshots")
-}
-
-func initialClusterFromName(name string) string {
-	n := name
-	if name == "" {
-		n = defaultName
-	}
-	return fmt.Sprintf("%s=http://localhost:2380", n)
 }

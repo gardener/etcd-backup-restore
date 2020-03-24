@@ -60,9 +60,9 @@ const (
 type HTTPHandler struct {
 	Initializer               initializer.Initializer
 	Snapshotter               *snapshotter.Snapshotter
-	Port                      int
+	Port                      uint
 	server                    *http.Server
-	Logger                    *logrus.Logger
+	Logger                    *logrus.Entry
 	initializationStatusMutex sync.Mutex
 	AckState                  uint32
 	initializationStatus      string

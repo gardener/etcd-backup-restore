@@ -12,16 +12,21 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package etcdutil
+package defragmentor
 
 import (
 	"context"
 	"time"
 
+	"github.com/gardener/etcd-backup-restore/pkg/etcdutil"
 	"github.com/gardener/etcd-backup-restore/pkg/metrics"
 	"github.com/prometheus/client_golang/prometheus"
 	cron "github.com/robfig/cron/v3"
 	"github.com/sirupsen/logrus"
+)
+
+const (
+	etcdDialTimeout = time.Second * 30
 )
 
 // CallbackFunc is type decalration for callback function for defragmentor
@@ -29,21 +34,19 @@ type CallbackFunc func(ctx context.Context) error
 
 // defragmentorJob implement the cron.Job for etcd defragmentation.
 type defragmentorJob struct {
-	ctx                   context.Context
-	tlsConfig             *TLSConfig
-	etcdConnectionTimeout time.Duration
-	logger                *logrus.Entry
-	callback              CallbackFunc
+	ctx                  context.Context
+	etcdConnectionConfig *etcdutil.EtcdConnectionConfig
+	logger               *logrus.Entry
+	callback             CallbackFunc
 }
 
 // NewDefragmentorJob returns the new defragmentor job.
-func NewDefragmentorJob(ctx context.Context, tlsConfig *TLSConfig, etcdConnectionTimeout time.Duration, logger *logrus.Entry, callback CallbackFunc) cron.Job {
+func NewDefragmentorJob(ctx context.Context, etcdConnectionConfig *etcdutil.EtcdConnectionConfig, logger *logrus.Entry, callback CallbackFunc) cron.Job {
 	return &defragmentorJob{
-		ctx:                   ctx,
-		tlsConfig:             tlsConfig,
-		etcdConnectionTimeout: etcdConnectionTimeout,
-		logger:                logger.WithField("job", "defragmentor"),
-		callback:              callback,
+		ctx:                  ctx,
+		etcdConnectionConfig: etcdConnectionConfig,
+		logger:               logger.WithField("job", "defragmentor"),
+		callback:             callback,
 	}
 }
 
@@ -61,14 +64,14 @@ func (d *defragmentorJob) Run() {
 
 // defragData defragment the data directory of each etcd member.
 func (d *defragmentorJob) defragData() error {
-	client, err := GetTLSClientForEtcd(d.tlsConfig)
+	client, err := etcdutil.GetTLSClientForEtcd(d.etcdConnectionConfig)
 	if err != nil {
 		d.logger.Warnf("failed to create etcd client for defragmentation")
 		return err
 	}
 	defer client.Close()
 
-	for _, ep := range d.tlsConfig.endpoints {
+	for _, ep := range d.etcdConnectionConfig.Endpoints {
 		var dbSizeBeforeDefrag, dbSizeAfterDefrag int64
 		d.logger.Infof("Defragmenting etcd member[%s]", ep)
 		statusReqCtx, cancel := context.WithTimeout(d.ctx, etcdDialTimeout)
@@ -80,7 +83,7 @@ func (d *defragmentorJob) defragData() error {
 			dbSizeBeforeDefrag = status.DbSize
 		}
 		start := time.Now()
-		defragCtx, cancel := context.WithTimeout(d.ctx, d.etcdConnectionTimeout)
+		defragCtx, cancel := context.WithTimeout(d.ctx, d.etcdConnectionConfig.ConnectionTimeout.Duration)
 		_, err = client.Defragment(defragCtx, ep)
 		cancel()
 		if err != nil {
@@ -106,8 +109,9 @@ func (d *defragmentorJob) defragData() error {
 }
 
 // DefragDataPeriodically defragments the data directory of each etcd member.
-func DefragDataPeriodically(ctx context.Context, tlsConfig *TLSConfig, defragmentationSchedule cron.Schedule, etcdConnectionTimeout time.Duration, callback CallbackFunc, logger *logrus.Entry) {
-	defragmentorJob := NewDefragmentorJob(ctx, tlsConfig, etcdConnectionTimeout, logger, callback)
+func DefragDataPeriodically(ctx context.Context, etcdConnectionConfig *etcdutil.EtcdConnectionConfig, defragmentationSchedule cron.Schedule, callback CallbackFunc, logger *logrus.Entry) {
+	defragmentorJob := NewDefragmentorJob(ctx, etcdConnectionConfig, logger, callback)
+	// TODO: Sync logrus logger to cron logger
 	jobRunner := cron.New(cron.WithChain(cron.SkipIfStillRunning(cron.DefaultLogger)))
 	jobRunner.Schedule(defragmentationSchedule, defragmentorJob)
 

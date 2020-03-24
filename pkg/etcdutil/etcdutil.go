@@ -15,48 +15,36 @@
 package etcdutil
 
 import (
+	"context"
 	"crypto/tls"
 
 	"github.com/coreos/etcd/clientv3"
 	"github.com/coreos/etcd/pkg/transport"
 )
 
-// NewTLSConfig returns the TLSConfig object.
-func NewTLSConfig(cert, key, caCert string, insecureTr, skipVerify bool, endpoints []string, username, password string) *TLSConfig {
-	return &TLSConfig{
-		cert:       cert,
-		key:        key,
-		caCert:     caCert,
-		insecureTr: insecureTr,
-		skipVerify: skipVerify,
-		endpoints:  endpoints,
-		username:   username,
-		password:   password,
-	}
-}
-
 // GetTLSClientForEtcd creates an etcd client using the TLS config params.
-func GetTLSClientForEtcd(tlsConfig *TLSConfig) (*clientv3.Client, error) {
+func GetTLSClientForEtcd(tlsConfig *EtcdConnectionConfig) (*clientv3.Client, error) {
 	// set tls if any one tls option set
 	var cfgtls *transport.TLSInfo
 	tlsinfo := transport.TLSInfo{}
-	if tlsConfig.cert != "" {
-		tlsinfo.CertFile = tlsConfig.cert
+	if tlsConfig.CertFile != "" {
+		tlsinfo.CertFile = tlsConfig.CertFile
 		cfgtls = &tlsinfo
 	}
 
-	if tlsConfig.key != "" {
-		tlsinfo.KeyFile = tlsConfig.key
+	if tlsConfig.KeyFile != "" {
+		tlsinfo.KeyFile = tlsConfig.KeyFile
 		cfgtls = &tlsinfo
 	}
 
-	if tlsConfig.caCert != "" {
-		tlsinfo.CAFile = tlsConfig.caCert
+	if tlsConfig.CaFile != "" {
+		tlsinfo.CAFile = tlsConfig.CaFile
 		cfgtls = &tlsinfo
 	}
 
 	cfg := &clientv3.Config{
-		Endpoints: tlsConfig.endpoints,
+		Endpoints: tlsConfig.Endpoints,
+		Context:   context.TODO(), // TODO: Use the context comming as parameter.
 	}
 
 	if cfgtls != nil {
@@ -70,19 +58,19 @@ func GetTLSClientForEtcd(tlsConfig *TLSConfig) (*clientv3.Client, error) {
 	// if key/cert is not given but user wants secure connection, we
 	// should still setup an empty tls configuration for gRPC to setup
 	// secure connection.
-	if cfg.TLS == nil && !tlsConfig.insecureTr {
+	if cfg.TLS == nil && !tlsConfig.InsecureTransport {
 		cfg.TLS = &tls.Config{}
 	}
 
 	// If the user wants to skip TLS verification then we should set
 	// the InsecureSkipVerify flag in tls configuration.
-	if tlsConfig.skipVerify && cfg.TLS != nil {
+	if tlsConfig.InsecureSkipVerify && cfg.TLS != nil {
 		cfg.TLS.InsecureSkipVerify = true
 	}
 
-	if tlsConfig.username != "" && tlsConfig.password != "" {
-		cfg.Username = tlsConfig.username
-		cfg.Password = tlsConfig.password
+	if tlsConfig.Username != "" && tlsConfig.Password != "" {
+		cfg.Username = tlsConfig.Username
+		cfg.Password = tlsConfig.Password
 	}
 
 	return clientv3.New(*cfg)

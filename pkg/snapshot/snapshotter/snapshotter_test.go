@@ -27,6 +27,7 @@ import (
 	"github.com/gardener/etcd-backup-restore/pkg/etcdutil"
 	. "github.com/gardener/etcd-backup-restore/pkg/snapshot/snapshotter"
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
+	"github.com/gardener/etcd-backup-restore/pkg/wrappers"
 	"github.com/gardener/etcd-backup-restore/test/utils"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -34,28 +35,19 @@ import (
 
 var _ = Describe("Snapshotter", func() {
 	var (
-		endpoints               []string
 		store                   snapstore.SnapStore
-		etcdConnectionTimeout   time.Duration
 		garbageCollectionPeriod time.Duration
-		maxBackups              int
+		maxBackups              uint
 		schedule                string
-		certFile                string
-		keyFile                 string
-		caFile                  string
-		insecureTransport       bool
-		insecureSkipVerify      bool
-		etcdUsername            string
-		etcdPassword            string
+		etcdConnectionConfig    *etcdutil.EtcdConnectionConfig
 		err                     error
 	)
 	BeforeEach(func() {
-		endpoints = []string{etcd.Clients[0].Addr().String()}
-		etcdConnectionTimeout = 10 * time.Second
+		etcdConnectionConfig = etcdutil.NewEtcdConnectionConfig()
+		etcdConnectionConfig.Endpoints = []string{etcd.Clients[0].Addr().String()}
+		etcdConnectionConfig.ConnectionTimeout.Duration = 5 * time.Second
 		garbageCollectionPeriod = 30 * time.Second
 		schedule = "*/1 * * * *"
-		insecureTransport = true
-		insecureSkipVerify = true
 	})
 
 	Describe("creating Snapshotter", func() {
@@ -66,25 +58,16 @@ var _ = Describe("Snapshotter", func() {
 		Context("With invalid schedule", func() {
 			It("should return error", func() {
 				schedule = "65 * * * 5"
-				tlsConfig := etcdutil.NewTLSConfig(
-					certFile,
-					keyFile,
-					caFile,
-					insecureTransport,
-					insecureSkipVerify,
-					endpoints,
-					etcdUsername,
-					etcdPassword)
-				_, err := NewSnapshotterConfig(
-					schedule,
-					store,
-					1,
-					10,
-					DefaultDeltaSnapMemoryLimit,
-					etcdConnectionTimeout,
-					garbageCollectionPeriod,
-					GarbageCollectionPolicyExponential,
-					tlsConfig)
+				snapshotterConfig := &Config{
+					FullSnapshotSchedule:     schedule,
+					DeltaSnapshotPeriod:      wrappers.Duration{Duration: 10},
+					DeltaSnapshotMemoryLimit: DefaultDeltaSnapMemoryLimit,
+					GarbageCollectionPeriod:  wrappers.Duration{Duration: garbageCollectionPeriod},
+					GarbageCollectionPolicy:  GarbageCollectionPolicyExponential,
+					MaxBackups:               1,
+				}
+
+				_, err := NewSnapshotter(logger, snapshotterConfig, store, etcdConnectionConfig)
 				Expect(err).Should(HaveOccurred())
 			})
 		})
@@ -92,25 +75,16 @@ var _ = Describe("Snapshotter", func() {
 		Context("With valid schedule", func() {
 			It("should create snapshotter config", func() {
 				schedule = "*/5 * * * *"
-				tlsConfig := etcdutil.NewTLSConfig(
-					certFile,
-					keyFile,
-					caFile,
-					insecureTransport,
-					insecureSkipVerify,
-					endpoints,
-					etcdUsername,
-					etcdPassword)
-				_, err := NewSnapshotterConfig(
-					schedule,
-					store,
-					1,
-					10,
-					DefaultDeltaSnapMemoryLimit,
-					etcdConnectionTimeout,
-					garbageCollectionPeriod,
-					GarbageCollectionPolicyExponential,
-					tlsConfig)
+				snapshotterConfig := &Config{
+					FullSnapshotSchedule:     schedule,
+					DeltaSnapshotPeriod:      wrappers.Duration{Duration: 10},
+					DeltaSnapshotMemoryLimit: DefaultDeltaSnapMemoryLimit,
+					GarbageCollectionPeriod:  wrappers.Duration{Duration: garbageCollectionPeriod},
+					GarbageCollectionPolicy:  GarbageCollectionPolicyExponential,
+					MaxBackups:               1,
+				}
+
+				_, err := NewSnapshotter(logger, snapshotterConfig, store, etcdConnectionConfig)
 				Expect(err).ShouldNot(HaveOccurred())
 			})
 		})
@@ -118,43 +92,32 @@ var _ = Describe("Snapshotter", func() {
 
 	Describe("running snapshotter", func() {
 		Context("with etcd not running at configured endpoint", func() {
-			It("should timeout & not take any snapshot", func() {
+			BeforeEach(func() {
 				validEndpoint := etcd.Clients[0].Addr().String()
 				tokens := strings.Split(validEndpoint, ":")
 				Expect(len(tokens)).Should(BeNumerically(">=", 2))
 				i, err := strconv.Atoi(tokens[len(tokens)-1])
 				Expect(err).ShouldNot(HaveOccurred())
 				invalidEndpoint := fmt.Sprintf("%s:%d", strings.Join(tokens[:len(tokens)-1], ":"), i+12)
-				endpoints = []string{invalidEndpoint}
-				etcdConnectionTimeout = 5 * time.Second
+				etcdConnectionConfig.Endpoints = []string{invalidEndpoint}
+			})
+
+			It("should timeout & not take any snapshot", func() {
 				maxBackups = 2
 				testTimeout := time.Duration(time.Minute * time.Duration(maxBackups+1))
 				store, err = snapstore.GetSnapstore(&snapstore.Config{Container: path.Join(outputDir, "snapshotter_2.bkp")})
 				Expect(err).ShouldNot(HaveOccurred())
-				tlsConfig := etcdutil.NewTLSConfig(
-					certFile,
-					keyFile,
-					caFile,
-					insecureTransport,
-					insecureSkipVerify,
-					endpoints,
-					etcdUsername,
-					etcdPassword)
-				snapshotterConfig, err := NewSnapshotterConfig(
-					schedule,
-					store,
-					maxBackups,
-					10,
-					DefaultDeltaSnapMemoryLimit,
-					etcdConnectionTimeout,
-					garbageCollectionPeriod,
-					GarbageCollectionPolicyExponential,
-					tlsConfig)
-				Expect(err).ShouldNot(HaveOccurred())
+				snapshotterConfig := &Config{
+					FullSnapshotSchedule:     schedule,
+					DeltaSnapshotPeriod:      wrappers.Duration{Duration: 10},
+					DeltaSnapshotMemoryLimit: DefaultDeltaSnapMemoryLimit,
+					GarbageCollectionPeriod:  wrappers.Duration{Duration: garbageCollectionPeriod},
+					GarbageCollectionPolicy:  GarbageCollectionPolicyExponential,
+					MaxBackups:               maxBackups,
+				}
 
-				ssr := NewSnapshotter(
-					logger,
-					snapshotterConfig)
+				ssr, err := NewSnapshotter(logger, snapshotterConfig, store, etcdConnectionConfig)
+				Expect(err).ShouldNot(HaveOccurred())
 
 				ctx, cancel := context.WithTimeout(testCtx, testTimeout)
 				defer cancel()
@@ -168,42 +131,28 @@ var _ = Describe("Snapshotter", func() {
 
 		Context("with etcd running at configured endpoint", func() {
 			BeforeEach(func() {
-				endpoints = []string{etcd.Clients[0].Addr().String()}
+				etcdConnectionConfig.Endpoints = []string{etcd.Clients[0].Addr().String()}
 			})
 
 			Context("with unreachable schedule", func() {
 				var ssr *Snapshotter
 				BeforeEach(func() {
 					schedule = "* * 31 2 *"
-					etcdConnectionTimeout = 5 * time.Second
 					maxBackups = 2
 					testTimeout := time.Duration(time.Minute * time.Duration(maxBackups+1))
 					store, err = snapstore.GetSnapstore(&snapstore.Config{Container: path.Join(outputDir, "snapshotter_3.bkp")})
 					Expect(err).ShouldNot(HaveOccurred())
-					tlsConfig := etcdutil.NewTLSConfig(
-						certFile,
-						keyFile,
-						caFile,
-						insecureTransport,
-						insecureSkipVerify,
-						endpoints,
-						etcdUsername,
-						etcdPassword)
-					snapshotterConfig, err := NewSnapshotterConfig(
-						schedule,
-						store,
-						maxBackups,
-						DefaultDeltaSnapMemoryLimit,
-						10*time.Second,
-						etcdConnectionTimeout,
-						garbageCollectionPeriod,
-						GarbageCollectionPolicyExponential,
-						tlsConfig)
-					Expect(err).ShouldNot(HaveOccurred())
+					snapshotterConfig := &Config{
+						FullSnapshotSchedule:     schedule,
+						DeltaSnapshotPeriod:      wrappers.Duration{Duration: 10 * time.Second},
+						DeltaSnapshotMemoryLimit: DefaultDeltaSnapMemoryLimit,
+						GarbageCollectionPeriod:  wrappers.Duration{Duration: garbageCollectionPeriod},
+						GarbageCollectionPolicy:  GarbageCollectionPolicyExponential,
+						MaxBackups:               maxBackups,
+					}
 
-					ssr = NewSnapshotter(
-						logger,
-						snapshotterConfig)
+					ssr, err = NewSnapshotter(logger, snapshotterConfig, store, etcdConnectionConfig)
+					Expect(err).ShouldNot(HaveOccurred())
 					ctx, cancel := context.WithTimeout(testCtx, testTimeout)
 					defer cancel()
 					err = ssr.Run(ctx.Done(), true)
@@ -227,17 +176,15 @@ var _ = Describe("Snapshotter", func() {
 				var (
 					ssr                   *Snapshotter
 					schedule              string
-					maxBackups            int
+					maxBackups            uint
 					testTimeout           time.Duration
 					deltaSnapshotInterval time.Duration
 				)
 				BeforeEach(func() {
-					endpoints = []string{etcd.Clients[0].Addr().String()}
 					schedule = "*/1 * * * *"
 					maxBackups = 2
 					// We will wait for maxBackups+1 times schedule period
 					testTimeout = time.Duration(time.Minute * time.Duration(maxBackups+1))
-					etcdConnectionTimeout = 5 * time.Second
 				})
 
 				Context("with delta snapshot interval set to zero seconds", func() {
@@ -245,33 +192,21 @@ var _ = Describe("Snapshotter", func() {
 						deltaSnapshotInterval = 0
 						testTimeout = time.Duration(time.Minute * time.Duration(maxBackups))
 					})
+
 					It("should take periodic backups without delta snapshots", func() {
 						store, err = snapstore.GetSnapstore(&snapstore.Config{Container: path.Join(outputDir, "snapshotter_4.bkp")})
 						Expect(err).ShouldNot(HaveOccurred())
-						tlsConfig := etcdutil.NewTLSConfig(
-							certFile,
-							keyFile,
-							caFile,
-							insecureTransport,
-							insecureSkipVerify,
-							endpoints,
-							etcdUsername,
-							etcdPassword)
-						snapshotterConfig, err := NewSnapshotterConfig(
-							schedule,
-							store,
-							maxBackups,
-							DefaultDeltaSnapMemoryLimit,
-							deltaSnapshotInterval,
-							etcdConnectionTimeout,
-							garbageCollectionPeriod,
-							GarbageCollectionPolicyExponential,
-							tlsConfig)
-						Expect(err).ShouldNot(HaveOccurred())
+						snapshotterConfig := &Config{
+							FullSnapshotSchedule:     schedule,
+							DeltaSnapshotPeriod:      wrappers.Duration{Duration: deltaSnapshotInterval},
+							DeltaSnapshotMemoryLimit: DefaultDeltaSnapMemoryLimit,
+							GarbageCollectionPeriod:  wrappers.Duration{Duration: garbageCollectionPeriod},
+							GarbageCollectionPolicy:  GarbageCollectionPolicyExponential,
+							MaxBackups:               maxBackups,
+						}
 
-						ssr = NewSnapshotter(
-							logger,
-							snapshotterConfig)
+						ssr, err = NewSnapshotter(logger, snapshotterConfig, store, etcdConnectionConfig)
+						Expect(err).ShouldNot(HaveOccurred())
 
 						ctx, cancel := context.WithTimeout(testCtx, testTimeout)
 						defer cancel()
@@ -288,30 +223,17 @@ var _ = Describe("Snapshotter", func() {
 					It("should fail on triggering out-of-schedule delta snapshot", func() {
 						store, err = snapstore.GetSnapstore(&snapstore.Config{Container: path.Join(outputDir, "snapshotter_4.bkp")})
 						Expect(err).ShouldNot(HaveOccurred())
-						tlsConfig := etcdutil.NewTLSConfig(
-							certFile,
-							keyFile,
-							caFile,
-							insecureTransport,
-							insecureSkipVerify,
-							endpoints,
-							etcdUsername,
-							etcdPassword)
-						snapshotterConfig, err := NewSnapshotterConfig(
-							schedule,
-							store,
-							maxBackups,
-							DefaultDeltaSnapMemoryLimit,
-							deltaSnapshotInterval,
-							etcdConnectionTimeout,
-							garbageCollectionPeriod,
-							GarbageCollectionPolicyExponential,
-							tlsConfig)
-						Expect(err).ShouldNot(HaveOccurred())
+						snapshotterConfig := &Config{
+							FullSnapshotSchedule:     schedule,
+							DeltaSnapshotPeriod:      wrappers.Duration{Duration: deltaSnapshotInterval},
+							DeltaSnapshotMemoryLimit: DefaultDeltaSnapMemoryLimit,
+							GarbageCollectionPeriod:  wrappers.Duration{Duration: garbageCollectionPeriod},
+							GarbageCollectionPolicy:  GarbageCollectionPolicyExponential,
+							MaxBackups:               maxBackups,
+						}
 
-						ssr = NewSnapshotter(
-							logger,
-							snapshotterConfig)
+						ssr, err = NewSnapshotter(logger, snapshotterConfig, store, etcdConnectionConfig)
+						Expect(err).ShouldNot(HaveOccurred())
 
 						err = ssr.TriggerDeltaSnapshot()
 						Expect(err).Should(HaveOccurred())
@@ -329,36 +251,23 @@ var _ = Describe("Snapshotter", func() {
 							currentHour := time.Now().Hour()
 							store, err = snapstore.GetSnapstore(&snapstore.Config{Container: path.Join(outputDir, "snapshotter_5.bkp")})
 							Expect(err).ShouldNot(HaveOccurred())
-							tlsConfig := etcdutil.NewTLSConfig(
-								certFile,
-								keyFile,
-								caFile,
-								insecureTransport,
-								insecureSkipVerify,
-								endpoints,
-								etcdUsername,
-								etcdPassword)
-							snapshotterConfig, err := NewSnapshotterConfig(
-								fmt.Sprintf("59 %d * * *", (currentHour+1)%24), // This make sure that full snapshot timer doesn't trigger full snapshot.
-								store,
-								maxBackups,
-								DefaultDeltaSnapMemoryLimit,
-								deltaSnapshotInterval,
-								etcdConnectionTimeout,
-								garbageCollectionPeriod,
-								GarbageCollectionPolicyExponential,
-								tlsConfig)
-							Expect(err).ShouldNot(HaveOccurred())
+							snapshotterConfig := &Config{
+								FullSnapshotSchedule:     fmt.Sprintf("59 %d * * *", (currentHour+1)%24), // This make sure that full snapshot timer doesn't trigger full snapshot.
+								DeltaSnapshotPeriod:      wrappers.Duration{Duration: deltaSnapshotInterval},
+								DeltaSnapshotMemoryLimit: DefaultDeltaSnapMemoryLimit,
+								GarbageCollectionPeriod:  wrappers.Duration{Duration: garbageCollectionPeriod},
+								GarbageCollectionPolicy:  GarbageCollectionPolicyExponential,
+								MaxBackups:               maxBackups,
+							}
 
-							ssr = NewSnapshotter(
-								logger,
-								snapshotterConfig)
+							ssr, err = NewSnapshotter(logger, snapshotterConfig, store, etcdConnectionConfig)
+							Expect(err).ShouldNot(HaveOccurred())
 							populatorCtx, cancelPopulator := context.WithTimeout(testCtx, testTimeout)
 							defer cancelPopulator()
 							wg := &sync.WaitGroup{}
 							wg.Add(1)
 							// populating etcd so that snapshots will be taken
-							go utils.PopulateEtcdWithWaitGroup(populatorCtx, wg, logger, endpoints, nil)
+							go utils.PopulateEtcdWithWaitGroup(populatorCtx, wg, logger, etcdConnectionConfig.Endpoints, nil)
 							ssrCtx := utils.ContextWithWaitGroup(testCtx, wg)
 							err = ssr.Run(ssrCtx.Done(), false)
 							Expect(err).ShouldNot(HaveOccurred())
@@ -373,37 +282,24 @@ var _ = Describe("Snapshotter", func() {
 						It("should take periodic backups", func() {
 							store, err = snapstore.GetSnapstore(&snapstore.Config{Container: path.Join(outputDir, "snapshotter_6.bkp")})
 							Expect(err).ShouldNot(HaveOccurred())
-							tlsConfig := etcdutil.NewTLSConfig(
-								certFile,
-								keyFile,
-								caFile,
-								insecureTransport,
-								insecureSkipVerify,
-								endpoints,
-								etcdUsername,
-								etcdPassword)
-							snapshotterConfig, err := NewSnapshotterConfig(
-								schedule,
-								store,
-								maxBackups,
-								DefaultDeltaSnapMemoryLimit,
-								deltaSnapshotInterval,
-								etcdConnectionTimeout,
-								garbageCollectionPeriod,
-								GarbageCollectionPolicyExponential,
-								tlsConfig)
-							Expect(err).ShouldNot(HaveOccurred())
+							snapshotterConfig := &Config{
+								FullSnapshotSchedule:     schedule,
+								DeltaSnapshotPeriod:      wrappers.Duration{Duration: deltaSnapshotInterval},
+								DeltaSnapshotMemoryLimit: DefaultDeltaSnapMemoryLimit,
+								GarbageCollectionPeriod:  wrappers.Duration{Duration: garbageCollectionPeriod},
+								GarbageCollectionPolicy:  GarbageCollectionPolicyExponential,
+								MaxBackups:               maxBackups,
+							}
 
 							populatorCtx, cancelPopulator := context.WithTimeout(testCtx, testTimeout)
 							defer cancelPopulator()
 							wg := &sync.WaitGroup{}
 							wg.Add(1)
 							// populating etcd so that snapshots will be taken
-							go utils.PopulateEtcdWithWaitGroup(populatorCtx, wg, logger, endpoints, nil)
+							go utils.PopulateEtcdWithWaitGroup(populatorCtx, wg, logger, etcdConnectionConfig.Endpoints, nil)
 
-							ssr = NewSnapshotter(
-								logger,
-								snapshotterConfig)
+							ssr, err = NewSnapshotter(logger, snapshotterConfig, store, etcdConnectionConfig)
+							Expect(err).ShouldNot(HaveOccurred())
 							ssrCtx := utils.ContextWithWaitGroup(testCtx, wg)
 							err = ssr.Run(ssrCtx.Done(), true)
 
@@ -423,12 +319,11 @@ var _ = Describe("Snapshotter", func() {
 				testTimeout time.Duration
 			)
 			BeforeEach(func() {
-				endpoints = []string{etcd.Clients[0].Addr().String()}
+				etcdConnectionConfig.Endpoints = []string{etcd.Clients[0].Addr().String()}
 				schedule = "*/1 * * * *"
 				maxBackups = 2
 				garbageCollectionPeriod = 5 * time.Second
 				testTimeout = garbageCollectionPeriod * 2
-				etcdConnectionTimeout = 5 * time.Second
 			})
 
 			It("should garbage collect exponentially", func() {
@@ -532,37 +427,21 @@ var _ = Describe("Snapshotter", func() {
 				fmt.Println("Incremental snapshot list prepared")
 
 				//start test
-				tlsConfig := etcdutil.NewTLSConfig(
-					certFile,
-					keyFile,
-					caFile,
-					insecureTransport,
-					insecureSkipVerify,
-					endpoints,
-					etcdUsername,
-					etcdPassword)
-				snapshotterConfig, err := NewSnapshotterConfig(
-					schedule,
-					store,
-					maxBackups,
-					DefaultDeltaSnapMemoryLimit,
-					10*time.Second,
-					etcdConnectionTimeout,
-					garbageCollectionPeriod,
-					GarbageCollectionPolicyExponential,
-					tlsConfig)
+				snapshotterConfig := &Config{
+					FullSnapshotSchedule:     schedule,
+					DeltaSnapshotPeriod:      wrappers.Duration{Duration: 10 * time.Second},
+					DeltaSnapshotMemoryLimit: DefaultDeltaSnapMemoryLimit,
+					GarbageCollectionPeriod:  wrappers.Duration{Duration: garbageCollectionPeriod},
+					GarbageCollectionPolicy:  GarbageCollectionPolicyExponential,
+					MaxBackups:               maxBackups,
+				}
+
+				ssr, err := NewSnapshotter(logger, snapshotterConfig, store, etcdConnectionConfig)
 				Expect(err).ShouldNot(HaveOccurred())
-				ssr := NewSnapshotter(
-					logger,
-					snapshotterConfig)
 
-				gcStopCh := make(chan struct{})
-
-				go func() {
-					<-time.After(testTimeout)
-					close(gcStopCh)
-				}()
-				ssr.RunGarbageCollector(gcStopCh)
+				gcCtx, cancel := context.WithTimeout(testCtx, testTimeout)
+				defer cancel()
+				ssr.RunGarbageCollector(gcCtx.Done())
 
 				list, err := store.List()
 				Expect(err).ShouldNot(HaveOccurred())
@@ -578,30 +457,17 @@ var _ = Describe("Snapshotter", func() {
 			It("should garbage collect limitBased", func() {
 				now := time.Now().UTC()
 				store := prepareStoreForGarbageCollection(now, "garbagecollector_limit_based.bkp")
-				tlsConfig := etcdutil.NewTLSConfig(
-					certFile,
-					keyFile,
-					caFile,
-					insecureTransport,
-					insecureSkipVerify,
-					endpoints,
-					etcdUsername,
-					etcdPassword)
-				snapshotterConfig, err := NewSnapshotterConfig(
-					schedule,
-					store,
-					maxBackups,
-					DefaultDeltaSnapMemoryLimit,
-					10*time.Second,
-					etcdConnectionTimeout,
-					garbageCollectionPeriod,
-					GarbageCollectionPolicyLimitBased,
-					tlsConfig)
-				Expect(err).ShouldNot(HaveOccurred())
+				snapshotterConfig := &Config{
+					FullSnapshotSchedule:     schedule,
+					DeltaSnapshotPeriod:      wrappers.Duration{Duration: 10 * time.Second},
+					DeltaSnapshotMemoryLimit: DefaultDeltaSnapMemoryLimit,
+					GarbageCollectionPeriod:  wrappers.Duration{Duration: garbageCollectionPeriod},
+					GarbageCollectionPolicy:  GarbageCollectionPolicyLimitBased,
+					MaxBackups:               maxBackups,
+				}
 
-				ssr := NewSnapshotter(
-					logger,
-					snapshotterConfig)
+				ssr, err := NewSnapshotter(logger, snapshotterConfig, store, etcdConnectionConfig)
+				Expect(err).ShouldNot(HaveOccurred())
 
 				gcCtx, cancel := context.WithTimeout(testCtx, testTimeout)
 				defer cancel()

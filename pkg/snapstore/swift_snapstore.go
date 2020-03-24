@@ -41,7 +41,7 @@ type SwiftSnapStore struct {
 	client *gophercloud.ServiceClient
 	bucket string
 	// maxParallelChunkUploads hold the maximum number of parallel chunk uploads allowed.
-	maxParallelChunkUploads int
+	maxParallelChunkUploads uint
 	tempDir                 string
 }
 
@@ -50,7 +50,7 @@ const (
 )
 
 // NewSwiftSnapStore create new SwiftSnapStore from shared configuration with specified bucket
-func NewSwiftSnapStore(bucket, prefix, tempDir string, maxParallelChunkUploads int) (*SwiftSnapStore, error) {
+func NewSwiftSnapStore(bucket, prefix, tempDir string, maxParallelChunkUploads uint) (*SwiftSnapStore, error) {
 	authOpts, err := clientconfig.AuthOptions(nil)
 	if err != nil {
 		return nil, err
@@ -75,7 +75,7 @@ func NewSwiftSnapStore(bucket, prefix, tempDir string, maxParallelChunkUploads i
 }
 
 // NewSwiftSnapstoreFromClient will create the new Swift snapstore object from Swift client
-func NewSwiftSnapstoreFromClient(bucket, prefix, tempDir string, maxParallelChunkUploads int, cli *gophercloud.ServiceClient) *SwiftSnapStore {
+func NewSwiftSnapstoreFromClient(bucket, prefix, tempDir string, maxParallelChunkUploads uint, cli *gophercloud.ServiceClient) *SwiftSnapStore {
 	return &SwiftSnapStore{
 		bucket:                  bucket,
 		prefix:                  prefix,
@@ -124,7 +124,7 @@ func (s *SwiftSnapStore) Save(snap Snapshot, rc io.ReadCloser) error {
 		cancelCh      = make(chan struct{})
 	)
 
-	for i := 0; i < s.maxParallelChunkUploads; i++ {
+	for i := uint(0); i < s.maxParallelChunkUploads; i++ {
 		wg.Add(1)
 		go s.chunkUploader(&wg, cancelCh, &snap, tmpfile, chunkUploadCh, resCh)
 	}
