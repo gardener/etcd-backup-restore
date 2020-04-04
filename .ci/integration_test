@@ -82,7 +82,12 @@ function setup_etcdbrctl(){
 
 function setup_awscli() {
     echo "Installing awscli..."
-    (apt update || apt update) && apt install -y python-pip
+    apt update || apt update
+    echo "Installing python setuptools"
+    apt install -y python-setuptools
+    echo "Installing pip"
+    python /usr/lib/python2.7/dist-packages/easy_install.py pip
+    echo "Installing awscli tool"
     pip install awscli
     echo "Successfully installed awscli."
 }
