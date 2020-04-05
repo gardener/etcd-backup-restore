@@ -68,6 +68,7 @@ func NewSnapshotter(logger *logrus.Entry, config *Config, store snapstore.SnapSt
 		schedule:           sdl,
 		prevSnapshot:       prevSnapshot,
 		PrevFullSnapshot:   fullSnap,
+		PrevDeltaSnapshots: deltaSnapList,
 		SsrState:           SnapshotterInactive,
 		SsrStateMutex:      &sync.Mutex{},
 		fullSnapshotReqCh:  make(chan struct{}),
@@ -255,6 +256,8 @@ func (ssr *Snapshotter) takeFullSnapshot() (*snapstore.Snapshot, error) {
 		metrics.SnapshotDurationSeconds.With(prometheus.Labels{metrics.LabelKind: snapstore.SnapshotKindFull, metrics.LabelSucceeded: metrics.ValueSucceededTrue}).Observe(timeTaken)
 		logrus.Infof("Total time to save snapshot: %f seconds.", timeTaken)
 		ssr.prevSnapshot = s
+		ssr.PrevFullSnapshot = s
+		ssr.PrevDeltaSnapshots = nil
 
 		metrics.LatestSnapshotRevision.With(prometheus.Labels{metrics.LabelKind: ssr.prevSnapshot.Kind}).Set(float64(ssr.prevSnapshot.LastRevision))
 		metrics.LatestSnapshotTimestamp.With(prometheus.Labels{metrics.LabelKind: ssr.prevSnapshot.Kind}).Set(float64(ssr.prevSnapshot.CreatedOn.Unix()))
@@ -339,6 +342,7 @@ func (ssr *Snapshotter) TakeDeltaSnapshot() (*snapstore.Snapshot, error) {
 	metrics.SnapshotDurationSeconds.With(prometheus.Labels{metrics.LabelKind: snapstore.SnapshotKindDelta, metrics.LabelSucceeded: metrics.ValueSucceededTrue}).Observe(timeTaken)
 	logrus.Infof("Total time to save delta snapshot: %f seconds.", timeTaken)
 	ssr.prevSnapshot = snap
+	ssr.PrevDeltaSnapshots = append(ssr.PrevDeltaSnapshots, snap)
 	metrics.LatestSnapshotRevision.With(prometheus.Labels{metrics.LabelKind: ssr.prevSnapshot.Kind}).Set(float64(ssr.prevSnapshot.LastRevision))
 	metrics.LatestSnapshotTimestamp.With(prometheus.Labels{metrics.LabelKind: ssr.prevSnapshot.Kind}).Set(float64(ssr.prevSnapshot.CreatedOn.Unix()))
 	metrics.SnapshotRequired.With(prometheus.Labels{metrics.LabelKind: snapstore.SnapshotKindDelta}).Set(0)

@@ -65,6 +65,7 @@ type Snapshotter struct {
 	schedule           cron.Schedule
 	prevSnapshot       *snapstore.Snapshot
 	PrevFullSnapshot   *snapstore.Snapshot
+	PrevDeltaSnapshots snapstore.SnapList
 	fullSnapshotReqCh  chan struct{}
 	deltaSnapshotReqCh chan struct{}
 	fullSnapshotAckCh  chan result
