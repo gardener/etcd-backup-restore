@@ -126,10 +126,7 @@ func (ssr *Snapshotter) TriggerFullSnapshot(ctx context.Context) (*snapstore.Sna
 	ssr.logger.Info("Triggering out of schedule full snapshot...")
 	ssr.fullSnapshotReqCh <- emptyStruct
 	res := <-ssr.fullSnapshotAckCh
-	if res.Err != nil {
-		return nil, res.Err
-	}
-	return res.Snapshot, nil
+	return res.Snapshot, res.Err
 }
 
 // TriggerDeltaSnapshot sends the events to take delta snapshot. This is to
@@ -147,10 +144,7 @@ func (ssr *Snapshotter) TriggerDeltaSnapshot() (*snapstore.Snapshot, error) {
 	ssr.logger.Info("Triggering out of schedule delta snapshot...")
 	ssr.deltaSnapshotReqCh <- emptyStruct
 	res := <-ssr.deltaSnapshotAckCh
-	if res.Err != nil {
-		return nil, res.Err
-	}
-	return res.Snapshot, nil
+	return res.Snapshot, res.Err
 }
 
 // stop stops the snapshotter. Once stopped any subsequent calls will
@@ -465,24 +459,21 @@ func (ssr *Snapshotter) snapshotEventHandler(stopCh <-chan struct{}) error {
 				Snapshot: s,
 				Err:      err,
 			}
+			ssr.fullSnapshotAckCh <- res
 			if err != nil {
-				ssr.fullSnapshotAckCh <- res
 				return err
 			}
-			ssr.fullSnapshotAckCh <- res
 
 		case <-ssr.deltaSnapshotReqCh:
 			s, err := ssr.takeDeltaSnapshotAndResetTimer()
 			res := result{
-				Snapshot: nil,
+				Snapshot: s,
 				Err:      err,
 			}
+			ssr.deltaSnapshotAckCh <- res
 			if err != nil {
-				ssr.deltaSnapshotAckCh <- res
 				return err
 			}
-			res.Snapshot = s
-			ssr.deltaSnapshotAckCh <- res
 
 		case <-ssr.fullSnapshotTimer.C:
 			if _, err := ssr.TakeFullSnapshotAndResetTimer(); err != nil {
