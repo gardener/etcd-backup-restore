@@ -77,13 +77,13 @@ const (
 
 // Snapshot structure represents the metadata of snapshot.s
 type Snapshot struct {
-	Kind          string //incr:incremental,full:full
-	StartRevision int64
-	LastRevision  int64 //latest revision on snapshot
-	CreatedOn     time.Time
-	SnapDir       string
-	SnapName      string
-	IsChunk       bool
+	Kind          string    `json:"kind"` //incr:incremental,full:full
+	StartRevision int64     `json:"startRevision"`
+	LastRevision  int64     `json:"lastRevision"` //latest revision on snapshot
+	CreatedOn     time.Time `json:"createdOn"`
+	SnapDir       string    `json:"snapDir"`
+	SnapName      string    `json:"snapName"`
+	IsChunk       bool      `json:"isChunk"`
 }
 
 // SnapList is list of snapshots.

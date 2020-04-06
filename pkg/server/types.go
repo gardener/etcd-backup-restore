@@ -35,3 +35,9 @@ type BackupRestoreComponentConfig struct {
 	RestorationConfig       *restorer.RestorationConfig    `json:"restorationConfig,omitempty"`
 	DefragmentationSchedule string                         `json:"defragmentationSchedule"`
 }
+
+// latestSnapshotMetadata holds snapshot details of latest full and delta snapshots
+type latestSnapshotMetadataResponse struct {
+	FullSnapshot   *snapstore.Snapshot `json:"fullSnapshot"`
+	DeltaSnapshots snapstore.SnapList  `json:"deltaSnapshots"`
+}

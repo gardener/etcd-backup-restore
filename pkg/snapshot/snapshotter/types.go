@@ -65,10 +65,11 @@ type Snapshotter struct {
 	schedule           cron.Schedule
 	prevSnapshot       *snapstore.Snapshot
 	PrevFullSnapshot   *snapstore.Snapshot
+	PrevDeltaSnapshots snapstore.SnapList
 	fullSnapshotReqCh  chan struct{}
 	deltaSnapshotReqCh chan struct{}
-	fullSnapshotAckCh  chan error
-	deltaSnapshotAckCh chan error
+	fullSnapshotAckCh  chan result
+	deltaSnapshotAckCh chan result
 	fullSnapshotTimer  *time.Timer
 	deltaSnapshotTimer *time.Timer
 	events             []byte
@@ -94,4 +95,9 @@ type Config struct {
 type event struct {
 	EtcdEvent *clientv3.Event `json:"etcdEvent"`
 	Time      time.Time       `json:"time"`
+}
+
+type result struct {
+	Snapshot *snapstore.Snapshot `json:"snapshot"`
+	Err      error               `json:"error"`
 }

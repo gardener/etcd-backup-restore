@@ -209,7 +209,7 @@ func (b *BackupRestoreServer) runEtcdProbeLoopWithSnapshotter(ctx context.Contex
 				return
 			}
 			if err == nil {
-				if err := ssr.TakeDeltaSnapshot(); err != nil {
+				if _, err := ssr.TakeDeltaSnapshot(); err != nil {
 					b.logger.Warnf("Failed to take first delta snapshot: snapshotter failed with error: %v", err)
 					continue
 				}
@@ -222,7 +222,7 @@ func (b *BackupRestoreServer) runEtcdProbeLoopWithSnapshotter(ctx context.Contex
 			// need to take a full snapshot here
 			metrics.SnapshotRequired.With(prometheus.Labels{metrics.LabelKind: snapstore.SnapshotKindDelta}).Set(0)
 			metrics.SnapshotRequired.With(prometheus.Labels{metrics.LabelKind: snapstore.SnapshotKindFull}).Set(1)
-			if err := ssr.TakeFullSnapshotAndResetTimer(); err != nil {
+			if _, err := ssr.TakeFullSnapshotAndResetTimer(); err != nil {
 				b.logger.Errorf("Failed to take substitute first full snapshot: %v", err)
 				continue
 			}

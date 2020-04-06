@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/gardener/etcd-backup-restore/pkg/etcdutil"
+	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 
 	. "github.com/gardener/etcd-backup-restore/pkg/defragmentor"
 	. "github.com/onsi/ginkgo"
@@ -123,9 +124,9 @@ var _ = Describe("Defrag", func() {
 
 			defragThreadCtx, cancelDefragThread := context.WithTimeout(testCtx, time.Second*time.Duration(135))
 			defer cancelDefragThread()
-			DefragDataPeriodically(defragThreadCtx, etcdConnectionConfig, defragSchedule, func(_ context.Context) error {
+			DefragDataPeriodically(defragThreadCtx, etcdConnectionConfig, defragSchedule, func(_ context.Context) (*snapstore.Snapshot, error) {
 				defragCount++
-				return nil
+				return nil, nil
 			}, logger)
 
 			statusReqCtx, cancelStatusReq = context.WithTimeout(testCtx, etcdDialTimeout)

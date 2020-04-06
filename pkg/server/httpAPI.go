@@ -15,6 +15,7 @@
 package server
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/pprof"
@@ -101,6 +102,7 @@ func (h *HTTPHandler) RegisterHandler() {
 	mux.HandleFunc("/initialization/status", h.serveInitializationStatus)
 	mux.HandleFunc("/snapshot/full", h.serveFullSnapshotTrigger)
 	mux.HandleFunc("/snapshot/delta", h.serveDeltaSnapshotTrigger)
+	mux.HandleFunc("/snapshot/latest", h.serveLatestSnapshotMetadata)
 	mux.HandleFunc("/healthz", h.serveHealthz)
 	mux.Handle("/metrics", promhttp.Handler())
 
@@ -252,26 +254,63 @@ func (h *HTTPHandler) serveFullSnapshotTrigger(rw http.ResponseWriter, req *http
 		rw.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
-	if err := h.Snapshotter.TriggerFullSnapshot(req.Context()); err != nil {
+	s, err := h.Snapshotter.TriggerFullSnapshot(req.Context())
+	if err != nil {
 		h.Logger.Warnf("Skipped triggering out-of-schedule full snapshot: %v", err)
 		rw.WriteHeader(http.StatusInternalServerError)
 		return
 	}
+	json, err := json.Marshal(s)
 	rw.WriteHeader(http.StatusOK)
+	rw.Write(json)
 }
 
 // serveDeltaSnapshotTrigger triggers an out-of-schedule delta snapshot
 // for the configured Snapshotter
 func (h *HTTPHandler) serveDeltaSnapshotTrigger(rw http.ResponseWriter, req *http.Request) {
+	h.checkAndSetSecurityHeaders(rw)
 	if h.Snapshotter == nil {
 		h.Logger.Warnf("Ignoring out-of-schedule delta snapshot request as snapshotter is not configured")
 		rw.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
-	if err := h.Snapshotter.TriggerDeltaSnapshot(); err != nil {
+	s, err := h.Snapshotter.TriggerDeltaSnapshot()
+	if err != nil {
 		h.Logger.Warnf("Skipped triggering out-of-schedule delta snapshot: %v", err)
 		rw.WriteHeader(http.StatusInternalServerError)
 		return
 	}
+
+	json, err := json.Marshal(s)
+	if err != nil {
+		h.Logger.Warnf("Unable to marshal out-of-schedule delta snapshot to json: %v", err)
+		rw.WriteHeader(http.StatusInternalServerError)
+		return
+	}
 	rw.WriteHeader(http.StatusOK)
+	rw.Write(json)
+}
+
+func (h *HTTPHandler) serveLatestSnapshotMetadata(rw http.ResponseWriter, req *http.Request) {
+	h.checkAndSetSecurityHeaders(rw)
+	if h.Snapshotter == nil {
+		h.Logger.Warnf("Ignoring latest snapshot metadata request as snapshotter is not configured")
+		rw.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	resp := latestSnapshotMetadataResponse{
+		FullSnapshot:   h.Snapshotter.PrevFullSnapshot,
+		DeltaSnapshots: h.Snapshotter.PrevDeltaSnapshots,
+	}
+
+	json, err := json.Marshal(resp)
+	if err != nil {
+		h.Logger.Warnf("Unable to marshal latest snapshot metadata response to json: %v", err)
+		rw.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	rw.WriteHeader(http.StatusOK)
+	rw.Write(json)
+	return
 }
