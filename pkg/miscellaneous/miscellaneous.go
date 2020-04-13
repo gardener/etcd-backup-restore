@@ -17,12 +17,17 @@ package miscellaneous
 import (
 	"sort"
 
+	"github.com/gardener/etcd-backup-restore/pkg/metrics"
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 // GetLatestFullSnapshotAndDeltaSnapList returns the latest snapshot
 func GetLatestFullSnapshotAndDeltaSnapList(store snapstore.SnapStore) (*snapstore.Snapshot, snapstore.SnapList, error) {
-	var deltaSnapList snapstore.SnapList
+	var (
+		fullSnapshot  *snapstore.Snapshot
+		deltaSnapList snapstore.SnapList
+	)
 	snapList, err := store.List()
 	if err != nil {
 		return nil, nil, err
@@ -33,11 +38,19 @@ func GetLatestFullSnapshotAndDeltaSnapList(store snapstore.SnapStore) (*snapstor
 			continue
 		}
 		if snapList[index-1].Kind == snapstore.SnapshotKindFull {
-			sort.Sort(deltaSnapList)
-			return snapList[index-1], deltaSnapList, nil
+			fullSnapshot = snapList[index-1]
+			break
 		}
 		deltaSnapList = append(deltaSnapList, snapList[index-1])
 	}
-	sort.Sort(deltaSnapList) //added to ensure the list is well formed for only deltasnapshots scenarios as well
-	return nil, deltaSnapList, nil
+
+	sort.Sort(deltaSnapList) // ensures that the delta snapshot list is well formed
+	metrics.SnapstoreLatestDeltasTotal.With(prometheus.Labels{}).Set(float64(len(deltaSnapList)))
+	if len(deltaSnapList) == 0 {
+		metrics.SnapstoreLatestDeltasRevisionsTotal.With(prometheus.Labels{}).Set(0)
+	} else {
+		revisionDiff := deltaSnapList[len(deltaSnapList)-1].LastRevision - deltaSnapList[0].StartRevision
+		metrics.SnapstoreLatestDeltasRevisionsTotal.With(prometheus.Labels{}).Set(float64(revisionDiff))
+	}
+	return fullSnapshot, deltaSnapList, nil
 }

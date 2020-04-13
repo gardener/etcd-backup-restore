@@ -32,8 +32,9 @@ const (
 	// LabelKind is a metrics label indicates kind of snapshot associated with metric.
 	LabelKind = "kind"
 
-	namespaceEtcdBR   = "etcdbr"
-	subsystemSnapshot = "snapshot"
+	namespaceEtcdBR    = "etcdbr"
+	subsystemSnapshot  = "snapshot"
+	subsystemSnapstore = "snapstore"
 )
 
 var (
@@ -130,6 +131,27 @@ var (
 			Help:      "Total latency distribution of defragmentation of etcd.",
 		},
 		[]string{LabelSucceeded},
+	)
+
+	// SnapstoreLatestDeltasTotal is metric to expose total number of delta snapshots taken since the latest full snapshot.
+	SnapstoreLatestDeltasTotal = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Namespace: namespaceEtcdBR,
+			Subsystem: subsystemSnapstore,
+			Name:      "latest_deltas_total",
+			Help:      "Total number of delta snapshots taken since the latest full snapshot.",
+		},
+		[]string{},
+	)
+	// SnapstoreLatestDeltasRevisionsTotal is metric to expose total number of revisions stored in delta snapshots taken since the latest full snapshot.
+	SnapstoreLatestDeltasRevisionsTotal = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Namespace: namespaceEtcdBR,
+			Subsystem: subsystemSnapstore,
+			Name:      "latest_deltas_revisions_total",
+			Help:      "Total number of revisions stored in delta snapshots taken since the latest full snapshot.",
+		},
+		[]string{},
 	)
 )
 
@@ -291,6 +313,12 @@ func init() {
 		DefragmentationDurationSeconds.With(prometheus.Labels(combination))
 	}
 
+	// SnapstoreLatestDeltasTotal
+	SnapstoreLatestDeltasTotal.With(prometheus.Labels(map[string]string{}))
+
+	// SnapstoreLatestDeltasSize
+	SnapstoreLatestDeltasRevisionsTotal.With(prometheus.Labels(map[string]string{}))
+
 	// Metrics have to be registered to be exposed:
 	prometheus.MustRegister(GCSnapshotCounter)
 
@@ -302,4 +330,7 @@ func init() {
 	prometheus.MustRegister(RestorationDurationSeconds)
 	prometheus.MustRegister(ValidationDurationSeconds)
 	prometheus.MustRegister(DefragmentationDurationSeconds)
+
+	prometheus.MustRegister(SnapstoreLatestDeltasTotal)
+	prometheus.MustRegister(SnapstoreLatestDeltasRevisionsTotal)
 }
