@@ -13,7 +13,21 @@ You may choose to follow different methods of restoration, based on your etcd + 
         - `rm -rf /var/etcd/data/new.etcd/member`
         - You may choose to rename the `member` directory instead of deleting it, if you wish to retain the old data for debugging
     1. This will crash the etcd container and when it restarts, the backup sidecar will perform a validation of the data directory, and seeing that the data is corrupt, it will restore the data from the latest backup
-    - :warning: Keep in mind that the latest backup in the object storage bucket might not be up-to-date with the latest etcd data, and you could see a maximum data loss corresponding to the delta snapshot interval. For instance, setting `delta-snapshot-interval=5m` could result in a maximum data loss worth 5 minutes.
+        - :warning: Keep in mind that the latest backup in the object storage bucket might not be up-to-date with the latest etcd data, and you could see a maximum data loss corresponding to the delta snapshot interval. For instance, setting `delta-snapshot-interval=5m` could result in a maximum data loss worth 5 minutes.
+    1. If for some reason, automatic restoration isn't getting triggered even after removing the `member` directory, it may be required to temporarily modify the etcdbrctl command to `restore` mode to force a manual restoration of data, and then change the container spec back to its original form once the restoration is successful. Do not change any field in the container spec other than the `command` field, which is detailed below:
+
+        ```console
+        command:
+        - etcdbrctl
+        - restore
+        - --data-dir=<same as previous value>
+        - --storage-provider=<same as previous value>
+        - --store-prefix=<same as previous value>
+        - --embedded-etcd-quota-bytes=<same as previous value>
+        - --snapstore-temp-directory=<same as previous value>
+        ```
+
+        Once the spec is changed, monitor the logs to make sure restoration occurs. Once restoration is complete, change the container spec back to its previous state and restart the pod. This should purge any previous issues with etcd or backup sidecar, and start snapshotting successfully.
 
 1. Deploying etcd and etcdbrctl separately, where etcdbrctl is started in `server` mode
     1. If using [this bootstrap script](../../chart/etcd-backup-restore/templates/etcd-bootstrap-configmap.yaml) for starting etcd, then deleting the `member` directory under the etcd data directory should kill the etcd process, and subsequently the script finishes execution and exits. You will have to re-run the script and allow it to trigger data validation anf restoration by etcdbrctl.
