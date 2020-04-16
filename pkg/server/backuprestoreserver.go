@@ -77,7 +77,7 @@ func (b *BackupRestoreServer) Run(ctx context.Context) error {
 		PeerURLs:    peerURLs,
 	}
 
-	if b.config.SnapstoreConfig == nil {
+	if b.config.SnapstoreConfig == nil || len(b.config.SnapstoreConfig.Provider) == 0 {
 		b.logger.Warnf("No snapstore storage provider configured. Will not start backup schedule.")
 		b.runServerWithoutSnapshotter(ctx, options)
 		return nil

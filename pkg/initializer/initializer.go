@@ -94,7 +94,7 @@ func (e *EtcdInitializer) restoreCorruptData() (bool, error) {
 	logger := e.Logger
 	dataDir := e.Config.RestoreOptions.Config.RestoreDataDir
 
-	if e.Config.SnapstoreConfig == nil {
+	if e.Config.SnapstoreConfig == nil || len(e.Config.SnapstoreConfig.Provider) == 0 {
 		logger.Warnf("No snapstore storage provider configured.")
 		return e.restoreWithEmptySnapstore()
 	}

@@ -103,7 +103,7 @@ func (d *DataValidator) sanityCheck(failBelowRevision int64) (DataDirStatus, err
 		return DataDirectoryInvStruct, nil
 	}
 
-	if d.Config.SnapstoreConfig == nil {
+	if d.Config.SnapstoreConfig == nil || len(d.Config.SnapstoreConfig.Provider) == 0 {
 		d.Logger.Info("Skipping check for revision consistency, since no snapstore configured.")
 		return DataDirectoryValid, nil
 	}
