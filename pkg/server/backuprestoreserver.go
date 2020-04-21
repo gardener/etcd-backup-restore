@@ -199,7 +199,9 @@ func (b *BackupRestoreServer) runEtcdProbeLoopWithSnapshotter(ctx context.Contex
 		// TODO: write code to find out if prev full snapshot is older than it is
 		// supposed to be, according to the given cron schedule, instead of the
 		// hard-coded "24 hours" full snapshot interval
-		if ssr.PrevFullSnapshot != nil && time.Since(ssr.PrevFullSnapshot.CreatedOn).Hours() <= 24 {
+		const recentFullSnapshotPeriodInHours = 24
+		initialDeltaSnapshotTaken = false
+		if ssr.PrevFullSnapshot != nil && time.Since(ssr.PrevFullSnapshot.CreatedOn).Hours() <= recentFullSnapshotPeriodInHours {
 			ssrStopped, err := ssr.CollectEventsSincePrevSnapshot(ssrStopCh)
 			if ssrStopped {
 				b.logger.Info("Snapshotter stopped.")
@@ -238,7 +240,8 @@ func (b *BackupRestoreServer) runEtcdProbeLoopWithSnapshotter(ctx context.Contex
 		gcStopCh := make(chan struct{})
 		go ssr.RunGarbageCollector(gcStopCh)
 		b.logger.Infof("Starting snapshotter...")
-		if err := ssr.Run(ssrStopCh, initialDeltaSnapshotTaken); err != nil {
+		startWithFullSnapshot := !(initialDeltaSnapshotTaken && time.Since(ssr.PrevFullSnapshot.CreatedOn).Hours() <= recentFullSnapshotPeriodInHours)
+		if err := ssr.Run(ssrStopCh, startWithFullSnapshot); err != nil {
 			if etcdErr, ok := err.(*errors.EtcdError); ok == true {
 				b.logger.Errorf("Snapshotter failed with etcd error: %v", etcdErr)
 			} else {

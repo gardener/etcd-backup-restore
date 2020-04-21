@@ -314,6 +314,7 @@ func (ssr *Snapshotter) TakeDeltaSnapshot() (*snapstore.Snapshot, error) {
 
 	if len(ssr.events) == 0 {
 		ssr.logger.Infof("No events received to save snapshot. Skipping delta snapshot.")
+		metrics.SnapshotRequired.With(prometheus.Labels{metrics.LabelKind: snapstore.SnapshotKindDelta}).Set(0)
 		return nil, nil
 	}
 	ssr.events = append(ssr.events, byte(']'))
@@ -339,11 +340,13 @@ func (ssr *Snapshotter) TakeDeltaSnapshot() (*snapstore.Snapshot, error) {
 	logrus.Infof("Total time to save delta snapshot: %f seconds.", timeTaken)
 	ssr.prevSnapshot = snap
 	ssr.PrevDeltaSnapshots = append(ssr.PrevDeltaSnapshots, snap)
+
 	metrics.LatestSnapshotRevision.With(prometheus.Labels{metrics.LabelKind: ssr.prevSnapshot.Kind}).Set(float64(ssr.prevSnapshot.LastRevision))
 	metrics.LatestSnapshotTimestamp.With(prometheus.Labels{metrics.LabelKind: ssr.prevSnapshot.Kind}).Set(float64(ssr.prevSnapshot.CreatedOn.Unix()))
 	metrics.SnapshotRequired.With(prometheus.Labels{metrics.LabelKind: snapstore.SnapshotKindDelta}).Set(0)
 	metrics.SnapstoreLatestDeltasTotal.With(prometheus.Labels{}).Inc()
 	metrics.SnapstoreLatestDeltasRevisionsTotal.With(prometheus.Labels{}).Add(float64(snap.LastRevision - snap.StartRevision))
+
 	ssr.logger.Infof("Successfully saved delta snapshot at: %s", path.Join(snap.SnapDir, snap.SnapName))
 	return snap, nil
 }
