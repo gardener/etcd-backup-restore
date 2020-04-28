@@ -16,7 +16,7 @@ The procedure to provide credentials to access the cloud provider object store v
 
 * For `Azure Blob storage`, `STORAGE_ACCOUNT` and `STORAGE_KEY` should be made available as environment variables.
 
-* For `Openstack Swift`, `OS_USERNAME`, `OS_PASSWORD`, `OS_AUTH_URL`, `OS_TENANT_ID` and `OS_DOMAIN_ID` should be made available as environment variables.
+* For `Openstack Swift`, `OS_USERNAME`, `OS_PASSWORD`, `OS_AUTH_URL`, `OS_TENANT_ID` and `OS_DOMAIN_ID` or `OS_CLOUD` should be made available as environment variables.
 
 * For `Alicloud OSS`, `ALICLOUD_ENDPOINT`, `ALICLOUD_ACCESS_KEY_ID`, `ALICLOUD_ACCESS_KEY_SECRET` should be made available as environment variables.
 
