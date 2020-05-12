@@ -44,17 +44,22 @@ func NewSnapshotter(logger *logrus.Entry, config *Config, store snapstore.SnapSt
 		return nil, fmt.Errorf("invalid schedule provied %s : %v", config.FullSnapshotSchedule, err)
 	}
 
-	// Create dummy previous snapshot
 	var prevSnapshot *snapstore.Snapshot
 	fullSnap, deltaSnapList, err := miscellaneous.GetLatestFullSnapshotAndDeltaSnapList(store)
-	if err != nil || fullSnap == nil {
-		prevSnapshot = snapstore.NewSnapshot(snapstore.SnapshotKindFull, 0, 0)
-	} else if len(deltaSnapList) == 0 {
+	if err != nil {
+		return nil, err
+	} else if fullSnap != nil && len(deltaSnapList) == 0 {
 		prevSnapshot = fullSnap
-		metrics.LatestSnapshotTimestamp.With(prometheus.Labels{metrics.LabelKind: prevSnapshot.Kind}).Set(float64(prevSnapshot.CreatedOn.Unix()))
-	} else {
+		// setting timestamps of both full and delta to prev full snapshot's timestamp
+		metrics.LatestSnapshotTimestamp.With(prometheus.Labels{metrics.LabelKind: snapstore.SnapshotKindFull}).Set(float64(prevSnapshot.CreatedOn.Unix()))
+		metrics.LatestSnapshotTimestamp.With(prometheus.Labels{metrics.LabelKind: snapstore.SnapshotKindDelta}).Set(float64(prevSnapshot.CreatedOn.Unix()))
+	} else if fullSnap != nil && len(deltaSnapList) != 0 {
 		prevSnapshot = deltaSnapList[len(deltaSnapList)-1]
-		metrics.LatestSnapshotTimestamp.With(prometheus.Labels{metrics.LabelKind: prevSnapshot.Kind}).Set(float64(prevSnapshot.CreatedOn.Unix()))
+		metrics.LatestSnapshotTimestamp.With(prometheus.Labels{metrics.LabelKind: snapstore.SnapshotKindFull}).Set(float64(fullSnap.CreatedOn.Unix()))
+		metrics.LatestSnapshotTimestamp.With(prometheus.Labels{metrics.LabelKind: snapstore.SnapshotKindDelta}).Set(float64(prevSnapshot.CreatedOn.Unix()))
+	} else {
+		// creating dummy previous snapshot since fullSnap == nil
+		prevSnapshot = snapstore.NewSnapshot(snapstore.SnapshotKindFull, 0, 0)
 	}
 
 	metrics.LatestSnapshotRevision.With(prometheus.Labels{metrics.LabelKind: prevSnapshot.Kind}).Set(float64(prevSnapshot.LastRevision))
