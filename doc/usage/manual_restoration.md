@@ -26,7 +26,7 @@ You may choose to follow different methods of restoration, based on your etcd + 
         - --embedded-etcd-quota-bytes=<same as previous value>
         - --snapstore-temp-directory=<same as previous value>
         ```
-        :warning: edit etcd-main statefulset, delete etcd-main-0 pod, and then check etcd and backup-restore sidecar logs
+        :warning: Edit etcd-main statefulset to change command field. After saving it, delete etcd-main-0 pod and then check etcd and backup-restore sidecar logs for successful restoration.
         
         Once the spec is changed, monitor the logs to make sure restoration occurs. Once restoration is complete, change the container spec back to its previous state and restart the pod. This should purge any previous issues with etcd or backup sidecar, and start snapshotting successfully.
 
