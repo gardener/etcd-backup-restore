@@ -49,7 +49,7 @@ function test_with_coverage() {
 ################################################################################
 
 TEST_PACKAGES="cmd pkg"
-GINKGO_COMMON_FLAGS="-r -timeout=1h0m0s --progress -slowSpecThreshold=180"
+GINKGO_COMMON_FLAGS="-r -timeout=1h0m0s --progress -slowSpecThreshold=180 -mod=vendor"
 
 if [ -z $COVER ] || [ "$COVER" = false ] ; then
   echo "[INFO] Test coverage is disabled."

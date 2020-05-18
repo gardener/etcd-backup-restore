@@ -1,13 +1,14 @@
 images:
   # etcd image to use
   etcd:
-    repository: quay.io/coreos/etcd
-    tag: v3.3.13
+    # repository: quay.io/coreos/etcd
+    repository: gcr.io/etcd-development/etcd
+    tag: v3.3.17
     pullPolicy: IfNotPresent
   # etcd-backup-restore image to use
   etcdBackupRestore:
     repository: eu.gcr.io/gardener-project/gardener/etcdbrctl
-    tag: 0.8.0
+    tag: v0.9.1
     pullPolicy: IfNotPresent
 
 resources:
@@ -45,8 +46,10 @@ backup:
 
   # garbageCollectionPolicy mentions the policy for garbage collecting old backups. Allowed values are Exponential(default), LimitBased.
   garbageCollectionPolicy: Exponential
-  # maxBackups is the maximum number of backups to keep (may change in future). This is interpreted in case of garbageCollectionPolicy set to LimitBased.
+  # maxBackups is the maximum number of backups to keep (may change in future). This is honoured only in the case when garbageCollectionPolicy is set to LimitBased.
   maxBackups: 7
+  # garbageCollectionPeriod is the time period after which old snapshots are periodically garbage-collected
+  garbageCollectionPeriod: "1m"
 
   etcdConnectionTimeout: "30s"
   # etcdQuotaBytes used to Raise alarms when backend DB size exceeds the given quota bytes
