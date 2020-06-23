@@ -28,7 +28,6 @@ require (
 	github.com/grpc-ecosystem/grpc-gateway v1.11.2 // indirect
 	github.com/imdario/mergo v0.3.7 // indirect
 	github.com/jonboulle/clockwork v0.1.0 // indirect
-	github.com/konsorten/go-windows-terminal-sequences v1.0.2 // indirect
 	github.com/mattn/go-ieproxy v0.0.0-20190805055040-f9202b1cfdeb // indirect
 	github.com/onsi/ginkgo v1.10.1
 	github.com/onsi/gomega v1.7.0
@@ -38,7 +37,7 @@ require (
 	github.com/prometheus/procfs v0.0.5 // indirect
 	github.com/robfig/cron/v3 v3.0.0
 	github.com/satori/go.uuid v1.2.0 // indirect
-	github.com/sirupsen/logrus v1.4.2
+	github.com/sirupsen/logrus v1.6.0
 	github.com/soheilhy/cmux v0.1.4 // indirect
 	github.com/spf13/cobra v0.0.5
 	github.com/spf13/pflag v1.0.5
