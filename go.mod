@@ -7,7 +7,7 @@ require (
 	cloud.google.com/go/storage v1.0.0
 	github.com/Azure/azure-pipeline-go v0.2.2
 	github.com/Azure/azure-storage-blob-go v0.8.0
-	github.com/aliyun/aliyun-oss-go-sdk v2.0.3+incompatible
+	github.com/aliyun/aliyun-oss-go-sdk v2.1.3+incompatible
 	github.com/aws/aws-sdk-go v1.32.6
 	github.com/baiyubin/aliyun-sts-go-sdk v0.0.0-20180326062324-cfa1a18b161f // indirect
 	github.com/coreos/bbolt v1.3.3
