@@ -95,8 +95,9 @@ spec:
         - --schedule={{ .Values.backup.schedule }}
 {{- if eq .Values.backup.garbageCollectionPolicy "LimitBased" }}
         - --max-backups={{ .Values.backup.maxBackups }}
-        - --garbage-collection-policy={{ .Values.garbageCollectionPolicy }}
+        - --garbage-collection-policy={{ .Values.backup.garbageCollectionPolicy }}
 {{- end }}
+        - --garbage-collection-period={{ .Values.backup.garbageCollectionPeriod }}
         - --data-dir=/var/etcd/data/new.etcd
         - --storage-provider={{ .Values.backup.storageProvider }}
         - --store-prefix={{ .Release.Name }}-etcd

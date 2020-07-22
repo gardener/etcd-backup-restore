@@ -41,8 +41,9 @@ TEST_ID=
 ETCD_VER=
 ETCD_DATA_DIR=
 TEST_DIR=
+TEST_RESULT=
 
-function setup_test_enviornment() {
+function setup_test_environment() {
   setup_ginkgo
   setup_etcd
   setup_etcdbrctl
@@ -75,6 +76,7 @@ function setup_etcdbrctl(){
     -v \
     -o ${GOBIN}/etcdbrctl \
     -ldflags "-w -X ${REPOSITORY}/pkg/version.Version=${VERSION}" \
+    -mod=vendor \
     main.go
     chmod +x ${GOBIN}/etcdbrctl
     echo "Successfully installed etcdbrctl."
@@ -186,22 +188,70 @@ function cleanup_test_environment() {
 
 ###############################################################################
 
-setup_test_enviornment
-echo "Setting up test cluster..."
-setup_test_cluster
+function run_test_as_processes() {
+  setup_test_environment
+  echo "Setting up test cluster..."
+  setup_test_cluster
 
-echo "Starting integration tests..."
-cd test/e2e/integration
+  echo "Starting integration tests..."
+  cd test/e2e/integration
 
-set +e
-ginkgo -r
-TEST_RESULT=$?
-set -e
+  set +e
+  ginkgo -r -mod=vendor
+  TEST_RESULT=$?
+  set -e
 
-echo "Done with integration tests."
+  echo "Done with integration tests."
 
-echo "Deleting test enviornment..."
-cleanup_test_environment
-echo "Successfully completed all tests."
+  echo "Deleting test enviornment..."
+  cleanup_test_environment
+  echo "Successfully completed all tests."
+}
+
+function run_test_on_cluster() {
+  if ! [ -x "$(command -v ginkgo)" ]; then
+    setup_ginkgo
+  fi
+
+  if [ "$STORAGE_CONTAINER" == "" ]; then
+    setup_awscli
+    get_test_id
+    setup-aws-infrastructure
+  fi
+
+  echo "Starting integration tests on k8s cluster."
+
+  if [ "$INTEGRATION_TEST_KUBECONFIG" == "" ]; then
+    INTEGRATION_TEST_KUBECONFIG=$TM_KUBECONFIG_PATH/shoot.config
+  fi
+  ETCD_VERSION=${ETCD_VERSION:-"v3.3.17"}
+  ETCDBR_VERSION=${ETCDBR_VERSION:-"v0.9.1"}
+
+  set +e
+
+  if [ -r "$INTEGRATION_TEST_KUBECONFIG" ]; then
+    KUBECONFIG=$INTEGRATION_TEST_KUBECONFIG STORAGE_CONTAINER=$TEST_ID ginkgo -v -timeout=15m -mod=vendor test/e2e/integrationcluster
+    TEST_RESULT=$?
+    echo "Successfully completed all tests."
+  else
+    echo "Invalid kubeconfig for integration test $INTEGRATION_TEST_KUBECONFIG"
+    TEST_RESULT=255
+  fi
+
+  set -e
+
+  echo "Done with integration test on k8s cluster."
+
+  if [ "$STORAGE_CONTAINER" == "" ]; then
+    echo "Deleting test bucket..."
+    cleanup-aws-infrastructure
+  fi
+}
+
+if [ "$1" == "cluster" ]; then
+  run_test_on_cluster
+else
+  run_test_as_processes
+fi
 
 exit $TEST_RESULT
