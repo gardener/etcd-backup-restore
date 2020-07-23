@@ -30,7 +30,7 @@ require (
 	github.com/onsi/ginkgo v1.11.0
 	github.com/onsi/gomega v1.7.0
 	github.com/pierrec/lz4 v2.5.2+incompatible // indirect
-	github.com/prometheus/client_golang v1.3.0
+	github.com/prometheus/client_golang v1.7.1
 	github.com/robfig/cron/v3 v3.0.0
 	github.com/sirupsen/logrus v1.6.0
 	github.com/spf13/cobra v1.0.0
