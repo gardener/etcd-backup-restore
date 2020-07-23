@@ -3,8 +3,8 @@ module github.com/gardener/etcd-backup-restore
 go 1.12
 
 require (
-	cloud.google.com/go v0.50.0
-	cloud.google.com/go/storage v1.0.0
+	cloud.google.com/go v0.56.0
+	cloud.google.com/go/storage v1.6.0
 	github.com/Azure/azure-pipeline-go v0.2.2
 	github.com/Azure/azure-storage-blob-go v0.8.0
 	github.com/MakeNowJust/heredoc v1.0.0 // indirect
@@ -18,7 +18,6 @@ require (
 	github.com/dsnet/compress v0.0.1 // indirect
 	github.com/elazarl/goproxy v0.0.0-20191011121108-aa519ddbe484 // indirect
 	github.com/ghodss/yaml v1.0.0
-	github.com/go-gl/glfw v0.0.0-20190409004039-e6da0acd62b1 // indirect
 	github.com/golang/snappy v0.0.1 // indirect
 	github.com/gophercloud/gophercloud v0.7.0
 	github.com/gophercloud/utils v0.0.0-20200204043447-9864b6f1f12f
@@ -38,9 +37,7 @@ require (
 	github.com/tmc/grpc-websocket-proxy v0.0.0-20200427203606-3cfed13b9966 // indirect
 	github.com/ulikunitz/xz v0.5.7 // indirect
 	github.com/xi2/xz v0.0.0-20171230120015-48954b6210f8 // indirect
-	go.opencensus.io v0.22.1 // indirect
-	golang.org/x/time v0.0.0-20190921001708-c4c64cad1fd0 // indirect
-	google.golang.org/api v0.14.0
+	google.golang.org/api v0.29.0
 	helm.sh/helm/v3 v3.2.4
 	k8s.io/api v0.18.0
 	k8s.io/apimachinery v0.18.0
