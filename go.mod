@@ -20,7 +20,7 @@ require (
 	github.com/ghodss/yaml v1.0.0
 	github.com/go-gl/glfw v0.0.0-20190409004039-e6da0acd62b1 // indirect
 	github.com/golang/snappy v0.0.1 // indirect
-	github.com/gophercloud/gophercloud v0.7.0
+	github.com/gophercloud/gophercloud v0.12.0
 	github.com/gophercloud/utils v0.0.0-20200204043447-9864b6f1f12f
 	github.com/gorilla/websocket v1.4.1 // indirect
 	github.com/grpc-ecosystem/go-grpc-middleware v1.1.0 // indirect

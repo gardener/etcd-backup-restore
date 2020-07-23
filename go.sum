@@ -479,6 +479,8 @@ github.com/gophercloud/gophercloud v0.4.0/go.mod h1:vxM41WHh5uqHVBMZHzuwNOHh8XEo
 github.com/gophercloud/gophercloud v0.6.1-0.20191122030953-d8ac278c1c9d/go.mod h1:ozGNgr9KYOVATV5jsgHl/ceCDXGuguqOZAzoQ/2vcNM=
 github.com/gophercloud/gophercloud v0.7.0 h1:vhmQQEM2SbnGCg2/3EzQnQZ3V7+UCGy9s8exQCprNYg=
 github.com/gophercloud/gophercloud v0.7.0/go.mod h1:gmC5oQqMDOMO1t1gq5DquX/yAU808e/4mzjjDA76+Ss=
+github.com/gophercloud/gophercloud v0.12.0 h1:mZrie07npp6ODiwHZolTicr5jV8Ogn43AvAsSMm6Ork=
+github.com/gophercloud/gophercloud v0.12.0/go.mod h1:gmC5oQqMDOMO1t1gq5DquX/yAU808e/4mzjjDA76+Ss=
 github.com/gophercloud/utils v0.0.0-20190527093828-25f1b77b8c03/go.mod h1:SZ9FTKibIotDtCrxAU/evccoyu1yhKST6hgBvwTB5Eg=
 github.com/gophercloud/utils v0.0.0-20190829151529-94e6842399e5 h1:W6TC1Dd95ocK2YK5jLmKmh1lg+oZaXdLl+CRP7pUdfA=
 github.com/gophercloud/utils v0.0.0-20190829151529-94e6842399e5/go.mod h1:SZ9FTKibIotDtCrxAU/evccoyu1yhKST6hgBvwTB5Eg=
