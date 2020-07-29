@@ -16,6 +16,7 @@ package integrationcluster
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -155,7 +156,7 @@ func waitForNamespaceToBeCreated(k8sClient *kubernetes.Clientset, name string) e
 	namespaceClient := k8sClient.CoreV1().Namespaces()
 
 	for {
-		_, err = namespaceClient.Get(name, metav1.GetOptions{})
+		_, err = namespaceClient.Get(context.TODO(), name, metav1.GetOptions{})
 		if apierrors.IsNotFound(err) {
 			continue
 		} else if err != nil {
@@ -174,7 +175,7 @@ func waitForNamespaceToBeDeleted(k8sClient *kubernetes.Clientset, name string) e
 	namespaceClient := k8sClient.CoreV1().Namespaces()
 
 	for {
-		_, err = namespaceClient.Get(name, metav1.GetOptions{})
+		_, err = namespaceClient.Get(context.TODO(), name, metav1.GetOptions{})
 		if apierrors.IsNotFound(err) {
 			break
 		} else if err != nil {
@@ -193,7 +194,7 @@ func waitForPodToBeRunning(k8sClient *kubernetes.Clientset, name, namespace stri
 	podClient := k8sClient.CoreV1().Pods(namespace)
 
 	for {
-		pod, err = podClient.Get(name, metav1.GetOptions{})
+		pod, err = podClient.Get(context.TODO(), name, metav1.GetOptions{})
 		if apierrors.IsNotFound(err) {
 			continue
 		} else if err != nil {
@@ -217,7 +218,7 @@ func waitForEndpointPortsToBeReady(k8sClient *kubernetes.Clientset, name, namesp
 
 OuterLoop:
 	for {
-		endpoint, err = endpointClient.Get(name, metav1.GetOptions{})
+		endpoint, err = endpointClient.Get(context.TODO(), name, metav1.GetOptions{})
 		if apierrors.IsNotFound(err) {
 			continue
 		} else if err != nil {

@@ -54,9 +54,9 @@ func (e UnexpectedStatusCodeError) Got() int {
 	return e.got
 }
 
-// CheckRespCode returns UnexpectedStatusError if the given response code is not
+// checkRespCode returns UnexpectedStatusError if the given response code is not
 // one of the allowed status codes; otherwise nil.
-func CheckRespCode(respCode int, allowed []int) error {
+func checkRespCode(respCode int, allowed []int) error {
 	for _, v := range allowed {
 		if respCode == v {
 			return nil
@@ -79,14 +79,14 @@ func (e CRCCheckError) Error() string {
 		e.operation, e.clientCRC, e.serverCRC, e.requestID)
 }
 
-func CheckDownloadCRC(clientCRC, serverCRC uint64) error {
+func checkDownloadCRC(clientCRC, serverCRC uint64) error {
 	if clientCRC == serverCRC {
 		return nil
 	}
 	return CRCCheckError{clientCRC, serverCRC, "DownloadFile", ""}
 }
 
-func CheckCRC(resp *Response, operation string) error {
+func checkCRC(resp *Response, operation string) error {
 	if resp.Headers.Get(HTTPHeaderOssCRC64) == "" || resp.ClientCRC == resp.ServerCRC {
 		return nil
 	}

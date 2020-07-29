@@ -5,7 +5,6 @@ package oss
 import (
 	"net"
 	"net/http"
-	"time"
 )
 
 func newTransport(conn *Conn, config *Config) *http.Transport {
@@ -14,10 +13,7 @@ func newTransport(conn *Conn, config *Config) *http.Transport {
 	// New Transport
 	transport := &http.Transport{
 		Dial: func(netw, addr string) (net.Conn, error) {
-			d := net.Dialer{
-				Timeout:   httpTimeOut.ConnectTimeout,
-				KeepAlive: 30 * time.Second,
-			}
+			d := net.Dialer{Timeout: httpTimeOut.ConnectTimeout}
 			if config.LocalAddr != nil {
 				d.LocalAddr = config.LocalAddr
 			}

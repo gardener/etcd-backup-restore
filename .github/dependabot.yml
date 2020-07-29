@@ -7,10 +7,10 @@ updates:
 - package-ecosystem: gomod
   directory: "/"
   schedule:
-    interval: daily
+    interval: monthly
   open-pull-requests-limit: 5
   commit-message:
-    # Prefix all commit messages with "npm"
+    # Prefix all commit messages
     prefix: ":arrow_up:"
-  # Disable rebasing for npm pull requests
+  # Disable rebasing for pull requests
   rebase-strategy: "disabled"

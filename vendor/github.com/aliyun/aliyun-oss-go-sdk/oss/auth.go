@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"crypto/hmac"
 	"crypto/sha1"
-	"crypto/sha256"
 	"encoding/base64"
 	"fmt"
 	"hash"
@@ -21,47 +20,13 @@ type headerSorter struct {
 	Vals []string
 }
 
-// getAdditionalHeaderKeys get exist key in http header
-func (conn Conn) getAdditionalHeaderKeys(req *http.Request) ([]string, map[string]string) {
-	var keysList []string
-	keysMap := make(map[string]string)
-	srcKeys := make(map[string]string)
-
-	for k := range req.Header {
-		srcKeys[strings.ToLower(k)] = ""
-	}
-
-	for _, v := range conn.config.AdditionalHeaders {
-		if _, ok := srcKeys[strings.ToLower(v)]; ok {
-			keysMap[strings.ToLower(v)] = ""
-		}
-	}
-
-	for k := range keysMap {
-		keysList = append(keysList, k)
-	}
-	sort.Strings(keysList)
-	return keysList, keysMap
-}
-
 // signHeader signs the header and sets it as the authorization header.
 func (conn Conn) signHeader(req *http.Request, canonicalizedResource string) {
+
 	akIf := conn.config.GetCredentials()
-	authorizationStr := ""
-	if conn.config.AuthVersion == AuthV2 {
-		additionalList, _ := conn.getAdditionalHeaderKeys(req)
-		if len(additionalList) > 0 {
-			authorizationFmt := "OSS2 AccessKeyId:%v,AdditionalHeaders:%v,Signature:%v"
-			additionnalHeadersStr := strings.Join(additionalList, ";")
-			authorizationStr = fmt.Sprintf(authorizationFmt, akIf.GetAccessKeyID(), additionnalHeadersStr, conn.getSignedStr(req, canonicalizedResource, akIf.GetAccessKeySecret()))
-		} else {
-			authorizationFmt := "OSS2 AccessKeyId:%v,Signature:%v"
-			authorizationStr = fmt.Sprintf(authorizationFmt, akIf.GetAccessKeyID(), conn.getSignedStr(req, canonicalizedResource, akIf.GetAccessKeySecret()))
-		}
-	} else {
-		// Get the final authorization string
-		authorizationStr = "OSS " + akIf.GetAccessKeyID() + ":" + conn.getSignedStr(req, canonicalizedResource, akIf.GetAccessKeySecret())
-	}
+
+	// Get the final authorization string
+	authorizationStr := "OSS " + akIf.GetAccessKeyID() + ":" + conn.getSignedStr(req, canonicalizedResource, akIf.GetAccessKeySecret())
 
 	// Give the parameter "Authorization" value
 	req.Header.Set(HTTPHeaderAuthorization, authorizationStr)
@@ -69,20 +34,16 @@ func (conn Conn) signHeader(req *http.Request, canonicalizedResource string) {
 
 func (conn Conn) getSignedStr(req *http.Request, canonicalizedResource string, keySecret string) string {
 	// Find out the "x-oss-"'s address in header of the request
-	ossHeadersMap := make(map[string]string)
-	additionalList, additionalMap := conn.getAdditionalHeaderKeys(req)
+	temp := make(map[string]string)
+
 	for k, v := range req.Header {
 		if strings.HasPrefix(strings.ToLower(k), "x-oss-") {
-			ossHeadersMap[strings.ToLower(k)] = v[0]
-		} else if conn.config.AuthVersion == AuthV2 {
-			if _, ok := additionalMap[strings.ToLower(k)]; ok {
-				ossHeadersMap[strings.ToLower(k)] = v[0]
-			}
+			temp[strings.ToLower(k)] = v[0]
 		}
 	}
-	hs := newHeaderSorter(ossHeadersMap)
+	hs := newHeaderSorter(temp)
 
-	// Sort the ossHeadersMap by the ascending order
+	// Sort the temp by the ascending order
 	hs.Sort()
 
 	// Get the canonicalizedOSSHeaders
@@ -97,15 +58,7 @@ func (conn Conn) getSignedStr(req *http.Request, canonicalizedResource string, k
 	contentType := req.Header.Get(HTTPHeaderContentType)
 	contentMd5 := req.Header.Get(HTTPHeaderContentMD5)
 
-	// default is v1 signature
 	signStr := req.Method + "\n" + contentMd5 + "\n" + contentType + "\n" + date + "\n" + canonicalizedOSSHeaders + canonicalizedResource
-	h := hmac.New(func() hash.Hash { return sha1.New() }, []byte(keySecret))
-
-	// v2 signature
-	if conn.config.AuthVersion == AuthV2 {
-		signStr = req.Method + "\n" + contentMd5 + "\n" + contentType + "\n" + date + "\n" + canonicalizedOSSHeaders + strings.Join(additionalList, ";") + "\n" + canonicalizedResource
-		h = hmac.New(func() hash.Hash { return sha256.New() }, []byte(keySecret))
-	}
 
 	// convert sign to log for easy to view
 	if conn.config.LogLevel >= Debug {
@@ -120,6 +73,7 @@ func (conn Conn) getSignedStr(req *http.Request, canonicalizedResource string, k
 		conn.config.WriteLog(Debug, "[Req:%p]signStr:%s\n", req, signBuf.String())
 	}
 
+	h := hmac.New(func() hash.Hash { return sha1.New() }, []byte(keySecret))
 	io.WriteString(h, signStr)
 	signedStr := base64.StdEncoding.EncodeToString(h.Sum(nil))
 
