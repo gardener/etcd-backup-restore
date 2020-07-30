@@ -111,9 +111,9 @@ function create_etcd_data_directory() {
 
 function create_aws_secret() {
   echo "Fetching aws credentials from secret server..."
-  ACCESS_KEY_ID=`/cc/utils/cli.py config attribute --cfg-type aws --cfg-name etcd-backup-restore --key access_key_id`
-  SECRET_ACCESS_KEY=`/cc/utils/cli.py config attribute --cfg-type aws --cfg-name etcd-backup-restore --key secret_access_key`
-  REGION=`/cc/utils/cli.py config attribute --cfg-type aws --cfg-name etcd-backup-restore --key region`
+  export ACCESS_KEY_ID=`/cc/utils/cli.py config attribute --cfg-type aws --cfg-name etcd-backup-restore --key access_key_id`
+  export SECRET_ACCESS_KEY=`/cc/utils/cli.py config attribute --cfg-type aws --cfg-name etcd-backup-restore --key secret_access_key`
+  export REGION=`/cc/utils/cli.py config attribute --cfg-type aws --cfg-name etcd-backup-restore --key region`
   echo "Successfully fetched aws credentials from secret server."
 
 
@@ -224,8 +224,8 @@ function run_test_on_cluster() {
   if [ "$INTEGRATION_TEST_KUBECONFIG" == "" ]; then
     INTEGRATION_TEST_KUBECONFIG=$TM_KUBECONFIG_PATH/shoot.config
   fi
-  ETCD_VERSION=${ETCD_VERSION:-"v3.3.17"}
-  ETCDBR_VERSION=${ETCDBR_VERSION:-"v0.9.1"}
+  export ETCD_VERSION=${ETCD_VERSION:-"v3.3.17"}
+  export ETCDBR_VERSION=${ETCDBR_VERSION:-"v0.9.1"}
 
   set +e
 

@@ -31,13 +31,13 @@ import (
 	"github.com/coreos/etcd/clientv3/credentials"
 	"github.com/coreos/etcd/etcdserver/api/v3rpc/rpctypes"
 	"github.com/coreos/etcd/pkg/logutil"
+	"github.com/coreos/pkg/capnslog"
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	grpccredentials "google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/keepalive"
-	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 )
 
@@ -46,6 +46,10 @@ var (
 	ErrOldCluster           = errors.New("etcdclient: old cluster version")
 
 	roundRobinBalancerName = fmt.Sprintf("etcd-%s", picker.RoundrobinBalanced.String())
+)
+
+var (
+	plog = capnslog.NewPackageLogger("github.com/coreos/etcd", "clientv3")
 )
 
 func init() {
@@ -391,13 +395,6 @@ func (c *Client) dialWithBalancerCreds(ep string) grpccredentials.TransportCrede
 		creds = c.processCreds(scheme)
 	}
 	return creds
-}
-
-// WithRequireLeader requires client requests to only succeed
-// when the cluster has a leader.
-func WithRequireLeader(ctx context.Context) context.Context {
-	md := metadata.Pairs(rpctypes.MetadataRequireLeaderKey, rpctypes.MetadataHasLeader)
-	return metadata.NewOutgoingContext(ctx, md)
 }
 
 func newClient(cfg *Config) (*Client, error) {

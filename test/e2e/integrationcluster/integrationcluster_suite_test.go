@@ -15,6 +15,7 @@
 package integrationcluster
 
 import (
+	"context"
 	"fmt"
 	"path"
 	"testing"
@@ -90,11 +91,11 @@ var _ = BeforeSuite(func() {
 	namespacesClient := typedClient.CoreV1().Namespaces()
 
 	logger.Infof("creating namespace %s", releaseNamespace)
-	ns, err := namespacesClient.Create(&corev1.Namespace{
+	ns, err := namespacesClient.Create(context.TODO(), &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: releaseNamespace,
 		},
-	})
+	}, metav1.CreateOptions{})
 	Expect(err).NotTo(HaveOccurred())
 
 	err = waitForNamespaceToBeCreated(typedClient, ns.Name)
@@ -148,7 +149,7 @@ var _ = AfterSuite(func() {
 
 	logger.Infof("deleting namespace %s", releaseNamespace)
 	namespacesClient = typedClient.CoreV1().Namespaces()
-	err = namespacesClient.Delete(releaseNamespace, &metav1.DeleteOptions{})
+	err = namespacesClient.Delete(context.TODO(), releaseNamespace, metav1.DeleteOptions{})
 	if apierrors.IsNotFound(err) {
 		logger.Infof("namespace %s does not exist", releaseNamespace)
 	} else {

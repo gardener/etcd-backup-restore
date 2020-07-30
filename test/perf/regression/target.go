@@ -68,7 +68,7 @@ func (t *target) teardown() {
 	t.logger.Info("Tearing down target...")
 
 	t.logger.Infof("Deleting the namespace %s", t.namespace)
-	err := t.typedClient.CoreV1().Namespaces().Delete(t.namespace, &metav1.DeleteOptions{})
+	err := t.typedClient.CoreV1().Namespaces().Delete(context.TODO(), t.namespace, metav1.DeleteOptions{})
 	if err != nil {
 		t.logger.Errorf("Error deleting namespace %s: %s", t.namespace, err)
 		return
@@ -79,11 +79,11 @@ func (t *target) teardown() {
 
 func (t *target) createNamespace() error {
 	t.logger.Infof("Creating namespace with prefix %s", t.namespacePrefix)
-	ns, err := t.typedClient.CoreV1().Namespaces().Create(&corev1.Namespace{
+	ns, err := t.typedClient.CoreV1().Namespaces().Create(context.TODO(), &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
 			GenerateName: t.namespacePrefix,
 		},
-	})
+	}, metav1.CreateOptions{})
 
 	if err != nil {
 		return err
@@ -145,7 +145,7 @@ func (t *target) createResources() error {
 			nri := t.untypedClient.Resource(*gvr)
 			ri = nri.Namespace(u.GetNamespace())
 		}
-		u, err = ri.Create(u, metav1.CreateOptions{})
+		u, err = ri.Create(context.TODO(), u, metav1.CreateOptions{})
 		if err != nil {
 			return err
 		}
@@ -178,7 +178,7 @@ func (t *target) getGroupVersionResource(u *unstructured.Unstructured) (*schema.
 
 func (t *target) isPodRunning(podSelector string) (bool, error) {
 	t.logger.Infof("Starting watch on pod with selector %s in the namespace %s", podSelector, t.namespace)
-	podList, err := t.typedClient.CoreV1().Pods(t.namespace).List(metav1.ListOptions{
+	podList, err := t.typedClient.CoreV1().Pods(t.namespace).List(context.TODO(), metav1.ListOptions{
 		LabelSelector: podSelector,
 	})
 	if err != nil {
@@ -222,7 +222,7 @@ func (t *target) watchForJob(ctx context.Context, jobSelector string, readyCh ch
 
 func (t *target) doWatchForJob(ctx context.Context, jobSelector string, readyCh chan<- interface{}) (bool, error) {
 	t.logger.Infof("Starting watch on job with selector %s in the namespace %s", jobSelector, t.namespace)
-	wr, err := t.typedClient.BatchV1().Jobs(t.namespace).Watch(metav1.ListOptions{
+	wr, err := t.typedClient.BatchV1().Jobs(t.namespace).Watch(context.TODO(), metav1.ListOptions{
 		LabelSelector: jobSelector,
 	})
 	if err != nil {

@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
-	"net/http"
 	"os"
 	"path/filepath"
 	"time"
@@ -45,7 +44,7 @@ func getUploadCpFilePath(cpConf *cpConfig, srcFile, destBucket, destObject strin
 	if cpConf.FilePath == "" && cpConf.DirPath != "" {
 		dest := fmt.Sprintf("oss://%v/%v", destBucket, destObject)
 		absPath, _ := filepath.Abs(srcFile)
-		cpFileName := getCpFileName(absPath, dest, "")
+		cpFileName := getCpFileName(absPath, dest)
 		cpConf.FilePath = cpConf.DirPath + string(os.PathSeparator) + cpFileName
 	}
 	return cpConf.FilePath
@@ -55,7 +54,7 @@ func getUploadCpFilePath(cpConf *cpConfig, srcFile, destBucket, destObject strin
 
 // getCpConfig gets checkpoint configuration
 func getCpConfig(options []Option) *cpConfig {
-	cpcOpt, err := FindOption(options, checkpointConfig, nil)
+	cpcOpt, err := findOption(options, checkpointConfig, nil)
 	if err != nil || cpcOpt == nil {
 		return nil
 	}
@@ -64,7 +63,7 @@ func getCpConfig(options []Option) *cpConfig {
 }
 
 // getCpFileName return the name of the checkpoint file
-func getCpFileName(src, dest, versionId string) string {
+func getCpFileName(src, dest string) string {
 	md5Ctx := md5.New()
 	md5Ctx.Write([]byte(src))
 	srcCheckSum := hex.EncodeToString(md5Ctx.Sum(nil))
@@ -73,19 +72,12 @@ func getCpFileName(src, dest, versionId string) string {
 	md5Ctx.Write([]byte(dest))
 	destCheckSum := hex.EncodeToString(md5Ctx.Sum(nil))
 
-	if versionId == "" {
-		return fmt.Sprintf("%v-%v.cp", srcCheckSum, destCheckSum)
-	}
-
-	md5Ctx.Reset()
-	md5Ctx.Write([]byte(versionId))
-	versionCheckSum := hex.EncodeToString(md5Ctx.Sum(nil))
-	return fmt.Sprintf("%v-%v-%v.cp", srcCheckSum, destCheckSum, versionCheckSum)
+	return fmt.Sprintf("%v-%v.cp", srcCheckSum, destCheckSum)
 }
 
 // getRoutines gets the routine count. by default it's 1.
 func getRoutines(options []Option) int {
-	rtnOpt, err := FindOption(options, routineNum, nil)
+	rtnOpt, err := findOption(options, routineNum, nil)
 	if err != nil || rtnOpt == nil {
 		return 1
 	}
@@ -102,16 +94,17 @@ func getRoutines(options []Option) int {
 
 // getPayer return the payer of the request
 func getPayer(options []Option) string {
-	payerOpt, err := FindOption(options, HTTPHeaderOssRequester, nil)
+	payerOpt, err := findOption(options, HTTPHeaderOssRequester, nil)
 	if err != nil || payerOpt == nil {
 		return ""
 	}
+
 	return payerOpt.(string)
 }
 
-// GetProgressListener gets the progress callback
-func GetProgressListener(options []Option) ProgressListener {
-	isSet, listener, _ := IsOptionSet(options, progressListener)
+// getProgressListener gets the progress callback
+func getProgressListener(options []Option) ProgressListener {
+	isSet, listener, _ := isOptionSet(options, progressListener)
 	if !isSet {
 		return nil
 	}
@@ -137,32 +130,14 @@ type workerArg struct {
 }
 
 // worker is the worker coroutine function
-type defaultUploadProgressListener struct {
-}
-
-// ProgressChanged no-ops
-func (listener *defaultUploadProgressListener) ProgressChanged(event *ProgressEvent) {
-}
-
 func worker(id int, arg workerArg, jobs <-chan FileChunk, results chan<- UploadPart, failed chan<- error, die <-chan bool) {
 	for chunk := range jobs {
 		if err := arg.hook(id, chunk); err != nil {
 			failed <- err
 			break
 		}
-		var respHeader http.Header
-		p := Progress(&defaultUploadProgressListener{})
-		opts := make([]Option, len(arg.options)+2)
-		opts = append(opts, arg.options...)
-
-		// use defaultUploadProgressListener
-		opts = append(opts, p, GetResponseHeader(&respHeader))
-
-		startT := time.Now().UnixNano() / 1000 / 1000 / 1000
-		part, err := arg.bucket.UploadPartFromFile(arg.imur, arg.filePath, chunk.Offset, chunk.Size, chunk.Number, opts...)
-		endT := time.Now().UnixNano() / 1000 / 1000 / 1000
+		part, err := arg.bucket.UploadPartFromFile(arg.imur, arg.filePath, chunk.Offset, chunk.Size, chunk.Number, arg.options...)
 		if err != nil {
-			arg.bucket.Client.Config.WriteLog(Debug, "upload part error,cost:%d second,part number:%d,request id:%s,error:%s\n", endT-startT, chunk.Number, GetRequestId(respHeader), err.Error())
 			failed <- err
 			break
 		}
@@ -193,16 +168,12 @@ func getTotalBytes(chunks []FileChunk) int64 {
 
 // uploadFile is a concurrent upload, without checkpoint
 func (bucket Bucket) uploadFile(objectKey, filePath string, partSize int64, options []Option, routines int) error {
-	listener := GetProgressListener(options)
+	listener := getProgressListener(options)
 
 	chunks, err := SplitFileByPartSize(filePath, partSize)
 	if err != nil {
 		return err
 	}
-
-	partOptions := ChoiceTransferPartOption(options)
-	completeOptions := ChoiceCompletePartOption(options)
-	abortOptions := ChoiceAbortPartOption(options)
 
 	// Initialize the multipart upload
 	imur, err := bucket.InitiateMultipartUpload(objectKey, options...)
@@ -220,8 +191,11 @@ func (bucket Bucket) uploadFile(objectKey, filePath string, partSize int64, opti
 	event := newProgressEvent(TransferStartedEvent, 0, totalBytes, 0)
 	publishProgress(listener, event)
 
+	// oss server don't support x-oss-storage-class
+	options = deleteOption(options, HTTPHeaderOssStorageClass)
+
 	// Start the worker coroutine
-	arg := workerArg{&bucket, filePath, imur, partOptions, uploadPartHooker}
+	arg := workerArg{&bucket, filePath, imur, options, uploadPartHooker}
 	for w := 1; w <= routines; w++ {
 		go worker(w, arg, jobs, results, failed, die)
 	}
@@ -241,13 +215,13 @@ func (bucket Bucket) uploadFile(objectKey, filePath string, partSize int64, opti
 
 			// why RwBytes in ProgressEvent is 0 ?
 			// because read or write event has been notified in teeReader.Read()
-			event = newProgressEvent(TransferDataEvent, completedBytes, totalBytes, chunks[part.PartNumber-1].Size)
+			event = newProgressEvent(TransferDataEvent, completedBytes, totalBytes, 0)
 			publishProgress(listener, event)
 		case err := <-failed:
 			close(die)
 			event = newProgressEvent(TransferFailedEvent, completedBytes, totalBytes, 0)
 			publishProgress(listener, event)
-			bucket.AbortMultipartUpload(imur, abortOptions...)
+			bucket.AbortMultipartUpload(imur, options...)
 			return err
 		}
 
@@ -260,9 +234,9 @@ func (bucket Bucket) uploadFile(objectKey, filePath string, partSize int64, opti
 	publishProgress(listener, event)
 
 	// Complete the multpart upload
-	_, err = bucket.CompleteMultipartUpload(imur, parts, completeOptions...)
+	_, err = bucket.CompleteMultipartUpload(imur, parts, options...)
 	if err != nil {
-		bucket.AbortMultipartUpload(imur, abortOptions...)
+		bucket.AbortMultipartUpload(imur, options...)
 		return err
 	}
 	return nil
@@ -325,7 +299,7 @@ func (cp uploadCheckpoint) isValid(filePath string) (bool, error) {
 
 	// Compare the file size, file's last modified time and file's MD5
 	if cp.FileStat.Size != st.Size() ||
-		!cp.FileStat.LastModified.Equal(st.ModTime()) ||
+		cp.FileStat.LastModified != st.ModTime() ||
 		cp.FileStat.MD5 != md {
 		return false, nil
 	}
@@ -472,10 +446,7 @@ func complete(cp *uploadCheckpoint, bucket *Bucket, parts []UploadPart, cpFilePa
 
 // uploadFileWithCp handles concurrent upload with checkpoint
 func (bucket Bucket) uploadFileWithCp(objectKey, filePath string, partSize int64, options []Option, cpFilePath string, routines int) error {
-	listener := GetProgressListener(options)
-
-	partOptions := ChoiceTransferPartOption(options)
-	completeOptions := ChoiceCompletePartOption(options)
+	listener := getProgressListener(options)
 
 	// Load CP data
 	ucp := uploadCheckpoint{}
@@ -511,8 +482,11 @@ func (bucket Bucket) uploadFileWithCp(objectKey, filePath string, partSize int64
 	event := newProgressEvent(TransferStartedEvent, completedBytes, ucp.FileStat.Size, 0)
 	publishProgress(listener, event)
 
+	// oss server don't support x-oss-storage-class
+	options = deleteOption(options, HTTPHeaderOssStorageClass)
+
 	// Start the workers
-	arg := workerArg{&bucket, filePath, imur, partOptions, uploadPartHooker}
+	arg := workerArg{&bucket, filePath, imur, options, uploadPartHooker}
 	for w := 1; w <= routines; w++ {
 		go worker(w, arg, jobs, results, failed, die)
 	}
@@ -529,7 +503,7 @@ func (bucket Bucket) uploadFileWithCp(objectKey, filePath string, partSize int64
 			ucp.updatePart(part)
 			ucp.dump(cpFilePath)
 			completedBytes += ucp.Parts[part.PartNumber-1].Chunk.Size
-			event = newProgressEvent(TransferDataEvent, completedBytes, ucp.FileStat.Size, ucp.Parts[part.PartNumber-1].Chunk.Size)
+			event = newProgressEvent(TransferDataEvent, completedBytes, ucp.FileStat.Size, 0)
 			publishProgress(listener, event)
 		case err := <-failed:
 			close(die)
@@ -547,6 +521,6 @@ func (bucket Bucket) uploadFileWithCp(objectKey, filePath string, partSize int64
 	publishProgress(listener, event)
 
 	// Complete the multipart upload
-	err = complete(&ucp, &bucket, ucp.allParts(), cpFilePath, completeOptions)
+	err = complete(&ucp, &bucket, ucp.allParts(), cpFilePath, options)
 	return err
 }

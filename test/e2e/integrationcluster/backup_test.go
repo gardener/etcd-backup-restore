@@ -15,6 +15,7 @@
 package integrationcluster
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"time"
@@ -230,7 +231,7 @@ var _ = Describe("Backup", func() {
 		})
 		It("should verify data integrity", func() {
 			podClient := typedClient.CoreV1().Pods(releaseNamespace)
-			err = podClient.Delete(podName, &metav1.DeleteOptions{})
+			err = podClient.Delete(context.TODO(), podName, metav1.DeleteOptions{})
 			Expect(err).ShouldNot(HaveOccurred())
 			time.Sleep(time.Duration(time.Second * 5))
 
@@ -278,7 +279,7 @@ var _ = Describe("Backup", func() {
 				Expect(stdout).Should(BeEmpty())
 
 				podClient := typedClient.CoreV1().Pods(releaseNamespace)
-				err = podClient.Delete(podName, &metav1.DeleteOptions{})
+				err = podClient.Delete(context.TODO(), podName, metav1.DeleteOptions{})
 				Expect(err).ShouldNot(HaveOccurred())
 				time.Sleep(time.Duration(time.Second * 5))
 

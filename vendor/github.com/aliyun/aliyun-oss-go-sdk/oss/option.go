@@ -25,7 +25,6 @@ const (
 	progressListener   = "x-progress-listener"
 	storageClass       = "storage-class"
 	responseHeader     = "x-response-header"
-	redundancyType     = "redundancy-type"
 )
 
 type (
@@ -175,26 +174,6 @@ func ServerSideEncryptionKeyID(value string) Option {
 	return setHeader(HTTPHeaderOssServerSideEncryptionKeyID, value)
 }
 
-// ServerSideDataEncryption is an option to set X-Oss-Server-Side-Data-Encryption header
-func ServerSideDataEncryption(value string) Option {
-	return setHeader(HTTPHeaderOssServerSideDataEncryption, value)
-}
-
-// SSECAlgorithm is an option to set X-Oss-Server-Side-Encryption-Customer-Algorithm header
-func SSECAlgorithm(value string) Option {
-	return setHeader(HTTPHeaderSSECAlgorithm, value)
-}
-
-// SSECKey is an option to set X-Oss-Server-Side-Encryption-Customer-Key header
-func SSECKey(value string) Option {
-	return setHeader(HTTPHeaderSSECKey, value)
-}
-
-// SSECKeyMd5 is an option to set X-Oss-Server-Side-Encryption-Customer-Key-Md5 header
-func SSECKeyMd5(value string) Option {
-	return setHeader(HTTPHeaderSSECKeyMd5, value)
-}
-
 // ObjectACL is an option to set X-Oss-Object-Acl header
 func ObjectACL(acl ACLType) Option {
 	return setHeader(HTTPHeaderOssObjectACL, string(acl))
@@ -228,11 +207,6 @@ func CallbackVar(callbackVar string) Option {
 // RequestPayer is an option to set payer who pay for the request
 func RequestPayer(payerType PayerType) Option {
 	return setHeader(HTTPHeaderOssRequester, strings.ToLower(string(payerType)))
-}
-
-// RequestPayerParam is an option to set payer who pay for the request
-func RequestPayerParam(payerType PayerType) Option {
-	return addParam(strings.ToLower(HTTPHeaderOssRequester), strings.ToLower(string(payerType)))
 }
 
 // SetTagging is an option to set object tagging
@@ -269,25 +243,6 @@ func ACReqHeaders(value string) Option {
 // TrafficLimitHeader is an option to set X-Oss-Traffic-Limit
 func TrafficLimitHeader(value int64) Option {
 	return setHeader(HTTPHeaderOssTrafficLimit, strconv.FormatInt(value, 10))
-}
-
-// UserAgentHeader is an option to set HTTPHeaderUserAgent
-func UserAgentHeader(ua string) Option {
-	return setHeader(HTTPHeaderUserAgent, ua)
-}
-
-// ForbidOverWrite  is an option to set X-Oss-Forbid-Overwrite
-func ForbidOverWrite(forbidWrite bool) Option {
-	if forbidWrite {
-		return setHeader(HTTPHeaderOssForbidOverWrite, "true")
-	} else {
-		return setHeader(HTTPHeaderOssForbidOverWrite, "false")
-	}
-}
-
-// RangeBehavior  is an option to set Range value, such as "standard"
-func RangeBehavior(value string) Option {
-	return setHeader(HTTPHeaderOssRangeBehavior, value)
 }
 
 // Delimiter is an option to set delimiler parameter
@@ -360,11 +315,6 @@ func PartNumberMarker(value int) Option {
 	return addParam("part-number-marker", strconv.Itoa(value))
 }
 
-// Sequential is an option to set sequential parameter for InitiateMultipartUpload
-func Sequential() Option {
-	return addParam("sequential", "")
-}
-
 // DeleteObjectsQuiet false:DeleteObjects in verbose mode; true:DeleteObjects in quite mode. Default is false.
 func DeleteObjectsQuiet(isQuiet bool) Option {
 	return addArg(deleteObjectsQuiet, isQuiet)
@@ -373,11 +323,6 @@ func DeleteObjectsQuiet(isQuiet bool) Option {
 // StorageClass bucket storage class
 func StorageClass(value StorageClassType) Option {
 	return addArg(storageClass, value)
-}
-
-// RedundancyType bucket data redundancy type
-func RedundancyType(value DataRedundancyType) Option {
-	return addArg(redundancyType, value)
 }
 
 // Checkpoint configuration
@@ -457,16 +402,6 @@ func TrafficLimitParam(value int64) Option {
 	return addParam("x-oss-traffic-limit", strconv.FormatInt(value, 10))
 }
 
-// SetHeader Allow users to set personalized http headers
-func SetHeader(key string, value interface{}) Option {
-	return setHeader(key, value)
-}
-
-// AddParam Allow users to set personalized http params
-func AddParam(key string, value interface{}) Option {
-	return addParam(key, value)
-}
-
 func setHeader(key string, value interface{}) Option {
 	return func(params map[string]optionValue) error {
 		if value == nil {
@@ -515,7 +450,7 @@ func handleOptions(headers map[string]string, options []Option) error {
 	return nil
 }
 
-func GetRawParams(options []Option) (map[string]interface{}, error) {
+func getRawParams(options []Option) (map[string]interface{}, error) {
 	// Option
 	params := map[string]optionValue{}
 	for _, option := range options {
@@ -538,7 +473,7 @@ func GetRawParams(options []Option) (map[string]interface{}, error) {
 	return paramsm, nil
 }
 
-func FindOption(options []Option, param string, defaultVal interface{}) (interface{}, error) {
+func findOption(options []Option, param string, defaultVal interface{}) (interface{}, error) {
 	params := map[string]optionValue{}
 	for _, option := range options {
 		if option != nil {
@@ -554,7 +489,7 @@ func FindOption(options []Option, param string, defaultVal interface{}) (interfa
 	return defaultVal, nil
 }
 
-func IsOptionSet(options []Option, option string) (bool, interface{}, error) {
+func isOptionSet(options []Option, option string) (bool, interface{}, error) {
 	params := map[string]optionValue{}
 	for _, option := range options {
 		if option != nil {
@@ -570,7 +505,7 @@ func IsOptionSet(options []Option, option string) (bool, interface{}, error) {
 	return false, nil, nil
 }
 
-func DeleteOption(options []Option, strKey string) []Option {
+func deleteOption(options []Option, strKey string) []Option {
 	var outOption []Option
 	params := map[string]optionValue{}
 	for _, option := range options {
