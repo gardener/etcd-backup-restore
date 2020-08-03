@@ -1,0 +1,15 @@
+kind: TestDefinition
+metadata:
+  name: etcdbr-integration-test
+spec:
+  owner: shreyas.sriganesh.rao@sap.com
+  description: Tests the deployment and functioning of etcd-backup-restore.
+
+  activeDeadlineSeconds: 1200
+  labels: ["playground"]
+
+  command: [bash, -c]
+  args:
+  - >-
+    .ci/integration_test tm
+  image: eu.gcr.io/gardener-project/cc/job-image-golang:0.11.0
