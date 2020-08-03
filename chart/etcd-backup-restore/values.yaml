@@ -57,7 +57,7 @@ backup:
   storageContainer: ""
 
   # storageProvider indicate the type of backup storage provider.
-  # Supported values are ABS,GCS,S3,Swift,OSS,Local, empty means no backup.
+  # Supported values are ABS,GCS,S3,Swift,OSS,ECS,Local, empty means no backup.
   storageProvider: "Local"
 
   # failBelowRevision indicates the revision below which the validation of etcd will fail and restore will not be triggered in case
@@ -84,6 +84,12 @@ backup:
   #   endpoint: oss-endpoint-url
   #   accessKeySecret: secret-access-key-with-object-storage-privileges
   #   accessKeyID: access-key-id-with-object-storage-privileges
+  # ecs:
+  #   endpoint: ecs-endpoint-url
+  #   secretAccessKey: secret-access-key-with-object-storage-privileges
+  #   accessKeyID: access-key-id-with-object-storage-privileges
+  #   disableSsl: "false"         # optional
+  #   insecureSkipVerify: "false" # optional
 
 # etcdAuth field contains the pre-created username-password pair
 # for etcd. Comment this whole section if you dont want to use

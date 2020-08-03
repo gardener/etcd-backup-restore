@@ -20,7 +20,7 @@ import (
 )
 
 // SnapStore is the interface to be implemented for different
-// storage backend like local file system, S3, ABS, GCS, Swift, OSS etc.
+// storage backend like local file system, S3, ABS, GCS, Swift, OSS, ECS etc.
 // Only purpose of these implementation to provide CPI layer to
 // access files.
 type SnapStore interface {
@@ -49,6 +49,8 @@ const (
 	SnapstoreProviderSwift = "Swift"
 	// SnapstoreProviderOSS is constant for Alicloud OSS storage provider.
 	SnapstoreProviderOSS = "OSS"
+	// SnapstoreProviderECS is constant for Dell EMC ECS S3 storage provider.
+	SnapstoreProviderECS = "ECS"
 	// SnapstoreProviderFakeFailed is constant for fake failed storage provider.
 	SnapstoreProviderFakeFailed = "FAILED"
 
