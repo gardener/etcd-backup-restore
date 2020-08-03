@@ -198,7 +198,7 @@ spec:
               name: {{ .Release.Name }}-etcd-backup
               key: "tenantName"
 {{- else if eq .Values.backup.storageProvider "OSS" }}
-        - name: ""ALICLOUD_ENDPOINT""
+        - name: "ALICLOUD_ENDPOINT"
           valueFrom:
             secretKeyRef:
               name: {{ .Release.Name }}-etcd-backup
@@ -213,6 +213,36 @@ spec:
             secretKeyRef:
               name: {{ .Release.Name }}-etcd-backup
               key: "accessKeyID"
+{{- else if eq .Values.backup.storageProvider "ECS" }}
+        - name: "ECS_ENDPOINT"
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Release.Name }}-etcd-backup
+              key: "endpoint"
+        - name: "ECS_ACCESS_KEY_ID"
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Release.Name }}-etcd-backup
+              key: "accessKeyID"
+        - name: "ECS_SECRET_ACCESS_KEY"
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Release.Name }}-etcd-backup
+              key: "secretAccessKey"
+  {{- if .Values.backup.ecs.disableSsl }}
+        - name: "ECS_DISABLE_SSL"
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Release.Name }}-etcd-backup
+              key: "disableSsl"
+  {{- end }}
+  {{- if .Values.backup.ecs.insecureSkipVerify }}
+        - name: "ECS_INSECURE_SKIP_VERIFY"
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Release.Name }}-etcd-backup
+              key: "insecureSkipVerify"
+  {{- end }}
 {{- end }}
         volumeMounts:
         - name: {{ .Release.Name }}-etcd
