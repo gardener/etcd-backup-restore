@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"os"
 	"path"
+	"strconv"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -82,11 +83,15 @@ func GetSnapstore(config *Config) (SnapStore, error) {
 			return nil, fmt.Errorf("storage container name not specified")
 		}
 		return NewOSSSnapStore(config.Container, config.Prefix, config.TempDir, config.MaxParallelChunkUploads)
+	case SnapstoreProviderECS:
+		if config.Container == "" {
+			return nil, fmt.Errorf("storage container name not specified")
+		}
+		return NewECSSnapStore(config.Container, config.Prefix, config.TempDir, config.MaxParallelChunkUploads)
 	case SnapstoreProviderFakeFailed:
 		return NewFailedSnapStore(), nil
 	default:
 		return nil, fmt.Errorf("unsupported storage provider : %s", config.Provider)
-
 	}
 }
 
@@ -99,6 +104,16 @@ func GetEnvVarOrError(varName string) (string, error) {
 	}
 
 	return value, nil
+}
+
+// GetEnvVarToBool return corresponding boolen if an environment is set to string true|false
+func GetEnvVarToBool(varName string) (bool, error) {
+	value, err := GetEnvVarOrError(varName)
+	if err != nil {
+		return false, err
+	}
+
+	return strconv.ParseBool(value)
 }
 
 // collectChunkUploadError collects the error from all go routine to upload individual chunks
