@@ -26,6 +26,7 @@ Etcd-backup-restore is collection of components to backup and restore the [etcd]
 
 * [Setting up a local development environment](doc/development/local_setup.md)
 * [Testing and Dependency Management](doc/development/testing_and_dependencies.md)
+* [Tests](doc/development/tests.md)
 * [Adding support for a new object store provider](doc/development/new_cp_support.md)
 
 [etcd]: https://github.com/coreos/etcd
