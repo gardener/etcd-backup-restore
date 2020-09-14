@@ -84,6 +84,8 @@ cli.py config attribute --cfg-type kubernetes --cfg-name garden-dev-virtual --ke
 
 echo "ACTIVE_GARDEN_CLUSTER: ${ACTIVE_GARDEN_CLUSTER}"
 cat $ACTIVE_GARDEN_CLUSTER
+export KUBECONFIG=$ACTIVE_GARDEN_CLUSTER
+kubectl cluster-info dump
 
 if [[ $TESTRUN_CHART != "" ]]; then
     TESTRUN_CHART_PATH="$SOURCE_PATH/testmachinery/testruns/$TESTRUN_CHART"
@@ -99,7 +101,7 @@ echo "TM_CLUSTER: ${TM_CLUSTER}"
 cat $TM_CLUSTER
 
 export KUBECONFIG=$TM_CLUSTER
-kubectl cluster-info
+kubectl cluster-info dump
 
 # timeout to 6h
 /testrunner run \
