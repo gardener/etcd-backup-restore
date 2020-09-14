@@ -83,6 +83,7 @@ ACTIVE_GARDEN_CLUSTER=/tm/gardener.kubeconfig
 cli.py config attribute --cfg-type kubernetes --cfg-name garden-dev-virtual --key kubeconfig > $ACTIVE_GARDEN_CLUSTER
 
 echo "ACTIVE_GARDEN_CLUSTER: ${ACTIVE_GARDEN_CLUSTER}"
+cat $ACTIVE_GARDEN_CLUSTER
 
 if [[ $TESTRUN_CHART != "" ]]; then
     TESTRUN_CHART_PATH="$SOURCE_PATH/testmachinery/testruns/$TESTRUN_CHART"
@@ -95,6 +96,7 @@ mkdir -p /tm
 cli.py config attribute --cfg-type kubernetes --cfg-name $TM_CONFIG_NAME --key kubeconfig > $TM_CLUSTER
 
 echo "TM_CLUSTER: ${TM_CLUSTER}"
+cat $TM_CLUSTER
 
 export KUBECONFIG=$TM_CLUSTER
 kubectl cluster-info
