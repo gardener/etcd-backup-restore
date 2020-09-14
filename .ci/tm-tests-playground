@@ -1,0 +1,112 @@
+#!/usr/bin/env bash
+set -e
+
+TESTRUN_CHART=""
+FLAVOR_TESTRUN_CHART=""
+FLAVOR_CONFIG="min-shoot-flavor.yaml"
+TM_LANDSCAPE="external"
+LANDSCAPE=""
+ARGUMENTS=""
+
+
+for i in "$@"
+do
+echo $i
+case $i in
+        -tm-chart=*|--tm-chart=*)
+        TESTRUN_CHART="${i#*=}"
+        shift
+    ;;
+        -flavor-tm-chart=*|--flavor-tm-chart=*)
+        FLAVOR_TESTRUN_CHART="${i#*=}"
+        shift
+    ;;
+        -flavor-config=*|--flavor-config=*)
+        FLAVOR_CONFIG="${i#*=}"
+        shift
+    ;;
+        -tm-landscape=*|--tm-landscape=*)
+        TM_LANDSCAPE="${i#*=}"
+        shift
+    ;;
+        -landscape=*|--landscape=*)
+        LANDSCAPE="${i#*=}"
+        shift
+    ;;
+        --)
+        ARGUMENTS="${@:2}"
+        break
+    ;;
+    *)
+        # unknown option
+        echo "Unkown option ${i#*=}"
+        exit 1
+    ;;
+esac
+done
+
+if [[ $TM_LANDSCAPE == "" ]]; then
+    echo "Required paramter: -tm-landscape : external | internal"
+    exit 1
+fi
+if [[ $LANDSCAPE == "" ]]; then
+    echo "Required paramter: -landscape"
+    exit 1
+fi
+
+if [[ $TM_LANDSCAPE == "internal" ]]; then
+    TM_CONFIG_NAME=testmachinery-internal
+    S3_ENDPOINT="storage.googleapis.com"
+fi
+if [[ $TM_LANDSCAPE == "external" ]]; then
+    TM_CONFIG_NAME=testmachinery
+    S3_ENDPOINT="storage.googleapis.com"
+fi
+if [[ $TM_LANDSCAPE == "staging" ]]; then
+    TM_CONFIG_NAME=testmachinery-staging
+    S3_ENDPOINT="storage.googleapis.com"
+fi
+if [[ $TM_LANDSCAPE == "it" ]]; then
+    TM_CONFIG_NAME=testmachinery-it
+    S3_ENDPOINT="minio.ingress.tm-it.core.shoot.canary.k8s-hana.ondemand.com"
+fi
+
+echo "Testmachinery config name: ${TM_CONFIG_NAME}"
+echo "Testmachinery landscape: ${TM_LANDSCAPE}"
+echo "Arguments: ${ARGUMENTS}"
+
+
+export SOURCE_PATH="$(readlink -f "$(dirname ${0})/..")"
+mkdir -p /tm
+TM_CLUSTER=/tm/kubeconfig
+ACTIVE_GARDEN_CLUSTER=/tm/gardener.kubeconfig
+cli.py config attribute --cfg-type kubernetes --cfg-name garden-dev-virtual --key kubeconfig > $ACTIVE_GARDEN_CLUSTER
+
+if [[ $TESTRUN_CHART != "" ]]; then
+    TESTRUN_CHART_PATH="$SOURCE_PATH/testmachinery/testruns/$TESTRUN_CHART"
+fi
+if [[ $FLAVOR_TESTRUN_CHART != "" ]]; then
+    FLAVOR_TESTRUN_CHART_PATH="$SOURCE_PATH/playground/testruns/$FLAVOR_TESTRUN_CHART"
+fi
+
+mkdir -p /tm
+cli.py config attribute --cfg-type kubernetes --cfg-name $TM_CONFIG_NAME --key kubeconfig > $TM_CLUSTER
+
+export KUBECONFIG=$TM_CLUSTER
+kubectl cluster-info
+
+# timeout to 6h
+/testrunner run \
+    --gardener-kubeconfig-path=$ACTIVE_GARDEN_CLUSTER \
+    --tm-kubeconfig-path=$TM_CLUSTER \
+    --timeout=21600 \
+    --interval=60 \
+    --es-config-name=sap_internal \
+    --landscape=$LANDSCAPE \
+    --s3-endpoint=$S3_ENDPOINT \
+    --s3-ssl=true \
+    --shoot-name="tm-" \
+    --testruns-chart-path=$TESTRUN_CHART_PATH \
+    --flavored-testruns-chart-path=$FLAVOR_TESTRUN_CHART_PATH \
+    --flavor-config=$SOURCE_PATH/.ci/flavors/$FLAVOR_CONFIG \
+    $ARGUMENTS
