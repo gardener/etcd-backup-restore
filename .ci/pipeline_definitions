@@ -62,4 +62,15 @@ etcd-backup-restore:
           - --
           - --testrun-prefix=playground
           - --set=projectNamespace=garden-it
-
+    test:
+      steps:
+        tm_test:
+          image: eu.gcr.io/gardener-project/gardener/testmachinery/testmachinery-run:stable
+          execute:
+          - tm-tests-playground
+          - --flavor-tm-chart=etcd
+          - --landscape=playground
+          - --tm-landscape=external
+          - --
+          - --testrun-prefix=playground
+          - --set=projectNamespace=garden-it
