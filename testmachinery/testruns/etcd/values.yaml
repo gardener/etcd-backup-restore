@@ -1,0 +1,26 @@
+# Default values for testruns.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+
+testrunName: ""
+shoot:
+  name: ""
+  domain: ""
+  projectNamespace: ""
+  cloudprovider: ""
+  cloudprofile: ""
+  secretBinding: ""
+  region: ""
+  zone: ""
+  k8sVersion: ""
+  machinetype: ""
+  autoscalerMin: ""
+  autoscalerMax: ""
+  floatingPoolName: ""
+  loadbalancerProvider: ""
+
+kubeconfigs:
+  gardener: ""
+  seed: ""
+  shoot: ""

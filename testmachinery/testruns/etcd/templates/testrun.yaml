@@ -1,0 +1,121 @@
+# TestRun CRDs will be created by Test-Machinery controllers, by concourse jobs or manually to run e.g. single tests.
+apiVersion: testmachinery.sapcloud.io/v1beta1
+kind: Testrun
+metadata:
+  name: {{ .Values.testrunName }}
+  namespace: default
+spec:
+
+  ttlSecondsAfterFinished: 172800 # 2 days
+
+  # defines where to look for TestDefs
+  locationSets:
+  - name: default
+    default: true
+    locations:
+    - type: git
+      repo: https://github.com/gardener/gardener.git
+      revision: master
+    - type: git
+      repo: https://github.com/gardener/gardener-extension-provider-aws.git
+      revision: master
+    - type: git
+      repo: https://github.com/gardener/gardener-extension-provider-gcp.git
+      revision: master
+    - type: git
+      repo: https://github.com/gardener/gardener-extension-provider-azure.git
+      revision: master
+    - type: git
+      repo: https://github.com/gardener/gardener-extension-provider-alicloud.git
+      revision: master
+    - type: git
+      repo: https://github.com/gardener/gardener-extension-provider-openstack.git
+      revision: master
+    - type: git
+      repo: https://github.com/gardener/etcd-backup-restore
+      revision: master
+
+  kubeconfigs:
+    gardener: {{ b64enc .Values.kubeconfigs.gardener }}
+
+
+  # Global config available to every test task in all phases (testFlow and onExit)
+  config:
+  - name: PROJECT_NAMESPACE
+    type: env
+    value: {{ .Values.shoot.projectNamespace }}
+  - name: SHOOT_NAME
+    type: env
+    value: {{ .Values.shoot.name }}
+  - name: CLOUDPROVIDER
+    type: env
+    value: {{ .Values.shoot.cloudprovider }}
+  - name: K8S_VERSION
+    type: env
+    value: {{ .Values.shoot.k8sVersion }}
+  - name: ACCESS_KEY_ID
+    type: env
+    valueFrom:
+      secretKeyRef:
+        name: shoot-operator-aws
+        key: accessKeyID
+  - name: SECRET_ACCESS_KEY
+    type: env
+    valueFrom:
+      secretKeyRef:
+        name: shoot-operator-aws
+        key: secretAccessKey
+  - name: AWS_REGION
+    type: env
+    value: eu-west-1
+
+  # the execution flow:
+  testflow:
+  {{ include "generator" . }}
+
+  - name: create
+    dependsOn: [ generate-provider ]
+    definition:
+      name: create-shoot
+      config:
+      - name: PROVIDER_TYPE
+        type: env
+        value: {{ .Values.shoot.cloudprovider }}
+      - name: CLOUDPROFILE
+        type: env
+        value: {{ .Values.shoot.cloudprofile }}
+      - name: SECRET_BINDING
+        type: env
+        value: {{ .Values.shoot.secretBinding }}
+      - name: REGION
+        type: env
+        value: {{ .Values.shoot.region }}
+      - name: NETWORKING_PODS
+        type: env
+        value: 100.64.0.0/11
+      - name: NETWORKING_SERVICES
+        type: env
+        value: 100.104.0.0/13
+      {{ if .Values.shoot.workers }}
+      - name: WORKERS_CONFIG_FILEPATH
+        type: file
+        path: /tmp/tm/shared/generators/workers.yaml
+        value: {{ .Values.shoot.workers }}
+      {{ end }}
+      {{ include "config-overwrites" . }}
+
+  - name: tests
+    dependsOn: [ create ]
+    definition:
+      label: playground
+      continueOnError: true
+  - name: delete
+    dependsOn: [ tests ]
+    definition:
+      name: delete-shoot
+
+  onExit:
+  - name: delete
+    definition:
+      name: delete-shoot
+      condition: error

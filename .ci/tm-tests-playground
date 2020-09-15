@@ -86,7 +86,7 @@ if [[ $TESTRUN_CHART != "" ]]; then
     TESTRUN_CHART_PATH="$SOURCE_PATH/testmachinery/testruns/$TESTRUN_CHART"
 fi
 if [[ $FLAVOR_TESTRUN_CHART != "" ]]; then
-    FLAVOR_TESTRUN_CHART_PATH="$SOURCE_PATH/playground/testruns/$FLAVOR_TESTRUN_CHART"
+    FLAVOR_TESTRUN_CHART_PATH="$SOURCE_PATH/testmachinery/testruns/$FLAVOR_TESTRUN_CHART"
 fi
 
 mkdir -p /tm
@@ -108,5 +108,5 @@ kubectl cluster-info
     --shoot-name="tm-" \
     --testruns-chart-path=$TESTRUN_CHART_PATH \
     --flavored-testruns-chart-path=$FLAVOR_TESTRUN_CHART_PATH \
-    --flavor-config=$SOURCE_PATH/.ci/flavors/$FLAVOR_CONFIG \
+    --flavor-config=$SOURCE_PATH/testmachinery/flavors/$FLAVOR_CONFIG \
     $ARGUMENTS
