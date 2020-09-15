@@ -53,6 +53,9 @@ spec:
   - name: K8S_VERSION
     type: env
     value: {{ .Values.shoot.k8sVersion }}
+  - name: EFFECTIVE_VERSION
+    type: env
+    value: {{ .Values.shoot.effectiveVersion }}
   - name: ACCESS_KEY_ID
     type: env
     valueFrom:
@@ -68,9 +71,6 @@ spec:
   - name: AWS_REGION
     type: env
     value: eu-west-1
-  - name: EFFECTIVE_VERSION
-    type: env
-    value: {{ .Values.shoot.effectiveVersion }}
 
   # the execution flow:
   testflow:
