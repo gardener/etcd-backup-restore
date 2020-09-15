@@ -63,7 +63,7 @@ etcd-backup-restore:
           - tm-tests-playground
           - --flavor-tm-chart=etcd
           - --landscape=playground
-          - --tm-landscape=internal
+          - --tm-landscape=external
           - --
           - --testrun-prefix=playground
           - --set=projectNamespace=garden-it
