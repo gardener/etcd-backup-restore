@@ -55,7 +55,7 @@ spec:
     value: {{ .Values.shoot.k8sVersion }}
   - name: EFFECTIVE_VERSION
     type: env
-    value: v0.10.0
+    value: {{ .Values.shoot.effectiveVersion }}
   - name: ACCESS_KEY_ID
     type: env
     valueFrom:

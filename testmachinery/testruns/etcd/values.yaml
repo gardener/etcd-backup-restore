@@ -14,12 +14,12 @@ shoot:
   region: ""
   zone: ""
   k8sVersion: ""
+  effectiveVersion: ""
   machinetype: ""
   autoscalerMin: ""
   autoscalerMax: ""
   floatingPoolName: ""
   loadbalancerProvider: ""
-  effectiveVersion: ""
 
 kubeconfigs:
   gardener: ""

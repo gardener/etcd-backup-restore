@@ -74,7 +74,7 @@ fi
 echo "Testmachinery config name: ${TM_CONFIG_NAME}"
 echo "Testmachinery landscape: ${TM_LANDSCAPE}"
 echo "Arguments: ${ARGUMENTS}"
-echo "EFFECTIVE_VERSION: $EFFECTIVE_VERSION"
+echo "EFFECTIVE_VERSION: ${EFFECTIVE_VERSION}"
 
 export SOURCE_PATH="$(readlink -f "$(dirname ${0})/..")"
 mkdir -p /tm
