@@ -1,0 +1,103 @@
+flavors:
+- provider: aws
+  kubernetes:
+    pattern: "latest"
+  cloudprofile: aws
+  projectName: it
+  secretBinding: shoot-operator-aws
+  region: eu-west-1
+  zone: eu-west-1c
+  workers:
+  - workerPools:
+    - name: worker-1
+      machine:
+        type: m5.large
+        image:
+          name: coreos
+          version: latest
+      minimum: 1
+      maximum: 2
+      volume:
+        size: 30Gi
+        type: gp2
+      zones:
+      - eu-west-1c
+
+# - provider: azure
+#   kubernetes:
+#     pattern: "latest"
+#   cloudprofile: az
+#   projectName: it
+#   secretBinding: shoot-operator-az
+#   region: westeurope
+#   infrastructureConfig:
+#     apiVersion: azure.provider.extensions.gardener.cloud/v1alpha1
+#     kind: InfrastructureConfig
+#     networks:
+#       vnet:
+#         cidr: 10.250.0.0/16
+#       workers: 10.250.0.0/19
+#     zoned: true
+#   workers:
+#   - workerPools:
+#     - name: worker-1
+#       machine:
+#         type: Standard_D2_v3
+#         image:
+#           name: coreos
+#           version: latest
+#       minimum: 2
+#       maximum: 2
+#       volume:
+#         size: 35Gi
+#         type: Standard_LRS
+#       zones:
+#       - "1"
+#       - "2"
+
+# - provider: gcp
+#   kubernetes:
+#     pattern: "latest"
+#   cloudprofile: gcp
+#   projectName: it
+#   secretBinding: shoot-operator-gcp
+#   region: europe-west1
+#   zone: europe-west1-b
+#   workers:
+#   - workerPools:
+#     - name: worker-1
+#       machine:
+#         type: n1-standard-2
+#         image:
+#           name: gardenlinux
+#           version: latest
+#       minimum: 2
+#       maximum: 2
+#       volume:
+#         size: 30Gi
+#         type: pd-standard
+#       zones:
+#       - europe-west1-b
+
+# - provider: openstack
+#   kubernetes:
+#     pattern: "latest"
+#   cloudprofile: os-eu-de-200
+#   projectName: it
+#   secretBinding: shoot-operator-os-eu-de-200
+#   region: eu-de-200
+#   zone: rot_1_1
+#   loadbalancerProvider: haproxy
+#   floatingPoolName: eu-de-200_k8s_vlan462
+#   workers:
+#   - workerPools:
+#     - name: worker-1
+#       machine:
+#         type: medium_2_4
+#         image:
+#           name: coreos
+#           version: latest
+#       minimum: 2
+#       maximum: 2
+#       zones:
+#       - rot_1_1
