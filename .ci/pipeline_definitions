@@ -35,6 +35,8 @@ etcd-backup-restore:
         draft_release: ~
       steps:
         tm_test:
+          depends:
+          - publish
           image: eu.gcr.io/gardener-project/gardener/testmachinery/testmachinery-run:stable
           execute:
           - tm-tests-playground
