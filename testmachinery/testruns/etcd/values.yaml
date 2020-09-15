@@ -19,6 +19,7 @@ shoot:
   autoscalerMax: ""
   floatingPoolName: ""
   loadbalancerProvider: ""
+  effectiveVersion: ""
 
 kubeconfigs:
   gardener: ""

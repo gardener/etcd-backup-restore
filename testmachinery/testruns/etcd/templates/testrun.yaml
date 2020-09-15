@@ -68,6 +68,9 @@ spec:
   - name: AWS_REGION
     type: env
     value: eu-west-1
+  - name: EFFECTIVE_VERSION
+    type: env
+    value: {{ .Values.shoot.effectiveVersion }}
 
   # the execution flow:
   testflow:

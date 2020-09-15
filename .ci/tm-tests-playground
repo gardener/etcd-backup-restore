@@ -95,6 +95,8 @@ cli.py config attribute --cfg-type kubernetes --cfg-name $TM_CONFIG_NAME --key k
 export KUBECONFIG=$TM_CLUSTER
 kubectl cluster-info
 
+echo "EFFECTIVE_VERSION: $EFFECTIVE_VERSION"
+
 # timeout to 6h
 /testrunner run \
     --gardener-kubeconfig-path=$ACTIVE_GARDEN_CLUSTER \
@@ -109,4 +111,6 @@ kubectl cluster-info
     --testruns-chart-path=$TESTRUN_CHART_PATH \
     --flavored-testruns-chart-path=$FLAVOR_TESTRUN_CHART_PATH \
     --flavor-config=$SOURCE_PATH/testmachinery/flavors/$FLAVOR_CONFIG \
+    --set=effectiveVersion=$EFFECTIVE_VERSION \
     $ARGUMENTS
+    

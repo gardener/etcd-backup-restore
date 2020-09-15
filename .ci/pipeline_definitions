@@ -33,19 +33,6 @@ etcd-backup-restore:
     head-update:
       traits:
         draft_release: ~
-      steps:
-        tm_test:
-          depends:
-          - publish
-          image: eu.gcr.io/gardener-project/gardener/testmachinery/testmachinery-run:stable
-          execute:
-          - tm-tests-playground
-          - --flavor-tm-chart=etcd
-          - --landscape=playground
-          - --tm-landscape=external
-          - --
-          - --testrun-prefix=playground
-          - --set=projectNamespace=garden-it
     pull-request:
       traits:
         pull-request: ~
@@ -62,15 +49,10 @@ etcd-backup-restore:
               channel_name: 'C0177NLL8V9' # gardener-etcd
               slack_cfg_name: 'scp_workspace'
         component_descriptor: ~
-    test:
-      repo:
-        trigger: false
-        name: 'landscape-repo'
-      traits:
-        scheduling:
-          suppress_parallel_execution: false
       steps:
         tm_test:
+          depends:
+          - publish
           image: eu.gcr.io/gardener-project/gardener/testmachinery/testmachinery-run:stable
           execute:
           - tm-tests-playground
@@ -80,3 +62,4 @@ etcd-backup-restore:
           - --
           - --testrun-prefix=playground
           - --set=projectNamespace=garden-it
+
