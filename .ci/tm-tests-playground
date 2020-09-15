@@ -74,7 +74,7 @@ fi
 echo "Testmachinery config name: ${TM_CONFIG_NAME}"
 echo "Testmachinery landscape: ${TM_LANDSCAPE}"
 echo "Arguments: ${ARGUMENTS}"
-
+echo "EFFECTIVE_VERSION: $EFFECTIVE_VERSION"
 
 export SOURCE_PATH="$(readlink -f "$(dirname ${0})/..")"
 mkdir -p /tm
@@ -95,8 +95,6 @@ cli.py config attribute --cfg-type kubernetes --cfg-name $TM_CONFIG_NAME --key k
 export KUBECONFIG=$TM_CLUSTER
 kubectl cluster-info
 
-echo "EFFECTIVE_VERSION: $EFFECTIVE_VERSION"
-
 # timeout to 6h
 /testrunner run \
     --gardener-kubeconfig-path=$ACTIVE_GARDEN_CLUSTER \
@@ -113,4 +111,3 @@ echo "EFFECTIVE_VERSION: $EFFECTIVE_VERSION"
     --flavor-config=$SOURCE_PATH/testmachinery/flavors/$FLAVOR_CONFIG \
     --set=effectiveVersion=$EFFECTIVE_VERSION \
     $ARGUMENTS
-    
