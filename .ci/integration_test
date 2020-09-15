@@ -105,8 +105,9 @@ function get_test_id() {
 }
 
 function get_tm_test_id() {
-  git_commit=`git show -s --format="%H"`
-  export TEST_ID=${TM_TEST_ID_PREFIX}-${git_commit}
+  git_commit_remote=`echo \`git ls-remote $URL HEAD\` | cut -d' ' -f 1`
+  export ETCDBR_VER=${VERSION}-${git_commit_remote}
+  export TEST_ID=${TM_TEST_ID_PREFIX}-${git_commit_remote}
   echo "Test id: ${TEST_ID}"
 }
 
