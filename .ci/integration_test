@@ -31,6 +31,7 @@ URL=https://${REPOSITORY}.git
 VERSION_FILE="$(readlink -f "${SOURCE_PATH}/VERSION")"
 VERSION="$(cat "${VERSION_FILE}")"
 TEST_ID_PREFIX="etcdbr-test"
+TM_TEST_ID_PREFIX="etcdbr-tm-test"
 
 export GOBIN="${SOURCE_PATH}/bin"
 export PATH="${GOBIN}:${PATH}"
@@ -103,10 +104,9 @@ function get_test_id() {
   echo "Test id: ${TEST_ID}"
 }
 
-function get_latest_commit_test_id() {
-  git_commit_remote=`echo \`git ls-remote $URL HEAD\` | cut -d' ' -f 1`
-  export ETCDBR_VER=${VERSION}-${git_commit_remote}
-  export TEST_ID=${TEST_ID_PREFIX}-${git_commit_remote}
+function get_tm_test_id() {
+  git_commit=`git show -s --format="%H"`
+  export TEST_ID=${TM_TEST_ID_PREFIX}-${git_commit}
   echo "Test id: ${TEST_ID}"
 }
 
@@ -277,7 +277,7 @@ function run_test_on_tm() {
   fi
   export REGION=$AWS_REGION
 
-  get_latest_commit_test_id
+  get_tm_test_id
   export STORAGE_CONTAINER=$TEST_ID
   setup_awscli
   write_aws_secret "${ACCESS_KEY_ID}" "${SECRET_ACCESS_KEY}" "${REGION}"
