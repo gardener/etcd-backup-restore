@@ -53,6 +53,9 @@ spec:
   - name: K8S_VERSION
     type: env
     value: {{ .Values.shoot.k8sVersion }}
+  - name: EFFECTIVE_VERSION
+    type: env
+    value: {{ .Values.shoot.effectiveVersion }}
   - name: ACCESS_KEY_ID
     type: env
     valueFrom:
@@ -109,10 +112,6 @@ spec:
     definition:
       label: playground
       continueOnError: true
-      config:
-      - name: EFFECTIVE_VERSION
-      type: env
-      value: {{ .Values.shoot.effectiveVersion }}
   - name: delete
     dependsOn: [ tests ]
     definition:

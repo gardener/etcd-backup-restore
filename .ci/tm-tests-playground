@@ -109,5 +109,5 @@ kubectl cluster-info
     --testruns-chart-path=$TESTRUN_CHART_PATH \
     --flavored-testruns-chart-path=$FLAVOR_TESTRUN_CHART_PATH \
     --flavor-config=$SOURCE_PATH/testmachinery/flavors/$FLAVOR_CONFIG \
-    --set=effectiveVersion=$EFFECTIVE_VERSION \
+    --set=shoot.effectiveVersion=$EFFECTIVE_VERSION \
     $ARGUMENTS
