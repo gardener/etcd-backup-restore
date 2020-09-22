@@ -15,6 +15,7 @@
 package restorer
 
 import (
+	"net/url"
 	"time"
 
 	"github.com/coreos/etcd/clientv3"
@@ -41,6 +42,7 @@ type Restorer struct {
 }
 
 // RestoreOptions hold all snapshot restore related fields
+// Note: Please ensure DeepCopy and DeepCopyInto are properly implemented.
 type RestoreOptions struct {
 	Config      *RestorationConfig
 	ClusterURLs types.URLsMap
@@ -51,6 +53,7 @@ type RestoreOptions struct {
 }
 
 // RestorationConfig holds the restoration configuration.
+// Note: Please ensure DeepCopy and DeepCopyInto are properly implemented.
 type RestorationConfig struct {
 	InitialCluster           string   `json:"initialCluster"`
 	InitialClusterToken      string   `json:"initialClusterToken,omitempty"`
@@ -82,4 +85,96 @@ type fetcherInfo struct {
 type applierInfo struct {
 	EventsFilePath string
 	SnapIndex      int
+}
+
+// DeepCopyInto copies the structure deeply from in to out.
+func (in *RestoreOptions) DeepCopyInto(out *RestoreOptions) {
+	*out = *in
+	if in.Config != nil {
+		in, out := &in.Config, &out.Config
+		*out = new(RestorationConfig)
+		(*in).DeepCopyInto(*out)
+	}
+	if in.ClusterURLs != nil {
+		in, out := &in.ClusterURLs, &out.ClusterURLs
+		*out = make(types.URLsMap)
+		for k := range *in {
+			if (*in)[k] != nil {
+				(*out)[k] = DeepCopyURLs((*in)[k])
+			}
+		}
+	}
+	if in.PeerURLs != nil {
+		out.PeerURLs = DeepCopyURLs(in.PeerURLs)
+	}
+	if in.DeltaSnapList != nil {
+		out.DeltaSnapList = DeepCopySnapList(in.DeltaSnapList)
+	}
+}
+
+// DeepCopyURLs returns a deeply copy
+func DeepCopyURLs(in types.URLs) types.URLs {
+	out := make(types.URLs, len(in))
+	for i, u := range in {
+		out[i] = *(DeepCopyURL(&u))
+	}
+	return out
+}
+
+// DeepCopyURL returns a deeply copy
+func DeepCopyURL(in *url.URL) *url.URL {
+	var out = new(url.URL)
+	*out = *in
+	if in.User != nil {
+		in, out := &in.User, &out.User
+		*out = new (url.Userinfo)
+		*out = *in
+	}
+	return out
+}
+
+// DeepCopySnapList returns a deep copy
+func DeepCopySnapList(in snapstore.SnapList) snapstore.SnapList {
+	out := make(snapstore.SnapList, len(in))
+	for i, v := range in {
+		if v != nil {
+			var cpv = *v
+			out[i] = &cpv
+		}
+	}
+	return out
+}
+
+// DeepCopy returns a deeply copied structure.
+func (in *RestoreOptions) DeepCopy() *RestoreOptions {
+	if in == nil {
+		return nil
+	}
+
+	out := new(RestoreOptions)
+	in.DeepCopyInto(out)
+	return out
+}
+
+// DeepCopyInto copies the structure deeply from in to out.
+func (in *RestorationConfig) DeepCopyInto(out *RestorationConfig) {
+	*out = *in
+	if in.InitialAdvertisePeerURLs != nil {
+		in, out := &in.InitialAdvertisePeerURLs, &out.InitialAdvertisePeerURLs
+		*out = make([]string, len(*in))
+		for i, v := range *in {
+			(*out)[i] = v
+		}
+	}
+}
+
+// DeepCopy returns a deeply copied structure.
+func (in *RestorationConfig) DeepCopy() *RestorationConfig {
+	if in == nil {
+		return nil
+	}
+
+	out := new(RestorationConfig)
+	in.DeepCopyInto(out)
+	return out
 }

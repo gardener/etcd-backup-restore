@@ -272,47 +272,52 @@ var _ = Describe("Backup", func() {
 
 		Context("when data is corrupt", func() {
 			It("should restore data from latest snapshot", func() {
-				cmd := "rm -rf /var/etcd/data/new.etcd/member"
-				stdout, stderr, err := executeRemoteCommand(kubeconfigPath, releaseNamespace, podName, "backup-restore", cmd)
-				Expect(err).ShouldNot(HaveOccurred())
-				Expect(stderr).Should(BeEmpty())
-				Expect(stdout).Should(BeEmpty())
+				testDataCorruptionRestoration := func() {
+					cmd := "rm -rf /var/etcd/data/new.etcd/member"
+					stdout, stderr, err := executeRemoteCommand(kubeconfigPath, releaseNamespace, podName, "backup-restore", cmd)
+					Expect(err).ShouldNot(HaveOccurred())
+					Expect(stderr).Should(BeEmpty())
+					Expect(stdout).Should(BeEmpty())
 
-				podClient := typedClient.CoreV1().Pods(releaseNamespace)
-				err = podClient.Delete(context.TODO(), podName, metav1.DeleteOptions{})
-				Expect(err).ShouldNot(HaveOccurred())
-				time.Sleep(time.Duration(time.Second * 5))
+					podClient := typedClient.CoreV1().Pods(releaseNamespace)
+					err = podClient.Delete(context.TODO(), podName, metav1.DeleteOptions{})
+					Expect(err).ShouldNot(HaveOccurred())
+					time.Sleep(time.Duration(time.Second * 5))
 
-				logger.Infof("waiting for %s pod to be running", podName)
-				err = waitForPodToBeRunning(typedClient, podName, releaseNamespace)
-				Expect(err).ShouldNot(HaveOccurred())
-				logger.Infof("waiting for %s endpoint to be ready", etcdEndpointName)
-				err = waitForEndpointPortsToBeReady(typedClient, etcdEndpointName, releaseNamespace, []int32{etcdClientPort})
-				Expect(err).ShouldNot(HaveOccurred())
-				logger.Infof("waiting for %s endpoint to be ready", backupEndpointName)
-				err = waitForEndpointPortsToBeReady(typedClient, backupEndpointName, releaseNamespace, []int32{backupClientPort})
-				Expect(err).ShouldNot(HaveOccurred())
-				logger.Infof("pod %s and endpoints %s, %s ready", podName, etcdEndpointName, backupEndpointName)
+					logger.Infof("waiting for %s pod to be running", podName)
+					err = waitForPodToBeRunning(typedClient, podName, releaseNamespace)
+					Expect(err).ShouldNot(HaveOccurred())
+					logger.Infof("waiting for %s endpoint to be ready", etcdEndpointName)
+					err = waitForEndpointPortsToBeReady(typedClient, etcdEndpointName, releaseNamespace, []int32{etcdClientPort})
+					Expect(err).ShouldNot(HaveOccurred())
+					logger.Infof("waiting for %s endpoint to be ready", backupEndpointName)
+					err = waitForEndpointPortsToBeReady(typedClient, backupEndpointName, releaseNamespace, []int32{backupClientPort})
+					Expect(err).ShouldNot(HaveOccurred())
+					logger.Infof("pod %s and endpoints %s, %s ready", podName, etcdEndpointName, backupEndpointName)
 
-				cmd = fmt.Sprintf("curl http://localhost:%d/initialization/status -s", backupClientPort)
-				stdout, stderr, err = executeRemoteCommand(kubeconfigPath, releaseNamespace, podName, "backup-restore", cmd)
-				Expect(err).ShouldNot(HaveOccurred())
-				Expect(stdout).Should(Equal("New"))
+					cmd = fmt.Sprintf("curl http://localhost:%d/initialization/status -s", backupClientPort)
+					stdout, stderr, err = executeRemoteCommand(kubeconfigPath, releaseNamespace, podName, "backup-restore", cmd)
+					Expect(err).ShouldNot(HaveOccurred())
+					Expect(stdout).Should(Equal("New"))
 
-				cmd = "ETCDCTL_API=3 etcdctl get init-3"
-				stdout, stderr, err = executeRemoteCommand(kubeconfigPath, releaseNamespace, podName, "etcd", cmd)
-				Expect(err).ShouldNot(HaveOccurred())
-				Expect(stderr).Should(BeEmpty())
-				lines := strings.Split(stdout, "\n")
-				Expect(len(lines)).Should(Equal(2))
-				Expect(lines[0]).Should(Equal("init-3"))
-				Expect(lines[1]).Should(Equal("val-3"))
+					cmd = "ETCDCTL_API=3 etcdctl get init-3"
+					stdout, stderr, err = executeRemoteCommand(kubeconfigPath, releaseNamespace, podName, "etcd", cmd)
+					Expect(err).ShouldNot(HaveOccurred())
+					Expect(stderr).Should(BeEmpty())
+					lines := strings.Split(stdout, "\n")
+					Expect(len(lines)).Should(Equal(2))
+					Expect(lines[0]).Should(Equal("init-3"))
+					Expect(lines[1]).Should(Equal("val-3"))
 
-				cmd = "ETCDCTL_API=3 etcdctl get init-4"
-				stdout, stderr, err = executeRemoteCommand(kubeconfigPath, releaseNamespace, podName, "etcd", cmd)
-				Expect(err).ShouldNot(HaveOccurred())
-				Expect(stderr).Should(BeEmpty())
-				Expect(stdout).Should(BeEmpty())
+					cmd = "ETCDCTL_API=3 etcdctl get init-4"
+					stdout, stderr, err = executeRemoteCommand(kubeconfigPath, releaseNamespace, podName, "etcd", cmd)
+					Expect(err).ShouldNot(HaveOccurred())
+					Expect(stderr).Should(BeEmpty())
+					Expect(stdout).Should(BeEmpty())
+				}
+				for i := 0; i < 3; i++ { // 3 consecutive restorations
+					testDataCorruptionRestoration()
+				}
 			})
 		})
 	})

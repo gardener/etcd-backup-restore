@@ -92,7 +92,8 @@ func NewInitializer(options *restorer.RestoreOptions, snapstoreConfig *snapstore
 // bootstrapping a new data directory or if restoration failed
 func (e *EtcdInitializer) restoreCorruptData() (bool, error) {
 	logger := e.Logger
-	dataDir := e.Config.RestoreOptions.Config.RestoreDataDir
+	tempRestoreOptions := *(e.Config.RestoreOptions.DeepCopy())
+	dataDir := tempRestoreOptions.Config.RestoreDataDir
 
 	if e.Config.SnapstoreConfig == nil || len(e.Config.SnapstoreConfig.Provider) == 0 {
 		logger.Warnf("No snapstore storage provider configured.")
@@ -116,9 +117,8 @@ func (e *EtcdInitializer) restoreCorruptData() (bool, error) {
 		return e.restoreWithEmptySnapstore()
 	}
 
-	e.Config.RestoreOptions.BaseSnapshot = *baseSnap
-	e.Config.RestoreOptions.DeltaSnapList = deltaSnapList
-	tempRestoreOptions := *e.Config.RestoreOptions
+	tempRestoreOptions.BaseSnapshot = *baseSnap
+	tempRestoreOptions.DeltaSnapList = deltaSnapList
 	tempRestoreOptions.Config.RestoreDataDir = fmt.Sprintf("%s.%s", tempRestoreOptions.Config.RestoreDataDir, "part")
 
 	if err := e.removeDir(tempRestoreOptions.Config.RestoreDataDir); err != nil {
