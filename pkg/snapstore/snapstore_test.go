@@ -99,6 +99,11 @@ var _ = Describe("Snapstore", func() {
 				prefix:           prefix,
 				multiPartUploads: map[string]*[][]byte{},
 			}),
+			"OCS": NewS3FromClient(bucket, prefix, "/tmp", 5, &mockS3Client{
+				objects:          objectMap,
+				prefix:           prefix,
+				multiPartUploads: map[string]*[][]byte{},
+			}),
 		}
 	})
 

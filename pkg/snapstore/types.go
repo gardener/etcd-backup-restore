@@ -51,6 +51,8 @@ const (
 	SnapstoreProviderOSS = "OSS"
 	// SnapstoreProviderECS is constant for Dell EMC ECS S3 storage provider.
 	SnapstoreProviderECS = "ECS"
+	// SnapstoreProviderOCS is constant for OpenShift Container Storage S3 storage provider.
+	SnapstoreProviderOCS = "OCS"
 	// SnapstoreProviderFakeFailed is constant for fake failed storage provider.
 	SnapstoreProviderFakeFailed = "FAILED"
 

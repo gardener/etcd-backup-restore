@@ -88,6 +88,11 @@ func GetSnapstore(config *Config) (SnapStore, error) {
 			return nil, fmt.Errorf("storage container name not specified")
 		}
 		return NewECSSnapStore(config.Container, config.Prefix, config.TempDir, config.MaxParallelChunkUploads)
+	case SnapstoreProviderOCS:
+		if config.Container == "" {
+			return nil, fmt.Errorf("storage container name not specified")
+		}
+		return NewOCSSnapStore(config.Container, config.Prefix, config.TempDir, config.MaxParallelChunkUploads)
 	case SnapstoreProviderFakeFailed:
 		return NewFailedSnapStore(), nil
 	default:

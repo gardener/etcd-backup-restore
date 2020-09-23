@@ -25,6 +25,7 @@ default.etcd*
 
 # IDE config
 .vscode
+.idea/
 
 # developers workspace
 tmp

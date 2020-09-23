@@ -15,53 +15,56 @@
 package snapstore
 
 const (
-	// ECS does not support regions and always uses the default region US-Standard.
-	ecsDefaultRegion             string = "US-Standard"
-	ecsDefaultDisableSSL         bool   = false
-	ecsDefaultInsecureSkipVerify bool   = false
+	ocsDefaultDisableSSL         bool = false
+	ocsDefaultInsecureSkipVerify bool = false
 
-	ecsEndPoint           string = "ECS_ENDPOINT"
-	ecsDisableSSL         string = "ECS_DISABLE_SSL"
-	ecsInsecureSkipVerify string = "ECS_INSECURE_SKIP_VERIFY"
-	ecsAccessKeyID        string = "ECS_ACCESS_KEY_ID"
-	ecsSecretAccessKey    string = "ECS_SECRET_ACCESS_KEY"
+	ocsEndpoint           string = "OCS_ENDPOINT"
+	ocsRegion             string = "OCS_REGION"
+	ocsDisableSSL         string = "OCS_DISABLE_SSL"
+	ocsInsecureSkipVerify string = "OCS_INSECURE_SKIP_VERIFY"
+	ocsAccessKeyID        string = "OCS_ACCESS_KEY_ID"
+	ocsSecretAccessKey    string = "OCS_SECRET_ACCESS_KEY"
 )
 
-// NewECSSnapStore creates a new S3SnapStore from shared configuration with the specified bucket.
-func NewECSSnapStore(bucket, prefix, tempDir string, maxParallelChunkUploads uint) (*S3SnapStore, error) {
-	ao, err := ecsAuthOptionsFromEnv()
+// NewOCSSnapStore creates a new S3SnapStore from shared configuration with the specified bucket.
+func NewOCSSnapStore(bucket, prefix, tempDir string, maxParallelChunkUploads uint) (*S3SnapStore, error) {
+	ao, err := ocsAuthOptionsFromEnv()
 	if err != nil {
 		return nil, err
 	}
 	return newGenericS3FromAuthOpt(bucket, prefix, tempDir, maxParallelChunkUploads, ao)
 }
 
-// ecsAuthOptionsFromEnv gets ECS provider configuration from environment variables.
-func ecsAuthOptionsFromEnv() (s3AuthOptions, error) {
-	endpoint, err := GetEnvVarOrError(ecsEndPoint)
+// ocsAuthOptionsFromEnv gets OCS provider configuration from environment variables.
+func ocsAuthOptionsFromEnv() (s3AuthOptions, error) {
+	endpoint, err := GetEnvVarOrError(ocsEndpoint)
 	if err != nil {
 		return s3AuthOptions{}, err
 	}
-	accessKeyID, err := GetEnvVarOrError(ecsAccessKeyID)
+	accessKeyID, err := GetEnvVarOrError(ocsAccessKeyID)
 	if err != nil {
 		return s3AuthOptions{}, err
 	}
-	secretAccessKey, err := GetEnvVarOrError(ecsSecretAccessKey)
+	secretAccessKey, err := GetEnvVarOrError(ocsSecretAccessKey)
 	if err != nil {
 		return s3AuthOptions{}, err
 	}
-	disableSSL, err := GetEnvVarToBool(ecsDisableSSL)
+	region, err := GetEnvVarOrError(ocsRegion)
 	if err != nil {
-		disableSSL = ecsDefaultDisableSSL
+		return s3AuthOptions{}, err
 	}
-	insecureSkipVerify, err := GetEnvVarToBool(ecsInsecureSkipVerify)
+	disableSSL, err := GetEnvVarToBool(ocsDisableSSL)
 	if err != nil {
-		insecureSkipVerify = ecsDefaultInsecureSkipVerify
+		disableSSL = ocsDefaultDisableSSL
+	}
+	insecureSkipVerify, err := GetEnvVarToBool(ocsInsecureSkipVerify)
+	if err != nil {
+		insecureSkipVerify = ocsDefaultInsecureSkipVerify
 	}
 
 	ao := s3AuthOptions{
 		endpoint:           endpoint,
-		region:             ecsDefaultRegion,
+		region:             region,
 		disableSSL:         disableSSL,
 		insecureSkipVerify: insecureSkipVerify,
 		accessKeyID:        accessKeyID,
