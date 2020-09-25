@@ -13,7 +13,7 @@ flavors:
       machine:
         type: m5.large
         image:
-          name: coreos
+          name: gardenlinux
           version: latest
       minimum: 1
       maximum: 2
@@ -44,7 +44,7 @@ flavors:
 #       machine:
 #         type: Standard_D2_v3
 #         image:
-#           name: coreos
+#           name: gardenlinux
 #           version: latest
 #       minimum: 2
 #       maximum: 2
@@ -95,7 +95,7 @@ flavors:
 #       machine:
 #         type: medium_2_4
 #         image:
-#           name: coreos
+#           name: gardenlinux
 #           version: latest
 #       minimum: 2
 #       maximum: 2
