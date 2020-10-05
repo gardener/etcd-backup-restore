@@ -350,34 +350,40 @@ var _ = Describe("CloudBackup", func() {
 				// Stop etcd.
 				cmdEtcd.StopProcess()
 				time.Sleep(10 * time.Second)
+
 				// Corrupt directory
-				dataDir := os.Getenv("ETCD_DATA_DIR")
-				dbFilePath := filepath.Join(dataDir, "member", "snap", "db")
-				logger.Infof("db file: %v", dbFilePath)
-				file, err := os.Create(dbFilePath)
-				defer file.Close()
-				fileWriter := bufio.NewWriter(file)
-				Expect(err).ShouldNot(HaveOccurred())
-				fileWriter.Write([]byte("corrupt file.."))
-				fileWriter.Flush()
-				status, err = getEtcdBrServerStatus()
-				Expect(err).ShouldNot(HaveOccurred())
-				Expect(status).Should(Equal("New"))
-				// Curl request to etcdbrctl server to initialize data directory.
-				_, err = initializeDataDir()
-				Expect(err).ShouldNot(HaveOccurred())
-				for status, err = getEtcdBrServerStatus(); status == "Progress"; status, err = getEtcdBrServerStatus() {
-					logger.Infof("Etcdbr server status: %v", status)
-					time.Sleep(1 * time.Second)
-				}
-				Expect(err).ShouldNot(HaveOccurred())
-				// Start etcd.
-				cmdEtcd, etcdErrChan = startEtcd()
-				go func() {
-					err := <-*etcdErrChan
+				testDataCorruptionRestoration := func() {
+					dataDir := os.Getenv("ETCD_DATA_DIR")
+					dbFilePath := filepath.Join(dataDir, "member", "snap", "db")
+					logger.Infof("db file: %v", dbFilePath)
+					file, err := os.Create(dbFilePath)
+					defer file.Close()
+					fileWriter := bufio.NewWriter(file)
 					Expect(err).ShouldNot(HaveOccurred())
-				}()
-				time.Sleep(10 * time.Second)
+					fileWriter.Write([]byte("corrupt file.."))
+					fileWriter.Flush()
+					status, err = getEtcdBrServerStatus()
+					Expect(err).ShouldNot(HaveOccurred())
+					Expect(status).Should(Equal("New"))
+					// Curl request to etcdbrctl server to initialize data directory.
+					_, err = initializeDataDir()
+					Expect(err).ShouldNot(HaveOccurred())
+					for status, err = getEtcdBrServerStatus(); status == "Progress"; status, err = getEtcdBrServerStatus() {
+						logger.Infof("Etcdbr server status: %v", status)
+						time.Sleep(1 * time.Second)
+					}
+					Expect(err).ShouldNot(HaveOccurred())
+					// Start etcd.
+					cmdEtcd, etcdErrChan = startEtcd()
+					go func() {
+						err := <-*etcdErrChan
+						Expect(err).ShouldNot(HaveOccurred())
+					}()
+					time.Sleep(10 * time.Second)
+				}
+				for i := 0; i < 3; i++ { // 3 consecutive restorations
+					testDataCorruptionRestoration()
+				}
 			})
 			AfterEach(func() {
 				cmdEtcd.StopProcess()
