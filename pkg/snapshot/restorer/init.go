@@ -18,8 +18,8 @@ import (
 	"fmt"
 	"path"
 
-	"github.com/coreos/etcd/pkg/types"
 	flag "github.com/spf13/pflag"
+	"go.etcd.io/etcd/pkg/types"
 )
 
 // NewRestorationConfig returns the restoration config.

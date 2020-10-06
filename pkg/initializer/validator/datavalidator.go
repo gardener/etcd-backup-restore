@@ -23,14 +23,15 @@ import (
 	"os"
 	"path/filepath"
 
-	bolt "github.com/coreos/bbolt"
-	"github.com/coreos/etcd/raft/raftpb"
-	"github.com/coreos/etcd/snap"
-	"github.com/coreos/etcd/wal"
-	"github.com/coreos/etcd/wal/walpb"
 	"github.com/gardener/etcd-backup-restore/pkg/miscellaneous"
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	"github.com/sirupsen/logrus"
+	bolt "go.etcd.io/bbolt"
+	"go.etcd.io/etcd/etcdserver/api/snap"
+	"go.etcd.io/etcd/raft/raftpb"
+	"go.etcd.io/etcd/wal"
+	"go.etcd.io/etcd/wal/walpb"
+	"go.uber.org/zap"
 )
 
 var (
@@ -129,7 +130,7 @@ func (d *DataValidator) checkForDataCorruption() error {
 		walsnap.Index, walsnap.Term = snapshot.Metadata.Index, snapshot.Metadata.Term
 	}
 	d.Logger.Info("Verifying WAL directory...")
-	if err := verifyWALDir(d.walDir(), walsnap); err != nil {
+	if err := verifyWALDir(d.ZapLogger, d.walDir(), walsnap); err != nil {
 		return fmt.Errorf("Invalid wal files: %v", err)
 	}
 	d.Logger.Info("Verifying DB file...")
@@ -167,22 +168,22 @@ func directoryExist(dir string) (bool, error) {
 }
 
 func (d *DataValidator) verifySnapDir() (*raftpb.Snapshot, error) {
-	ssr := snap.New(d.snapDir())
+	ssr := snap.New(d.ZapLogger, d.snapDir())
 	return ssr.Load()
 }
 
-func verifyWALDir(waldir string, snap walpb.Snapshot) error {
+func verifyWALDir(logger *zap.Logger, waldir string, snap walpb.Snapshot) error {
 	var err error
 
 	repaired := false
 	for {
-		if err = wal.Verify(waldir, snap); err != nil {
+		if err = wal.Verify(logger, waldir, snap); err != nil {
 			// we can only repair ErrUnexpectedEOF and we never repair twice.
 			if repaired || err != io.ErrUnexpectedEOF {
 				fmt.Printf("read wal error (%v) and cannot be repaired.\n", err)
 				return err
 			}
-			if !wal.Repair(waldir) {
+			if !wal.Repair(logger, waldir) {
 				fmt.Printf("WAL error (%v) cannot be repaired.\n", err)
 				return err
 			}

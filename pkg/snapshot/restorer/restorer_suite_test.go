@@ -24,7 +24,6 @@ import (
 
 	"github.com/gardener/etcd-backup-restore/pkg/wrappers"
 
-	"github.com/coreos/etcd/embed"
 	"github.com/gardener/etcd-backup-restore/pkg/etcdutil"
 	"github.com/gardener/etcd-backup-restore/pkg/snapshot/snapshotter"
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
@@ -32,6 +31,7 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	"github.com/sirupsen/logrus"
+	"go.etcd.io/etcd/embed"
 )
 
 const (

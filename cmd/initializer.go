@@ -18,12 +18,12 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/coreos/etcd/pkg/types"
 	"github.com/gardener/etcd-backup-restore/pkg/initializer"
 	"github.com/gardener/etcd-backup-restore/pkg/initializer/validator"
 	"github.com/gardener/etcd-backup-restore/pkg/snapshot/restorer"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
+	"go.etcd.io/etcd/pkg/types"
 )
 
 // NewInitializeCommand returns the command to initialize etcd by validating the data

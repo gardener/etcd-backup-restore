@@ -20,9 +20,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/coreos/etcd/embed"
 	"github.com/gardener/etcd-backup-restore/test/utils"
 	"github.com/sirupsen/logrus"
+	"go.etcd.io/etcd/embed"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"

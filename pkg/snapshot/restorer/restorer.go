@@ -31,31 +31,35 @@ import (
 	"sync"
 	"time"
 
-	"github.com/coreos/etcd/clientv3"
-	"github.com/coreos/etcd/embed"
-	"github.com/coreos/etcd/etcdserver"
-	"github.com/coreos/etcd/etcdserver/etcdserverpb"
-	"github.com/coreos/etcd/etcdserver/membership"
-	"github.com/coreos/etcd/lease"
-	"github.com/coreos/etcd/mvcc"
-	"github.com/coreos/etcd/mvcc/backend"
-	"github.com/coreos/etcd/mvcc/mvccpb"
-	"github.com/coreos/etcd/pkg/fileutil"
-	"github.com/coreos/etcd/raft"
-	"github.com/coreos/etcd/raft/raftpb"
-	"github.com/coreos/etcd/snap"
-	"github.com/coreos/etcd/store"
-	"github.com/coreos/etcd/wal"
-	"github.com/coreos/etcd/wal/walpb"
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	"github.com/sirupsen/logrus"
+	"go.etcd.io/etcd/clientv3"
+	"go.etcd.io/etcd/embed"
+	"go.etcd.io/etcd/etcdserver"
+	"go.etcd.io/etcd/etcdserver/api/membership"
+	"go.etcd.io/etcd/etcdserver/api/snap"
+	store "go.etcd.io/etcd/etcdserver/api/v2store"
+	"go.etcd.io/etcd/etcdserver/etcdserverpb"
+	"go.etcd.io/etcd/lease"
+	"go.etcd.io/etcd/mvcc"
+	"go.etcd.io/etcd/mvcc/backend"
+	"go.etcd.io/etcd/mvcc/mvccpb"
+	"go.etcd.io/etcd/pkg/fileutil"
+	"go.etcd.io/etcd/pkg/traceutil"
+	"go.etcd.io/etcd/raft"
+	"go.etcd.io/etcd/raft/raftpb"
+	"go.etcd.io/etcd/wal"
+	"go.etcd.io/etcd/wal/walpb"
+	"go.uber.org/zap"
 )
 
 // NewRestorer returns the restorer object.
 func NewRestorer(store snapstore.SnapStore, logger *logrus.Entry) *Restorer {
+	zapLogger, _ := zap.NewProduction()
 	return &Restorer{
-		logger: logger.WithField("actor", "restorer"),
-		store:  store,
+		logger:    logger.WithField("actor", "restorer"),
+		zapLogger: zapLogger,
+		store:     store,
 	}
 }
 
@@ -106,7 +110,7 @@ func (r *Restorer) restoreFromBaseSnapshot(ro RestoreOptions) error {
 		return err
 	}
 
-	cl, err := membership.NewClusterFromURLsMap(ro.Config.InitialClusterToken, ro.ClusterURLs)
+	cl, err := membership.NewClusterFromURLsMap(r.zapLogger, ro.Config.InitialClusterToken, ro.ClusterURLs)
 	if err != nil {
 		return err
 	}
@@ -118,14 +122,14 @@ func (r *Restorer) restoreFromBaseSnapshot(ro RestoreOptions) error {
 
 	walDir := filepath.Join(memberDir, "wal")
 	snapdir := filepath.Join(memberDir, "snap")
-	if err = makeDB(snapdir, ro.BaseSnapshot, len(cl.Members()), r.store, false); err != nil {
+	if err = makeDB(r.zapLogger, snapdir, ro.BaseSnapshot, len(cl.Members()), r.store, false); err != nil {
 		return err
 	}
-	return makeWALAndSnap(walDir, snapdir, cl, ro.Config.Name)
+	return makeWALAndSnap(r.zapLogger, walDir, snapdir, cl, ro.Config.Name)
 }
 
 // makeDB copies the database snapshot to the snapshot directory.
-func makeDB(snapdir string, snap snapstore.Snapshot, commit int, ss snapstore.SnapStore, skipHashCheck bool) error {
+func makeDB(logger *zap.Logger, snapdir string, snap snapstore.Snapshot, commit int, ss snapstore.SnapStore, skipHashCheck bool) error {
 	rc, err := ss.Fetch(snap)
 	if err != nil {
 		return err
@@ -193,10 +197,11 @@ func makeDB(snapdir string, snap snapstore.Snapshot, commit int, ss snapstore.Sn
 	// update consistentIndex so applies go through on etcdserver despite
 	// having a new raft instance
 	be := backend.NewDefaultBackend(dbPath)
-	// a lessor never timeouts leases
-	lessor := lease.NewLessor(be, math.MaxInt64)
-	s := mvcc.NewStore(be, lessor, (*initIndex)(&commit))
-	txn := s.Write()
+	// a lessor that never times out leases
+	lessor := lease.NewLessor(logger, be, lease.LessorConfig{MinLeaseTTL: math.MaxInt64})
+	s := mvcc.NewStore(logger, be, lessor, (*initIndex)(&commit), mvcc.StoreConfig{})
+	trace := traceutil.New("write", logger)
+	txn := s.Write(trace)
 	btx := be.BatchTx()
 	del := func(k, v []byte) error {
 		txn.DeleteRange(k, nil)
@@ -215,7 +220,7 @@ func makeDB(snapdir string, snap snapstore.Snapshot, commit int, ss snapstore.Sn
 	return nil
 }
 
-func makeWALAndSnap(waldir, snapdir string, cl *membership.RaftCluster, restoreName string) error {
+func makeWALAndSnap(logger *zap.Logger, waldir, snapdir string, cl *membership.RaftCluster, restoreName string) error {
 	if err := fileutil.CreateDirAll(waldir); err != nil {
 		return err
 	}
@@ -234,7 +239,7 @@ func makeWALAndSnap(waldir, snapdir string, cl *membership.RaftCluster, restoreN
 		return err
 	}
 
-	w, err := wal.Create(waldir, metadata)
+	w, err := wal.Create(logger, waldir, metadata)
 	if err != nil {
 		return err
 	}
@@ -290,11 +295,11 @@ func makeWALAndSnap(waldir, snapdir string, cl *membership.RaftCluster, restoreN
 			Index: commit,
 			Term:  term,
 			ConfState: raftpb.ConfState{
-				Nodes: nodeIDs,
+				Voters: nodeIDs,
 			},
 		},
 	}
-	snapshotter := snap.New(snapdir)
+	snapshotter := snap.New(logger, snapdir)
 	if err := snapshotter.SaveSnap(raftSnap); err != nil {
 		panic(err)
 	}
@@ -320,6 +325,7 @@ func startEmbeddedEtcd(logger *logrus.Entry, ro RestoreOptions) (*embed.Etcd, er
 	cfg.ACUrls = []url.URL{*acurl}
 	cfg.InitialCluster = cfg.InitialClusterFromName(cfg.Name)
 	cfg.QuotaBackendBytes = ro.Config.EmbeddedEtcdQuotaBytes
+	cfg.Logger = "zap"
 	e, err := embed.StartEtcd(cfg)
 	if err != nil {
 		return nil, err

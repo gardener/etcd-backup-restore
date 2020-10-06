@@ -18,12 +18,12 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/coreos/etcd/pkg/types"
 	"github.com/gardener/etcd-backup-restore/pkg/miscellaneous"
 	"github.com/gardener/etcd-backup-restore/pkg/snapshot/restorer"
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
+	"go.etcd.io/etcd/pkg/types"
 )
 
 // NewRestoreCommand returns the command to restore

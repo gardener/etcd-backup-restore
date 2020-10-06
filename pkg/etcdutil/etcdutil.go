@@ -18,8 +18,8 @@ import (
 	"context"
 	"crypto/tls"
 
-	"github.com/coreos/etcd/clientv3"
-	"github.com/coreos/etcd/pkg/transport"
+	"go.etcd.io/etcd/clientv3"
+	"go.etcd.io/etcd/pkg/transport"
 )
 
 // GetTLSClientForEtcd creates an etcd client using the TLS config params.
@@ -38,7 +38,7 @@ func GetTLSClientForEtcd(tlsConfig *EtcdConnectionConfig) (*clientv3.Client, err
 	}
 
 	if tlsConfig.CaFile != "" {
-		tlsinfo.CAFile = tlsConfig.CaFile
+		tlsinfo.TrustedCAFile = tlsConfig.CaFile
 		cfgtls = &tlsinfo
 	}
 

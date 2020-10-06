@@ -226,9 +226,9 @@ Copyright 2015 Steve Francia.
 Apache 2 license (https://github.com/spf13/cobra/blob/master/LICENSE.txt)
 
 Etcd.  
-https://github.com/coreos/etcd.  
+https://github.com/etcd-io/etcd.  
 Copyright 2017 The etcd Authors.  
-Apache 2 license (https://github.com/coreos/etcd/blob/master/LICENSE)
+Apache 2 license (https://github.com/etcd-io/etcd/blob/master/LICENSE)
 
 Cron.  
 https://github.com/robfig/cron.  

@@ -23,9 +23,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/coreos/etcd/clientv3"
-	"github.com/coreos/etcd/embed"
 	"github.com/sirupsen/logrus"
+	"go.etcd.io/etcd/clientv3"
+	"go.etcd.io/etcd/embed"
 )
 
 const (
@@ -44,7 +44,7 @@ func StartEmbeddedEtcd(ctx context.Context, etcdDir string, logger *logrus.Entry
 	cfg.EnableV2 = false
 	cfg.Debug = false
 	cfg.GRPCKeepAliveTimeout = 0
-	cfg.SnapCount = 10
+	cfg.SnapshotCount = 10
 	DefaultListenPeerURLs := "http://localhost:0"
 	DefaultListenClientURLs := "http://localhost:0"
 	DefaultInitialAdvertisePeerURLs := "http://localhost:0"
@@ -58,6 +58,7 @@ func StartEmbeddedEtcd(ctx context.Context, etcdDir string, logger *logrus.Entry
 	cfg.APUrls = []url.URL{*apurl}
 	cfg.ACUrls = []url.URL{*acurl}
 	cfg.InitialCluster = cfg.InitialClusterFromName(cfg.Name)
+	cfg.Logger = "zap"
 	e, err := embed.StartEtcd(cfg)
 	if err != nil {
 		return nil, err
