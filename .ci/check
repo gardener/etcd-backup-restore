@@ -16,11 +16,16 @@ set -e
 
 # For the check step concourse will set the following environment variables:
 # SOURCE_PATH - path to component repository root directory.
+if [[ $(uname) == 'Darwin' ]]; then
+  READLINK_BIN="greadlink"
+else
+  READLINK_BIN="readlink"
+fi
 
 if [[ -z "${SOURCE_PATH}" ]]; then
-  export SOURCE_PATH="$(readlink -f "$(dirname ${0})/..")"
+  export SOURCE_PATH="$(${READLINK_BIN} -f "$(dirname ${0})/..")"
 else
-  export SOURCE_PATH="$(readlink -f ${SOURCE_PATH})"
+  export SOURCE_PATH="$(${READLINK_BIN} -f ${SOURCE_PATH})"
 fi
 
 VCS="github.com"
@@ -35,7 +40,10 @@ GO111MODULE=off go get -u golang.org/x/lint/golint
 # Install Helm from binary.
 curl -fsSL -o get_helm.sh https://raw.githubusercontent.com/helm/helm/master/scripts/get-helm-3
 chmod 700 get_helm.sh
-./get_helm.sh --no-sudo
+if [ $(id -u) = 0 ]; then
+   ./get_helm.sh --no-sudo
+fi
+./get_helm.sh 
 rm get_helm.sh
 
 ###############################################################################
