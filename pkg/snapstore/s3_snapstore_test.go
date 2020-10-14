@@ -113,7 +113,7 @@ func (m *mockS3Client) UploadPartWithContext(ctx aws.Context, in *s3.UploadPartI
 	(*m.multiPartUploads[*in.UploadId])[*in.PartNumber-1] = content
 	m.multiPartUploadsMutex.Unlock()
 
-	eTag := string(*in.PartNumber)
+	eTag := fmt.Sprint(*in.PartNumber)
 	out := &s3.UploadPartOutput{
 		ETag: &eTag,
 	}

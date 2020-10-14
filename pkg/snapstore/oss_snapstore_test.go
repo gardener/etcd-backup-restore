@@ -99,7 +99,7 @@ func (m *mockOSSBucket) UploadPart(imur oss.InitiateMultipartUploadResult, reade
 	(*m.multiPartUploads[imur.UploadID])[partNumber-1] = content
 	m.multiPartUploadsMutex.Unlock()
 
-	eTag := string(partNumber)
+	eTag := fmt.Sprint(partNumber)
 	return oss.UploadPart{
 		PartNumber: partNumber,
 		ETag:       eTag,
