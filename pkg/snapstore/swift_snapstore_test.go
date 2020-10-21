@@ -123,7 +123,7 @@ func handleListObjectNames(w http.ResponseWriter, r *http.Request) {
 			contents = append(contents, key)
 		}
 	}
-	w.Header().Set("X-Container-Object-Count", string(len(contents)))
+	w.Header().Set("X-Container-Object-Count", fmt.Sprint(len(contents)))
 	w.Header().Set("Content-Type", "text/plain")
 	list := strings.Join(contents, "\n")
 	w.Write([]byte(list))
