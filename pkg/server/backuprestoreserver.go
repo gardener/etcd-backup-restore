@@ -25,7 +25,6 @@ import (
 	"github.com/gardener/etcd-backup-restore/pkg/metrics"
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/coreos/etcd/pkg/types"
 	"github.com/gardener/etcd-backup-restore/pkg/defragmentor"
 	"github.com/gardener/etcd-backup-restore/pkg/etcdutil"
 	"github.com/gardener/etcd-backup-restore/pkg/initializer"
@@ -34,6 +33,7 @@ import (
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	cron "github.com/robfig/cron/v3"
 	"github.com/sirupsen/logrus"
+	"go.etcd.io/etcd/pkg/types"
 )
 
 // BackupRestoreServer holds the details for backup-restore server.

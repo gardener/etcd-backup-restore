@@ -19,56 +19,56 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/coreos/etcd/pkg/types"
-	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	. "github.com/gardener/etcd-backup-restore/pkg/snapshot/restorer"
+	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
+	"go.etcd.io/etcd/pkg/types"
 )
 
 var _ = Describe("restorer types", func() {
 	var (
 		makeRestorationConfig = func(s string, b bool, i int) *RestorationConfig {
 			return &RestorationConfig{
-				InitialCluster: s,
-				InitialClusterToken: s,
-				RestoreDataDir: s,
-				InitialAdvertisePeerURLs: []string{ s, s },
-				Name: s,
-				SkipHashCheck: b,
-				MaxFetchers: uint(i),
-				EmbeddedEtcdQuotaBytes: int64(i),
+				InitialCluster:           s,
+				InitialClusterToken:      s,
+				RestoreDataDir:           s,
+				InitialAdvertisePeerURLs: []string{s, s},
+				Name:                     s,
+				SkipHashCheck:            b,
+				MaxFetchers:              uint(i),
+				EmbeddedEtcdQuotaBytes:   int64(i),
 			}
 		}
 		makeSnap = func(s string, i int, t time.Time, b bool) snapstore.Snapshot {
 			return snapstore.Snapshot{
-				Kind: s,
+				Kind:          s,
 				StartRevision: int64(i),
-				LastRevision: int64(i),
-				CreatedOn: t,
-				SnapDir: s,
-				SnapName: s,
-				IsChunk: b,
+				LastRevision:  int64(i),
+				CreatedOn:     t,
+				SnapDir:       s,
+				SnapName:      s,
+				IsChunk:       b,
 			}
 		}
 		makeSnapList = func(s string, i int, t time.Time, b bool) snapstore.SnapList {
 			var s1, s2 = makeSnap(s, i, t, b), makeSnap(s, i, t, b)
-			return snapstore.SnapList{ &s1, &s2 }
+			return snapstore.SnapList{&s1, &s2}
 		}
 		makeURL = func(s string, b bool) url.URL {
 			return url.URL{
-				Scheme: s,
-				Opaque: s,
-				User: url.UserPassword(s, s),
-				Host: s,
-				Path: s,
-				RawPath: s,
+				Scheme:     s,
+				Opaque:     s,
+				User:       url.UserPassword(s, s),
+				Host:       s,
+				Path:       s,
+				RawPath:    s,
 				ForceQuery: b,
-				Fragment: s,
+				Fragment:   s,
 			}
 		}
 		makeURLs = func(s string, b bool) types.URLs {
-			return types.URLs{ makeURL(s, b), makeURL(s, b) }
+			return types.URLs{makeURL(s, b), makeURL(s, b)}
 		}
 		makeURLsMap = func(s string, b bool) types.URLsMap {
 			var out = types.URLsMap{}
@@ -79,10 +79,10 @@ var _ = Describe("restorer types", func() {
 		}
 		makeRestoreOptions = func(s string, i int, t time.Time, b bool) *RestoreOptions {
 			return &RestoreOptions{
-				Config: makeRestorationConfig(s, b, i),
-				ClusterURLs: makeURLsMap(s, b),
-				PeerURLs: makeURLs(s, b),
-				BaseSnapshot: makeSnap(s, i, t, b),
+				Config:        makeRestorationConfig(s, b, i),
+				ClusterURLs:   makeURLsMap(s, b),
+				PeerURLs:      makeURLs(s, b),
+				BaseSnapshot:  makeSnap(s, i, t, b),
 				DeltaSnapList: makeSnapList(s, i, t, b),
 			}
 		}
@@ -127,7 +127,7 @@ var _ = Describe("restorer types", func() {
 
 	Describe("SnapList", func() {
 		var (
-			now = time.Now()
+			now   = time.Now()
 			makeA = func() snapstore.SnapList { return makeSnapList("a", 1, now, false) }
 		)
 		Describe("DeepCopySnapList", func() {
@@ -179,7 +179,7 @@ var _ = Describe("restorer types", func() {
 
 	Describe("RestoreOptions", func() {
 		var (
-			now = time.Now()
+			now   = time.Now()
 			makeA = func() *RestoreOptions { return makeRestoreOptions("a", 1, now, false) }
 			makeB = func() *RestoreOptions { return makeRestoreOptions("b", 2, now.Add(-1*time.Hour), true) }
 		)

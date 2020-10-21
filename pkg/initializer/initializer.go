@@ -27,6 +27,7 @@ import (
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/sirupsen/logrus"
+	"go.uber.org/zap"
 )
 
 // Initialize has the following steps:
@@ -68,7 +69,7 @@ func (e *EtcdInitializer) Initialize(mode validator.Mode, failBelowRevision int6
 
 //NewInitializer creates an etcd initializer object.
 func NewInitializer(options *restorer.RestoreOptions, snapstoreConfig *snapstore.Config, logger *logrus.Logger) *EtcdInitializer {
-
+	zapLogger, _ := zap.NewProduction()
 	etcdInit := &EtcdInitializer{
 		Config: &Config{
 			SnapstoreConfig: snapstoreConfig,
@@ -79,7 +80,8 @@ func NewInitializer(options *restorer.RestoreOptions, snapstoreConfig *snapstore
 				DataDir:         options.Config.RestoreDataDir,
 				SnapstoreConfig: snapstoreConfig,
 			},
-			Logger: logger,
+			Logger:    logger,
+			ZapLogger: zapLogger,
 		},
 		Logger: logger,
 	}

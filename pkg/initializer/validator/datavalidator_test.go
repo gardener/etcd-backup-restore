@@ -21,6 +21,7 @@ import (
 
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	"github.com/gardener/etcd-backup-restore/test/utils"
+	"go.uber.org/zap"
 
 	. "github.com/gardener/etcd-backup-restore/pkg/initializer/validator"
 	. "github.com/onsi/ginkgo"
@@ -44,12 +45,14 @@ var _ = Describe("Running Datavalidator", func() {
 			Provider:  "Local",
 		}
 
+		zapLogger, _ := zap.NewProduction()
 		validator = &DataValidator{
 			Config: &Config{
 				DataDir:         restoreDataDir,
 				SnapstoreConfig: snapstoreConfig,
 			},
-			Logger: logger.Logger,
+			Logger:    logger.Logger,
+			ZapLogger: zapLogger,
 		}
 	})
 

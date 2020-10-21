@@ -135,84 +135,8 @@ github.com/containerd/containerd/sys
 github.com/containerd/containerd/version
 # github.com/containerd/continuity v0.0.0-20200107194136-26c1120b8d41
 github.com/containerd/continuity/pathdriver
-# github.com/coreos/bbolt v1.3.3 => github.com/coreos/bbolt v1.3.3
+# github.com/coreos/etcd v3.3.22+incompatible => go.etcd.io/etcd v0.5.0-alpha.5.0.20200824191128-ae9734ed278b
 ## explicit
-github.com/coreos/bbolt
-# github.com/coreos/etcd v3.3.22+incompatible => github.com/coreos/etcd v3.3.22+incompatible
-## explicit
-github.com/coreos/etcd/alarm
-github.com/coreos/etcd/auth
-github.com/coreos/etcd/auth/authpb
-github.com/coreos/etcd/client
-github.com/coreos/etcd/clientv3
-github.com/coreos/etcd/clientv3/balancer
-github.com/coreos/etcd/clientv3/balancer/connectivity
-github.com/coreos/etcd/clientv3/balancer/picker
-github.com/coreos/etcd/clientv3/balancer/resolver/endpoint
-github.com/coreos/etcd/clientv3/concurrency
-github.com/coreos/etcd/clientv3/credentials
-github.com/coreos/etcd/compactor
-github.com/coreos/etcd/discovery
-github.com/coreos/etcd/embed
-github.com/coreos/etcd/error
-github.com/coreos/etcd/etcdserver
-github.com/coreos/etcd/etcdserver/api
-github.com/coreos/etcd/etcdserver/api/etcdhttp
-github.com/coreos/etcd/etcdserver/api/v2http
-github.com/coreos/etcd/etcdserver/api/v2http/httptypes
-github.com/coreos/etcd/etcdserver/api/v2v3
-github.com/coreos/etcd/etcdserver/api/v3client
-github.com/coreos/etcd/etcdserver/api/v3election
-github.com/coreos/etcd/etcdserver/api/v3election/v3electionpb
-github.com/coreos/etcd/etcdserver/api/v3election/v3electionpb/gw
-github.com/coreos/etcd/etcdserver/api/v3lock
-github.com/coreos/etcd/etcdserver/api/v3lock/v3lockpb
-github.com/coreos/etcd/etcdserver/api/v3lock/v3lockpb/gw
-github.com/coreos/etcd/etcdserver/api/v3rpc
-github.com/coreos/etcd/etcdserver/api/v3rpc/rpctypes
-github.com/coreos/etcd/etcdserver/auth
-github.com/coreos/etcd/etcdserver/etcdserverpb
-github.com/coreos/etcd/etcdserver/etcdserverpb/gw
-github.com/coreos/etcd/etcdserver/membership
-github.com/coreos/etcd/etcdserver/stats
-github.com/coreos/etcd/lease
-github.com/coreos/etcd/lease/leasehttp
-github.com/coreos/etcd/lease/leasepb
-github.com/coreos/etcd/mvcc
-github.com/coreos/etcd/mvcc/backend
-github.com/coreos/etcd/mvcc/mvccpb
-github.com/coreos/etcd/pkg/adt
-github.com/coreos/etcd/pkg/contention
-github.com/coreos/etcd/pkg/cors
-github.com/coreos/etcd/pkg/cpuutil
-github.com/coreos/etcd/pkg/crc
-github.com/coreos/etcd/pkg/debugutil
-github.com/coreos/etcd/pkg/fileutil
-github.com/coreos/etcd/pkg/httputil
-github.com/coreos/etcd/pkg/idutil
-github.com/coreos/etcd/pkg/ioutil
-github.com/coreos/etcd/pkg/logutil
-github.com/coreos/etcd/pkg/netutil
-github.com/coreos/etcd/pkg/pathutil
-github.com/coreos/etcd/pkg/pbutil
-github.com/coreos/etcd/pkg/runtime
-github.com/coreos/etcd/pkg/schedule
-github.com/coreos/etcd/pkg/srv
-github.com/coreos/etcd/pkg/systemd
-github.com/coreos/etcd/pkg/tlsutil
-github.com/coreos/etcd/pkg/transport
-github.com/coreos/etcd/pkg/types
-github.com/coreos/etcd/pkg/wait
-github.com/coreos/etcd/proxy/grpcproxy/adapter
-github.com/coreos/etcd/raft
-github.com/coreos/etcd/raft/raftpb
-github.com/coreos/etcd/rafthttp
-github.com/coreos/etcd/snap
-github.com/coreos/etcd/snap/snappb
-github.com/coreos/etcd/store
-github.com/coreos/etcd/version
-github.com/coreos/etcd/wal
-github.com/coreos/etcd/wal/walpb
 # github.com/coreos/go-semver v0.3.0
 github.com/coreos/go-semver/semver
 # github.com/coreos/go-systemd v0.0.0-20191104093116-d3cd4ed1dbcf
@@ -566,6 +490,88 @@ github.com/xeipuuv/gojsonreference
 github.com/xeipuuv/gojsonschema
 # github.com/xiang90/probing v0.0.0-20190116061207-43a291ad63a2
 github.com/xiang90/probing
+# go.etcd.io/bbolt v1.3.3
+## explicit
+go.etcd.io/bbolt
+# go.etcd.io/etcd v0.0.0-20191023171146-3cf2f69b5738
+## explicit
+go.etcd.io/etcd/auth
+go.etcd.io/etcd/auth/authpb
+go.etcd.io/etcd/client
+go.etcd.io/etcd/clientv3
+go.etcd.io/etcd/clientv3/balancer
+go.etcd.io/etcd/clientv3/balancer/connectivity
+go.etcd.io/etcd/clientv3/balancer/picker
+go.etcd.io/etcd/clientv3/balancer/resolver/endpoint
+go.etcd.io/etcd/clientv3/concurrency
+go.etcd.io/etcd/clientv3/credentials
+go.etcd.io/etcd/embed
+go.etcd.io/etcd/etcdserver
+go.etcd.io/etcd/etcdserver/api
+go.etcd.io/etcd/etcdserver/api/etcdhttp
+go.etcd.io/etcd/etcdserver/api/membership
+go.etcd.io/etcd/etcdserver/api/rafthttp
+go.etcd.io/etcd/etcdserver/api/snap
+go.etcd.io/etcd/etcdserver/api/snap/snappb
+go.etcd.io/etcd/etcdserver/api/v2auth
+go.etcd.io/etcd/etcdserver/api/v2discovery
+go.etcd.io/etcd/etcdserver/api/v2error
+go.etcd.io/etcd/etcdserver/api/v2http
+go.etcd.io/etcd/etcdserver/api/v2http/httptypes
+go.etcd.io/etcd/etcdserver/api/v2stats
+go.etcd.io/etcd/etcdserver/api/v2store
+go.etcd.io/etcd/etcdserver/api/v2v3
+go.etcd.io/etcd/etcdserver/api/v3alarm
+go.etcd.io/etcd/etcdserver/api/v3client
+go.etcd.io/etcd/etcdserver/api/v3compactor
+go.etcd.io/etcd/etcdserver/api/v3election
+go.etcd.io/etcd/etcdserver/api/v3election/v3electionpb
+go.etcd.io/etcd/etcdserver/api/v3election/v3electionpb/gw
+go.etcd.io/etcd/etcdserver/api/v3lock
+go.etcd.io/etcd/etcdserver/api/v3lock/v3lockpb
+go.etcd.io/etcd/etcdserver/api/v3lock/v3lockpb/gw
+go.etcd.io/etcd/etcdserver/api/v3rpc
+go.etcd.io/etcd/etcdserver/api/v3rpc/rpctypes
+go.etcd.io/etcd/etcdserver/etcdserverpb
+go.etcd.io/etcd/etcdserver/etcdserverpb/gw
+go.etcd.io/etcd/lease
+go.etcd.io/etcd/lease/leasehttp
+go.etcd.io/etcd/lease/leasepb
+go.etcd.io/etcd/mvcc
+go.etcd.io/etcd/mvcc/backend
+go.etcd.io/etcd/mvcc/mvccpb
+go.etcd.io/etcd/pkg/adt
+go.etcd.io/etcd/pkg/contention
+go.etcd.io/etcd/pkg/cpuutil
+go.etcd.io/etcd/pkg/crc
+go.etcd.io/etcd/pkg/debugutil
+go.etcd.io/etcd/pkg/fileutil
+go.etcd.io/etcd/pkg/flags
+go.etcd.io/etcd/pkg/httputil
+go.etcd.io/etcd/pkg/idutil
+go.etcd.io/etcd/pkg/ioutil
+go.etcd.io/etcd/pkg/logutil
+go.etcd.io/etcd/pkg/netutil
+go.etcd.io/etcd/pkg/pathutil
+go.etcd.io/etcd/pkg/pbutil
+go.etcd.io/etcd/pkg/runtime
+go.etcd.io/etcd/pkg/schedule
+go.etcd.io/etcd/pkg/srv
+go.etcd.io/etcd/pkg/systemd
+go.etcd.io/etcd/pkg/tlsutil
+go.etcd.io/etcd/pkg/traceutil
+go.etcd.io/etcd/pkg/transport
+go.etcd.io/etcd/pkg/types
+go.etcd.io/etcd/pkg/wait
+go.etcd.io/etcd/proxy/grpcproxy/adapter
+go.etcd.io/etcd/raft
+go.etcd.io/etcd/raft/confchange
+go.etcd.io/etcd/raft/quorum
+go.etcd.io/etcd/raft/raftpb
+go.etcd.io/etcd/raft/tracker
+go.etcd.io/etcd/version
+go.etcd.io/etcd/wal
+go.etcd.io/etcd/wal/walpb
 # go.opencensus.io v0.22.1
 ## explicit
 go.opencensus.io
@@ -647,7 +653,6 @@ golang.org/x/sys/unix
 golang.org/x/sys/windows
 golang.org/x/sys/windows/registry
 # golang.org/x/text v0.3.3
-## explicit
 golang.org/x/text/encoding
 golang.org/x/text/encoding/charmap
 golang.org/x/text/encoding/htmlindex
@@ -1088,11 +1093,10 @@ sigs.k8s.io/structured-merge-diff/v3/value
 # sigs.k8s.io/yaml v1.2.0
 sigs.k8s.io/yaml
 # github.com/Azure/go-autorest => github.com/Azure/go-autorest v13.3.2+incompatible
-# github.com/coreos/bbolt => github.com/coreos/bbolt v1.3.3
-# github.com/coreos/etcd => github.com/coreos/etcd v3.3.22+incompatible
+# github.com/coreos/etcd => go.etcd.io/etcd v0.5.0-alpha.5.0.20200824191128-ae9734ed278b
 # github.com/docker/docker => github.com/moby/moby v0.7.3-0.20190826074503-38ab9da00309
-# google.golang.org/grpc => google.golang.org/grpc v1.26.0
 # github.com/golang/protobuf => github.com/golang/protobuf v1.3.5
+# google.golang.org/grpc => google.golang.org/grpc v1.26.0
 # k8s.io/api => k8s.io/api v0.18.0
 # k8s.io/apimachinery => k8s.io/apimachinery v0.18.0
 # k8s.io/client-go => k8s.io/client-go v0.18.0

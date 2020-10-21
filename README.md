@@ -29,4 +29,4 @@ Etcd-backup-restore is collection of components to backup and restore the [etcd]
 * [Tests](doc/development/tests.md)
 * [Adding support for a new object store provider](doc/development/new_cp_support.md)
 
-[etcd]: https://github.com/coreos/etcd
+[etcd]: https://github.com/etcd-io/etcd

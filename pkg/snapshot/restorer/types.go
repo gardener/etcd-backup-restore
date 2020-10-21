@@ -18,10 +18,11 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/coreos/etcd/clientv3"
-	"github.com/coreos/etcd/pkg/types"
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	"github.com/sirupsen/logrus"
+	"go.etcd.io/etcd/clientv3"
+	"go.etcd.io/etcd/pkg/types"
+	"go.uber.org/zap"
 )
 
 const (
@@ -37,8 +38,9 @@ const (
 
 // Restorer is a struct for etcd data directory restorer
 type Restorer struct {
-	logger *logrus.Entry
-	store  snapstore.SnapStore
+	logger    *logrus.Entry
+	zapLogger *zap.Logger
+	store     snapstore.SnapStore
 }
 
 // RestoreOptions hold all snapshot restore related fields
@@ -127,7 +129,7 @@ func DeepCopyURL(in *url.URL) *url.URL {
 	*out = *in
 	if in.User != nil {
 		in, out := &in.User, &out.User
-		*out = new (url.Userinfo)
+		*out = new(url.Userinfo)
 		*out = *in
 	}
 	return out

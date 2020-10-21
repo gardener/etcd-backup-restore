@@ -106,4 +106,4 @@ Sidecar container has two components
 
 We want to develop incremental/continuous etcd backups (write watch logs in between full backups), to ensure our backups are fresh enough to avoid discrepancies between etcd backup and external/physical world.
 
-[etcd]: https://github.com/coreos/etcd
+[etcd]: https://github.com/etcd-io/etcd

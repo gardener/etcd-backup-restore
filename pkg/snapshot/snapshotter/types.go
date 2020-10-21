@@ -21,11 +21,11 @@ import (
 
 	"github.com/gardener/etcd-backup-restore/pkg/wrappers"
 
-	"github.com/coreos/etcd/clientv3"
 	"github.com/gardener/etcd-backup-restore/pkg/etcdutil"
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	cron "github.com/robfig/cron/v3"
 	"github.com/sirupsen/logrus"
+	"go.etcd.io/etcd/clientv3"
 )
 
 const (

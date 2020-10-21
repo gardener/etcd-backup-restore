@@ -30,6 +30,7 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	"github.com/sirupsen/logrus"
+	"go.uber.org/zap"
 )
 
 func startEtcd() (*Cmd, *chan error) {
@@ -209,12 +210,14 @@ var _ = Describe("CloudBackup", func() {
 			It("valids non corrupt data directory", func() {
 				dataDir := os.Getenv("ETCD_DATA_DIR")
 				Expect(dataDir).ShouldNot(Equal(nil))
+				zapLogger, _ := zap.NewProduction()
 				dataValidator := validator.DataValidator{
-					Logger: logger,
 					Config: &validator.Config{
 						DataDir:         dataDir,
 						SnapstoreConfig: snapstoreConfig,
 					},
+					Logger:    logger,
+					ZapLogger: zapLogger,
 				}
 				dataDirStatus, err := dataValidator.Validate(validator.Full, 0)
 				Expect(err).ShouldNot(HaveOccurred())
@@ -241,12 +244,14 @@ var _ = Describe("CloudBackup", func() {
 				Expect(err).ShouldNot(HaveOccurred())
 				fileWriter.Write([]byte("corrupt file.."))
 				fileWriter.Flush()
+				zapLogger, _ := zap.NewProduction()
 				dataValidator := validator.DataValidator{
-					Logger: logger,
 					Config: &validator.Config{
 						DataDir:         dataDir,
 						SnapstoreConfig: snapstoreConfig,
 					},
+					Logger:    logger,
+					ZapLogger: zapLogger,
 				}
 				dataDirStatus, err := dataValidator.Validate(validator.Full, 0)
 				Expect(err).ShouldNot(HaveOccurred())
