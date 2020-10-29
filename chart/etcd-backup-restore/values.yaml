@@ -8,7 +8,7 @@ images:
   # etcd-backup-restore image to use
   etcdBackupRestore:
     repository: eu.gcr.io/gardener-project/gardener/etcdbrctl
-    tag: v0.9.1
+    tag: v0.10.0
     pullPolicy: IfNotPresent
 
 resources:
@@ -31,6 +31,8 @@ servicePorts:
   client: 2379
   server: 2380
   backupRestore: 8080
+
+storageCapacity: 20Gi
 
 backup:
   # schedule is cron standard schedule to take full snapshots.
@@ -57,7 +59,7 @@ backup:
 
   # storageContainer is name of the container or bucket name used for storage.
   # Directory name in case of local storage provider.
-  storageContainer: ""
+  storageContainer: "/var/etcd/data/backup"
 
   # storageProvider indicate the type of backup storage provider.
   # Supported values are ABS,GCS,S3,Swift,OSS,ECS,Local, empty means no backup.
