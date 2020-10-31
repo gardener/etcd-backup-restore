@@ -199,7 +199,11 @@ func (b *BackupRestoreServer) runEtcdProbeLoopWithSnapshotter(ctx context.Contex
 		// TODO: write code to find out if prev full snapshot is older than it is
 		// supposed to be, according to the given cron schedule, instead of the
 		// hard-coded "24 hours" full snapshot interval
-		const recentFullSnapshotPeriodInHours = 24
+
+		// Temporary fix for missing alternate full snapshots for Gardener shoots
+		// with hibernation schedule set: change value from 24 ot 23.5 to
+		// accommodate for slight pod spin-up delays on shoot wake-up
+		const recentFullSnapshotPeriodInHours = 23.5
 		initialDeltaSnapshotTaken = false
 		if ssr.PrevFullSnapshot != nil && time.Since(ssr.PrevFullSnapshot.CreatedOn).Hours() <= recentFullSnapshotPeriodInHours {
 			ssrStopped, err := ssr.CollectEventsSincePrevSnapshot(ssrStopCh)
