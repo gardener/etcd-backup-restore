@@ -1,9 +1,8 @@
 images:
   # etcd image to use
   etcd:
-    # repository: quay.io/coreos/etcd
-    repository: gcr.io/etcd-development/etcd
-    tag: v3.3.17
+    repository: eu.gcr.io/gardener-project/gardener/etcd
+    tag: v3.4.13
     pullPolicy: IfNotPresent
   # etcd-backup-restore image to use
   etcdBackupRestore:
