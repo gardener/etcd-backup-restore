@@ -38,6 +38,11 @@ import (
 	"go.uber.org/zap"
 )
 
+const (
+	defaultMaxRequestBytes = 10 * 1024 * 1024 //10Mib
+	defaultMaxTxnOps       = 10 * 1024
+)
+
 var (
 	// A map of valid files that can be present in the snap folder.
 	validFiles = map[string]bool{
@@ -286,7 +291,15 @@ func (d *DataValidator) checkFullRevisionConsistency(dataDir string, latestSnaps
 	var latestSyncedEtcdRevision int64
 
 	d.Logger.Info("Starting embedded etcd server...")
-	e, err := restorer.StartEmbeddedEtcd(logrus.NewEntry(d.Logger), dataDir, d.Config.EmbeddedEtcdQuotaBytes)
+	ro := &restorer.RestoreOptions{
+		Config: &restorer.RestorationConfig{
+			RestoreDataDir:         dataDir,
+			EmbeddedEtcdQuotaBytes: d.Config.EmbeddedEtcdQuotaBytes,
+			MaxRequestBytes:        defaultMaxRequestBytes,
+			MaxTxnOps:              defaultMaxTxnOps,
+		},
+	}
+	e, err := restorer.StartEmbeddedEtcd(logrus.NewEntry(d.Logger), ro)
 	if err != nil {
 		d.Logger.Infof("unable to start embedded etcd: %v", err)
 		return DataDirectoryCorrupt, err

@@ -117,6 +117,12 @@ func copyFile(sourceFilePath, destinationFilePath string, filePermission os.File
 		return fmt.Errorf("unable to read source file %s: %v", sourceFilePath, err)
 	}
 
+	destinationDirectoryPath := path.Dir(destinationFilePath)
+	err = os.MkdirAll(destinationDirectoryPath, filePermission)
+	if err != nil {
+		return fmt.Errorf("unable to create destination directory %s: %v", destinationDirectoryPath, err)
+	}
+
 	err = ioutil.WriteFile(destinationFilePath, data, filePermission)
 	if err != nil {
 		return fmt.Errorf("unable to create destination file %s: %v", destinationFilePath, err)
