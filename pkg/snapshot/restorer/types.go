@@ -33,6 +33,9 @@ const (
 	defaultInitialAdvertisePeerURLs = "http://localhost:2380"
 	defaultInitialClusterToken      = "etcd-cluster"
 	defaultMaxFetchers              = 6
+	defaultMaxCallSendMsgSize       = 10 * 1024 * 1024 //10Mib
+	defaultMaxRequestBytes          = 10 * 1024 * 1024 //10Mib
+	defaultMaxTxnOps                = 10 * 1024
 	defaultEmbeddedEtcdQuotaBytes   = 8 * 1024 * 1024 * 1024 //8Gib
 )
 
@@ -64,6 +67,9 @@ type RestorationConfig struct {
 	Name                     string   `json:"name"`
 	SkipHashCheck            bool     `json:"skipHashCheck,omitempty"`
 	MaxFetchers              uint     `json:"maxFetchers,omitempty"`
+	MaxRequestBytes          uint     `json:"MaxRequestBytes,omitempty"`
+	MaxTxnOps                uint     `json:"MaxTxnOps,omitempty"`
+	MaxCallSendMsgSize       int      `json:"maxCallSendMsgSize,omitempty"`
 	EmbeddedEtcdQuotaBytes   int64    `json:"embeddedEtcdQuotaBytes,omitempty"`
 }
 

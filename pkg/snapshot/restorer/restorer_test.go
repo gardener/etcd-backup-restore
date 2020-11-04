@@ -53,6 +53,9 @@ var _ = Describe("Running Restorer", func() {
 		restoreCluster         string = "default=http://localhost:2380"
 		skipHashCheck          bool   = false
 		maxFetchers            uint   = 6
+		maxCallSendMsgSize            = 2 * 1024 * 1024 //2Mib
+		maxRequestBytes               = 2 * 1024 * 1024 //2Mib
+		maxTxnOps                     = 2 * 1024
 		embeddedEtcdQuotaBytes int64  = 8 * 1024 * 1024 * 1024
 	)
 
@@ -88,6 +91,9 @@ var _ = Describe("Running Restorer", func() {
 					InitialAdvertisePeerURLs: restorePeerURLs,
 					SkipHashCheck:            skipHashCheck,
 					MaxFetchers:              maxFetchers,
+					MaxCallSendMsgSize:       maxCallSendMsgSize,
+					MaxRequestBytes:          maxRequestBytes,
+					MaxTxnOps:                maxTxnOps,
 					EmbeddedEtcdQuotaBytes:   embeddedEtcdQuotaBytes,
 				},
 				BaseSnapshot:  *baseSnapshot,
@@ -206,6 +212,9 @@ var _ = Describe("Running Restorer", func() {
 				InitialAdvertisePeerURLs: restorePeerURLs,
 				SkipHashCheck:            skipHashCheck,
 				MaxFetchers:              maxFetchers,
+				MaxCallSendMsgSize:       maxCallSendMsgSize,
+				MaxRequestBytes:          maxRequestBytes,
+				MaxTxnOps:                maxTxnOps,
 				EmbeddedEtcdQuotaBytes:   embeddedEtcdQuotaBytes,
 			}
 		})
