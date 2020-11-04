@@ -41,9 +41,9 @@ if [ "$PERF_TEST_KUBECONFIG" == "" ]; then
   PERF_TEST_KUBECONFIG=$TM_KUBECONFIG_PATH/shoot.config
 fi
 
-ETCD_VERSION=${ETCD_VERSION:-"v3.3.17"}
+ETCD_VERSION=${ETCD_VERSION:-"v3.4.13"}
 if [ "$ETCD_VERSION" != "" ]; then
-  ETCD_IMAGE=${ETCD_IMAGE:-"quay.io/coreos/etcd:$ETCD_VERSION"}
+  ETCD_IMAGE=${ETCD_IMAGE:-"eu.gcr.io/gardener-project/gardener/etcd:$ETCD_VERSION"}
 fi
 
 if [ "$ETCDBR_VERSION" != "" ]; then
