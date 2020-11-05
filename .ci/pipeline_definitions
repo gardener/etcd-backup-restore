@@ -49,25 +49,6 @@ etcd-backup-restore:
     pull-request:
       traits:
         pull-request: ~
-    pull-request-tm-test:
-      traits:
-        pull-request:
-          policies:
-            require-label: 'reviewed/ok-to-test-tm'
-            replacement-label: 'needs/ok-to-test-tm'
-      steps:
-        tm_test:
-          depends:
-          - publish
-          image: eu.gcr.io/gardener-project/gardener/testmachinery/testmachinery-run:stable
-          execute:
-          - tm-tests-playground
-          - --flavor-tm-chart=etcd
-          - --landscape=playground
-          - --tm-landscape=external
-          - --
-          - --testrun-prefix=playground
-          - --set=projectNamespace=garden-it
     release:
       traits:
         version:
