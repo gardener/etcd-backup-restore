@@ -73,7 +73,7 @@ func (r *Restorer) Restore(ro RestoreOptions) error {
 		return nil
 	}
 	r.logger.Infof("Starting embedded etcd server...")
-	e, err := startEmbeddedEtcd(r.logger, ro)
+	e, err := StartEmbeddedEtcd(r.logger, ro.Config.RestoreDataDir, ro.Config.EmbeddedEtcdQuotaBytes)
 	if err != nil {
 		return err
 	}
@@ -307,10 +307,10 @@ func makeWALAndSnap(logger *zap.Logger, waldir, snapdir string, cl *membership.R
 	return w.SaveSnapshot(walpb.Snapshot{Index: commit, Term: term})
 }
 
-// startEmbeddedEtcd starts the embedded etcd server.
-func startEmbeddedEtcd(logger *logrus.Entry, ro RestoreOptions) (*embed.Etcd, error) {
+// StartEmbeddedEtcd starts the embedded etcd server.
+func StartEmbeddedEtcd(logger *logrus.Entry, dataDir string, embeddedEtcdQuotaBytes int64) (*embed.Etcd, error) {
 	cfg := embed.NewConfig()
-	cfg.Dir = filepath.Join(ro.Config.RestoreDataDir)
+	cfg.Dir = filepath.Join(dataDir)
 	DefaultListenPeerURLs := "http://localhost:0"
 	DefaultListenClientURLs := "http://localhost:0"
 	DefaultInitialAdvertisePeerURLs := "http://localhost:0"
@@ -324,7 +324,7 @@ func startEmbeddedEtcd(logger *logrus.Entry, ro RestoreOptions) (*embed.Etcd, er
 	cfg.APUrls = []url.URL{*apurl}
 	cfg.ACUrls = []url.URL{*acurl}
 	cfg.InitialCluster = cfg.InitialClusterFromName(cfg.Name)
-	cfg.QuotaBackendBytes = ro.Config.EmbeddedEtcdQuotaBytes
+	cfg.QuotaBackendBytes = embeddedEtcdQuotaBytes
 	cfg.Logger = "zap"
 	e, err := embed.StartEtcd(cfg)
 	if err != nil {

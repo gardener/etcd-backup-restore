@@ -51,6 +51,7 @@ func (e *EtcdInitializer) Initialize(mode validator.Mode, failBelowRevision int6
 		metrics.ValidationDurationSeconds.With(prometheus.Labels{metrics.LabelSucceeded: metrics.ValueSucceededFalse}).Observe(time.Now().Sub(start).Seconds())
 		return fmt.Errorf("failed to initialize since fail below revision check failed")
 	}
+
 	metrics.ValidationDurationSeconds.With(prometheus.Labels{metrics.LabelSucceeded: metrics.ValueSucceededTrue}).Observe(time.Now().Sub(start).Seconds())
 
 	if dataDirStatus != validator.DataDirectoryValid {
@@ -77,8 +78,9 @@ func NewInitializer(options *restorer.RestoreOptions, snapstoreConfig *snapstore
 		},
 		Validator: &validator.DataValidator{
 			Config: &validator.Config{
-				DataDir:         options.Config.RestoreDataDir,
-				SnapstoreConfig: snapstoreConfig,
+				DataDir:                options.Config.RestoreDataDir,
+				EmbeddedEtcdQuotaBytes: options.Config.EmbeddedEtcdQuotaBytes,
+				SnapstoreConfig:        snapstoreConfig,
 			},
 			Logger:    logger,
 			ZapLogger: zapLogger,

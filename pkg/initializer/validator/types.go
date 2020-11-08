@@ -15,6 +15,8 @@
 package validator
 
 import (
+	"time"
+
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	"github.com/sirupsen/logrus"
 	"go.uber.org/zap"
@@ -36,12 +38,14 @@ const (
 	DataDirectoryStatusUnknown
 	// RevisionConsistencyError indicates current etcd revision is inconsistent with latest snapshot revision.
 	RevisionConsistencyError
-	//FailBelowRevisionConsistencyError indicates the current etcd revision is inconsistent with failBelowRevision.
+	// FailBelowRevisionConsistencyError indicates the current etcd revision is inconsistent with failBelowRevision.
 	FailBelowRevisionConsistencyError
 )
 
 const (
-	snapSuffix = ".snap"
+	snapSuffix                    = ".snap"
+	connectionTimeout             = time.Duration(10 * time.Second)
+	embeddedEtcdPingLimitDuration = 60 * time.Second
 )
 
 // Mode is the Validation mode passed on to the DataValidator
@@ -56,8 +60,9 @@ const (
 
 // Config store configuration for DataValidator.
 type Config struct {
-	DataDir         string
-	SnapstoreConfig *snapstore.Config
+	DataDir                string
+	EmbeddedEtcdQuotaBytes int64
+	SnapstoreConfig        *snapstore.Config
 }
 
 // DataValidator contains implements Validator interface to perform data validation.

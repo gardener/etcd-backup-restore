@@ -15,6 +15,7 @@
 package validator
 
 import (
+	"context"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -22,11 +23,14 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/gardener/etcd-backup-restore/pkg/miscellaneous"
+	"github.com/gardener/etcd-backup-restore/pkg/snapshot/restorer"
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	"github.com/sirupsen/logrus"
 	bolt "go.etcd.io/bbolt"
+	"go.etcd.io/etcd/clientv3"
 	"go.etcd.io/etcd/etcdserver/api/snap"
 	"go.etcd.io/etcd/raft/raftpb"
 	"go.etcd.io/etcd/wal"
@@ -114,8 +118,19 @@ func (d *DataValidator) sanityCheck(failBelowRevision int64) (DataDirStatus, err
 		d.Logger.Infof("unable to get current etcd revision from backend db file: %v", err)
 		return DataDirectoryCorrupt, nil
 	}
-	d.Logger.Info("Checking for revision consistency...")
-	return d.checkRevisionConsistency(etcdRevision, failBelowRevision)
+
+	d.Logger.Info("Checking for etcd revision consistency...")
+	etcdRevisionStatus, latestSnapshotRevision, err := d.checkEtcdDataRevisionConsistency(etcdRevision, failBelowRevision)
+
+	// if etcd revision is inconsistent with latest snapshot revision then
+	//   check the etcd revision consistency by starting an embedded etcd since the WALs file can have uncommited data which it was unable to flush to Bolt DB.
+	if etcdRevisionStatus == RevisionConsistencyError {
+		d.Logger.Info("Checking for Full revision consistency...")
+		fullRevisionConsistencyStatus, err := d.checkFullRevisionConsistency(dataDir, latestSnapshotRevision)
+		return fullRevisionConsistencyStatus, err
+	}
+
+	return etcdRevisionStatus, err
 }
 
 // checkForDataCorruption will check for corruption of different files used by etcd.
@@ -229,18 +244,20 @@ func verifyDB(path string) error {
 	})
 }
 
-// checkRevisionConsistency compares the latest revisions on the etcd db file and the latest snapshot to verify that the etcd revision is not lesser than snapshot revision.
-// Return DataDirStatus indicating whether it is due to failBelowRevision or latest snapshot revision for snapstore.
-func (d *DataValidator) checkRevisionConsistency(etcdRevision, failBelowRevision int64) (DataDirStatus, error) {
+// checkEtcdDataRevisionConsistency compares the latest revision of the etcd db file and the latest snapshot revision to verify that the etcd revision is not lesser than snapshot revision.
+// Return DataDirStatus indicating whether it is due to failBelowRevision or latest snapshot revision for snapstore and also return the latest snapshot revision.
+func (d *DataValidator) checkEtcdDataRevisionConsistency(etcdRevision, failBelowRevision int64) (DataDirStatus, int64, error) {
+	var latestSnapshotRevision int64
+	latestSnapshotRevision = 0
+
 	store, err := snapstore.GetSnapstore(d.Config.SnapstoreConfig)
 	if err != nil {
-		return DataDirectoryStatusUnknown, fmt.Errorf("unable to fetch snapstore: %v", err)
+		return DataDirectoryStatusUnknown, latestSnapshotRevision, fmt.Errorf("unable to fetch snapstore: %v", err)
 	}
 
-	var latestSnapshotRevision int64
 	fullSnap, deltaSnaps, err := miscellaneous.GetLatestFullSnapshotAndDeltaSnapList(store)
 	if err != nil {
-		return DataDirectoryStatusUnknown, fmt.Errorf("unable to get snapshots from store: %v", err)
+		return DataDirectoryStatusUnknown, latestSnapshotRevision, fmt.Errorf("unable to get snapshots from store: %v", err)
 	}
 	if len(deltaSnaps) != 0 {
 		latestSnapshotRevision = deltaSnaps[len(deltaSnaps)-1].LastRevision
@@ -250,13 +267,61 @@ func (d *DataValidator) checkRevisionConsistency(etcdRevision, failBelowRevision
 		d.Logger.Infof("No snapshot found.")
 		if etcdRevision < failBelowRevision {
 			d.Logger.Infof("current etcd revision (%d) is less than fail below revision (%d): possible data loss", etcdRevision, failBelowRevision)
-			return FailBelowRevisionConsistencyError, nil
+			return FailBelowRevisionConsistencyError, latestSnapshotRevision, nil
 		}
-		return DataDirectoryValid, nil
+		return DataDirectoryValid, latestSnapshotRevision, nil
 	}
 
 	if etcdRevision < latestSnapshotRevision {
-		d.Logger.Infof("current etcd revision (%d) is less than latest snapshot revision (%d): possible data loss", etcdRevision, latestSnapshotRevision)
+		d.Logger.Infof("current etcd revision (%d) is less than latest snapshot revision (%d)", etcdRevision, latestSnapshotRevision)
+		return RevisionConsistencyError, latestSnapshotRevision, nil
+	}
+
+	return DataDirectoryValid, latestSnapshotRevision, nil
+}
+
+// checkFullRevisionConsistency starts an embedded etcd and then compares the latest revision of etcd db file and the latest snapshot revision to verify that the etcd revision is not lesser than snapshot revision.
+// Return DataDirStatus indicating whether WALs file have uncommited data which it was unable to flush to DB or latest DB revision is still less than snapshot revision.
+func (d *DataValidator) checkFullRevisionConsistency(dataDir string, latestSnapshotRevision int64) (DataDirStatus, error) {
+	var latestSyncedEtcdRevision int64
+
+	d.Logger.Info("Starting embedded etcd server...")
+	e, err := restorer.StartEmbeddedEtcd(logrus.NewEntry(d.Logger), dataDir, d.Config.EmbeddedEtcdQuotaBytes)
+	if err != nil {
+		d.Logger.Infof("unable to start embedded etcd: %v", err)
+		return DataDirectoryCorrupt, err
+	}
+	defer func() {
+		e.Server.Stop()
+		e.Close()
+	}()
+	client, err := clientv3.NewFromURL(e.Clients[0].Addr().String())
+	if err != nil {
+		d.Logger.Infof("unable to get the embedded etcd client: %v", err)
+		return DataDirectoryCorrupt, err
+	}
+	defer client.Close()
+
+	timer := time.NewTimer(embeddedEtcdPingLimitDuration)
+
+waitLoop:
+	for {
+		select {
+		case <-timer.C:
+			break waitLoop
+		default:
+			latestSyncedEtcdRevision, _ = getLatestSyncedRevision(client)
+			if latestSyncedEtcdRevision >= latestSnapshotRevision {
+				d.Logger.Infof("After starting embeddedEtcd backend DB file revision (%d) is greater than or equal to latest snapshot revision (%d): no data loss", latestSyncedEtcdRevision, latestSnapshotRevision)
+				break waitLoop
+			}
+			time.Sleep(1 * time.Second)
+		}
+	}
+	defer timer.Stop()
+
+	if latestSyncedEtcdRevision < latestSnapshotRevision {
+		d.Logger.Infof("After starting embeddedEtcd backend DB file revision (%d) is less than  latest snapshot revision (%d): possible data loss", latestSyncedEtcdRevision, latestSnapshotRevision)
 		return RevisionConsistencyError, nil
 	}
 
@@ -299,4 +364,20 @@ func getLatestEtcdRevision(path string) (int64, error) {
 	}
 
 	return rev, nil
+}
+
+// getLatestSyncedRevision finds out the latest revision on etcd db file when embedded etcd is started to double check the latest revision of etcd db file.
+func getLatestSyncedRevision(client *clientv3.Client) (int64, error) {
+	var latestSyncedRevision int64
+
+	ctx, cancel := context.WithTimeout(context.TODO(), connectionTimeout)
+	defer cancel()
+	resp, err := client.Get(ctx, "", clientv3.WithLastRev()...)
+	if err != nil {
+		fmt.Printf("Failed to get the latest etcd revision: %v\n", err)
+		return latestSyncedRevision, err
+	}
+	latestSyncedRevision = resp.Header.Revision
+
+	return latestSyncedRevision, nil
 }
