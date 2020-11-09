@@ -111,16 +111,47 @@ func runSnapshotter(logger *logrus.Entry, deltaSnapshotPeriod time.Duration, end
 }
 
 // copyFile copies the contents of the file at sourceFilePath into the file at destinationFilePath. If no file exists at destinationFilePath, a new file is created before copying
-func copyFile(sourceFilePath, destinationFilePath string) error {
+func copyFile(sourceFilePath, destinationFilePath string, filePermission os.FileMode) error {
 	data, err := ioutil.ReadFile(sourceFilePath)
 	if err != nil {
 		return fmt.Errorf("unable to read source file %s: %v", sourceFilePath, err)
 	}
 
-	err = ioutil.WriteFile(destinationFilePath, data, 0700)
+	err = ioutil.WriteFile(destinationFilePath, data, filePermission)
 	if err != nil {
 		return fmt.Errorf("unable to create destination file %s: %v", destinationFilePath, err)
 	}
+	return nil
+}
 
+// copyDir copies the contents of the Source dir to the destination dir.
+func copyDir(sourceDirPath, destinationDirPath string) error {
+	if len(sourceDirPath) == 0 || len(destinationDirPath) == 0 {
+		return nil
+	}
+
+	files, err := ioutil.ReadDir(sourceDirPath)
+	if err != nil {
+		return err
+	}
+
+	for _, file := range files {
+		sourcePath := path.Join(sourceDirPath, file.Name())
+		destPath := path.Join(destinationDirPath, file.Name())
+
+		fileInfo, err := os.Stat(sourcePath)
+		if err != nil {
+			return err
+		}
+
+		if fileInfo.Mode().IsDir() {
+			os.Mkdir(destPath, fileInfo.Mode())
+			copyDir(sourcePath, destPath)
+		} else if fileInfo.Mode().IsRegular() {
+			copyFile(sourcePath, destPath, fileInfo.Mode())
+		} else {
+			return fmt.Errorf("File format not known")
+		}
+	}
 	return nil
 }

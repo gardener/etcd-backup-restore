@@ -14,10 +14,12 @@
 package validator_test
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"os"
 	"path"
+	"time"
 
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	"github.com/gardener/etcd-backup-restore/test/utils"
@@ -132,11 +134,12 @@ var _ = Describe("Running Datavalidator", func() {
 	Context("with corrupt db file", func() {
 		It("should return DataDirStatus as DataDirectoryCorrupt, and nil error", func() {
 			dbFile := path.Join(restoreDataDir, "member", "snap", "db")
-			_, err = os.Stat(dbFile)
+			dbFileInfo, err := os.Stat(dbFile)
 			Expect(err).ShouldNot(HaveOccurred())
 
 			tempFile := path.Join(outputDir, "temp", "db")
-			err = copyFile(dbFile, tempFile)
+
+			err = copyFile(dbFile, tempFile, dbFileInfo.Mode())
 			Expect(err).ShouldNot(HaveOccurred())
 
 			file, err := os.OpenFile(
@@ -225,6 +228,56 @@ var _ = Describe("Running Datavalidator", func() {
 		})
 	})
 
+	Context("with inconsistent revision numbers between etcd and latest snapshot and WALs file have some uncommitted data", func() {
+		It("should return DataDirStatus as DataDirectoryValid and nil error", func() {
+
+			snapPath := path.Join(restoreDataDir, "member", "snap")
+			tempPath := path.Join(outputDir, "temp")
+
+			// copy the snap dir to tempPath
+			err = copyDir(snapPath, tempPath)
+			Expect(err).ShouldNot(HaveOccurred())
+
+			defer func() {
+				err = os.RemoveAll(tempPath)
+				Expect(err).ShouldNot(HaveOccurred())
+			}()
+
+			// start etcd
+			etcd, err := utils.StartEmbeddedEtcd(testCtx, restoreDataDir, logger)
+			Expect(err).ShouldNot(HaveOccurred())
+			endpoints := []string{etcd.Clients[0].Addr().String()}
+
+			resp := &utils.EtcdDataPopulationResponse{}
+			// populate the etcd with some more keys
+			utils.PopulateEtcd(testCtx, logger, endpoints, 0, int(keyTo/2), resp)
+			Expect(resp.Err).ShouldNot(HaveOccurred())
+
+			//run the snapshotter
+			deltaSnapshotPeriod := 5 * time.Second
+			ctx, cancel := context.WithTimeout(testCtx, time.Duration(15*time.Second))
+			err = runSnapshotter(logger, deltaSnapshotPeriod, endpoints, ctx.Done())
+			Expect(err).ShouldNot(HaveOccurred())
+
+			etcd.Close()
+			cancel()
+
+			//remove the snap dir,so that WALs file can have data which is ahead of DB file.
+			err = os.RemoveAll(snapPath)
+			Expect(err).ShouldNot(HaveOccurred())
+
+			//make a snap dir, copy the content of old snap dir and place inside member dir
+			err = os.Mkdir(snapPath, 0777)
+			Expect(err).ShouldNot(HaveOccurred())
+			err = copyDir(tempPath, snapPath)
+			Expect(err).ShouldNot(HaveOccurred())
+
+			dataDirStatus, err := validator.Validate(Full, 0)
+			Expect(err).ShouldNot(HaveOccurred())
+			Expect(int(dataDirStatus)).Should(Equal(DataDirectoryValid))
+		})
+	})
+
 	Context("with fail below revision configured to low value and no snapshots taken", func() {
 		It("should return DataDirStatus as DataDirectoryValid, and nil error", func() {
 			validator.Config.SnapstoreConfig.Container = path.Join(snapstoreBackupDir, "tmp")
@@ -293,6 +346,7 @@ var _ = Describe("Running Datavalidator", func() {
 			Expect(int(dataDirStatus)).Should(Equal(DataDirectoryStatusUnknown))
 		})
 	})
+
 })
 
 func createCorruptSnap(filePath string) {
