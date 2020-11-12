@@ -134,12 +134,9 @@ var _ = Describe("Running Datavalidator", func() {
 	Context("with corrupt db file", func() {
 		It("should return DataDirStatus as DataDirectoryCorrupt, and nil error", func() {
 			dbFile := path.Join(restoreDataDir, "member", "snap", "db")
-			dbFileInfo, err := os.Stat(dbFile)
-			Expect(err).ShouldNot(HaveOccurred())
-
 			tempFile := path.Join(outputDir, "temp", "db")
 
-			err = copyFile(dbFile, tempFile, dbFileInfo.Mode())
+			err = copyFile(dbFile, tempFile, 0700)
 			Expect(err).ShouldNot(HaveOccurred())
 
 			file, err := os.OpenFile(
