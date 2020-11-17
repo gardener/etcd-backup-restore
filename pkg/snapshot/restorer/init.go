@@ -32,6 +32,9 @@ func NewRestorationConfig() *RestorationConfig {
 		Name:                     defaultName,
 		SkipHashCheck:            false,
 		MaxFetchers:              defaultMaxFetchers,
+		MaxCallSendMsgSize:       defaultMaxCallSendMsgSize,
+		MaxRequestBytes:          defaultMaxRequestBytes,
+		MaxTxnOps:                defaultMaxTxnOps,
 		EmbeddedEtcdQuotaBytes:   int64(defaultEmbeddedEtcdQuotaBytes),
 	}
 }
@@ -45,6 +48,9 @@ func (c *RestorationConfig) AddFlags(fs *flag.FlagSet) {
 	fs.StringVar(&c.Name, "name", c.Name, "human-readable name for this member")
 	fs.BoolVar(&c.SkipHashCheck, "skip-hash-check", c.SkipHashCheck, "ignore snapshot integrity hash value (required if copied from data directory)")
 	fs.UintVar(&c.MaxFetchers, "max-fetchers", c.MaxFetchers, "maximum number of threads that will fetch delta snapshots in parallel")
+	fs.IntVar(&c.MaxCallSendMsgSize, "max-call-send-message-size", c.MaxCallSendMsgSize, "maximum size of message that the client sends")
+	fs.UintVar(&c.MaxRequestBytes, "max-request-bytes", c.MaxRequestBytes, "Maximum client request size in bytes the server will accept")
+	fs.UintVar(&c.MaxTxnOps, "max-txn-ops", c.MaxTxnOps, "Maximum number of operations permitted in a transaction")
 	fs.Int64Var(&c.EmbeddedEtcdQuotaBytes, "embedded-etcd-quota-bytes", c.EmbeddedEtcdQuotaBytes, "maximum backend quota for the embedded etcd used for applying delta snapshots")
 }
 
@@ -55,6 +61,9 @@ func (c *RestorationConfig) Validate() error {
 	}
 	if _, err := types.NewURLs(c.InitialAdvertisePeerURLs); err != nil {
 		return fmt.Errorf("failed parsing peers urls for restore cluster: %v", err)
+	}
+	if c.MaxCallSendMsgSize <= 0 {
+		return fmt.Errorf("max call send message should be greater than zero")
 	}
 	if c.MaxFetchers <= 0 {
 		return fmt.Errorf("max fetchers should be greater than zero")
