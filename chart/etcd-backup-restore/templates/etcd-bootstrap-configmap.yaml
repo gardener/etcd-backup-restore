@@ -10,18 +10,8 @@ metadata:
     app.kubernetes.io/instance: {{ .Release.Name }}
 data:
   bootstrap.sh: |-
-    #!/bin/sh
+    #!/bin/bash
     VALIDATION_MARKER=/var/etcd/data/validation_marker
-
-{{- if .Values.backupRestoreTLS }}
-    # Add self-signed CA to list of root CA-certificates
-    cat /var/etcdbr/ssl/ca/ca.crt >> /etc/ssl/cert.pem
-    if [ $? -ne 0 ]
-    then
-      echo "failed to update root certificate list"
-      exit 1
-    fi
-{{- end }}
 
     trap_and_propagate() {
         PID=$1
@@ -45,15 +35,20 @@ data:
     check_and_start_etcd(){
           while true;
           do
-            wget "http{{ if .Values.backupRestoreTLS }}s{{ end }}://localhost:{{ .Values.servicePorts.backupRestore }}/initialization/status" -S -O status;
+            touch status
+            echo "Getting status..."
+            curl -S -s -o status --unix-socket /var/run/etcdbrctl/etcdbrctl.socket http://localhost/initialization/status;
             STATUS=`cat status`;
             case $STATUS in
             "New")
-                  wget "http{{ if .Values.backupRestoreTLS }}s{{ end }}://localhost:{{ .Values.servicePorts.backupRestore }}/initialization/start?mode=$1{{- if .Values.backup.failBelowRevision }}&failbelowrevision={{ int $.Values.backup.failBelowRevision }}{{- end }}" -S -O - ;;
+                  echo "Status is New. Starting...";
+                  curl -S -s -o /dev/stdout --unix-socket /var/run/etcdbrctl/etcdbrctl.socket "http://localhost/initialization/start?mode=$1{{- if .Values.backup.failBelowRevision }}&failbelowrevision={{ int $.Values.backup.failBelowRevision }}{{- end }}";;
             "Progress")
+                  echo "Status is Progress. Waiting...";
                   sleep 1;
                   continue;;
             "Failed")
+                  echo "Status is Failed. Retrying...";
                   sleep 1;
                   continue;;
             "Successful")
@@ -62,6 +57,7 @@ data:
                   break
                   ;;
             *)
+                  echo "Status is Unknown. Retrying...";
                   sleep 1;
                   ;;
             esac;
@@ -75,7 +71,7 @@ data:
           check_and_start_etcd full
     else
           echo "$VALIDATION_MARKER file present. Check return status and decide on initialization"
-          run_status=`cat $VALIDATION_MARKER`
+          run_status=$(cat $VALIDATION_MARKER)
           echo "$VALIDATION_MARKER content: $run_status"
           if [ $run_status == '143' ] || [ $run_status == '130' ] || [ $run_status == '0' ] ; then
                 echo "Requesting sidecar to perform sanity validation"

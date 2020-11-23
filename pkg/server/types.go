@@ -23,6 +23,7 @@ import (
 )
 
 const (
+	defaultUDSPath                 = "/var/run/etcdbrctl/etcdbrctl.socket"
 	defaultServerPort              = 8080
 	defaultDefragmentationSchedule = "0 0 */3 * *"
 )

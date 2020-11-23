@@ -15,10 +15,14 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/pprof"
+	"os"
+	"path/filepath"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -62,7 +66,9 @@ type HTTPHandler struct {
 	Initializer               initializer.Initializer
 	Snapshotter               *snapshotter.Snapshotter
 	Port                      uint
+	UDSPath                   string
 	server                    *http.Server
+	udsServer                 *http.Server
 	Logger                    *logrus.Entry
 	initializationStatusMutex sync.Mutex
 	AckState                  uint32
@@ -110,6 +116,16 @@ func (h *HTTPHandler) RegisterHandler() {
 		Addr:    fmt.Sprintf(":%d", h.Port),
 		Handler: mux,
 	}
+
+	udsMux := http.NewServeMux()
+
+	udsMux.HandleFunc("/initialization/start", h.serveInitialize)
+	udsMux.HandleFunc("/initialization/status", h.serveInitializationStatus)
+
+	h.udsServer = &http.Server{
+		Handler: mux,
+	}
+
 	return
 }
 
@@ -137,8 +153,32 @@ func (h *HTTPHandler) checkAndSetSecurityHeaders(rw http.ResponseWriter) {
 
 // Start starts the http server to listen for request
 func (h *HTTPHandler) Start() {
-	h.Logger.Infof("Starting HTTP server at addr: %s", h.server.Addr)
+	go func() {
+		h.Logger.Infof("Starting UDS server at %q", h.UDSPath)
 
+		if err := os.Remove(h.UDSPath); err != nil && !os.IsNotExist(err) {
+			h.Logger.Fatalf("failed to delete file %q %v", h.UDSPath, err)
+		}
+
+		if err := os.MkdirAll(filepath.Dir(h.UDSPath), 0744); err != nil {
+			h.Logger.Fatalf("failed to create all directories for %q %v", filepath.Dir(h.UDSPath), err)
+		}
+
+		l, err := (&net.ListenConfig{}).Listen(context.Background(), "unix", h.UDSPath)
+		if err != nil {
+			h.Logger.Fatalf("Failed to start uds listener: %v", err)
+		}
+
+		// we must make sure to close the listener if something else breaks.
+		defer l.Close()
+
+		err = h.udsServer.Serve(l)
+		if err != nil && err != http.ErrServerClosed {
+			h.Logger.Fatalf("Failed to start uds server: %v", err)
+		}
+	}()
+
+	h.Logger.Infof("Starting HTTP server at addr: %s", h.server.Addr)
 	if !h.EnableTLS {
 		err := h.server.ListenAndServe()
 		if err != nil && err != http.ErrServerClosed {
@@ -159,6 +199,9 @@ func (h *HTTPHandler) Start() {
 
 // Stop stops the http server
 func (h *HTTPHandler) Stop() error {
+	if err := h.udsServer.Close(); err != nil {
+		return err
+	}
 	return h.server.Close()
 }
 

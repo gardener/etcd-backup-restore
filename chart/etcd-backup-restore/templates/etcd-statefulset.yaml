@@ -78,6 +78,8 @@ spec:
           mountPath: /var/etcd/bin/
         - name: etcd-config-file
           mountPath: /var/etcd/config/
+        - name: uds
+          mountPath: /var/run/etcdbrctl
 {{- if .Values.etcdTLS }}
         - name: ca-etcd
           mountPath: /var/etcd/ssl/ca
@@ -93,6 +95,7 @@ spec:
         - etcdbrctl
         - server
         - --schedule={{ .Values.backup.schedule }}
+        - --uds-path=/var/run/etcdbrctl/etcdbrctl.socket
 {{- if eq .Values.backup.garbageCollectionPolicy "LimitBased" }}
         - --max-backups={{ .Values.backup.maxBackups }}
         - --garbage-collection-policy={{ .Values.backup.garbageCollectionPolicy }}
@@ -254,6 +257,8 @@ spec:
           mountPath: /var/etcd/data/
         - name: etcd-config-file
           mountPath: /var/etcd/config/
+        - name: uds
+          mountPath: /var/run/etcdbrctl
 {{- if .Values.etcdTLS }}
         - name: ca-etcd
           mountPath: /var/etcd/ssl/ca
@@ -285,6 +290,8 @@ spec:
           items:
           - key: etcd.conf.yaml
             path: etcd.conf.yaml
+      - name: uds
+        emptyDir: {}
 {{- if .Values.etcdTLS }}
       - name: ca-etcd
         secret:
