@@ -84,6 +84,7 @@ backup:
   #   username: username-with-object-storage-privileges
   #   password: password
   #   tenantName: tenant-name
+  #   regionName: region-name
   # oss:
   #   endpoint: oss-endpoint-url
   #   accessKeySecret: secret-access-key-with-object-storage-privileges

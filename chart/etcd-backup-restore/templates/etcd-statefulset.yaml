@@ -197,6 +197,11 @@ spec:
             secretKeyRef:
               name: {{ .Release.Name }}-etcd-backup
               key: "tenantName"
+        - name: "OS_REGION_NAME"
+            valueFrom:
+              secretKeyRef:
+                name: { { .Release.Name } }-etcd-backup
+                key: "regionName"
 {{- else if eq .Values.backup.storageProvider "OSS" }}
         - name: "ALICLOUD_ENDPOINT"
           valueFrom:
