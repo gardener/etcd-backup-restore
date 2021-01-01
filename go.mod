@@ -14,7 +14,7 @@ require (
 	github.com/coreos/go-systemd v0.0.0-20191104093116-d3cd4ed1dbcf // indirect
 	github.com/elazarl/goproxy v0.0.0-20191011121108-aa519ddbe484 // indirect
 	github.com/ghodss/yaml v1.0.0
-	github.com/gophercloud/gophercloud v0.7.0
+	github.com/gophercloud/gophercloud v0.15.0
 	github.com/gophercloud/utils v0.0.0-20200204043447-9864b6f1f12f
 	github.com/gorilla/websocket v1.4.1 // indirect
 	github.com/grpc-ecosystem/go-grpc-middleware v1.1.0 // indirect
@@ -31,6 +31,7 @@ require (
 	go.etcd.io/bbolt v1.3.3
 	go.etcd.io/etcd v0.0.0-20191023171146-3cf2f69b5738
 	go.opencensus.io v0.22.1 // indirect
+	go.uber.org/zap v1.10.0
 	golang.org/x/net v0.0.0-20200707034311-ab3426394381 // indirect
 	golang.org/x/sys v0.0.0-20200728102440-3e129f6d46b1 // indirect
 	golang.org/x/time v0.0.0-20190921001708-c4c64cad1fd0 // indirect
