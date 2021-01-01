@@ -135,8 +135,6 @@ github.com/containerd/containerd/sys
 github.com/containerd/containerd/version
 # github.com/containerd/continuity v0.0.0-20200107194136-26c1120b8d41
 github.com/containerd/continuity/pathdriver
-# github.com/coreos/etcd v3.3.22+incompatible => go.etcd.io/etcd v0.5.0-alpha.5.0.20200824191128-ae9734ed278b
-## explicit
 # github.com/coreos/go-semver v0.3.0
 github.com/coreos/go-semver/semver
 # github.com/coreos/go-systemd v0.0.0-20191104093116-d3cd4ed1dbcf
@@ -595,6 +593,7 @@ go.uber.org/atomic
 # go.uber.org/multierr v1.1.0
 go.uber.org/multierr
 # go.uber.org/zap v1.10.0
+## explicit
 go.uber.org/zap
 go.uber.org/zap/buffer
 go.uber.org/zap/internal/bufferpool
@@ -889,7 +888,7 @@ k8s.io/api/storage/v1beta1
 k8s.io/apiextensions-apiserver/pkg/apis/apiextensions
 k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1
 k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1beta1
-# k8s.io/apimachinery v0.18.0 => k8s.io/apimachinery v0.18.0
+# k8s.io/apimachinery v0.20.1 => k8s.io/apimachinery v0.18.0
 ## explicit
 k8s.io/apimachinery/pkg/api/equality
 k8s.io/apimachinery/pkg/api/errors
