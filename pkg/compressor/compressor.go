@@ -52,14 +52,16 @@ func CompressSnapshot(data io.ReadCloser, compressionPolicy string) (io.ReadClos
 
 	go func() {
 		var err error
+		var n int64
 		defer pWriter.CloseWithError(err)
 		defer gWriter.Close()
 		defer data.Close()
-		_, err = io.Copy(gWriter, data)
+		n, err = io.Copy(gWriter, data)
 		if err != nil {
-			logger.Infof("compression failed: %v", err)
+			logger.Errorf("compression failed: %v", err)
 			return
 		}
+		logger.Infof("Total written bytes: %v", n)
 	}()
 
 	return pReader, nil

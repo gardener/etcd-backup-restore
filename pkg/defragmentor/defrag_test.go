@@ -135,7 +135,7 @@ var _ = Describe("Defrag", func() {
 			Expect(err).ShouldNot(HaveOccurred())
 
 			Expect(defragCount).Should(Or(Equal(minimumExpectedDefragCount), Equal(minimumExpectedDefragCount+1)))
-			Expect(newStatus.DbSize).Should(BeNumerically("<", oldDBSize))
+			Expect(newStatus.DbSize).Should(BeNumerically("<=", oldDBSize))
 			Expect(newStatus.Header.GetRevision()).Should(BeNumerically("==", oldRevision))
 		})
 	})

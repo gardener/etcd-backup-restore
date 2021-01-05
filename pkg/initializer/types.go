@@ -16,8 +16,8 @@ package initializer
 
 import (
 	"github.com/gardener/etcd-backup-restore/pkg/initializer/validator"
-	"github.com/gardener/etcd-backup-restore/pkg/snapshot/restorer"
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
+	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 	"github.com/sirupsen/logrus"
 )
 
@@ -25,7 +25,7 @@ import (
 // checks and snapshot restoration in case of corruption.
 type Config struct {
 	SnapstoreConfig *snapstore.Config
-	RestoreOptions  *restorer.RestoreOptions
+	RestoreOptions  *brtypes.RestoreOptions
 }
 
 // EtcdInitializer implements Initializer interface to perform validation and

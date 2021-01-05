@@ -23,12 +23,12 @@ import (
 
 	"github.com/gardener/etcd-backup-restore/pkg/errors"
 	"github.com/gardener/etcd-backup-restore/pkg/metrics"
+	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/gardener/etcd-backup-restore/pkg/defragmentor"
 	"github.com/gardener/etcd-backup-restore/pkg/etcdutil"
 	"github.com/gardener/etcd-backup-restore/pkg/initializer"
-	"github.com/gardener/etcd-backup-restore/pkg/snapshot/restorer"
 	"github.com/gardener/etcd-backup-restore/pkg/snapshot/snapshotter"
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	cron "github.com/robfig/cron/v3"
@@ -71,7 +71,7 @@ func (b *BackupRestoreServer) Run(ctx context.Context) error {
 		b.logger.Fatalf("failed creating url map for restore cluster: %v", err)
 	}
 
-	options := &restorer.RestoreOptions{
+	options := &brtypes.RestoreOptions{
 		Config:      b.config.RestorationConfig,
 		ClusterURLs: clusterURLsMap,
 		PeerURLs:    peerURLs,
@@ -114,7 +114,7 @@ func (b *BackupRestoreServer) startHTTPServer(initializer initializer.Initialize
 
 // runServerWithoutSnapshotter runs the etcd-backup-restore
 // for the case where snapshotter is not configured
-func (b *BackupRestoreServer) runServerWithoutSnapshotter(ctx context.Context, restoreOpts *restorer.RestoreOptions) {
+func (b *BackupRestoreServer) runServerWithoutSnapshotter(ctx context.Context, restoreOpts *brtypes.RestoreOptions) {
 	etcdInitializer := initializer.NewInitializer(restoreOpts, nil, b.logger.Logger)
 
 	// If no storage provider is given, snapshotter will be nil, in which
@@ -131,7 +131,7 @@ func (b *BackupRestoreServer) runServerWithoutSnapshotter(ctx context.Context, r
 
 // runServerWithSnapshotter runs the etcd-backup-restore
 // for the case where snapshotter is configured correctly
-func (b *BackupRestoreServer) runServerWithSnapshotter(ctx context.Context, restoreOpts *restorer.RestoreOptions) error {
+func (b *BackupRestoreServer) runServerWithSnapshotter(ctx context.Context, restoreOpts *brtypes.RestoreOptions) error {
 	ackCh := make(chan struct{})
 
 	etcdInitializer := initializer.NewInitializer(restoreOpts, b.config.SnapstoreConfig, b.logger.Logger)

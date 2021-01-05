@@ -23,6 +23,11 @@ import (
 	"sync"
 	"time"
 
+	"github.com/gardener/etcd-backup-restore/pkg/compressor"
+	"github.com/gardener/etcd-backup-restore/pkg/etcdutil"
+	"github.com/gardener/etcd-backup-restore/pkg/snapshot/snapshotter"
+	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
+	"github.com/gardener/etcd-backup-restore/pkg/wrappers"
 	"github.com/sirupsen/logrus"
 	"go.etcd.io/etcd/clientv3"
 	"go.etcd.io/etcd/embed"
@@ -175,4 +180,32 @@ func ContextWithGracePeriod(parent context.Context, gracePeriod time.Duration) c
 func ContextWithWaitGroupFollwedByGracePeriod(parent context.Context, wg *sync.WaitGroup, gracePeriod time.Duration) context.Context {
 	ctx := ContextWithWaitGroup(parent, wg)
 	return ContextWithGracePeriod(ctx, gracePeriod)
+}
+
+// RunSnapshotter creates a snapshotter object and runs it for a duration specified by 'snapshotterDurationSeconds'
+func RunSnapshotter(logger *logrus.Entry, container string, deltaSnapshotPeriod time.Duration, endpoints []string, stopCh <-chan struct{}, startWithFullSnapshot bool, compressionConfig *compressor.CompressionConfig) error {
+	store, err := snapstore.GetSnapstore(&snapstore.Config{Container: container, Provider: "Local"})
+	if err != nil {
+		return err
+	}
+
+	etcdConnectionConfig := etcdutil.NewEtcdConnectionConfig()
+	etcdConnectionConfig.ConnectionTimeout.Duration = 10 * time.Second
+	etcdConnectionConfig.Endpoints = endpoints
+
+	snapshotterConfig := &snapshotter.Config{
+		FullSnapshotSchedule:     "0 0 1 1 *",
+		DeltaSnapshotPeriod:      wrappers.Duration{Duration: deltaSnapshotPeriod},
+		DeltaSnapshotMemoryLimit: snapshotter.DefaultDeltaSnapMemoryLimit,
+		GarbageCollectionPeriod:  wrappers.Duration{Duration: time.Minute},
+		GarbageCollectionPolicy:  snapshotter.GarbageCollectionPolicyLimitBased,
+		MaxBackups:               1,
+	}
+
+	ssr, err := snapshotter.NewSnapshotter(logger, snapshotterConfig, store, etcdConnectionConfig, compressionConfig)
+	if err != nil {
+		return err
+	}
+
+	return ssr.Run(stopCh, startWithFullSnapshot)
 }

@@ -12,18 +12,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package restorer_test
+package compactor_test
 
 import (
 	"context"
+	"fmt"
+	"io/ioutil"
 	"os"
-	"path"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/gardener/etcd-backup-restore/pkg/compressor"
-
 	"github.com/gardener/etcd-backup-restore/test/utils"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -31,24 +31,19 @@ import (
 	"go.etcd.io/etcd/embed"
 )
 
-const (
-	outputDir    = "../../../test/output"
-	etcdDir      = outputDir + "/default.etcd"
-	snapstoreDir = outputDir + "/snapshotter.bkp"
-)
-
 var (
-	testCtx   = context.Background()
-	logger    = logrus.New().WithField("suite", "restorer")
-	etcd      *embed.Etcd
-	err       error
-	keyTo     int
-	endpoints []string
+	testSuitDir, testEtcdDir, testSnapshotDir string
+	testCtx                                   = context.Background()
+	logger                                    = logrus.New().WithField("suite", "compactor")
+	etcd                                      *embed.Etcd
+	err                                       error
+	keyTo                                     int
+	endpoints                                 []string
 )
 
-func TestRestorer(t *testing.T) {
+func TestCompactor(t *testing.T) {
 	RegisterFailHandler(Fail)
-	RunSpecs(t, "Restorer Suite")
+	RunSpecs(t, "Compactor Suite")
 }
 
 var _ = SynchronizedBeforeSuite(func() []byte {
@@ -56,17 +51,25 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 		data []byte
 	)
 
-	err = os.RemoveAll(outputDir)
+	// Create a directory for compaction test cases
+	testSuitDir, err = ioutil.TempDir("/tmp", "compactor-test")
 	Expect(err).ShouldNot(HaveOccurred())
 
-	etcd, err = utils.StartEmbeddedEtcd(testCtx, etcdDir, logger)
+	// Directory for the main ETCD process
+	testEtcdDir := fmt.Sprintf("%s/etcd/default.etcd", testSuitDir)
+	// Directory for storing the backups
+	testSnapshotDir := fmt.Sprintf("%s/etcd/snapshotter.bkp", testSuitDir)
+
+	logger.Infof("ETCD Directory is: %s", testEtcdDir)
+	logger.Infof("Snapshot Directory is: %s", testSnapshotDir)
+
+	// Start the main ETCD process that will run untill all compaction test cases are run
+	etcd, err = utils.StartEmbeddedEtcd(testCtx, testEtcdDir, logger)
 	Expect(err).ShouldNot(HaveOccurred())
-	defer func() {
-		etcd.Server.Stop()
-		etcd.Close()
-	}()
 	endpoints = []string{etcd.Clients[0].Addr().String()}
 	logger.Infof("endpoints: %s", endpoints)
+
+	// Populates data into the ETCD
 	populatorCtx, cancelPopulator := context.WithTimeout(testCtx, 15*time.Second)
 	defer cancelPopulator()
 	resp := &utils.EtcdDataPopulationResponse{}
@@ -74,12 +77,17 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 	wg.Add(1)
 	go utils.PopulateEtcdWithWaitGroup(populatorCtx, wg, logger, endpoints, resp)
 
+	// Take snapshots (Full + Delta) of the ETCD database
 	deltaSnapshotPeriod := time.Second
 	ctx := utils.ContextWithWaitGroupFollwedByGracePeriod(populatorCtx, wg, deltaSnapshotPeriod+2*time.Second)
-
 	compressionConfig := compressor.NewCompressorConfig()
-	err = utils.RunSnapshotter(logger, snapstoreDir, deltaSnapshotPeriod, endpoints, ctx.Done(), true, compressionConfig)
+	compressionConfig.Enabled = true
+	compressionConfig.CompressionPolicy = "gzip"
+	err = utils.RunSnapshotter(logger, testSnapshotDir, deltaSnapshotPeriod, endpoints, ctx.Done(), true, compressionConfig)
 	Expect(err).ShouldNot(HaveOccurred())
+
+	// Wait unitil the populator finishes with populating ETCD
+	wg.Wait()
 
 	keyTo = resp.KeyTo
 	return data
@@ -89,15 +97,11 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 var _ = SynchronizedAfterSuite(func() {}, cleanUp)
 
 func cleanUp() {
-	err = os.RemoveAll(etcdDir)
-	Expect(err).ShouldNot(HaveOccurred())
+	logger.Info("Stop the Embedded etcd server.")
+	etcd.Server.Stop()
+	etcd.Close()
 
-	err = os.RemoveAll(snapstoreDir)
+	logger.Infof("All tests are done for compactor suite. %s is being removed.", testSuitDir)
+	err = os.RemoveAll(testSuitDir)
 	Expect(err).ShouldNot(HaveOccurred())
-
-	//for the negative scenario for invalid restoredir set to "" we need to cleanup the member folder in the working directory
-	restoreDir := path.Clean("")
-	err = os.RemoveAll(path.Join(restoreDir, "member"))
-	Expect(err).ShouldNot(HaveOccurred())
-
 }
