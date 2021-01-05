@@ -26,9 +26,9 @@ import (
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 
 	"github.com/gardener/etcd-backup-restore/pkg/initializer/validator"
-	"github.com/gardener/etcd-backup-restore/pkg/snapshot/restorer"
 
 	"github.com/gardener/etcd-backup-restore/pkg/server"
+	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 	"github.com/ghodss/yaml"
 	"github.com/sirupsen/logrus"
 	flag "github.com/spf13/pflag"
@@ -127,17 +127,80 @@ func (c *initializerOptions) complete() {
 	c.restorerOptions.complete()
 }
 
+type restoreOpts interface {
+	getRestorationConfig() *brtypes.RestorationConfig
+	getSnapstoreConfig() *snapstore.Config
+	validate() error
+	complete()
+}
+
+type compactOptions struct {
+	restorationConfig   *brtypes.RestorationConfig
+	snapstoreConfig     *snapstore.Config
+	needDefragmentation bool
+}
+
+// newCompactOptions returns the validation config.
+func newCompactOptions() *compactOptions {
+	return &compactOptions{
+		restorationConfig:   brtypes.NewRestorationConfig(),
+		snapstoreConfig:     snapstore.NewSnapstoreConfig(),
+		needDefragmentation: true,
+	}
+}
+
+func (c *compactOptions) getRestorationConfig() *brtypes.RestorationConfig {
+	return c.restorationConfig
+}
+
+func (c *compactOptions) getSnapstoreConfig() *snapstore.Config {
+	return c.snapstoreConfig
+}
+
+// AddFlags adds the flags to flagset.
+func (c *compactOptions) addFlags(fs *flag.FlagSet) {
+	c.restorationConfig.AddFlags(fs)
+	c.snapstoreConfig.AddFlags(fs)
+	fs.BoolVar(&c.needDefragmentation, "defragment", c.needDefragmentation, "defragment after compaction")
+}
+
+// Validate validates the config.
+func (c *compactOptions) validate() error {
+	if err := c.snapstoreConfig.Validate(); err != nil {
+		return err
+	}
+
+	if err := c.snapstoreConfig.Validate(); err != nil {
+		return err
+	}
+
+	return c.restorationConfig.Validate()
+}
+
+// complete completes the config.
+func (c *compactOptions) complete() {
+	c.snapstoreConfig.Complete()
+}
+
 type restorerOptions struct {
-	restorationConfig *restorer.RestorationConfig
+	restorationConfig *brtypes.RestorationConfig
 	snapstoreConfig   *snapstore.Config
 }
 
 // newRestorerOptions returns the validation config.
 func newRestorerOptions() *restorerOptions {
 	return &restorerOptions{
-		restorationConfig: restorer.NewRestorationConfig(),
+		restorationConfig: brtypes.NewRestorationConfig(),
 		snapstoreConfig:   snapstore.NewSnapstoreConfig(),
 	}
+}
+
+func (c *restorerOptions) getRestorationConfig() *brtypes.RestorationConfig {
+	return c.restorationConfig
+}
+
+func (c *restorerOptions) getSnapstoreConfig() *snapstore.Config {
+	return c.snapstoreConfig
 }
 
 // AddFlags adds the flags to flagset.

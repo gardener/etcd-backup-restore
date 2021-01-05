@@ -19,8 +19,9 @@ import (
 	"net/url"
 	"time"
 
-	. "github.com/gardener/etcd-backup-restore/pkg/snapshot/restorer"
+	_ "github.com/gardener/etcd-backup-restore/pkg/snapshot/restorer"
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
+	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	"go.etcd.io/etcd/pkg/types"
@@ -28,8 +29,8 @@ import (
 
 var _ = Describe("restorer types", func() {
 	var (
-		makeRestorationConfig = func(s string, b bool, i int) *RestorationConfig {
-			return &RestorationConfig{
+		makeRestorationConfig = func(s string, b bool, i int) *brtypes.RestorationConfig {
+			return &brtypes.RestorationConfig{
 				InitialCluster:           s,
 				InitialClusterToken:      s,
 				RestoreDataDir:           s,
@@ -40,8 +41,8 @@ var _ = Describe("restorer types", func() {
 				EmbeddedEtcdQuotaBytes:   int64(i),
 			}
 		}
-		makeSnap = func(s string, i int, t time.Time, b bool) snapstore.Snapshot {
-			return snapstore.Snapshot{
+		makeSnap = func(s string, i int, t time.Time, b bool) *snapstore.Snapshot {
+			return &snapstore.Snapshot{
 				Kind:          s,
 				StartRevision: int64(i),
 				LastRevision:  int64(i),
@@ -53,7 +54,7 @@ var _ = Describe("restorer types", func() {
 		}
 		makeSnapList = func(s string, i int, t time.Time, b bool) snapstore.SnapList {
 			var s1, s2 = makeSnap(s, i, t, b), makeSnap(s, i, t, b)
-			return snapstore.SnapList{&s1, &s2}
+			return snapstore.SnapList{s1, s2}
 		}
 		makeURL = func(s string, b bool) url.URL {
 			return url.URL{
@@ -77,8 +78,8 @@ var _ = Describe("restorer types", func() {
 			}
 			return out
 		}
-		makeRestoreOptions = func(s string, i int, t time.Time, b bool) *RestoreOptions {
-			return &RestoreOptions{
+		makeRestoreOptions = func(s string, i int, t time.Time, b bool) *brtypes.RestoreOptions {
+			return &brtypes.RestoreOptions{
 				Config:        makeRestorationConfig(s, b, i),
 				ClusterURLs:   makeURLsMap(s, b),
 				PeerURLs:      makeURLs(s, b),
@@ -88,14 +89,14 @@ var _ = Describe("restorer types", func() {
 		}
 	)
 
-	Describe("RestorationConfig", func() {
+	Describe("brtypes.RestorationConfig", func() {
 		var (
-			makeA = func() *RestorationConfig { return makeRestorationConfig("a", false, 1) }
-			makeB = func() *RestorationConfig { return makeRestorationConfig("b", true, 2) }
+			makeA = func() *brtypes.RestorationConfig { return makeRestorationConfig("a", false, 1) }
+			makeB = func() *brtypes.RestorationConfig { return makeRestorationConfig("b", true, 2) }
 		)
 		Describe("DeepCopyInto", func() {
 			It("new out", func() {
-				var a, in, out = makeA(), makeA(), new(RestorationConfig)
+				var a, in, out = makeA(), makeA(), new(brtypes.RestorationConfig)
 				in.DeepCopyInto(out)
 				Expect(out).To(Equal(in))
 				Expect(out).ToNot(BeIdenticalTo(in))
@@ -130,10 +131,10 @@ var _ = Describe("restorer types", func() {
 			now   = time.Now()
 			makeA = func() snapstore.SnapList { return makeSnapList("a", 1, now, false) }
 		)
-		Describe("DeepCopySnapList", func() {
+		Describe("brtypes.DeepCopySnapList", func() {
 			It("out", func() {
 				var a, in = makeA(), makeA()
-				var out = DeepCopySnapList(in)
+				var out = brtypes.DeepCopySnapList(in)
 				Expect(out).ToNot(BeNil())
 				Expect(out).To(Equal(in))
 				Expect(out).ToNot(BeIdenticalTo(in))
@@ -147,10 +148,10 @@ var _ = Describe("restorer types", func() {
 		var (
 			makeA = func() *url.URL { var u = makeURL("a", false); return &u }
 		)
-		Describe("DeepCopyURL", func() {
+		Describe("brtypes.DeepCopyURL", func() {
 			It("out", func() {
 				var a, in = makeA(), makeA()
-				var out = DeepCopyURL(in)
+				var out = brtypes.DeepCopyURL(in)
 				Expect(out).ToNot(BeNil())
 				Expect(out).To(Equal(in))
 				Expect(out).ToNot(BeIdenticalTo(in))
@@ -164,10 +165,10 @@ var _ = Describe("restorer types", func() {
 		var (
 			makeA = func() types.URLs { return makeURLs("a", false) }
 		)
-		Describe("DeepCopyURLs", func() {
+		Describe("brtypes.DeepCopyURLs", func() {
 			It("out", func() {
 				var a, in = makeA(), makeA()
-				var out = DeepCopyURLs(in)
+				var out = brtypes.DeepCopyURLs(in)
 				Expect(out).ToNot(BeNil())
 				Expect(out).To(Equal(in))
 				Expect(out).ToNot(BeIdenticalTo(in))
@@ -177,15 +178,15 @@ var _ = Describe("restorer types", func() {
 		})
 	})
 
-	Describe("RestoreOptions", func() {
+	Describe("brtypes.RestoreOptions", func() {
 		var (
 			now   = time.Now()
-			makeA = func() *RestoreOptions { return makeRestoreOptions("a", 1, now, false) }
-			makeB = func() *RestoreOptions { return makeRestoreOptions("b", 2, now.Add(-1*time.Hour), true) }
+			makeA = func() *brtypes.RestoreOptions { return makeRestoreOptions("a", 1, now, false) }
+			makeB = func() *brtypes.RestoreOptions { return makeRestoreOptions("b", 2, now.Add(-1*time.Hour), true) }
 		)
 		Describe("DeepCopyInto", func() {
 			It("new out", func() {
-				var a, in, out = makeA(), makeA(), new(RestoreOptions)
+				var a, in, out = makeA(), makeA(), new(brtypes.RestoreOptions)
 				in.DeepCopyInto(out)
 				Expect(out).To(Equal(in))
 				Expect(out).ToNot(BeIdenticalTo(in))

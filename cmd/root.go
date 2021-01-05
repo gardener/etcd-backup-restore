@@ -38,6 +38,7 @@ from previously taken snapshot.`,
 	RootCmd.Flags().BoolVarP(&version, "version", "v", false, "print version info")
 	RootCmd.AddCommand(NewSnapshotCommand(ctx),
 		NewRestoreCommand(ctx),
+		NewCompactCommand(ctx),
 		NewInitializeCommand(ctx),
 		NewServerCommand(ctx))
 	return RootCmd

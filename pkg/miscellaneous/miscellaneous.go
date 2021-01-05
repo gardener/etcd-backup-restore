@@ -15,11 +15,18 @@
 package miscellaneous
 
 import (
+	"fmt"
+	"net/url"
+	"path/filepath"
 	"sort"
+	"time"
 
 	"github.com/gardener/etcd-backup-restore/pkg/metrics"
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
+	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/sirupsen/logrus"
+	"go.etcd.io/etcd/embed"
 )
 
 // GetLatestFullSnapshotAndDeltaSnapList returns the latest snapshot
@@ -53,4 +60,40 @@ func GetLatestFullSnapshotAndDeltaSnapList(store snapstore.SnapStore) (*snapstor
 		metrics.SnapstoreLatestDeltasRevisionsTotal.With(prometheus.Labels{}).Set(float64(revisionDiff))
 	}
 	return fullSnapshot, deltaSnapList, nil
+}
+
+// StartEmbeddedEtcd starts the embedded etcd server.
+func StartEmbeddedEtcd(logger *logrus.Entry, ro *brtypes.RestoreOptions) (*embed.Etcd, error) {
+	cfg := embed.NewConfig()
+	cfg.Dir = filepath.Join(ro.Config.RestoreDataDir)
+	DefaultListenPeerURLs := "http://localhost:0"
+	DefaultListenClientURLs := "http://localhost:0"
+	DefaultInitialAdvertisePeerURLs := "http://localhost:0"
+	DefaultAdvertiseClientURLs := "http://localhost:0"
+	lpurl, _ := url.Parse(DefaultListenPeerURLs)
+	apurl, _ := url.Parse(DefaultInitialAdvertisePeerURLs)
+	lcurl, _ := url.Parse(DefaultListenClientURLs)
+	acurl, _ := url.Parse(DefaultAdvertiseClientURLs)
+	cfg.LPUrls = []url.URL{*lpurl}
+	cfg.LCUrls = []url.URL{*lcurl}
+	cfg.APUrls = []url.URL{*apurl}
+	cfg.ACUrls = []url.URL{*acurl}
+	cfg.InitialCluster = cfg.InitialClusterFromName(cfg.Name)
+	cfg.QuotaBackendBytes = ro.Config.EmbeddedEtcdQuotaBytes
+	cfg.MaxRequestBytes = ro.Config.MaxRequestBytes
+	cfg.MaxTxnOps = ro.Config.MaxTxnOps
+	cfg.Logger = "zap"
+	e, err := embed.StartEtcd(cfg)
+	if err != nil {
+		return nil, err
+	}
+	select {
+	case <-e.Server.ReadyNotify():
+		logger.Infof("Embedded server is ready to listen client at: %s", e.Clients[0].Addr())
+	case <-time.After(60 * time.Second):
+		e.Server.Stop() // trigger a shutdown
+		e.Close()
+		return nil, fmt.Errorf("server took too long to start")
+	}
+	return e, nil
 }

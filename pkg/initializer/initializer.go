@@ -25,6 +25,7 @@ import (
 	"github.com/gardener/etcd-backup-restore/pkg/miscellaneous"
 	"github.com/gardener/etcd-backup-restore/pkg/snapshot/restorer"
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
+	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/sirupsen/logrus"
 	"go.uber.org/zap"
@@ -69,7 +70,7 @@ func (e *EtcdInitializer) Initialize(mode validator.Mode, failBelowRevision int6
 }
 
 //NewInitializer creates an etcd initializer object.
-func NewInitializer(options *restorer.RestoreOptions, snapstoreConfig *snapstore.Config, logger *logrus.Logger) *EtcdInitializer {
+func NewInitializer(options *brtypes.RestoreOptions, snapstoreConfig *snapstore.Config, logger *logrus.Logger) *EtcdInitializer {
 	zapLogger, _ := zap.NewProduction()
 	etcdInit := &EtcdInitializer{
 		Config: &Config{
@@ -121,7 +122,7 @@ func (e *EtcdInitializer) restoreCorruptData() (bool, error) {
 		return e.restoreWithEmptySnapstore()
 	}
 
-	tempRestoreOptions.BaseSnapshot = *baseSnap
+	tempRestoreOptions.BaseSnapshot = baseSnap
 	tempRestoreOptions.DeltaSnapList = deltaSnapList
 	tempRestoreOptions.Config.RestoreDataDir = fmt.Sprintf("%s.%s", tempRestoreOptions.Config.RestoreDataDir, "part")
 

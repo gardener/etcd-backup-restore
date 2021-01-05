@@ -20,7 +20,7 @@ import (
 
 	"github.com/gardener/etcd-backup-restore/pkg/initializer"
 	"github.com/gardener/etcd-backup-restore/pkg/initializer/validator"
-	"github.com/gardener/etcd-backup-restore/pkg/snapshot/restorer"
+	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"go.etcd.io/etcd/pkg/types"
@@ -64,7 +64,7 @@ func NewInitializeCommand(ctx context.Context) *cobra.Command {
 				logger.Fatal("validation-mode can only be one of these values [full/sanity]")
 			}
 
-			restoreOptions := &restorer.RestoreOptions{
+			restoreOptions := &brtypes.RestoreOptions{
 				Config:      opts.restorerOptions.restorationConfig,
 				ClusterURLs: clusterUrlsMap,
 				PeerURLs:    peerUrls,
