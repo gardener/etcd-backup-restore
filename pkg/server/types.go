@@ -15,6 +15,7 @@
 package server
 
 import (
+	"github.com/gardener/etcd-backup-restore/pkg/compressor"
 	"github.com/gardener/etcd-backup-restore/pkg/etcdutil"
 	"github.com/gardener/etcd-backup-restore/pkg/snapshot/restorer"
 	"github.com/gardener/etcd-backup-restore/pkg/snapshot/snapshotter"
@@ -33,6 +34,7 @@ type BackupRestoreComponentConfig struct {
 	SnapshotterConfig       *snapshotter.Config            `json:"snapshotterConfig,omitempty"`
 	SnapstoreConfig         *snapstore.Config              `json:"snapstoreConfig,omitempty"`
 	RestorationConfig       *restorer.RestorationConfig    `json:"restorationConfig,omitempty"`
+	CompressionConfig       *compressor.CompressionConfig  `json:"compressionConfig,omitempty"`
 	DefragmentationSchedule string                         `json:"defragmentationSchedule"`
 }
 

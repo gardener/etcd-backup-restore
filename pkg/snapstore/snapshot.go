@@ -25,12 +25,13 @@ import (
 )
 
 // NewSnapshot returns the snapshot object.
-func NewSnapshot(kind string, startRevision, lastRevision int64) *Snapshot {
+func NewSnapshot(kind string, startRevision, lastRevision int64, compressionSuffix string) *Snapshot {
 	snap := &Snapshot{
-		Kind:          kind,
-		StartRevision: startRevision,
-		LastRevision:  lastRevision,
-		CreatedOn:     time.Now().UTC(),
+		Kind:              kind,
+		StartRevision:     startRevision,
+		LastRevision:      lastRevision,
+		CreatedOn:         time.Now().UTC(),
+		CompressionSuffix: compressionSuffix,
 	}
 	snap.GenerateSnapshotDirectory()
 	snap.GenerateSnapshotName()
@@ -39,7 +40,7 @@ func NewSnapshot(kind string, startRevision, lastRevision int64) *Snapshot {
 
 // GenerateSnapshotName prepares the snapshot name from metadata
 func (s *Snapshot) GenerateSnapshotName() {
-	s.SnapName = fmt.Sprintf("%s-%08d-%08d-%d", s.Kind, s.StartRevision, s.LastRevision, s.CreatedOn.Unix())
+	s.SnapName = fmt.Sprintf("%s-%08d-%08d-%d%s", s.Kind, s.StartRevision, s.LastRevision, s.CreatedOn.Unix(), s.CompressionSuffix)
 }
 
 // GenerateSnapshotDirectory prepares the snapshot directory name from metadata
@@ -68,6 +69,7 @@ func ParseSnapshot(snapPath string) (*Snapshot, error) {
 	if len(tokens) != 4 {
 		return nil, fmt.Errorf("invalid snapshot name: %s", snapName)
 	}
+
 	//parse kind
 	switch tokens[0] {
 	case SnapshotKindFull:
@@ -97,8 +99,13 @@ func ParseSnapshot(snapPath string) (*Snapshot, error) {
 	if s.StartRevision > s.LastRevision {
 		return nil, fmt.Errorf("last revision (%s) should be at least start revision(%s) ", tokens[2], tokens[1])
 	}
-	//parse creation time
-	unixTime, err := strconv.ParseInt(tokens[3], 10, 64)
+
+	//parse creation time as well as parse the Snapshot compression suffix
+	timeWithSnapSuffix := strings.Split(tokens[3], ".")
+	if len(timeWithSnapSuffix) == 2 {
+		s.CompressionSuffix = "." + timeWithSnapSuffix[1]
+	}
+	unixTime, err := strconv.ParseInt(timeWithSnapSuffix[0], 10, 64)
 	if err != nil {
 		return nil, fmt.Errorf("invalid creation time: %s", tokens[3])
 	}

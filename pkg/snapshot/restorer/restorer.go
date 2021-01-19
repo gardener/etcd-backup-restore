@@ -31,6 +31,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/gardener/etcd-backup-restore/pkg/compressor"
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	"github.com/sirupsen/logrus"
 	"go.etcd.io/etcd/clientv3"
@@ -123,17 +124,30 @@ func (r *Restorer) restoreFromBaseSnapshot(ro RestoreOptions) error {
 
 	walDir := filepath.Join(memberDir, "wal")
 	snapdir := filepath.Join(memberDir, "snap")
-	if err = makeDB(r.zapLogger, snapdir, ro.BaseSnapshot, len(cl.Members()), r.store, false); err != nil {
+	if err = r.makeDB(snapdir, ro.BaseSnapshot, len(cl.Members()), false); err != nil {
 		return err
 	}
 	return makeWALAndSnap(r.zapLogger, walDir, snapdir, cl, ro.Config.Name)
 }
 
 // makeDB copies the database snapshot to the snapshot directory.
-func makeDB(logger *zap.Logger, snapdir string, snap snapstore.Snapshot, commit int, ss snapstore.SnapStore, skipHashCheck bool) error {
-	rc, err := ss.Fetch(snap)
+func (r *Restorer) makeDB(snapdir string, snap snapstore.Snapshot, commit int, skipHashCheck bool) error {
+	rc, err := r.store.Fetch(snap)
 	if err != nil {
 		return err
+	}
+
+	startTime := time.Now()
+	isCompressed, compressionPolicy, err := compressor.IsSnapshotCompressed(snap.CompressionSuffix)
+	if err != nil {
+		return err
+	}
+	if isCompressed {
+		// decompress the snapshot
+		rc, err = compressor.DecompressSnapshot(rc, compressionPolicy)
+		if err != nil {
+			return fmt.Errorf("unable to decompress the snapshot: %v", err)
+		}
 	}
 	defer rc.Close()
 
@@ -150,6 +164,13 @@ func makeDB(logger *zap.Logger, snapdir string, snap snapstore.Snapshot, commit 
 		return err
 	}
 	db.Sync()
+	totalTime := time.Now().Sub(startTime).Seconds()
+
+	if isCompressed {
+		r.logger.Infof("successfully fetched data of base snapshot in %v seconds [CompressionPolicy:%v]", totalTime, compressionPolicy)
+	} else {
+		r.logger.Infof("successfully fetched data of base snapshot in %v seconds", totalTime)
+	}
 
 	off, err := db.Seek(0, io.SeekEnd)
 	if err != nil {
@@ -199,9 +220,9 @@ func makeDB(logger *zap.Logger, snapdir string, snap snapstore.Snapshot, commit 
 	// having a new raft instance
 	be := backend.NewDefaultBackend(dbPath)
 	// a lessor that never times out leases
-	lessor := lease.NewLessor(logger, be, lease.LessorConfig{MinLeaseTTL: math.MaxInt64})
-	s := mvcc.NewStore(logger, be, lessor, (*initIndex)(&commit), mvcc.StoreConfig{})
-	trace := traceutil.New("write", logger)
+	lessor := lease.NewLessor(r.zapLogger, be, lease.LessorConfig{MinLeaseTTL: math.MaxInt64})
+	s := mvcc.NewStore(r.zapLogger, be, lessor, (*initIndex)(&commit), mvcc.StoreConfig{})
+	trace := traceutil.New("write", r.zapLogger)
 	txn := s.Write(trace)
 	btx := be.BatchTx()
 	del := func(k, v []byte) error {
@@ -433,7 +454,7 @@ func (r *Restorer) fetchSnaps(fetcherIndex int, fetcherInfoCh <-chan fetcherInfo
 		default:
 			r.logger.Infof("Fetcher #%d fetching delta snapshot %s", fetcherIndex+1, path.Join(fetcherInfo.Snapshot.SnapDir, fetcherInfo.Snapshot.SnapName))
 
-			eventsData, err := getEventsDataFromDeltaSnapshot(r.store, fetcherInfo.Snapshot)
+			eventsData, err := r.getEventsDataFromDeltaSnapshot(fetcherInfo.Snapshot)
 			if err != nil {
 				errCh <- fmt.Errorf("failed to read events data from delta snapshot %s : %v", fetcherInfo.Snapshot.SnapName, err)
 				applierInfoCh <- applierInfo{SnapIndex: -1} // cannot use close(ch) as concurrent fetchSnaps routines might try to send on channel, causing a panic
@@ -539,7 +560,7 @@ func applyEventsAndVerify(client *clientv3.Client, events []event, snap *snapsto
 // applyFirstDeltaSnapshot applies the events from first delta snapshot to etcd.
 func (r *Restorer) applyFirstDeltaSnapshot(client *clientv3.Client, snap snapstore.Snapshot) error {
 	r.logger.Infof("Applying first delta snapshot %s", path.Join(snap.SnapDir, snap.SnapName))
-	events, err := getEventsFromDeltaSnapshot(r.store, snap)
+	events, err := r.getEventsFromDeltaSnapshot(snap)
 	if err != nil {
 		return fmt.Errorf("failed to read events from delta snapshot %s : %v", snap.SnapName, err)
 	}
@@ -568,8 +589,8 @@ func (r *Restorer) applyFirstDeltaSnapshot(client *clientv3.Client, snap snapsto
 }
 
 // getEventsFromDeltaSnapshot returns the events from delta snapshot from snap store.
-func getEventsFromDeltaSnapshot(store snapstore.SnapStore, snap snapstore.Snapshot) ([]event, error) {
-	data, err := getEventsDataFromDeltaSnapshot(store, snap)
+func (r *Restorer) getEventsFromDeltaSnapshot(snap snapstore.Snapshot) ([]event, error) {
+	data, err := r.getEventsDataFromDeltaSnapshot(snap)
 	if err != nil {
 		return nil, err
 	}
@@ -583,10 +604,23 @@ func getEventsFromDeltaSnapshot(store snapstore.SnapStore, snap snapstore.Snapsh
 }
 
 // getEventsDataFromDeltaSnapshot fetches the events data from delta snapshot from snap store.
-func getEventsDataFromDeltaSnapshot(store snapstore.SnapStore, snap snapstore.Snapshot) ([]byte, error) {
-	rc, err := store.Fetch(snap)
+func (r *Restorer) getEventsDataFromDeltaSnapshot(snap snapstore.Snapshot) ([]byte, error) {
+	rc, err := r.store.Fetch(snap)
 	if err != nil {
 		return nil, err
+	}
+
+	startTime := time.Now()
+	isCompressed, compressionPolicy, err := compressor.IsSnapshotCompressed(snap.CompressionSuffix)
+	if err != nil {
+		return nil, err
+	}
+	if isCompressed {
+		// decompress the snapshot
+		rc, err = compressor.DecompressSnapshot(rc, compressionPolicy)
+		if err != nil {
+			return nil, fmt.Errorf("unable to decompress the snapshot: %v", err)
+		}
 	}
 	defer rc.Close()
 
@@ -594,6 +628,13 @@ func getEventsDataFromDeltaSnapshot(store snapstore.SnapStore, snap snapstore.Sn
 	bufSize, err := buf.ReadFrom(rc)
 	if err != nil {
 		return nil, err
+	}
+	totalTime := time.Now().Sub(startTime).Seconds()
+
+	if isCompressed {
+		r.logger.Infof("successfully fetched data of delta snapshot in %v seconds [CompressionPolicy:%v]", totalTime, compressionPolicy)
+	} else {
+		r.logger.Infof("successfully fetched data of delta snapshot in %v seconds", totalTime)
 	}
 	sha := buf.Bytes()
 

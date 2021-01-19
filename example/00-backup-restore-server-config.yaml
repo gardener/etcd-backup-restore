@@ -43,3 +43,7 @@ restorationConfig:
   embeddedEtcdQuotaBytes: 8589934592
 
 defragmentationSchedule: "0 0 */3 * *"
+
+compressionConfig:
+   enabled: true
+   policy: "gzip"

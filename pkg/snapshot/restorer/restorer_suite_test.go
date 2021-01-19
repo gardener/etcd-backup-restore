@@ -22,6 +22,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gardener/etcd-backup-restore/pkg/compressor"
 	"github.com/gardener/etcd-backup-restore/pkg/wrappers"
 
 	"github.com/gardener/etcd-backup-restore/pkg/etcdutil"
@@ -79,7 +80,8 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 
 	deltaSnapshotPeriod := time.Second
 	ctx := utils.ContextWithWaitGroupFollwedByGracePeriod(populatorCtx, wg, deltaSnapshotPeriod+2*time.Second)
-	err = runSnapshotter(logger, deltaSnapshotPeriod, endpoints, ctx.Done(), true)
+	compressionConfig := compressor.NewCompressorConfig()
+	err = runSnapshotter(logger, deltaSnapshotPeriod, endpoints, ctx.Done(), true, compressionConfig)
 	Expect(err).ShouldNot(HaveOccurred())
 
 	keyTo = resp.KeyTo
@@ -104,7 +106,7 @@ func cleanUp() {
 }
 
 // runSnapshotter creates a snapshotter object and runs it for a duration specified by 'snapshotterDurationSeconds'
-func runSnapshotter(logger *logrus.Entry, deltaSnapshotPeriod time.Duration, endpoints []string, stopCh <-chan struct{}, startWithFullSnapshot bool) error {
+func runSnapshotter(logger *logrus.Entry, deltaSnapshotPeriod time.Duration, endpoints []string, stopCh <-chan struct{}, startWithFullSnapshot bool, compressionConfig *compressor.CompressionConfig) error {
 	store, err := snapstore.GetSnapstore(&snapstore.Config{Container: snapstoreDir, Provider: "Local"})
 	if err != nil {
 		return err
@@ -123,7 +125,7 @@ func runSnapshotter(logger *logrus.Entry, deltaSnapshotPeriod time.Duration, end
 		MaxBackups:               1,
 	}
 
-	ssr, err := snapshotter.NewSnapshotter(logger, snapshotterConfig, store, etcdConnectionConfig)
+	ssr, err := snapshotter.NewSnapshotter(logger, snapshotterConfig, store, etcdConnectionConfig, compressionConfig)
 	if err != nil {
 		return err
 	}

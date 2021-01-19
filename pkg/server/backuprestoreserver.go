@@ -129,7 +129,7 @@ func (b *BackupRestoreServer) runServerWithoutSnapshotter(ctx context.Context, r
 	b.runEtcdProbeLoopWithoutSnapshotter(ctx, handler)
 }
 
-// runServerWithoutSnapshotter runs the etcd-backup-restore
+// runServerWithSnapshotter runs the etcd-backup-restore
 // for the case where snapshotter is configured correctly
 func (b *BackupRestoreServer) runServerWithSnapshotter(ctx context.Context, restoreOpts *restorer.RestoreOptions) error {
 	ackCh := make(chan struct{})
@@ -143,7 +143,7 @@ func (b *BackupRestoreServer) runServerWithSnapshotter(ctx context.Context, rest
 	}
 
 	b.logger.Infof("Creating snapshotter...")
-	ssr, err := snapshotter.NewSnapshotter(b.logger, b.config.SnapshotterConfig, ss, b.config.EtcdConnectionConfig)
+	ssr, err := snapshotter.NewSnapshotter(b.logger, b.config.SnapshotterConfig, ss, b.config.EtcdConnectionConfig, b.config.CompressionConfig)
 	if err != nil {
 		return err
 	}
@@ -161,7 +161,7 @@ func (b *BackupRestoreServer) runServerWithSnapshotter(ctx context.Context, rest
 	return nil
 }
 
-// runEtcdProbeLoopWithoutSnapshotter runs the etcd probe loop
+// runEtcdProbeLoopWithSnapshotter runs the etcd probe loop
 // for the case where snapshotter is configured correctly
 func (b *BackupRestoreServer) runEtcdProbeLoopWithSnapshotter(ctx context.Context, handler *HTTPHandler, ssr *snapshotter.Snapshotter, ssrStopCh chan struct{}, ackCh chan struct{}) {
 	var (

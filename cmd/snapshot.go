@@ -49,7 +49,7 @@ storing snapshots on various cloud storage providers as well as local disk locat
 				logger.Fatalf("Failed to create snapstore from configured storage provider: %v", err)
 			}
 
-			ssr, err := snapshotter.NewSnapshotter(logger, opts.snapshotterConfig, ss, opts.etcdConnectionConfig)
+			ssr, err := snapshotter.NewSnapshotter(logger, opts.snapshotterConfig, ss, opts.etcdConnectionConfig, opts.compressionConfig)
 			if err != nil {
 				logger.Fatalf("Failed to create snapshotter: %v", err)
 			}

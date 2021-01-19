@@ -25,6 +25,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/gardener/etcd-backup-restore/pkg/compressor"
 	"github.com/gardener/etcd-backup-restore/pkg/errors"
 	"github.com/gardener/etcd-backup-restore/pkg/etcdutil"
 	"github.com/gardener/etcd-backup-restore/pkg/metrics"
@@ -37,7 +38,7 @@ import (
 )
 
 // NewSnapshotter returns the snapshotter object.
-func NewSnapshotter(logger *logrus.Entry, config *Config, store snapstore.SnapStore, etcdConnectionConfig *etcdutil.EtcdConnectionConfig) (*Snapshotter, error) {
+func NewSnapshotter(logger *logrus.Entry, config *Config, store snapstore.SnapStore, etcdConnectionConfig *etcdutil.EtcdConnectionConfig, compressionConfig *compressor.CompressionConfig) (*Snapshotter, error) {
 	sdl, err := cron.ParseStandard(config.FullSnapshotSchedule)
 	if err != nil {
 		// Ideally this should be validated before.
@@ -59,7 +60,7 @@ func NewSnapshotter(logger *logrus.Entry, config *Config, store snapstore.SnapSt
 		metrics.LatestSnapshotTimestamp.With(prometheus.Labels{metrics.LabelKind: snapstore.SnapshotKindDelta}).Set(float64(prevSnapshot.CreatedOn.Unix()))
 	} else {
 		// creating dummy previous snapshot since fullSnap == nil
-		prevSnapshot = snapstore.NewSnapshot(snapstore.SnapshotKindFull, 0, 0)
+		prevSnapshot = snapstore.NewSnapshot(snapstore.SnapshotKindFull, 0, 0, "")
 	}
 
 	metrics.LatestSnapshotRevision.With(prometheus.Labels{metrics.LabelKind: prevSnapshot.Kind}).Set(float64(prevSnapshot.LastRevision))
@@ -69,6 +70,7 @@ func NewSnapshotter(logger *logrus.Entry, config *Config, store snapstore.SnapSt
 		store:                store,
 		config:               config,
 		etcdConnectionConfig: etcdConnectionConfig,
+		compressionConfig:    compressionConfig,
 
 		schedule:           sdl,
 		prevSnapshot:       prevSnapshot,
@@ -241,9 +243,29 @@ func (ssr *Snapshotter) takeFullSnapshot() (*snapstore.Snapshot, error) {
 				Message: fmt.Sprintf("failed to create etcd snapshot: %v", err),
 			}
 		}
+
+		// compressionSuffix is useful in backward compatibility(restoring from uncompressed snapshots).
+		// it is also helpful in inferring which compression Policy to be used to decompress the snapshot.
+		compressionSuffix, err := compressor.GetCompressionSuffix(ssr.compressionConfig.Enabled, ssr.compressionConfig.CompressionPolicy)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get compressionSuffix: %v", err)
+		}
 		ssr.logger.Infof("Successfully opened snapshot reader on etcd")
-		s := snapstore.NewSnapshot(snapstore.SnapshotKindFull, 0, lastRevision)
+		s := snapstore.NewSnapshot(snapstore.SnapshotKindFull, 0, lastRevision, compressionSuffix)
+
 		startTime := time.Now()
+
+		// if compression is enabled
+		//    then compress the snapshot.
+		if ssr.compressionConfig.Enabled {
+			ssr.logger.Info("start the Compression of full snapshot")
+			rc, err = compressor.CompressSnapshot(rc, ssr.compressionConfig.CompressionPolicy)
+			if err != nil {
+				return nil, fmt.Errorf("unable to compress full snapshot: %v", err)
+			}
+		}
+		defer rc.Close()
+
 		if err := ssr.store.Save(*s, rc); err != nil {
 			timeTaken := time.Now().Sub(startTime).Seconds()
 			metrics.SnapshotDurationSeconds.With(prometheus.Labels{metrics.LabelKind: snapstore.SnapshotKindFull, metrics.LabelSucceeded: metrics.ValueSucceededFalse}).Observe(timeTaken)
@@ -324,7 +346,13 @@ func (ssr *Snapshotter) TakeDeltaSnapshot() (*snapstore.Snapshot, error) {
 	}
 	ssr.events = append(ssr.events, byte(']'))
 
-	snap := snapstore.NewSnapshot(snapstore.SnapshotKindDelta, ssr.prevSnapshot.LastRevision+1, ssr.lastEventRevision)
+	// compressionSuffix is useful in backward compatibility(restoring from uncompressed snapshots).
+	// it is also helpful in inferring which compression Policy to be used to decompress the snapshot.
+	compressionSuffix, err := compressor.GetCompressionSuffix(ssr.compressionConfig.Enabled, ssr.compressionConfig.CompressionPolicy)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get compressionSuffix: %v", err)
+	}
+	snap := snapstore.NewSnapshot(snapstore.SnapshotKindDelta, ssr.prevSnapshot.LastRevision+1, ssr.lastEventRevision, compressionSuffix)
 	snap.SnapDir = ssr.prevSnapshot.SnapDir
 
 	// compute hash
@@ -333,8 +361,22 @@ func (ssr *Snapshotter) TakeDeltaSnapshot() (*snapstore.Snapshot, error) {
 		return nil, fmt.Errorf("failed to compute hash of events: %v", err)
 	}
 	ssr.events = hash.Sum(ssr.events)
+
 	startTime := time.Now()
-	if err := ssr.store.Save(*snap, ioutil.NopCloser(bytes.NewReader(ssr.events))); err != nil {
+	rc := ioutil.NopCloser(bytes.NewReader(ssr.events))
+
+	// if compression is enabled
+	//    then compress the snapshot.
+	if ssr.compressionConfig.Enabled {
+		ssr.logger.Info("start the Compression of delta snapshot")
+		rc, err = compressor.CompressSnapshot(rc, ssr.compressionConfig.CompressionPolicy)
+		if err != nil {
+			return nil, fmt.Errorf("unable to compress delta snapshot: %v", err)
+		}
+	}
+	defer rc.Close()
+
+	if err := ssr.store.Save(*snap, rc); err != nil {
 		timeTaken := time.Now().Sub(startTime).Seconds()
 		metrics.SnapshotDurationSeconds.With(prometheus.Labels{metrics.LabelKind: snapstore.SnapshotKindDelta, metrics.LabelSucceeded: metrics.ValueSucceededFalse}).Observe(timeTaken)
 		ssr.logger.Errorf("Error saving delta snapshots. %v", err)

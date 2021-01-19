@@ -19,6 +19,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/gardener/etcd-backup-restore/pkg/compressor"
 	"github.com/gardener/etcd-backup-restore/pkg/wrappers"
 
 	"github.com/gardener/etcd-backup-restore/pkg/etcdutil"
@@ -61,6 +62,7 @@ type Snapshotter struct {
 	etcdConnectionConfig *etcdutil.EtcdConnectionConfig
 	store                snapstore.SnapStore
 	config               *Config
+	compressionConfig    *compressor.CompressionConfig
 
 	schedule           cron.Schedule
 	prevSnapshot       *snapstore.Snapshot
