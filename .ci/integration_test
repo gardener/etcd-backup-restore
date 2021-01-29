@@ -97,7 +97,8 @@ function setup_awscli() {
     echo "Installing python setuptools"
     apt install -y python-setuptools
     echo "Installing pip"
-    python /usr/lib/python2.7/dist-packages/easy_install.py pip
+    curl https://bootstrap.pypa.io/2.7/get-pip.py --output get-pip.py
+    python get-pip.py
     echo "Installing awscli tool"
     pip install awscli
     echo "Successfully installed awscli."
