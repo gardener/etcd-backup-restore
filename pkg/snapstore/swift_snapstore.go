@@ -64,7 +64,9 @@ func NewSwiftSnapStore(bucket, prefix, tempDir string, maxParallelChunkUploads u
 		return nil, err
 
 	}
-	client, err := openstack.NewObjectStorageV1(provider, gophercloud.EndpointOpts{})
+	client, err := openstack.NewObjectStorageV1(provider, gophercloud.EndpointOpts{
+		Region: os.Getenv("OS_REGION_NAME"),
+	})
 	if err != nil {
 		return nil, err
 
