@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/gardener/etcd-backup-restore/pkg/compressor"
 	"github.com/gardener/etcd-backup-restore/pkg/etcdutil"
 
 	"github.com/gardener/etcd-backup-restore/pkg/snapshot/restorer"
@@ -35,6 +36,7 @@ func NewBackupRestoreComponentConfig() *BackupRestoreComponentConfig {
 		SnapshotterConfig:       snapshotter.NewSnapshotterConfig(),
 		SnapstoreConfig:         snapstore.NewSnapstoreConfig(),
 		RestorationConfig:       restorer.NewRestorationConfig(),
+		CompressionConfig:       compressor.NewCompressorConfig(),
 		DefragmentationSchedule: defaultDefragmentationSchedule,
 	}
 }
@@ -46,6 +48,7 @@ func (c *BackupRestoreComponentConfig) AddFlags(fs *flag.FlagSet) {
 	c.SnapshotterConfig.AddFlags(fs)
 	c.SnapstoreConfig.AddFlags(fs)
 	c.RestorationConfig.AddFlags(fs)
+	c.CompressionConfig.AddFlags(fs)
 
 	// Miscellaneous
 	fs.StringVar(&c.DefragmentationSchedule, "defragmentation-schedule", c.DefragmentationSchedule, "schedule to defragment etcd data directory")
@@ -66,6 +69,9 @@ func (c *BackupRestoreComponentConfig) Validate() error {
 		return err
 	}
 	if err := c.RestorationConfig.Validate(); err != nil {
+		return err
+	}
+	if err := c.CompressionConfig.Validate(); err != nil {
 		return err
 	}
 	if _, err := cron.ParseStandard(c.DefragmentationSchedule); err != nil {

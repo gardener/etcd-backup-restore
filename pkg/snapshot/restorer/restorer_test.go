@@ -24,6 +24,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/gardener/etcd-backup-restore/pkg/compressor"
 	"github.com/gardener/etcd-backup-restore/pkg/miscellaneous"
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	"github.com/gardener/etcd-backup-restore/test/utils"
@@ -187,6 +188,33 @@ var _ = Describe("Running Restorer", func() {
 		})
 	})
 
+	Describe("NEGATIVE: Negative Compression Scenarios", func() {
+		var (
+			compressionConfig *compressor.CompressionConfig
+		)
+		BeforeEach(func() {
+			compressionConfig = compressor.NewCompressorConfig()
+		})
+		Context("with invalid compressionPolicy", func() {
+			It("should return error", func() {
+				compressionConfig.Enabled = true
+				compressionConfig.CompressionPolicy = "someRandomAlgo"
+				err = compressionConfig.Validate()
+				Expect(err).Should(HaveOccurred())
+			})
+		})
+
+		Context("with compression is not enabled and invalid compressionPolicy ", func() {
+			It("should not return error", func() {
+				compressionConfig.Enabled = false
+				compressionConfig.CompressionPolicy = "someRandomAlgo"
+				err = compressionConfig.Validate()
+				Expect(err).ShouldNot(HaveOccurred())
+			})
+		})
+
+	})
+
 	Describe("NEGATIVE:For Dynamic Loads and Negative Scenarios", func() {
 		var (
 			store               snapstore.SnapStore
@@ -237,7 +265,8 @@ var _ = Describe("Running Restorer", func() {
 				defer cancelPopulator()
 				logger.Infoln("Starting snapshotter with basesnapshot set to false")
 				ssrCtx := utils.ContextWithWaitGroupFollwedByGracePeriod(testCtx, wg, 2)
-				err = runSnapshotter(logger, deltaSnapshotPeriod, endpoints, ssrCtx.Done(), startWithFullSnapshot)
+				compressionConfig := compressor.NewCompressorConfig()
+				err = runSnapshotter(logger, deltaSnapshotPeriod, endpoints, ssrCtx.Done(), startWithFullSnapshot, compressionConfig)
 				Expect(err).ShouldNot(HaveOccurred())
 				etcd.Server.Stop()
 				etcd.Close()
@@ -278,7 +307,8 @@ var _ = Describe("Running Restorer", func() {
 				go utils.PopulateEtcdWithWaitGroup(populatorCtx, wg, logger, endpoints, nil)
 				defer cancelPopulator()
 				ssrCtx := utils.ContextWithWaitGroupFollwedByGracePeriod(testCtx, wg, time.Second)
-				err = runSnapshotter(logger, deltaSnapshotPeriod, endpoints, ssrCtx.Done(), true)
+				compressionConfig := compressor.NewCompressorConfig()
+				err = runSnapshotter(logger, deltaSnapshotPeriod, endpoints, ssrCtx.Done(), true, compressionConfig)
 				Expect(err).ShouldNot(HaveOccurred())
 				etcd.Server.Stop()
 				etcd.Close()
@@ -315,7 +345,8 @@ var _ = Describe("Running Restorer", func() {
 				go utils.PopulateEtcdWithWaitGroup(populatorCtx, wg, logger, endpoints, nil)
 				defer cancelPopulator()
 				ssrCtx := utils.ContextWithWaitGroupFollwedByGracePeriod(testCtx, wg, time.Second)
-				err = runSnapshotter(logger, deltaSnapshotPeriod, endpoints, ssrCtx.Done(), true)
+				compressionConfig := compressor.NewCompressorConfig()
+				err = runSnapshotter(logger, deltaSnapshotPeriod, endpoints, ssrCtx.Done(), true, compressionConfig)
 				Expect(err).ShouldNot(HaveOccurred())
 				etcd.Close()
 
@@ -360,7 +391,8 @@ var _ = Describe("Running Restorer", func() {
 				go utils.PopulateEtcdWithWaitGroup(populatorCtx, wg, logger, endpoints, nil)
 				defer cancelPopulator()
 				ssrCtx := utils.ContextWithWaitGroupFollwedByGracePeriod(testCtx, wg, 2*time.Second)
-				err = runSnapshotter(logger, deltaSnapshotPeriod, endpoints, ssrCtx.Done(), true)
+				compressionConfig := compressor.NewCompressorConfig()
+				err = runSnapshotter(logger, deltaSnapshotPeriod, endpoints, ssrCtx.Done(), true, compressionConfig)
 				Expect(err).ShouldNot(HaveOccurred())
 				etcd.Close()
 
@@ -397,7 +429,8 @@ var _ = Describe("Running Restorer", func() {
 				ssrCtx := utils.ContextWithWaitGroupFollwedByGracePeriod(testCtx, wg, 15*time.Second)
 
 				logger.Infoln("Starting snapshotter while loading is happening")
-				err = runSnapshotter(logger, deltaSnapshotPeriod, endpoints, ssrCtx.Done(), true)
+				compressionConfig := compressor.NewCompressorConfig()
+				err = runSnapshotter(logger, deltaSnapshotPeriod, endpoints, ssrCtx.Done(), true, compressionConfig)
 				Expect(err).ShouldNot(HaveOccurred())
 
 				time.Sleep(time.Duration(5 * time.Second))
@@ -436,6 +469,166 @@ var _ = Describe("Running Restorer", func() {
 				// behavior of etcd restart.
 			})
 		})
+
+		Context("when full snapshot is not compressed followed by multiple delta snapshots which are compressed using different compressionPolicy", func() {
+			It("Should able to restore", func() {
+				logger.Infoln("Starting restoration check when snapshots are available of different SnapshotSuffix")
+				memberPath := path.Join(etcdDir, "member")
+
+				// start the Snapshotter with compression not enabled to take full snapshot
+				compressionConfig := compressor.NewCompressorConfig()
+				compressionConfig.Enabled = false
+				ctx, cancel := context.WithTimeout(testCtx, time.Duration(2*time.Second))
+				err = runSnapshotter(logger, deltaSnapshotPeriod, endpoints, ctx.Done(), true, compressionConfig)
+				Expect(err).ShouldNot(HaveOccurred())
+				cancel()
+
+				// populate the etcd with some more data
+				resp := &utils.EtcdDataPopulationResponse{}
+				utils.PopulateEtcd(testCtx, logger, endpoints, 0, keyTo, resp)
+				Expect(resp.Err).ShouldNot(HaveOccurred())
+
+				// start the Snapshotter with compressionPolicy = "lzw" to take delta snapshot
+				compressionConfig = compressor.NewCompressorConfig()
+				compressionConfig.Enabled = true
+				compressionConfig.CompressionPolicy = "lzw"
+				ctx, cancel = context.WithTimeout(testCtx, time.Duration(2*time.Second))
+				err = runSnapshotter(logger, deltaSnapshotPeriod, endpoints, ctx.Done(), false, compressionConfig)
+				Expect(err).ShouldNot(HaveOccurred())
+				cancel()
+
+				// populate the etcd with some data
+				resp = &utils.EtcdDataPopulationResponse{}
+				utils.PopulateEtcd(testCtx, logger, endpoints, 0, keyTo, resp)
+				Expect(resp.Err).ShouldNot(HaveOccurred())
+
+				// start the Snapshotter with compressionPolicy = "gzip"(default) to take delta snapshot
+				compressionConfig = compressor.NewCompressorConfig()
+				compressionConfig.Enabled = true
+				ctx, cancel = context.WithTimeout(testCtx, time.Duration(2*time.Second))
+				err = runSnapshotter(logger, deltaSnapshotPeriod, endpoints, ctx.Done(), false, compressionConfig)
+				Expect(err).ShouldNot(HaveOccurred())
+				cancel()
+
+				// populate the etcd with some data
+				resp = &utils.EtcdDataPopulationResponse{}
+				utils.PopulateEtcd(testCtx, logger, endpoints, 0, keyTo, resp)
+				Expect(resp.Err).ShouldNot(HaveOccurred())
+
+				// start the Snapshotter with compressionPolicy = "zlib" to take delta snapshot
+				compressionConfig = compressor.NewCompressorConfig()
+				compressionConfig.Enabled = true
+				compressionConfig.CompressionPolicy = "zlib"
+				ctx, cancel = context.WithTimeout(testCtx, time.Duration(2*time.Second))
+				err = runSnapshotter(logger, deltaSnapshotPeriod, endpoints, ctx.Done(), false, compressionConfig)
+				Expect(err).ShouldNot(HaveOccurred())
+				cancel()
+
+				// remove the member dir
+				err = os.RemoveAll(memberPath)
+				Expect(err).ShouldNot(HaveOccurred())
+
+				baseSnapshot, deltaSnapList, err = miscellaneous.GetLatestFullSnapshotAndDeltaSnapList(store)
+				Expect(err).ShouldNot(HaveOccurred())
+
+				rstr = NewRestorer(store, logger)
+
+				restoreOpts := RestoreOptions{
+					Config:        restorationConfig,
+					BaseSnapshot:  *baseSnapshot,
+					DeltaSnapList: deltaSnapList,
+					ClusterURLs:   clusterUrlsMap,
+					PeerURLs:      peerUrls,
+				}
+
+				err = rstr.Restore(restoreOpts)
+				Expect(err).ShouldNot(HaveOccurred())
+				err = checkDataConsistency(testCtx, restoreOpts.Config.RestoreDataDir, logger)
+				Expect(err).ShouldNot(HaveOccurred())
+			})
+		})
+
+		Context("when full snapshot is compressed followed by multiple delta Snapshots which are uncompressed as well as compressed", func() {
+			It("Should able to restore", func() {
+				memberPath := path.Join(etcdDir, "member")
+
+				// populate the etcd with some data
+				resp := &utils.EtcdDataPopulationResponse{}
+				utils.PopulateEtcd(testCtx, logger, endpoints, 0, keyTo, resp)
+				Expect(resp.Err).ShouldNot(HaveOccurred())
+
+				// start the Snapshotter with compressionPolicy = "gzip"(default) to take full snapshot.
+				compressionConfig := compressor.NewCompressorConfig()
+				compressionConfig.Enabled = true
+				ctx, cancel := context.WithTimeout(testCtx, time.Duration(2*time.Second))
+				err = runSnapshotter(logger, deltaSnapshotPeriod, endpoints, ctx.Done(), true, compressionConfig)
+				Expect(err).ShouldNot(HaveOccurred())
+				cancel()
+
+				// populate the etcd with some more data
+				resp = &utils.EtcdDataPopulationResponse{}
+				utils.PopulateEtcd(testCtx, logger, endpoints, 0, keyTo, resp)
+				Expect(resp.Err).ShouldNot(HaveOccurred())
+
+				// start the Snapshotter with compressionPolicy = "lzw" to take delta snapshot.
+				compressionConfig = compressor.NewCompressorConfig()
+				compressionConfig.Enabled = true
+				compressionConfig.CompressionPolicy = "lzw"
+				ctx, cancel = context.WithTimeout(testCtx, time.Duration(2*time.Second))
+				err = runSnapshotter(logger, deltaSnapshotPeriod, endpoints, ctx.Done(), false, compressionConfig)
+				Expect(err).ShouldNot(HaveOccurred())
+				cancel()
+
+				// populate the etcd with some data
+				resp = &utils.EtcdDataPopulationResponse{}
+				utils.PopulateEtcd(testCtx, logger, endpoints, 0, keyTo, resp)
+				Expect(resp.Err).ShouldNot(HaveOccurred())
+
+				// start the Snapshotter with compressionPolicy = "zlib" to take delta snapshot.
+				compressionConfig = compressor.NewCompressorConfig()
+				compressionConfig.Enabled = true
+				compressionConfig.CompressionPolicy = "zlib"
+				ctx, cancel = context.WithTimeout(testCtx, time.Duration(2*time.Second))
+				err = runSnapshotter(logger, deltaSnapshotPeriod, endpoints, ctx.Done(), false, compressionConfig)
+				Expect(err).ShouldNot(HaveOccurred())
+				cancel()
+
+				// populate the etcd with some more data
+				resp = &utils.EtcdDataPopulationResponse{}
+				utils.PopulateEtcd(testCtx, logger, endpoints, 0, keyTo, resp)
+				Expect(resp.Err).ShouldNot(HaveOccurred())
+
+				// start the Snapshotter with compression not enabled to take delta snapshot.
+				compressionConfig = compressor.NewCompressorConfig()
+				ctx, cancel = context.WithTimeout(testCtx, time.Duration(2*time.Second))
+				err = runSnapshotter(logger, deltaSnapshotPeriod, endpoints, ctx.Done(), false, compressionConfig)
+				Expect(err).ShouldNot(HaveOccurred())
+				cancel()
+
+				// remove the member dir
+				err = os.RemoveAll(memberPath)
+				Expect(err).ShouldNot(HaveOccurred())
+
+				baseSnapshot, deltaSnapList, err = miscellaneous.GetLatestFullSnapshotAndDeltaSnapList(store)
+				Expect(err).ShouldNot(HaveOccurred())
+
+				rstr = NewRestorer(store, logger)
+
+				restoreOpts := RestoreOptions{
+					Config:        restorationConfig,
+					BaseSnapshot:  *baseSnapshot,
+					DeltaSnapList: deltaSnapList,
+					ClusterURLs:   clusterUrlsMap,
+					PeerURLs:      peerUrls,
+				}
+
+				err = rstr.Restore(restoreOpts)
+				Expect(err).ShouldNot(HaveOccurred())
+				err = checkDataConsistency(testCtx, restoreOpts.Config.RestoreDataDir, logger)
+				Expect(err).ShouldNot(HaveOccurred())
+			})
+		})
+
 	})
 
 })

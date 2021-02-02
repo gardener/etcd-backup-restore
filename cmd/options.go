@@ -18,6 +18,7 @@ import (
 	"context"
 	"io/ioutil"
 
+	"github.com/gardener/etcd-backup-restore/pkg/compressor"
 	"github.com/gardener/etcd-backup-restore/pkg/snapshot/snapshotter"
 
 	"github.com/gardener/etcd-backup-restore/pkg/etcdutil"
@@ -184,6 +185,7 @@ func (c *validatorOptions) validate() error {
 
 type snapshotterOptions struct {
 	etcdConnectionConfig    *etcdutil.EtcdConnectionConfig
+	compressionConfig       *compressor.CompressionConfig
 	snapstoreConfig         *snapstore.Config
 	snapshotterConfig       *snapshotter.Config
 	defragmentationSchedule string
@@ -195,6 +197,7 @@ func newSnapshotterOptions() *snapshotterOptions {
 		etcdConnectionConfig:    etcdutil.NewEtcdConnectionConfig(),
 		snapstoreConfig:         snapstore.NewSnapstoreConfig(),
 		snapshotterConfig:       snapshotter.NewSnapshotterConfig(),
+		compressionConfig:       compressor.NewCompressorConfig(),
 		defragmentationSchedule: "0 0 */3 * *",
 	}
 }
@@ -204,6 +207,7 @@ func (c *snapshotterOptions) addFlags(fs *flag.FlagSet) {
 	c.etcdConnectionConfig.AddFlags(fs)
 	c.snapstoreConfig.AddFlags(fs)
 	c.snapshotterConfig.AddFlags(fs)
+	c.compressionConfig.AddFlags(fs)
 
 	// Miscellaneous
 	fs.StringVar(&c.defragmentationSchedule, "defragmentation-schedule", c.defragmentationSchedule, "schedule to defragment etcd data directory")
@@ -216,6 +220,10 @@ func (c *snapshotterOptions) validate() error {
 	}
 
 	if err := c.snapshotterConfig.Validate(); err != nil {
+		return err
+	}
+
+	if err := c.compressionConfig.Validate(); err != nil {
 		return err
 	}
 
