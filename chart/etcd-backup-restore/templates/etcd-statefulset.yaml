@@ -130,6 +130,14 @@ spec:
         - --server-cert=/var/etcdbr/ssl/tls/tls.crt
         - --server-key=/var/etcdbr/ssl/tls/tls.key
 {{- end }}
+{{- if .Values.backup.compression }}
+        {{- if .Values.backup.compression.enabled }}
+        - --compress-snapshots={{ .Values.backup.compression.enabled }}
+        {{- end }}
+        {{- if .Values.backup.compression.policy }}        
+        - --compression-policy={{ .Values.backup.compression.policy }}
+        {{- end }}
+{{- end }}
         image: {{ .Values.images.etcdBackupRestore.repository }}:{{ .Values.images.etcdBackupRestore.tag }}
         imagePullPolicy: {{ .Values.images.etcdBackupRestore.pullPolicy }}
         ports:
