@@ -39,10 +39,7 @@ func Get(c *gophercloud.ServiceClient, opts GetOptsBuilder) (r GetResult) {
 		MoreHeaders: h,
 		OkCodes:     []int{204},
 	})
-	if resp != nil {
-		r.Header = resp.Header
-	}
-	r.Err = err
+	_, r.Header, r.Err = gophercloud.ParseResponse(resp, err)
 	return
 }
 
@@ -56,6 +53,7 @@ type UpdateOptsBuilder interface {
 // deleting an account's metadata.
 type UpdateOpts struct {
 	Metadata          map[string]string
+	RemoveMetadata    []string
 	ContentType       string `h:"Content-Type"`
 	DetectContentType bool   `h:"X-Detect-Content-Type"`
 	TempURLKey        string `h:"X-Account-Meta-Temp-URL-Key"`
@@ -68,9 +66,15 @@ func (opts UpdateOpts) ToAccountUpdateMap() (map[string]string, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	for k, v := range opts.Metadata {
 		headers["X-Account-Meta-"+k] = v
 	}
+
+	for _, k := range opts.RemoveMetadata {
+		headers["X-Remove-Account-Meta-"+k] = "remove"
+	}
+
 	return headers, err
 }
 
@@ -92,9 +96,6 @@ func Update(c *gophercloud.ServiceClient, opts UpdateOptsBuilder) (r UpdateResul
 		MoreHeaders: h,
 		OkCodes:     []int{201, 202, 204},
 	})
-	if resp != nil {
-		r.Header = resp.Header
-	}
-	r.Err = err
+	_, r.Header, r.Err = gophercloud.ParseResponse(resp, err)
 	return
 }
