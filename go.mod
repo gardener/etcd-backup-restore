@@ -31,13 +31,14 @@ require (
 	go.etcd.io/bbolt v1.3.3
 	go.etcd.io/etcd v0.0.0-20191023171146-3cf2f69b5738
 	go.opencensus.io v0.22.1 // indirect
+	go.uber.org/zap v1.10.0
 	golang.org/x/net v0.0.0-20200707034311-ab3426394381 // indirect
 	golang.org/x/sys v0.0.0-20200728102440-3e129f6d46b1 // indirect
 	golang.org/x/time v0.0.0-20190921001708-c4c64cad1fd0 // indirect
 	google.golang.org/api v0.14.0
 	helm.sh/helm/v3 v3.2.4
 	k8s.io/api v0.18.0
-	k8s.io/apimachinery v0.18.0
+	k8s.io/apimachinery v0.20.4
 	k8s.io/client-go v11.0.0+incompatible
 	rsc.io/letsencrypt v0.0.3 // indirect
 )
