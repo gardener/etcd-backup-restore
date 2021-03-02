@@ -14,6 +14,7 @@ import (
 	"github.com/gardener/etcd-backup-restore/pkg/etcdutil"
 	"github.com/gardener/etcd-backup-restore/pkg/snapshot/snapshotter"
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
+	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 	"github.com/gardener/etcd-backup-restore/test/utils"
 	"github.com/sirupsen/logrus"
 	"go.etcd.io/etcd/embed"
@@ -88,7 +89,7 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 
 // runSnapshotter creates a snapshotter object and runs it for a duration specified by 'snapshotterDurationSeconds'
 func runSnapshotter(logger *logrus.Entry, deltaSnapshotPeriod time.Duration, endpoints []string, stopCh <-chan struct{}) error {
-	store, err := snapstore.GetSnapstore(&snapstore.Config{Container: snapstoreDir, Provider: "Local"})
+	store, err := snapstore.GetSnapstore(&brtypes.SnapstoreConfig{Container: snapstoreDir, Provider: "Local"})
 	if err != nil {
 		return err
 	}
@@ -100,7 +101,7 @@ func runSnapshotter(logger *logrus.Entry, deltaSnapshotPeriod time.Duration, end
 	logger.Infof("etcdConnectionConfig %v", etcdConnectionConfig)
 
 	snapshotterConfig := snapshotter.NewSnapshotterConfig()
-	snapshotterConfig.GarbageCollectionPolicy = snapshotter.GarbageCollectionPolicyLimitBased
+	snapshotterConfig.GarbageCollectionPolicy = brtypes.GarbageCollectionPolicyLimitBased
 	snapshotterConfig.FullSnapshotSchedule = "0 0 1 1 *"
 	snapshotterConfig.MaxBackups = 1
 

@@ -226,8 +226,8 @@ func (b *BackupRestoreServer) runEtcdProbeLoopWithSnapshotter(ctx context.Contex
 		}
 		if !initialDeltaSnapshotTaken {
 			// need to take a full snapshot here
-			metrics.SnapshotRequired.With(prometheus.Labels{metrics.LabelKind: snapstore.SnapshotKindDelta}).Set(0)
-			metrics.SnapshotRequired.With(prometheus.Labels{metrics.LabelKind: snapstore.SnapshotKindFull}).Set(1)
+			metrics.SnapshotRequired.With(prometheus.Labels{metrics.LabelKind: brtypes.SnapshotKindDelta}).Set(0)
+			metrics.SnapshotRequired.With(prometheus.Labels{metrics.LabelKind: brtypes.SnapshotKindFull}).Set(1)
 			if _, err := ssr.TakeFullSnapshotAndResetTimer(); err != nil {
 				metrics.SnapshotterOperationFailure.With(prometheus.Labels{metrics.LabelError: err.Error()}).Inc()
 				b.logger.Errorf("Failed to take substitute first full snapshot: %v", err)
@@ -240,7 +240,7 @@ func (b *BackupRestoreServer) runEtcdProbeLoopWithSnapshotter(ctx context.Contex
 		handler.SetStatus(http.StatusOK)
 
 		ssr.SsrStateMutex.Lock()
-		ssr.SsrState = snapshotter.SnapshotterActive
+		ssr.SsrState = brtypes.SnapshotterActive
 		ssr.SsrStateMutex.Unlock()
 		gcStopCh := make(chan struct{})
 		go ssr.RunGarbageCollector(gcStopCh)
@@ -327,11 +327,11 @@ func handleSsrStopRequest(ctx context.Context, handler *HTTPHandler, ssr *snapsh
 		}
 
 		ssr.SsrStateMutex.Lock()
-		if ssr.SsrState == snapshotter.SnapshotterActive {
+		if ssr.SsrState == brtypes.SnapshotterActive {
 			ssr.SsrStateMutex.Unlock()
 			ssrStopCh <- emptyStruct
 		} else {
-			ssr.SsrState = snapshotter.SnapshotterInactive
+			ssr.SsrState = brtypes.SnapshotterInactive
 			ssr.SsrStateMutex.Unlock()
 			ackCh <- emptyStruct
 		}

@@ -13,7 +13,6 @@ import (
 	"github.com/gardener/etcd-backup-restore/pkg/metrics"
 	"github.com/gardener/etcd-backup-restore/pkg/miscellaneous"
 	"github.com/gardener/etcd-backup-restore/pkg/snapshot/restorer"
-	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/sirupsen/logrus"
@@ -38,11 +37,11 @@ const (
 // Compactor holds the necessary details for compacting ETCD
 type Compactor struct {
 	logger *logrus.Entry
-	store  snapstore.SnapStore
+	store  brtypes.SnapStore
 }
 
 // NewCompactor creates compactor
-func NewCompactor(store snapstore.SnapStore, logger *logrus.Entry) *Compactor {
+func NewCompactor(store brtypes.SnapStore, logger *logrus.Entry) *Compactor {
 	return &Compactor{
 		logger: logger,
 		store:  store,
@@ -213,7 +212,7 @@ func (cp *Compactor) Compact(ro *brtypes.RestoreOptions, needDefragmentation boo
 	}
 
 	timeTaken := time.Now().Sub(startTime).Seconds()
-	metrics.SnapshotDurationSeconds.With(prometheus.Labels{metrics.LabelKind: snapstore.SnapshotKindFull, metrics.LabelSucceeded: metrics.ValueSucceededTrue}).Observe(timeTaken)
+	metrics.SnapshotDurationSeconds.With(prometheus.Labels{metrics.LabelKind: brtypes.SnapshotKindFull, metrics.LabelSucceeded: metrics.ValueSucceededTrue}).Observe(timeTaken)
 	cp.logger.Infof("Total time to save snapshot: %f seconds.", timeTaken)
 
 	compactionDuration, err := time.ParseDuration(fmt.Sprintf("%fs", timeTaken))

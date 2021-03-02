@@ -32,7 +32,6 @@ import (
 
 	"github.com/gardener/etcd-backup-restore/pkg/compressor"
 	"github.com/gardener/etcd-backup-restore/pkg/miscellaneous"
-	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 	"github.com/sirupsen/logrus"
 	"go.etcd.io/etcd/clientv3"
@@ -63,11 +62,11 @@ const (
 type Restorer struct {
 	logger    *logrus.Entry
 	zapLogger *zap.Logger
-	store     snapstore.SnapStore
+	store     brtypes.SnapStore
 }
 
 // NewRestorer returns the restorer object.
-func NewRestorer(store snapstore.SnapStore, logger *logrus.Entry) *Restorer {
+func NewRestorer(store brtypes.SnapStore, logger *logrus.Entry) *Restorer {
 	zapLogger, _ := zap.NewProduction()
 	return &Restorer{
 		logger:    logger.WithField("actor", "restorer"),
@@ -143,7 +142,7 @@ func (r *Restorer) RestoreFromBaseSnapshot(ro brtypes.RestoreOptions) error {
 }
 
 // makeDB copies the database snapshot to the snapshot directory.
-func (r *Restorer) makeDB(snapdir string, snap *snapstore.Snapshot, commit int, skipHashCheck bool) error {
+func (r *Restorer) makeDB(snapdir string, snap *brtypes.Snapshot, commit int, skipHashCheck bool) error {
 	rc, err := r.store.Fetch(*snap)
 	if err != nil {
 		return err
@@ -457,7 +456,7 @@ func (r *Restorer) fetchSnaps(fetcherIndex int, fetcherInfoCh <-chan brtypes.Fet
 }
 
 // applySnaps applies delta snapshot events to the embedded etcd sequentially, in the right order of snapshots, regardless of the order in which they were fetched.
-func (r *Restorer) applySnaps(client *clientv3.Client, remainingSnaps snapstore.SnapList, applierInfoCh <-chan brtypes.ApplierInfo, errCh chan<- error, stopCh <-chan bool, wg *sync.WaitGroup) {
+func (r *Restorer) applySnaps(client *clientv3.Client, remainingSnaps brtypes.SnapList, applierInfoCh <-chan brtypes.ApplierInfo, errCh chan<- error, stopCh <-chan bool, wg *sync.WaitGroup) {
 	defer wg.Done()
 	wg.Add(1)
 
@@ -523,7 +522,7 @@ func (r *Restorer) applySnaps(client *clientv3.Client, remainingSnaps snapstore.
 }
 
 // applyEventsAndVerify applies events from one snapshot to the embedded etcd and verifies the correctness of the sequence of snapshot applied.
-func applyEventsAndVerify(client *clientv3.Client, events []brtypes.Event, snap *snapstore.Snapshot) error {
+func applyEventsAndVerify(client *clientv3.Client, events []brtypes.Event, snap *brtypes.Snapshot) error {
 	if err := applyEventsToEtcd(client, events); err != nil {
 		return fmt.Errorf("failed to apply events to etcd for delta snapshot %s : %v", snap.SnapName, err)
 	}
@@ -535,7 +534,7 @@ func applyEventsAndVerify(client *clientv3.Client, events []brtypes.Event, snap 
 }
 
 // applyFirstDeltaSnapshot applies the events from first delta snapshot to etcd.
-func (r *Restorer) applyFirstDeltaSnapshot(client *clientv3.Client, snap snapstore.Snapshot) error {
+func (r *Restorer) applyFirstDeltaSnapshot(client *clientv3.Client, snap brtypes.Snapshot) error {
 	r.logger.Infof("Applying first delta snapshot %s", path.Join(snap.SnapDir, snap.SnapName))
 	events, err := r.getEventsFromDeltaSnapshot(snap)
 	if err != nil {
@@ -566,7 +565,7 @@ func (r *Restorer) applyFirstDeltaSnapshot(client *clientv3.Client, snap snapsto
 }
 
 // getEventsFromDeltaSnapshot returns the events from delta snapshot from snap store.
-func (r *Restorer) getEventsFromDeltaSnapshot(snap snapstore.Snapshot) ([]brtypes.Event, error) {
+func (r *Restorer) getEventsFromDeltaSnapshot(snap brtypes.Snapshot) ([]brtypes.Event, error) {
 	data, err := r.getEventsDataFromDeltaSnapshot(snap)
 	if err != nil {
 		return nil, err
@@ -581,7 +580,7 @@ func (r *Restorer) getEventsFromDeltaSnapshot(snap snapstore.Snapshot) ([]brtype
 }
 
 // getEventsDataFromDeltaSnapshot fetches the events data from delta snapshot from snap store.
-func (r *Restorer) getEventsDataFromDeltaSnapshot(snap snapstore.Snapshot) ([]byte, error) {
+func (r *Restorer) getEventsDataFromDeltaSnapshot(snap brtypes.Snapshot) ([]byte, error) {
 	rc, err := r.store.Fetch(snap)
 	if err != nil {
 		return nil, err
@@ -684,7 +683,7 @@ func applyEventsToEtcd(client *clientv3.Client, events []brtypes.Event) error {
 	return err
 }
 
-func verifySnapshotRevision(client *clientv3.Client, snap *snapstore.Snapshot) error {
+func verifySnapshotRevision(client *clientv3.Client, snap *brtypes.Snapshot) error {
 	ctx := context.TODO()
 	getResponse, err := client.Get(ctx, "foo")
 	if err != nil {

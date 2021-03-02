@@ -20,7 +20,6 @@ import (
 	"time"
 
 	_ "github.com/gardener/etcd-backup-restore/pkg/snapshot/restorer"
-	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -41,8 +40,8 @@ var _ = Describe("restorer types", func() {
 				EmbeddedEtcdQuotaBytes:   int64(i),
 			}
 		}
-		makeSnap = func(s string, i int, t time.Time, b bool) *snapstore.Snapshot {
-			return &snapstore.Snapshot{
+		makeSnap = func(s string, i int, t time.Time, b bool) *brtypes.Snapshot {
+			return &brtypes.Snapshot{
 				Kind:          s,
 				StartRevision: int64(i),
 				LastRevision:  int64(i),
@@ -52,9 +51,9 @@ var _ = Describe("restorer types", func() {
 				IsChunk:       b,
 			}
 		}
-		makeSnapList = func(s string, i int, t time.Time, b bool) snapstore.SnapList {
+		makeSnapList = func(s string, i int, t time.Time, b bool) brtypes.SnapList {
 			var s1, s2 = makeSnap(s, i, t, b), makeSnap(s, i, t, b)
-			return snapstore.SnapList{s1, s2}
+			return brtypes.SnapList{s1, s2}
 		}
 		makeURL = func(s string, b bool) url.URL {
 			return url.URL{
@@ -129,7 +128,7 @@ var _ = Describe("restorer types", func() {
 	Describe("SnapList", func() {
 		var (
 			now   = time.Now()
-			makeA = func() snapstore.SnapList { return makeSnapList("a", 1, now, false) }
+			makeA = func() brtypes.SnapList { return makeSnapList("a", 1, now, false) }
 		)
 		Describe("brtypes.DeepCopySnapList", func() {
 			It("out", func() {

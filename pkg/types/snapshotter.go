@@ -1,4 +1,4 @@
-// Copyright (c) 2019 SAP SE or an SAP affiliate company. All rights reserved. This file is licensed under the Apache Software License, v. 2 except as noted otherwise in the LICENSE file.
+// Copyright (c) 2018 SAP SE or an SAP affiliate company. All rights reserved. This file is licensed under the Apache Software License, v. 2 except as noted otherwise in the LICENSE file.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,31 +12,60 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package snapshotter
+package types
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/gardener/etcd-backup-restore/pkg/wrappers"
-	cron "github.com/robfig/cron/v3"
+	"github.com/robfig/cron/v3"
 	"github.com/sirupsen/logrus"
 	flag "github.com/spf13/pflag"
 )
 
-// NewSnapshotterConfig returns the snapshotter config.
-func NewSnapshotterConfig() *Config {
-	return &Config{
-		FullSnapshotSchedule:     defaultFullSnapshotSchedule,
-		DeltaSnapshotPeriod:      wrappers.Duration{Duration: DefaultDeltaSnapshotInterval},
-		DeltaSnapshotMemoryLimit: DefaultDeltaSnapMemoryLimit,
-		GarbageCollectionPeriod:  wrappers.Duration{Duration: defaultGarbageCollectionPeriod},
-		GarbageCollectionPolicy:  GarbageCollectionPolicyExponential,
-		MaxBackups:               DefaultMaxBackups,
-	}
+const (
+	// GarbageCollectionPolicyExponential defines the exponential policy for garbage collecting old backups
+	GarbageCollectionPolicyExponential = "Exponential"
+	// GarbageCollectionPolicyLimitBased defines the limit based policy for garbage collecting old backups
+	GarbageCollectionPolicyLimitBased = "LimitBased"
+	// DefaultMaxBackups is default number of maximum backups for limit based garbage collection policy.
+	DefaultMaxBackups = 7
+
+	// SnapshotterInactive is set when the snapshotter has not started taking snapshots.
+	SnapshotterInactive SnapshotterState = 0
+	// SnapshotterActive is set when the snapshotter has started taking snapshots.
+	SnapshotterActive SnapshotterState = 1
+
+	// DefaultDeltaSnapMemoryLimit is default memory limit for delta snapshots.
+	DefaultDeltaSnapMemoryLimit = 10 * 1024 * 1024 //10Mib
+	// DefaultDeltaSnapshotInterval is the default interval for delta snapshots.
+	DefaultDeltaSnapshotInterval = 20 * time.Second
+
+	// DefaultFullSnapshotSchedule is the default schedule
+	DefaultFullSnapshotSchedule = "0 */1 * * *"
+	// DefaultGarbageCollectionPeriod is the default interval for garbage collection
+	DefaultGarbageCollectionPeriod = time.Minute
+
+	// DeltaSnapshotIntervalThreshold is interval between delta snapshot
+	DeltaSnapshotIntervalThreshold = time.Second
+)
+
+// SnapshotterState denotes the state the snapshotter would be in.
+type SnapshotterState int
+
+// SnapshotterConfig holds the snapshotter config.
+type SnapshotterConfig struct {
+	FullSnapshotSchedule     string            `json:"schedule,omitempty"`
+	DeltaSnapshotPeriod      wrappers.Duration `json:"deltaSnapshotPeriod,omitempty"`
+	DeltaSnapshotMemoryLimit uint              `json:"deltaSnapshotMemoryLimit,omitempty"`
+	GarbageCollectionPeriod  wrappers.Duration `json:"garbageCollectionPeriod,omitempty"`
+	GarbageCollectionPolicy  string            `json:"garbageCollectionPolicy,omitempty"`
+	MaxBackups               uint              `json:"maxBackups,omitempty"`
 }
 
 // AddFlags adds the flags to flagset.
-func (c *Config) AddFlags(fs *flag.FlagSet) {
+func (c *SnapshotterConfig) AddFlags(fs *flag.FlagSet) {
 	fs.StringVarP(&c.FullSnapshotSchedule, "schedule", "s", c.FullSnapshotSchedule, "schedule for snapshots")
 	fs.DurationVar(&c.DeltaSnapshotPeriod.Duration, "delta-snapshot-period", c.DeltaSnapshotPeriod.Duration, "Period after which delta snapshot will be persisted. If this value is set to be lesser than 1, delta snapshotting will be disabled.")
 	fs.UintVar(&c.DeltaSnapshotMemoryLimit, "delta-snapshot-memory-limit", c.DeltaSnapshotMemoryLimit, "memory limit after which delta snapshots will be taken")
@@ -46,7 +75,7 @@ func (c *Config) AddFlags(fs *flag.FlagSet) {
 }
 
 // Validate validates the config.
-func (c *Config) Validate() error {
+func (c *SnapshotterConfig) Validate() error {
 	if _, err := cron.ParseStandard(c.FullSnapshotSchedule); err != nil {
 		return err
 	}
@@ -57,7 +86,7 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("max backups should be greather than zero for garbage collection policy set to limit based")
 	}
 
-	if c.DeltaSnapshotPeriod.Duration < deltaSnapshotIntervalThreshold {
+	if c.DeltaSnapshotPeriod.Duration < DeltaSnapshotIntervalThreshold {
 		logrus.Infof("Found delta snapshot interval %s less than 1 second. Disabling delta snapshotting. ", c.DeltaSnapshotPeriod)
 	}
 

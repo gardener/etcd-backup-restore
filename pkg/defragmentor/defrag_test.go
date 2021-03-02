@@ -17,10 +17,12 @@ package defragmentor_test
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/gardener/etcd-backup-restore/pkg/etcdutil"
-	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
+	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
+	"github.com/gardener/etcd-backup-restore/test/utils"
 
 	. "github.com/gardener/etcd-backup-restore/pkg/defragmentor"
 	. "github.com/onsi/ginkgo"
@@ -112,6 +114,18 @@ var _ = Describe("Defrag", func() {
 			minimumExpectedDefragCount := 2
 			defragSchedule, _ := cron.ParseStandard("*/1 * * * *")
 
+			// Then populate the etcd with some more data to add the subsequent delta snapshots
+			populatorCtx, cancelPopulator := context.WithTimeout(testCtx, 5*time.Second)
+			defer cancelPopulator()
+			resp := &utils.EtcdDataPopulationResponse{}
+			wg := &sync.WaitGroup{}
+			wg.Add(1)
+			go utils.PopulateEtcdWithWaitGroup(populatorCtx, wg, logger, endpoints, resp)
+			Expect(resp.Err).ShouldNot(HaveOccurred())
+
+			// Wait unitil the populator finishes with populating ETCD
+			wg.Wait()
+
 			client, err := etcdutil.GetTLSClientForEtcd(etcdConnectionConfig)
 			Expect(err).ShouldNot(HaveOccurred())
 			defer client.Close()
@@ -124,7 +138,7 @@ var _ = Describe("Defrag", func() {
 
 			defragThreadCtx, cancelDefragThread := context.WithTimeout(testCtx, time.Second*time.Duration(135))
 			defer cancelDefragThread()
-			DefragDataPeriodically(defragThreadCtx, etcdConnectionConfig, defragSchedule, func(_ context.Context) (*snapstore.Snapshot, error) {
+			DefragDataPeriodically(defragThreadCtx, etcdConnectionConfig, defragSchedule, func(_ context.Context) (*brtypes.Snapshot, error) {
 				defragCount++
 				return nil, nil
 			}, logger)
@@ -135,7 +149,7 @@ var _ = Describe("Defrag", func() {
 			Expect(err).ShouldNot(HaveOccurred())
 
 			Expect(defragCount).Should(Or(Equal(minimumExpectedDefragCount), Equal(minimumExpectedDefragCount+1)))
-			Expect(newStatus.DbSize).Should(BeNumerically("<=", oldDBSize))
+			Expect(newStatus.DbSize).Should(BeNumerically("<", oldDBSize))
 			Expect(newStatus.Header.GetRevision()).Should(BeNumerically("==", oldRevision))
 		})
 	})

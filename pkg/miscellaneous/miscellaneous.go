@@ -22,7 +22,6 @@ import (
 	"time"
 
 	"github.com/gardener/etcd-backup-restore/pkg/metrics"
-	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/sirupsen/logrus"
@@ -30,10 +29,10 @@ import (
 )
 
 // GetLatestFullSnapshotAndDeltaSnapList returns the latest snapshot
-func GetLatestFullSnapshotAndDeltaSnapList(store snapstore.SnapStore) (*snapstore.Snapshot, snapstore.SnapList, error) {
+func GetLatestFullSnapshotAndDeltaSnapList(store brtypes.SnapStore) (*brtypes.Snapshot, brtypes.SnapList, error) {
 	var (
-		fullSnapshot  *snapstore.Snapshot
-		deltaSnapList snapstore.SnapList
+		fullSnapshot  *brtypes.Snapshot
+		deltaSnapList brtypes.SnapList
 	)
 	snapList, err := store.List()
 	if err != nil {
@@ -44,7 +43,7 @@ func GetLatestFullSnapshotAndDeltaSnapList(store snapstore.SnapStore) (*snapstor
 		if snapList[index-1].IsChunk {
 			continue
 		}
-		if snapList[index-1].Kind == snapstore.SnapshotKindFull {
+		if snapList[index-1].Kind == brtypes.SnapshotKindFull {
 			fullSnapshot = snapList[index-1]
 			break
 		}

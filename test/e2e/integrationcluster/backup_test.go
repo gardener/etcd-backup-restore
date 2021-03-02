@@ -21,7 +21,7 @@ import (
 	"time"
 
 	"github.com/gardener/etcd-backup-restore/pkg/miscellaneous"
-	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
+	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -30,7 +30,7 @@ import (
 var _ = Describe("Backup", func() {
 	var (
 		err                error
-		store              snapstore.SnapStore
+		store              brtypes.SnapStore
 		podName            = fmt.Sprintf("%s-etcd-0", releaseName)
 		etcdEndpointName   = fmt.Sprintf("%s-etcd-client", releaseName)
 		backupEndpointName = fmt.Sprintf("%s-backup-client", releaseName)
@@ -149,7 +149,7 @@ var _ = Describe("Backup", func() {
 			snap, err := triggerOnDemandSnapshot(kubeconfigPath, releaseNamespace, podName, "backup-restore", backupClientPort, "full")
 			Expect(err).ShouldNot(HaveOccurred())
 			Expect(snap).ShouldNot(BeNil())
-			Expect(snap.Kind).Should(Equal(snapstore.SnapshotKindFull))
+			Expect(snap.Kind).Should(Equal(brtypes.SnapshotKindFull))
 
 			fullSnap, _, err = miscellaneous.GetLatestFullSnapshotAndDeltaSnapList(store)
 			Expect(err).ShouldNot(HaveOccurred())
@@ -175,7 +175,7 @@ var _ = Describe("Backup", func() {
 			snap, err := triggerOnDemandSnapshot(kubeconfigPath, releaseNamespace, podName, "backup-restore", backupClientPort, "delta")
 			Expect(err).ShouldNot(HaveOccurred())
 			Expect(snap).ShouldNot(BeNil())
-			Expect(snap.Kind).Should(Equal(snapstore.SnapshotKindDelta))
+			Expect(snap.Kind).Should(Equal(brtypes.SnapshotKindDelta))
 
 			_, deltaSnapList, err = miscellaneous.GetLatestFullSnapshotAndDeltaSnapList(store)
 			Expect(err).ShouldNot(HaveOccurred())

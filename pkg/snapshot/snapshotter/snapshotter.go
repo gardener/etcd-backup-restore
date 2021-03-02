@@ -31,36 +31,90 @@ import (
 	"github.com/gardener/etcd-backup-restore/pkg/metrics"
 	"github.com/gardener/etcd-backup-restore/pkg/miscellaneous"
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
+	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
+	"github.com/gardener/etcd-backup-restore/pkg/wrappers"
 	"github.com/prometheus/client_golang/prometheus"
 	cron "github.com/robfig/cron/v3"
 	"github.com/sirupsen/logrus"
 	"go.etcd.io/etcd/clientv3"
 )
 
+var emptyStruct struct{}
+
+// event is wrapper over etcd event to keep track of time of event
+type event struct {
+	EtcdEvent *clientv3.Event `json:"etcdEvent"`
+	Time      time.Time       `json:"time"`
+}
+
+type result struct {
+	Snapshot *brtypes.Snapshot `json:"snapshot"`
+	Err      error             `json:"error"`
+}
+
+// NewSnapshotterConfig returns the snapshotter config.
+func NewSnapshotterConfig() *brtypes.SnapshotterConfig {
+	return &brtypes.SnapshotterConfig{
+		FullSnapshotSchedule:     brtypes.DefaultFullSnapshotSchedule,
+		DeltaSnapshotPeriod:      wrappers.Duration{Duration: brtypes.DefaultDeltaSnapshotInterval},
+		DeltaSnapshotMemoryLimit: brtypes.DefaultDeltaSnapMemoryLimit,
+		GarbageCollectionPeriod:  wrappers.Duration{Duration: brtypes.DefaultGarbageCollectionPeriod},
+		GarbageCollectionPolicy:  brtypes.GarbageCollectionPolicyExponential,
+		MaxBackups:               brtypes.DefaultMaxBackups,
+	}
+}
+
+// Snapshotter is a struct for etcd snapshot taker
+type Snapshotter struct {
+	logger               *logrus.Entry
+	etcdConnectionConfig *etcdutil.EtcdConnectionConfig
+	store                brtypes.SnapStore
+	config               *brtypes.SnapshotterConfig
+	compressionConfig    *compressor.CompressionConfig
+
+	schedule           cron.Schedule
+	prevSnapshot       *brtypes.Snapshot
+	PrevFullSnapshot   *brtypes.Snapshot
+	PrevDeltaSnapshots brtypes.SnapList
+	fullSnapshotReqCh  chan struct{}
+	deltaSnapshotReqCh chan struct{}
+	fullSnapshotAckCh  chan result
+	deltaSnapshotAckCh chan result
+	fullSnapshotTimer  *time.Timer
+	deltaSnapshotTimer *time.Timer
+	events             []byte
+	watchCh            clientv3.WatchChan
+	etcdClient         *clientv3.Client
+	cancelWatch        context.CancelFunc
+	SsrStateMutex      *sync.Mutex
+	SsrState           brtypes.SnapshotterState
+	lastEventRevision  int64
+}
+
 // NewSnapshotter returns the snapshotter object.
-func NewSnapshotter(logger *logrus.Entry, config *Config, store snapstore.SnapStore, etcdConnectionConfig *etcdutil.EtcdConnectionConfig, compressionConfig *compressor.CompressionConfig) (*Snapshotter, error) {
+func NewSnapshotter(logger *logrus.Entry, config *brtypes.SnapshotterConfig, store brtypes.SnapStore, etcdConnectionConfig *etcdutil.EtcdConnectionConfig, compressionConfig *compressor.CompressionConfig) (*Snapshotter, error) {
 	sdl, err := cron.ParseStandard(config.FullSnapshotSchedule)
 	if err != nil {
 		// Ideally this should be validated before.
 		return nil, fmt.Errorf("invalid schedule provied %s : %v", config.FullSnapshotSchedule, err)
 	}
 
-	var prevSnapshot *snapstore.Snapshot
+	var prevSnapshot *brtypes.Snapshot
 	fullSnap, deltaSnapList, err := miscellaneous.GetLatestFullSnapshotAndDeltaSnapList(store)
 	if err != nil {
 		return nil, err
 	} else if fullSnap != nil && len(deltaSnapList) == 0 {
 		prevSnapshot = fullSnap
 		// setting timestamps of both full and delta to prev full snapshot's timestamp
-		metrics.LatestSnapshotTimestamp.With(prometheus.Labels{metrics.LabelKind: snapstore.SnapshotKindFull}).Set(float64(prevSnapshot.CreatedOn.Unix()))
-		metrics.LatestSnapshotTimestamp.With(prometheus.Labels{metrics.LabelKind: snapstore.SnapshotKindDelta}).Set(float64(prevSnapshot.CreatedOn.Unix()))
+		metrics.LatestSnapshotTimestamp.With(prometheus.Labels{metrics.LabelKind: brtypes.SnapshotKindFull}).Set(float64(prevSnapshot.CreatedOn.Unix()))
+		metrics.LatestSnapshotTimestamp.With(prometheus.Labels{metrics.LabelKind: brtypes.SnapshotKindDelta}).Set(float64(prevSnapshot.CreatedOn.Unix()))
 	} else if fullSnap != nil && len(deltaSnapList) != 0 {
 		prevSnapshot = deltaSnapList[len(deltaSnapList)-1]
-		metrics.LatestSnapshotTimestamp.With(prometheus.Labels{metrics.LabelKind: snapstore.SnapshotKindFull}).Set(float64(fullSnap.CreatedOn.Unix()))
-		metrics.LatestSnapshotTimestamp.With(prometheus.Labels{metrics.LabelKind: snapstore.SnapshotKindDelta}).Set(float64(prevSnapshot.CreatedOn.Unix()))
+		metrics.LatestSnapshotTimestamp.With(prometheus.Labels{metrics.LabelKind: brtypes.SnapshotKindFull}).Set(float64(fullSnap.CreatedOn.Unix()))
+		metrics.LatestSnapshotTimestamp.With(prometheus.Labels{metrics.LabelKind: brtypes.SnapshotKindDelta}).Set(float64(prevSnapshot.CreatedOn.Unix()))
 	} else {
 		// creating dummy previous snapshot since fullSnap == nil
-		prevSnapshot = snapstore.NewSnapshot(snapstore.SnapshotKindFull, 0, 0, "")
+		prevSnapshot = snapstore.NewSnapshot(brtypes.SnapshotKindFull, 0, 0, "")
 	}
 
 	metrics.LatestSnapshotRevision.With(prometheus.Labels{metrics.LabelKind: prevSnapshot.Kind}).Set(float64(prevSnapshot.LastRevision))
@@ -76,7 +130,7 @@ func NewSnapshotter(logger *logrus.Entry, config *Config, store snapstore.SnapSt
 		prevSnapshot:       prevSnapshot,
 		PrevFullSnapshot:   fullSnap,
 		PrevDeltaSnapshots: deltaSnapList,
-		SsrState:           SnapshotterInactive,
+		SsrState:           brtypes.SnapshotterInactive,
 		SsrStateMutex:      &sync.Mutex{},
 		fullSnapshotReqCh:  make(chan struct{}),
 		deltaSnapshotReqCh: make(chan struct{}),
@@ -112,8 +166,8 @@ func (ssr *Snapshotter) Run(stopCh <-chan struct{}, startWithFullSnapshot bool) 
 		}
 	}
 
-	ssr.deltaSnapshotTimer = time.NewTimer(DefaultDeltaSnapshotInterval)
-	if ssr.config.DeltaSnapshotPeriod.Duration >= deltaSnapshotIntervalThreshold {
+	ssr.deltaSnapshotTimer = time.NewTimer(brtypes.DefaultDeltaSnapshotInterval)
+	if ssr.config.DeltaSnapshotPeriod.Duration >= brtypes.DeltaSnapshotIntervalThreshold {
 		ssr.deltaSnapshotTimer.Stop()
 		ssr.deltaSnapshotTimer.Reset(ssr.config.DeltaSnapshotPeriod.Duration)
 	}
@@ -123,11 +177,11 @@ func (ssr *Snapshotter) Run(stopCh <-chan struct{}, startWithFullSnapshot bool) 
 
 // TriggerFullSnapshot sends the events to take full snapshot. This is to
 // trigger full snapshot externally out of regular schedule.
-func (ssr *Snapshotter) TriggerFullSnapshot(ctx context.Context) (*snapstore.Snapshot, error) {
+func (ssr *Snapshotter) TriggerFullSnapshot(ctx context.Context) (*brtypes.Snapshot, error) {
 	ssr.SsrStateMutex.Lock()
 	defer ssr.SsrStateMutex.Unlock()
 
-	if ssr.SsrState != SnapshotterActive {
+	if ssr.SsrState != brtypes.SnapshotterActive {
 		return nil, fmt.Errorf("snapshotter is not active")
 	}
 	ssr.logger.Info("Triggering out of schedule full snapshot...")
@@ -138,15 +192,15 @@ func (ssr *Snapshotter) TriggerFullSnapshot(ctx context.Context) (*snapstore.Sna
 
 // TriggerDeltaSnapshot sends the events to take delta snapshot. This is to
 // trigger delta snapshot externally out of regular schedule.
-func (ssr *Snapshotter) TriggerDeltaSnapshot() (*snapstore.Snapshot, error) {
+func (ssr *Snapshotter) TriggerDeltaSnapshot() (*brtypes.Snapshot, error) {
 	ssr.SsrStateMutex.Lock()
 	defer ssr.SsrStateMutex.Unlock()
 
-	if ssr.SsrState != SnapshotterActive {
+	if ssr.SsrState != brtypes.SnapshotterActive {
 		return nil, fmt.Errorf("snapshotter is not active")
 	}
-	if ssr.config.DeltaSnapshotPeriod.Duration < deltaSnapshotIntervalThreshold {
-		return nil, fmt.Errorf("Found delta snapshot interval %s less than %v. Delta snapshotting is disabled. ", ssr.config.DeltaSnapshotPeriod.Duration, time.Duration(deltaSnapshotIntervalThreshold))
+	if ssr.config.DeltaSnapshotPeriod.Duration < brtypes.DeltaSnapshotIntervalThreshold {
+		return nil, fmt.Errorf("Found delta snapshot interval %s less than %v. Delta snapshotting is disabled. ", ssr.config.DeltaSnapshotPeriod.Duration, time.Duration(brtypes.DeltaSnapshotIntervalThreshold))
 	}
 	ssr.logger.Info("Triggering out of schedule delta snapshot...")
 	ssr.deltaSnapshotReqCh <- emptyStruct
@@ -168,7 +222,7 @@ func (ssr *Snapshotter) stop() {
 	}
 	ssr.closeEtcdClient()
 
-	ssr.SsrState = SnapshotterInactive
+	ssr.SsrState = brtypes.SnapshotterInactive
 	ssr.SsrStateMutex.Unlock()
 }
 
@@ -191,7 +245,7 @@ func (ssr *Snapshotter) closeEtcdClient() {
 
 // TakeFullSnapshotAndResetTimer takes a full snapshot and resets the full snapshot
 // timer as per the schedule.
-func (ssr *Snapshotter) TakeFullSnapshotAndResetTimer() (*snapstore.Snapshot, error) {
+func (ssr *Snapshotter) TakeFullSnapshotAndResetTimer() (*brtypes.Snapshot, error) {
 	ssr.logger.Infof("Taking scheduled snapshot for time: %s", time.Now().Local())
 	s, err := ssr.takeFullSnapshot()
 	if err != nil {
@@ -204,10 +258,10 @@ func (ssr *Snapshotter) TakeFullSnapshotAndResetTimer() (*snapstore.Snapshot, er
 	return s, ssr.resetFullSnapshotTimer()
 }
 
-// takeFullSnapshot will store full snapshot of etcd to snapstore.
+// takeFullSnapshot will store full snapshot of etcd to brtypes.
 // It basically will connect to etcd. Then ask for snapshot. And finally
 // store it to underlying snapstore on the fly.
-func (ssr *Snapshotter) takeFullSnapshot() (*snapstore.Snapshot, error) {
+func (ssr *Snapshotter) takeFullSnapshot() (*brtypes.Snapshot, error) {
 	defer ssr.cleanupInMemoryEvents()
 	// close previous watch and client.
 	ssr.closeEtcdClient()
@@ -232,7 +286,7 @@ func (ssr *Snapshotter) takeFullSnapshot() (*snapstore.Snapshot, error) {
 	}
 	lastRevision := resp.Header.Revision
 
-	if ssr.prevSnapshot.Kind == snapstore.SnapshotKindFull && ssr.prevSnapshot.LastRevision == lastRevision {
+	if ssr.prevSnapshot.Kind == brtypes.SnapshotKindFull && ssr.prevSnapshot.LastRevision == lastRevision {
 		ssr.logger.Infof("There are no updates since last snapshot, skipping full snapshot.")
 	} else {
 		ctx, cancel = context.WithTimeout(context.TODO(), ssr.etcdConnectionConfig.ConnectionTimeout.Duration)
@@ -251,7 +305,7 @@ func (ssr *Snapshotter) takeFullSnapshot() (*snapstore.Snapshot, error) {
 			return nil, fmt.Errorf("failed to get compressionSuffix: %v", err)
 		}
 		ssr.logger.Infof("Successfully opened snapshot reader on etcd")
-		s := snapstore.NewSnapshot(snapstore.SnapshotKindFull, 0, lastRevision, compressionSuffix)
+		s := snapstore.NewSnapshot(brtypes.SnapshotKindFull, 0, lastRevision, compressionSuffix)
 
 		startTime := time.Now()
 
@@ -268,13 +322,13 @@ func (ssr *Snapshotter) takeFullSnapshot() (*snapstore.Snapshot, error) {
 
 		if err := ssr.store.Save(*s, rc); err != nil {
 			timeTaken := time.Now().Sub(startTime).Seconds()
-			metrics.SnapshotDurationSeconds.With(prometheus.Labels{metrics.LabelKind: snapstore.SnapshotKindFull, metrics.LabelSucceeded: metrics.ValueSucceededFalse}).Observe(timeTaken)
+			metrics.SnapshotDurationSeconds.With(prometheus.Labels{metrics.LabelKind: brtypes.SnapshotKindFull, metrics.LabelSucceeded: metrics.ValueSucceededFalse}).Observe(timeTaken)
 			return nil, &errors.SnapstoreError{
 				Message: fmt.Sprintf("failed to save snapshot: %v", err),
 			}
 		}
 		timeTaken := time.Now().Sub(startTime).Seconds()
-		metrics.SnapshotDurationSeconds.With(prometheus.Labels{metrics.LabelKind: snapstore.SnapshotKindFull, metrics.LabelSucceeded: metrics.ValueSucceededTrue}).Observe(timeTaken)
+		metrics.SnapshotDurationSeconds.With(prometheus.Labels{metrics.LabelKind: brtypes.SnapshotKindFull, metrics.LabelSucceeded: metrics.ValueSucceededTrue}).Observe(timeTaken)
 		logrus.Infof("Total time to save snapshot: %f seconds.", timeTaken)
 		ssr.prevSnapshot = s
 		ssr.PrevFullSnapshot = s
@@ -291,8 +345,8 @@ func (ssr *Snapshotter) takeFullSnapshot() (*snapstore.Snapshot, error) {
 	// for the following cases:
 	// i.  Skipped full snapshot since no events were collected
 	// ii. Successfully took a full snapshot
-	metrics.SnapshotRequired.With(prometheus.Labels{metrics.LabelKind: snapstore.SnapshotKindFull}).Set(0)
-	metrics.SnapshotRequired.With(prometheus.Labels{metrics.LabelKind: snapstore.SnapshotKindDelta}).Set(0)
+	metrics.SnapshotRequired.With(prometheus.Labels{metrics.LabelKind: brtypes.SnapshotKindFull}).Set(0)
+	metrics.SnapshotRequired.With(prometheus.Labels{metrics.LabelKind: brtypes.SnapshotKindDelta}).Set(0)
 
 	if ssr.config.DeltaSnapshotPeriod.Duration < time.Second {
 		// return without creating a watch on events
@@ -313,7 +367,7 @@ func (ssr *Snapshotter) cleanupInMemoryEvents() {
 	ssr.lastEventRevision = -1
 }
 
-func (ssr *Snapshotter) takeDeltaSnapshotAndResetTimer() (*snapstore.Snapshot, error) {
+func (ssr *Snapshotter) takeDeltaSnapshotAndResetTimer() (*brtypes.Snapshot, error) {
 	s, err := ssr.TakeDeltaSnapshot()
 	if err != nil {
 		// As per design principle, in business critical service if backup is not working,
@@ -335,13 +389,13 @@ func (ssr *Snapshotter) takeDeltaSnapshotAndResetTimer() (*snapstore.Snapshot, e
 
 // TakeDeltaSnapshot takes a delta snapshot that contains
 // the etcd events collected up till now
-func (ssr *Snapshotter) TakeDeltaSnapshot() (*snapstore.Snapshot, error) {
+func (ssr *Snapshotter) TakeDeltaSnapshot() (*brtypes.Snapshot, error) {
 	defer ssr.cleanupInMemoryEvents()
 	ssr.logger.Infof("Taking delta snapshot for time: %s", time.Now().Local())
 
 	if len(ssr.events) == 0 {
 		ssr.logger.Infof("No events received to save snapshot. Skipping delta snapshot.")
-		metrics.SnapshotRequired.With(prometheus.Labels{metrics.LabelKind: snapstore.SnapshotKindDelta}).Set(0)
+		metrics.SnapshotRequired.With(prometheus.Labels{metrics.LabelKind: brtypes.SnapshotKindDelta}).Set(0)
 		return nil, nil
 	}
 	ssr.events = append(ssr.events, byte(']'))
@@ -352,7 +406,7 @@ func (ssr *Snapshotter) TakeDeltaSnapshot() (*snapstore.Snapshot, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to get compressionSuffix: %v", err)
 	}
-	snap := snapstore.NewSnapshot(snapstore.SnapshotKindDelta, ssr.prevSnapshot.LastRevision+1, ssr.lastEventRevision, compressionSuffix)
+	snap := snapstore.NewSnapshot(brtypes.SnapshotKindDelta, ssr.prevSnapshot.LastRevision+1, ssr.lastEventRevision, compressionSuffix)
 	snap.SnapDir = ssr.prevSnapshot.SnapDir
 
 	// compute hash
@@ -378,19 +432,19 @@ func (ssr *Snapshotter) TakeDeltaSnapshot() (*snapstore.Snapshot, error) {
 
 	if err := ssr.store.Save(*snap, rc); err != nil {
 		timeTaken := time.Now().Sub(startTime).Seconds()
-		metrics.SnapshotDurationSeconds.With(prometheus.Labels{metrics.LabelKind: snapstore.SnapshotKindDelta, metrics.LabelSucceeded: metrics.ValueSucceededFalse}).Observe(timeTaken)
+		metrics.SnapshotDurationSeconds.With(prometheus.Labels{metrics.LabelKind: brtypes.SnapshotKindDelta, metrics.LabelSucceeded: metrics.ValueSucceededFalse}).Observe(timeTaken)
 		ssr.logger.Errorf("Error saving delta snapshots. %v", err)
 		return nil, err
 	}
 	timeTaken := time.Now().Sub(startTime).Seconds()
-	metrics.SnapshotDurationSeconds.With(prometheus.Labels{metrics.LabelKind: snapstore.SnapshotKindDelta, metrics.LabelSucceeded: metrics.ValueSucceededTrue}).Observe(timeTaken)
+	metrics.SnapshotDurationSeconds.With(prometheus.Labels{metrics.LabelKind: brtypes.SnapshotKindDelta, metrics.LabelSucceeded: metrics.ValueSucceededTrue}).Observe(timeTaken)
 	logrus.Infof("Total time to save delta snapshot: %f seconds.", timeTaken)
 	ssr.prevSnapshot = snap
 	ssr.PrevDeltaSnapshots = append(ssr.PrevDeltaSnapshots, snap)
 
 	metrics.LatestSnapshotRevision.With(prometheus.Labels{metrics.LabelKind: ssr.prevSnapshot.Kind}).Set(float64(ssr.prevSnapshot.LastRevision))
 	metrics.LatestSnapshotTimestamp.With(prometheus.Labels{metrics.LabelKind: ssr.prevSnapshot.Kind}).Set(float64(ssr.prevSnapshot.CreatedOn.Unix()))
-	metrics.SnapshotRequired.With(prometheus.Labels{metrics.LabelKind: snapstore.SnapshotKindDelta}).Set(0)
+	metrics.SnapshotRequired.With(prometheus.Labels{metrics.LabelKind: brtypes.SnapshotKindDelta}).Set(0)
 	metrics.SnapstoreLatestDeltasTotal.With(prometheus.Labels{}).Inc()
 	metrics.SnapstoreLatestDeltasRevisionsTotal.With(prometheus.Labels{}).Add(float64(snap.LastRevision - snap.StartRevision))
 
@@ -419,13 +473,13 @@ func (ssr *Snapshotter) CollectEventsSincePrevSnapshot(stopCh <-chan struct{}) (
 	}
 	lastEtcdRevision := resp.Header.Revision
 
-	metrics.SnapshotRequired.With(prometheus.Labels{metrics.LabelKind: snapstore.SnapshotKindFull}).Set(0)
-	metrics.SnapshotRequired.With(prometheus.Labels{metrics.LabelKind: snapstore.SnapshotKindDelta}).Set(0)
+	metrics.SnapshotRequired.With(prometheus.Labels{metrics.LabelKind: brtypes.SnapshotKindFull}).Set(0)
+	metrics.SnapshotRequired.With(prometheus.Labels{metrics.LabelKind: brtypes.SnapshotKindDelta}).Set(0)
 
 	// if etcd revision newer than latest full snapshot revision,
 	// set `required` metric for full snapshot to 1
 	if ssr.PrevFullSnapshot == nil || ssr.PrevFullSnapshot.LastRevision != lastEtcdRevision {
-		metrics.SnapshotRequired.With(prometheus.Labels{metrics.LabelKind: snapstore.SnapshotKindFull}).Set(1)
+		metrics.SnapshotRequired.With(prometheus.Labels{metrics.LabelKind: brtypes.SnapshotKindFull}).Set(1)
 	}
 
 	// TODO: Use parent context. Passing parent context here directly requires some additional management of error handling.
@@ -443,8 +497,8 @@ func (ssr *Snapshotter) CollectEventsSincePrevSnapshot(stopCh <-chan struct{}) (
 	// need to take a delta snapshot here, because etcd revision is
 	// newer than latest snapshot revision. Also means, a subsequent
 	// full snapshot will be required later
-	metrics.SnapshotRequired.With(prometheus.Labels{metrics.LabelKind: snapstore.SnapshotKindDelta}).Set(1)
-	metrics.SnapshotRequired.With(prometheus.Labels{metrics.LabelKind: snapstore.SnapshotKindFull}).Set(1)
+	metrics.SnapshotRequired.With(prometheus.Labels{metrics.LabelKind: brtypes.SnapshotKindDelta}).Set(1)
+	metrics.SnapshotRequired.With(prometheus.Labels{metrics.LabelKind: brtypes.SnapshotKindFull}).Set(1)
 
 	for {
 		select {
@@ -485,8 +539,8 @@ func (ssr *Snapshotter) handleDeltaWatchEvents(wr clientv3.WatchResponse) error 
 		}
 		ssr.events = append(ssr.events, jsonByte...)
 		ssr.lastEventRevision = ev.Kv.ModRevision
-		metrics.SnapshotRequired.With(prometheus.Labels{metrics.LabelKind: snapstore.SnapshotKindFull}).Set(1)
-		metrics.SnapshotRequired.With(prometheus.Labels{metrics.LabelKind: snapstore.SnapshotKindDelta}).Set(1)
+		metrics.SnapshotRequired.With(prometheus.Labels{metrics.LabelKind: brtypes.SnapshotKindFull}).Set(1)
+		metrics.SnapshotRequired.With(prometheus.Labels{metrics.LabelKind: brtypes.SnapshotKindDelta}).Set(1)
 	}
 	ssr.logger.Debugf("Added events till revision: %d", ssr.lastEventRevision)
 	if len(ssr.events) >= int(ssr.config.DeltaSnapshotMemoryLimit) {

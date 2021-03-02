@@ -27,6 +27,7 @@ import (
 	"github.com/gardener/etcd-backup-restore/pkg/etcdutil"
 	"github.com/gardener/etcd-backup-restore/pkg/snapshot/snapshotter"
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
+	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 	"github.com/gardener/etcd-backup-restore/pkg/wrappers"
 	"github.com/sirupsen/logrus"
 	"go.etcd.io/etcd/clientv3"
@@ -184,7 +185,7 @@ func ContextWithWaitGroupFollwedByGracePeriod(parent context.Context, wg *sync.W
 
 // RunSnapshotter creates a snapshotter object and runs it for a duration specified by 'snapshotterDurationSeconds'
 func RunSnapshotter(logger *logrus.Entry, container string, deltaSnapshotPeriod time.Duration, endpoints []string, stopCh <-chan struct{}, startWithFullSnapshot bool, compressionConfig *compressor.CompressionConfig) error {
-	store, err := snapstore.GetSnapstore(&snapstore.Config{Container: container, Provider: "Local"})
+	store, err := snapstore.GetSnapstore(&brtypes.SnapstoreConfig{Container: container, Provider: "Local"})
 	if err != nil {
 		return err
 	}
@@ -193,12 +194,12 @@ func RunSnapshotter(logger *logrus.Entry, container string, deltaSnapshotPeriod 
 	etcdConnectionConfig.ConnectionTimeout.Duration = 10 * time.Second
 	etcdConnectionConfig.Endpoints = endpoints
 
-	snapshotterConfig := &snapshotter.Config{
+	snapshotterConfig := &brtypes.SnapshotterConfig{
 		FullSnapshotSchedule:     "0 0 1 1 *",
 		DeltaSnapshotPeriod:      wrappers.Duration{Duration: deltaSnapshotPeriod},
-		DeltaSnapshotMemoryLimit: snapshotter.DefaultDeltaSnapMemoryLimit,
+		DeltaSnapshotMemoryLimit: brtypes.DefaultDeltaSnapMemoryLimit,
 		GarbageCollectionPeriod:  wrappers.Duration{Duration: time.Minute},
-		GarbageCollectionPolicy:  snapshotter.GarbageCollectionPolicyLimitBased,
+		GarbageCollectionPolicy:  brtypes.GarbageCollectionPolicyLimitBased,
 		MaxBackups:               1,
 	}
 

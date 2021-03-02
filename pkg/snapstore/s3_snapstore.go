@@ -30,6 +30,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/aws/aws-sdk-go/service/s3/s3iface"
+	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 	"github.com/sirupsen/logrus"
 )
 
@@ -80,7 +81,7 @@ func NewS3FromClient(bucket, prefix, tempDir string, maxParallelChunkUploads uin
 }
 
 // Fetch should open reader for the snapshot file from store
-func (s *S3SnapStore) Fetch(snap Snapshot) (io.ReadCloser, error) {
+func (s *S3SnapStore) Fetch(snap brtypes.Snapshot) (io.ReadCloser, error) {
 	resp, err := s.client.GetObject(&s3.GetObjectInput{
 		Bucket: aws.String(s.bucket),
 		Key:    aws.String(path.Join(s.prefix, snap.SnapDir, snap.SnapName)),
@@ -92,7 +93,7 @@ func (s *S3SnapStore) Fetch(snap Snapshot) (io.ReadCloser, error) {
 }
 
 // Save will write the snapshot to store
-func (s *S3SnapStore) Save(snap Snapshot, rc io.ReadCloser) error {
+func (s *S3SnapStore) Save(snap brtypes.Snapshot, rc io.ReadCloser) error {
 	tmpfile, err := ioutil.TempFile(s.tempDir, tmpBackupFilePrefix)
 	if err != nil {
 		rc.Close()
@@ -194,7 +195,7 @@ func (s *S3SnapStore) Save(snap Snapshot, rc io.ReadCloser) error {
 	return nil
 }
 
-func (s *S3SnapStore) uploadPart(snap *Snapshot, file *os.File, uploadID *string, completedParts []*s3.CompletedPart, offset, chunkSize int64) error {
+func (s *S3SnapStore) uploadPart(snap *brtypes.Snapshot, file *os.File, uploadID *string, completedParts []*s3.CompletedPart, offset, chunkSize int64) error {
 	fileInfo, err := file.Stat()
 	if err != nil {
 		return err
@@ -227,7 +228,7 @@ func (s *S3SnapStore) uploadPart(snap *Snapshot, file *os.File, uploadID *string
 	return err
 }
 
-func (s *S3SnapStore) partUploader(wg *sync.WaitGroup, stopCh <-chan struct{}, snap *Snapshot, file *os.File, uploadID *string, completedParts []*s3.CompletedPart, chunkUploadCh <-chan chunk, errCh chan<- chunkUploadResult) {
+func (s *S3SnapStore) partUploader(wg *sync.WaitGroup, stopCh <-chan struct{}, snap *brtypes.Snapshot, file *os.File, uploadID *string, completedParts []*s3.CompletedPart, chunkUploadCh <-chan chunk, errCh chan<- chunkUploadResult) {
 	defer wg.Done()
 	for {
 		select {
@@ -248,8 +249,8 @@ func (s *S3SnapStore) partUploader(wg *sync.WaitGroup, stopCh <-chan struct{}, s
 }
 
 // List will list the snapshots from store
-func (s *S3SnapStore) List() (SnapList, error) {
-	var snapList SnapList
+func (s *S3SnapStore) List() (brtypes.SnapList, error) {
+	var snapList brtypes.SnapList
 	in := &s3.ListObjectsInput{
 		Bucket: aws.String(s.bucket),
 		Prefix: aws.String(fmt.Sprintf("%s/", s.prefix)),
@@ -276,7 +277,7 @@ func (s *S3SnapStore) List() (SnapList, error) {
 }
 
 // Delete should delete the snapshot file from store
-func (s *S3SnapStore) Delete(snap Snapshot) error {
+func (s *S3SnapStore) Delete(snap brtypes.Snapshot) error {
 	_, err := s.client.DeleteObject(&s3.DeleteObjectInput{
 		Bucket: aws.String(s.bucket),
 		Key:    aws.String(path.Join(s.prefix, snap.SnapDir, snap.SnapName)),

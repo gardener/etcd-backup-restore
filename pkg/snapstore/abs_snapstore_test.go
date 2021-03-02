@@ -32,15 +32,16 @@ import (
 	. "github.com/onsi/gomega"
 
 	. "github.com/gardener/etcd-backup-restore/pkg/snapstore"
+	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 )
 
-func newFakeABSSnapstore() SnapStore {
+func newFakeABSSnapstore() brtypes.SnapStore {
 	f := []pipeline.Factory{
 		pipeline.MethodFactoryMarker(),
 		newFakePolicyFactory(bucket, prefix, objectMap),
 	}
 	p := pipeline.NewPipeline(f, pipeline.Options{HTTPSender: newFakePolicyFactory(bucket, prefix, objectMap)})
-	u, err := url.Parse(fmt.Sprintf("https://%s.%s", "dummyaccount", AzureBlobStorageHostName))
+	u, err := url.Parse(fmt.Sprintf("https://%s.%s", "dummyaccount", brtypes.AzureBlobStorageHostName))
 	Expect(err).ShouldNot(HaveOccurred())
 	serviceURL := azblob.NewServiceURL(*u, p)
 	containerURL := serviceURL.NewContainerURL(bucket)

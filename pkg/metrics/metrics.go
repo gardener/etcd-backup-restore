@@ -17,8 +17,9 @@ package metrics
 import (
 	"sort"
 
-	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	"github.com/prometheus/client_golang/prometheus"
+
+	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 )
 
 const (
@@ -43,9 +44,9 @@ const (
 var (
 	labels = map[string][]string{
 		LabelKind: {
-			snapstore.SnapshotKindFull,
-			snapstore.SnapshotKindDelta,
-			snapstore.SnapshotKindChunk,
+			brtypes.SnapshotKindFull,
+			brtypes.SnapshotKindDelta,
+			brtypes.SnapshotKindChunk,
 		},
 		LabelSucceeded: {
 			ValueSucceededFalse,
