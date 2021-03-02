@@ -17,7 +17,7 @@ package validator
 import (
 	"time"
 
-	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
+	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 	"github.com/sirupsen/logrus"
 	"go.uber.org/zap"
 )
@@ -62,7 +62,7 @@ const (
 type Config struct {
 	DataDir                string
 	EmbeddedEtcdQuotaBytes int64
-	SnapstoreConfig        *snapstore.Config
+	SnapstoreConfig        *brtypes.SnapstoreConfig
 }
 
 // DataValidator contains implements Validator interface to perform data validation.

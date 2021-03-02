@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
+	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 
 	"github.com/sirupsen/logrus"
 	helmaction "helm.sh/helm/v3/pkg/action"
@@ -61,14 +62,14 @@ type EndpointStatus []struct {
 
 // SnapListResult stores the snaplist and any associated error
 type SnapListResult struct {
-	Snapshots snapstore.SnapList `json:"snapshots"`
-	Error     error              `json:"error"`
+	Snapshots brtypes.SnapList `json:"snapshots"`
+	Error     error            `json:"error"`
 }
 
 // LatestSnapshots stores the result from output of /snapshot/latest http call
 type LatestSnapshots struct {
-	FullSnapshot   *snapstore.Snapshot   `json:"fullSnapshot"`
-	DeltaSnapshots []*snapstore.Snapshot `json:"deltaSnapshots"`
+	FullSnapshot   *brtypes.Snapshot   `json:"fullSnapshot"`
+	DeltaSnapshots []*brtypes.Snapshot `json:"deltaSnapshots"`
 }
 
 func getEnvOrError(key string) (string, error) {
@@ -308,8 +309,8 @@ func executeRemoteCommand(kubeconfigPath, namespace, podName, containerName, com
 	return strings.TrimSpace(buf.String()), strings.TrimSpace(errBuf.String()), nil
 }
 
-func getSnapstore(storageProvider, storageContainer, storePrefix string) (snapstore.SnapStore, error) {
-	snapstoreConfig := &snapstore.Config{
+func getSnapstore(storageProvider, storageContainer, storePrefix string) (brtypes.SnapStore, error) {
+	snapstoreConfig := &brtypes.SnapstoreConfig{
 		Provider:  storageProvider,
 		Container: storageContainer,
 		Prefix:    path.Join(storePrefix, "v1"),
@@ -322,19 +323,19 @@ func getSnapstore(storageProvider, storageContainer, storePrefix string) (snapst
 	return store, nil
 }
 
-func getTotalFullAndDeltaSnapshotCounts(snapList snapstore.SnapList) (int, int) {
+func getTotalFullAndDeltaSnapshotCounts(snapList brtypes.SnapList) (int, int) {
 	var numFulls, numDeltas int
 	for _, snap := range snapList {
-		if snap.Kind == snapstore.SnapshotKindFull {
+		if snap.Kind == brtypes.SnapshotKindFull {
 			numFulls++
-		} else if snap.Kind == snapstore.SnapshotKindDelta {
+		} else if snap.Kind == brtypes.SnapshotKindDelta {
 			numDeltas++
 		}
 	}
 	return numFulls, numDeltas
 }
 
-func purgeSnapstore(store snapstore.SnapStore) error {
+func purgeSnapstore(store brtypes.SnapStore) error {
 	snapList, err := store.List()
 	if err != nil {
 		return err
@@ -387,7 +388,7 @@ func runEtcdPopulatorWithoutError(logger *logrus.Logger, stopCh <-chan struct{},
 	}
 }
 
-func recordCumulativeSnapList(logger *logrus.Logger, stopCh <-chan struct{}, resultCh chan<- SnapListResult, store snapstore.SnapStore) {
+func recordCumulativeSnapList(logger *logrus.Logger, stopCh <-chan struct{}, resultCh chan<- SnapListResult, store brtypes.SnapStore) {
 	var snapListResult SnapListResult
 
 	for {
@@ -416,7 +417,7 @@ func recordCumulativeSnapList(logger *logrus.Logger, stopCh <-chan struct{}, res
 	}
 }
 
-func snapshotInSnapList(snapshot *snapstore.Snapshot, snapList snapstore.SnapList) bool {
+func snapshotInSnapList(snapshot *brtypes.Snapshot, snapList brtypes.SnapList) bool {
 	for _, snap := range snapList {
 		if snap.SnapName == snapshot.SnapName {
 			return true
@@ -444,8 +445,8 @@ func getDbSizeAndRevision(kubeconfigPath, namespace, podName, containerName stri
 	return dbSize, revision, nil
 }
 
-func triggerOnDemandSnapshot(kubeconfigPath, namespace, podName, containerName string, port int, snapshotKind string) (*snapstore.Snapshot, error) {
-	var snapshot *snapstore.Snapshot
+func triggerOnDemandSnapshot(kubeconfigPath, namespace, podName, containerName string, port int, snapshotKind string) (*brtypes.Snapshot, error) {
+	var snapshot *brtypes.Snapshot
 	cmd := fmt.Sprintf("curl http://localhost:%d/snapshot/%s -s", port, snapshotKind)
 	stdout, _, err := executeRemoteCommand(kubeconfigPath, namespace, podName, containerName, cmd)
 	if err != nil {

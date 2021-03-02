@@ -25,6 +25,7 @@ import (
 	"time"
 
 	. "github.com/gardener/etcd-backup-restore/pkg/snapstore"
+	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 	fake "github.com/gophercloud/gophercloud/testhelper/client"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -39,33 +40,33 @@ var (
 
 var _ = Describe("Snapstore", func() {
 	var (
-		snap1        Snapshot
-		snap2        Snapshot
-		snap3        Snapshot
+		snap1        brtypes.Snapshot
+		snap2        brtypes.Snapshot
+		snap3        brtypes.Snapshot
 		expectedVal1 []byte
 		expectedVal2 []byte
-		snapstores   map[string]SnapStore
+		snapstores   map[string]brtypes.SnapStore
 	)
 
 	BeforeEach(func() {
 		now := time.Now().Unix()
-		snap1 = Snapshot{
+		snap1 = brtypes.Snapshot{
 			CreatedOn:     time.Unix(now, 0).UTC(),
 			StartRevision: 0,
 			LastRevision:  2088,
-			Kind:          SnapshotKindFull,
+			Kind:          brtypes.SnapshotKindFull,
 		}
-		snap2 = Snapshot{
+		snap2 = brtypes.Snapshot{
 			CreatedOn:     time.Unix(now+100, 0).UTC(),
 			StartRevision: 0,
 			LastRevision:  1988,
-			Kind:          SnapshotKindFull,
+			Kind:          brtypes.SnapshotKindFull,
 		}
-		snap3 = Snapshot{
+		snap3 = brtypes.Snapshot{
 			CreatedOn:     time.Unix(now+200, 0).UTC(),
 			StartRevision: 0,
 			LastRevision:  1958,
-			Kind:          SnapshotKindFull,
+			Kind:          brtypes.SnapshotKindFull,
 		}
 		snap1.GenerateSnapshotName()
 		snap1.GenerateSnapshotDirectory()
@@ -76,7 +77,7 @@ var _ = Describe("Snapstore", func() {
 		expectedVal1 = []byte("value1")
 		expectedVal2 = []byte("value2")
 
-		snapstores = map[string]SnapStore{
+		snapstores = map[string]brtypes.SnapStore{
 			"s3": NewS3FromClient(bucket, prefix, "/tmp", 5, &mockS3Client{
 				objects:          objectMap,
 				prefix:           prefix,

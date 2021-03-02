@@ -20,9 +20,9 @@ import (
 
 	"github.com/gardener/etcd-backup-restore/pkg/compressor"
 	"github.com/gardener/etcd-backup-restore/pkg/etcdutil"
+	"github.com/gardener/etcd-backup-restore/pkg/snapshot/snapshotter"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 
-	"github.com/gardener/etcd-backup-restore/pkg/snapshot/snapshotter"
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	"github.com/robfig/cron/v3"
 	flag "github.com/spf13/pflag"

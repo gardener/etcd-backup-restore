@@ -28,6 +28,7 @@ import (
 
 	"github.com/sirupsen/logrus"
 
+	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 	"github.com/gophercloud/gophercloud"
 	"github.com/gophercloud/gophercloud/openstack"
 	"github.com/gophercloud/gophercloud/openstack/objectstorage/v1/objects"
@@ -88,13 +89,13 @@ func NewSwiftSnapstoreFromClient(bucket, prefix, tempDir string, maxParallelChun
 }
 
 // Fetch should open reader for the snapshot file from store
-func (s *SwiftSnapStore) Fetch(snap Snapshot) (io.ReadCloser, error) {
+func (s *SwiftSnapStore) Fetch(snap brtypes.Snapshot) (io.ReadCloser, error) {
 	resp := objects.Download(s.client, s.bucket, path.Join(s.prefix, snap.SnapDir, snap.SnapName), nil)
 	return resp.Body, resp.Err
 }
 
 // Save will write the snapshot to store
-func (s *SwiftSnapStore) Save(snap Snapshot, rc io.ReadCloser) error {
+func (s *SwiftSnapStore) Save(snap brtypes.Snapshot, rc io.ReadCloser) error {
 	// Save it locally
 	tmpfile, err := ioutil.TempFile(s.tempDir, tmpBackupFilePrefix)
 	if err != nil {
@@ -163,7 +164,7 @@ func (s *SwiftSnapStore) Save(snap Snapshot, rc io.ReadCloser) error {
 	return nil
 }
 
-func (s *SwiftSnapStore) uploadChunk(snap *Snapshot, file *os.File, offset, chunkSize int64) error {
+func (s *SwiftSnapStore) uploadChunk(snap *brtypes.Snapshot, file *os.File, offset, chunkSize int64) error {
 	fileInfo, err := file.Stat()
 	if err != nil {
 		return err
@@ -184,7 +185,7 @@ func (s *SwiftSnapStore) uploadChunk(snap *Snapshot, file *os.File, offset, chun
 	return res.Err
 }
 
-func (s *SwiftSnapStore) chunkUploader(wg *sync.WaitGroup, stopCh <-chan struct{}, snap *Snapshot, file *os.File, chunkUploadCh chan chunk, errCh chan<- chunkUploadResult) {
+func (s *SwiftSnapStore) chunkUploader(wg *sync.WaitGroup, stopCh <-chan struct{}, snap *brtypes.Snapshot, file *os.File, chunkUploadCh chan chunk, errCh chan<- chunkUploadResult) {
 	defer wg.Done()
 	for {
 		select {
@@ -205,14 +206,14 @@ func (s *SwiftSnapStore) chunkUploader(wg *sync.WaitGroup, stopCh <-chan struct{
 }
 
 // List will list the snapshots from store
-func (s *SwiftSnapStore) List() (SnapList, error) {
+func (s *SwiftSnapStore) List() (brtypes.SnapList, error) {
 	opts := &objects.ListOpts{
 		Full:   false,
 		Prefix: s.prefix,
 	}
 	// Retrieve a pager (i.e. a paginated collection)
 	pager := objects.List(s.client, s.bucket, opts)
-	var snapList SnapList
+	var snapList brtypes.SnapList
 	// Define an anonymous function to be executed on each page's iteration
 	err := pager.EachPage(func(page pagination.Page) (bool, error) {
 
@@ -243,7 +244,7 @@ func (s *SwiftSnapStore) List() (SnapList, error) {
 }
 
 // Delete should delete the snapshot file from store
-func (s *SwiftSnapStore) Delete(snap Snapshot) error {
+func (s *SwiftSnapStore) Delete(snap brtypes.Snapshot) error {
 	result := objects.Delete(s.client, s.bucket, path.Join(s.prefix, snap.SnapDir, snap.SnapName), nil)
 	return result.Err
 }

@@ -26,6 +26,7 @@ import (
 
 	"github.com/gardener/etcd-backup-restore/pkg/initializer/validator"
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
+	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 	. "github.com/gardener/etcd-backup-restore/test/e2e/integration"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -116,11 +117,11 @@ func startBackupRestoreServer() (*Cmd, *chan error) {
 
 var _ = Describe("CloudBackup", func() {
 
-	var snapstoreConfig *snapstore.Config
-	var store snapstore.SnapStore
+	var snapstoreConfig *brtypes.SnapstoreConfig
+	var store brtypes.SnapStore
 
 	BeforeEach(func() {
-		snapstoreConfig = &snapstore.Config{
+		snapstoreConfig = &brtypes.SnapstoreConfig{
 			Provider:  "S3",
 			Container: os.Getenv("TEST_ID"),
 			Prefix:    path.Join("v1"),
@@ -183,7 +184,7 @@ var _ = Describe("CloudBackup", func() {
 				Expect(err).ShouldNot(HaveOccurred())
 				count := 0
 				for _, snap := range snaplist {
-					if snap.Kind == snapstore.SnapshotKindFull {
+					if snap.Kind == brtypes.SnapshotKindFull {
 						count++
 					}
 				}

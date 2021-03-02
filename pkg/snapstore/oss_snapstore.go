@@ -25,6 +25,7 @@ import (
 	"sync"
 
 	"github.com/aliyun/aliyun-oss-go-sdk/oss"
+	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 	"github.com/sirupsen/logrus"
 )
 
@@ -95,7 +96,7 @@ func NewOSSFromBucket(prefix, tempDir string, maxParallelChunkUploads uint, buck
 }
 
 // Fetch should open reader for the snapshot file from store
-func (s *OSSSnapStore) Fetch(snap Snapshot) (io.ReadCloser, error) {
+func (s *OSSSnapStore) Fetch(snap brtypes.Snapshot) (io.ReadCloser, error) {
 	body, err := s.bucket.GetObject(path.Join(s.prefix, snap.SnapDir, snap.SnapName))
 	if err != nil {
 		return nil, err
@@ -104,7 +105,7 @@ func (s *OSSSnapStore) Fetch(snap Snapshot) (io.ReadCloser, error) {
 }
 
 // Save will write the snapshot to store
-func (s *OSSSnapStore) Save(snap Snapshot, rc io.ReadCloser) error {
+func (s *OSSSnapStore) Save(snap brtypes.Snapshot, rc io.ReadCloser) error {
 	tmpfile, err := ioutil.TempFile(s.tempDir, tmpBackupFilePrefix)
 	if err != nil {
 		rc.Close()
@@ -218,8 +219,8 @@ func (s *OSSSnapStore) uploadPart(imur oss.InitiateMultipartUploadResult, file *
 }
 
 // List will list the snapshots from store
-func (s *OSSSnapStore) List() (SnapList, error) {
-	var snapList SnapList
+func (s *OSSSnapStore) List() (brtypes.SnapList, error) {
+	var snapList brtypes.SnapList
 
 	marker := ""
 	for {
@@ -248,7 +249,7 @@ func (s *OSSSnapStore) List() (SnapList, error) {
 }
 
 // Delete should delete the snapshot file from store
-func (s *OSSSnapStore) Delete(snap Snapshot) error {
+func (s *OSSSnapStore) Delete(snap brtypes.Snapshot) error {
 	return s.bucket.DeleteObject(path.Join(s.prefix, snap.SnapDir, snap.SnapName))
 }
 

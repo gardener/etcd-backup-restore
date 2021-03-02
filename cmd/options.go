@@ -129,14 +129,14 @@ func (c *initializerOptions) complete() {
 
 type restoreOpts interface {
 	getRestorationConfig() *brtypes.RestorationConfig
-	getSnapstoreConfig() *snapstore.Config
+	getSnapstoreConfig() *brtypes.SnapstoreConfig
 	validate() error
 	complete()
 }
 
 type compactOptions struct {
 	restorationConfig   *brtypes.RestorationConfig
-	snapstoreConfig     *snapstore.Config
+	snapstoreConfig     *brtypes.SnapstoreConfig
 	needDefragmentation bool
 }
 
@@ -153,7 +153,7 @@ func (c *compactOptions) getRestorationConfig() *brtypes.RestorationConfig {
 	return c.restorationConfig
 }
 
-func (c *compactOptions) getSnapstoreConfig() *snapstore.Config {
+func (c *compactOptions) getSnapstoreConfig() *brtypes.SnapstoreConfig {
 	return c.snapstoreConfig
 }
 
@@ -184,7 +184,7 @@ func (c *compactOptions) complete() {
 
 type restorerOptions struct {
 	restorationConfig *brtypes.RestorationConfig
-	snapstoreConfig   *snapstore.Config
+	snapstoreConfig   *brtypes.SnapstoreConfig
 }
 
 // newRestorerOptions returns the validation config.
@@ -199,7 +199,7 @@ func (c *restorerOptions) getRestorationConfig() *brtypes.RestorationConfig {
 	return c.restorationConfig
 }
 
-func (c *restorerOptions) getSnapstoreConfig() *snapstore.Config {
+func (c *restorerOptions) getSnapstoreConfig() *brtypes.SnapstoreConfig {
 	return c.snapstoreConfig
 }
 
@@ -220,7 +220,7 @@ func (c *restorerOptions) validate() error {
 
 // complete completes the config.
 func (c *restorerOptions) complete() {
-	c.snapstoreConfig.Complete()
+	//c.snapstoreConfig.Complete()
 }
 
 type validatorOptions struct {
@@ -249,8 +249,8 @@ func (c *validatorOptions) validate() error {
 type snapshotterOptions struct {
 	etcdConnectionConfig    *etcdutil.EtcdConnectionConfig
 	compressionConfig       *compressor.CompressionConfig
-	snapstoreConfig         *snapstore.Config
-	snapshotterConfig       *snapshotter.Config
+	snapstoreConfig         *brtypes.SnapstoreConfig
+	snapshotterConfig       *brtypes.SnapshotterConfig
 	defragmentationSchedule string
 }
 

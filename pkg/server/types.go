@@ -17,8 +17,6 @@ package server
 import (
 	"github.com/gardener/etcd-backup-restore/pkg/compressor"
 	"github.com/gardener/etcd-backup-restore/pkg/etcdutil"
-	"github.com/gardener/etcd-backup-restore/pkg/snapshot/snapshotter"
-	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 )
 
@@ -31,8 +29,8 @@ const (
 type BackupRestoreComponentConfig struct {
 	EtcdConnectionConfig    *etcdutil.EtcdConnectionConfig `json:"etcdConnectionConfig,omitempty"`
 	ServerConfig            *HTTPServerConfig              `json:"serverConfig,omitempty"`
-	SnapshotterConfig       *snapshotter.Config            `json:"snapshotterConfig,omitempty"`
-	SnapstoreConfig         *snapstore.Config              `json:"snapstoreConfig,omitempty"`
+	SnapshotterConfig       *brtypes.SnapshotterConfig     `json:"snapshotterConfig,omitempty"`
+	SnapstoreConfig         *brtypes.SnapstoreConfig       `json:"snapstoreConfig,omitempty"`
 	CompressionConfig       *compressor.CompressionConfig  `json:"compressionConfig,omitempty"`
 	RestorationConfig       *brtypes.RestorationConfig     `json:"restorationConfig,omitempty"`
 	DefragmentationSchedule string                         `json:"defragmentationSchedule"`
@@ -40,6 +38,6 @@ type BackupRestoreComponentConfig struct {
 
 // latestSnapshotMetadata holds snapshot details of latest full and delta snapshots
 type latestSnapshotMetadataResponse struct {
-	FullSnapshot   *snapstore.Snapshot `json:"fullSnapshot"`
-	DeltaSnapshots snapstore.SnapList  `json:"deltaSnapshots"`
+	FullSnapshot   *brtypes.Snapshot `json:"fullSnapshot"`
+	DeltaSnapshots brtypes.SnapList  `json:"deltaSnapshots"`
 }

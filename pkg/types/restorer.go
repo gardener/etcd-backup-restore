@@ -20,7 +20,6 @@ import (
 	"path"
 	"time"
 
-	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	flag "github.com/spf13/pflag"
 	"go.etcd.io/etcd/clientv3"
 	"go.etcd.io/etcd/pkg/types"
@@ -36,7 +35,7 @@ const (
 	defaultMaxTxnOps                = 10 * 1024
 	defaultEmbeddedEtcdQuotaBytes   = 8 * 1024 * 1024 * 1024 //8Gib
 	defaultAutoCompactionMode       = "periodic"             // only 2 mode is supported: 'periodic' or 'revision'
-	defaultAutoCompactionRetention  = "5m"
+	defaultAutoCompactionRetention  = "30m"
 )
 
 // RestoreOptions hold all snapshot restore related fields
@@ -46,8 +45,8 @@ type RestoreOptions struct {
 	ClusterURLs types.URLsMap
 	PeerURLs    types.URLs
 	// Base full snapshot + delta snapshots to restore from
-	BaseSnapshot  *snapstore.Snapshot
-	DeltaSnapList snapstore.SnapList
+	BaseSnapshot  *Snapshot
+	DeltaSnapList SnapList
 }
 
 // RestorationConfig holds the restoration configuration.
@@ -175,7 +174,7 @@ type Event struct {
 
 // FetcherInfo stores the information about fetcher
 type FetcherInfo struct {
-	Snapshot  snapstore.Snapshot
+	Snapshot  Snapshot
 	SnapIndex int
 }
 
@@ -232,8 +231,8 @@ func DeepCopyURL(in *url.URL) *url.URL {
 }
 
 // DeepCopySnapList returns a deep copy
-func DeepCopySnapList(in snapstore.SnapList) snapstore.SnapList {
-	out := make(snapstore.SnapList, len(in))
+func DeepCopySnapList(in SnapList) SnapList {
+	out := make(SnapList, len(in))
 	for i, v := range in {
 		if v != nil {
 			var cpv = *v

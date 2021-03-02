@@ -21,7 +21,7 @@ import (
 	"path"
 	"time"
 
-	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
+	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 	"github.com/gardener/etcd-backup-restore/test/utils"
 	"go.uber.org/zap"
 
@@ -34,7 +34,7 @@ var _ = Describe("Running Datavalidator", func() {
 	var (
 		restoreDataDir     string
 		snapstoreBackupDir string
-		snapstoreConfig    *snapstore.Config
+		snapstoreConfig    *brtypes.SnapstoreConfig
 		validator          *DataValidator
 	)
 
@@ -42,7 +42,7 @@ var _ = Describe("Running Datavalidator", func() {
 		restoreDataDir = path.Clean(etcdDir)
 		snapstoreBackupDir = path.Clean(snapstoreDir)
 
-		snapstoreConfig = &snapstore.Config{
+		snapstoreConfig = &brtypes.SnapstoreConfig{
 			Container: snapstoreBackupDir,
 			Provider:  "Local",
 		}
@@ -344,7 +344,7 @@ var _ = Describe("Running Datavalidator", func() {
 	Context("with failure on snapstore call due to fake failing snapstore provider", func() {
 		It("should return DataDirStatus as DataDirectoryStatusUnknown and error", func() {
 			//this is to fake the failure the snapstore call.
-			validator.Config.SnapstoreConfig.Provider = snapstore.SnapstoreProviderFakeFailed
+			validator.Config.SnapstoreConfig.Provider = brtypes.SnapstoreProviderFakeFailed
 			dataDirStatus, err := validator.Validate(Full, 0)
 			Expect(err).Should(HaveOccurred())
 			Expect(int(dataDirStatus)).Should(Equal(DataDirectoryStatusUnknown))

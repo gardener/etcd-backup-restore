@@ -70,7 +70,7 @@ func (e *EtcdInitializer) Initialize(mode validator.Mode, failBelowRevision int6
 }
 
 //NewInitializer creates an etcd initializer object.
-func NewInitializer(options *brtypes.RestoreOptions, snapstoreConfig *snapstore.Config, logger *logrus.Logger) *EtcdInitializer {
+func NewInitializer(options *brtypes.RestoreOptions, snapstoreConfig *brtypes.SnapstoreConfig, logger *logrus.Logger) *EtcdInitializer {
 	zapLogger, _ := zap.NewProduction()
 	etcdInit := &EtcdInitializer{
 		Config: &Config{

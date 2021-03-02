@@ -33,7 +33,7 @@ func printVersionInfo() {
 }
 
 // BuildRestoreOptionsAndStore forms the RestoreOptions and Store object
-func BuildRestoreOptionsAndStore(opts restoreOpts) (*brtypes.RestoreOptions, snapstore.SnapStore, error) {
+func BuildRestoreOptionsAndStore(opts restoreOpts) (*brtypes.RestoreOptions, brtypes.SnapStore, error) {
 	if err := opts.validate(); err != nil {
 		logger.Fatalf("failed to validate the options: %v", err)
 		return nil, nil, err

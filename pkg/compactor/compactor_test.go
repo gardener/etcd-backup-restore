@@ -16,7 +16,7 @@ import (
 var _ = Describe("Running Compactor", func() {
 	var (
 		dir             string
-		store           snapstore.SnapStore
+		store           brtypes.SnapStore
 		cptr            *compactor.Compactor
 		restorePeerURLs []string
 		clusterUrlsMap  types.URLsMap
@@ -50,7 +50,7 @@ var _ = Describe("Running Compactor", func() {
 		BeforeEach(func() {
 			dir = fmt.Sprintf("%s/etcd/snapshotter.bkp", testSuitDir)
 
-			store, err = snapstore.GetSnapstore(&snapstore.Config{Container: dir, Provider: "Local"})
+			store, err = snapstore.GetSnapstore(&brtypes.SnapstoreConfig{Container: dir, Provider: "Local"})
 			Expect(err).ShouldNot(HaveOccurred())
 			fmt.Println("The store where compaction will save snapshot is: ", store)
 

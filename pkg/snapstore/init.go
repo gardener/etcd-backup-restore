@@ -15,42 +15,13 @@
 package snapstore
 
 import (
-	"fmt"
-	"path"
-
-	flag "github.com/spf13/pflag"
-)
-
-const (
-	backupFormatVersion = "v1"
+	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 )
 
 // NewSnapstoreConfig returns the snapstore config.
-func NewSnapstoreConfig() *Config {
-	return &Config{
+func NewSnapstoreConfig() *brtypes.SnapstoreConfig {
+	return &brtypes.SnapstoreConfig{
 		MaxParallelChunkUploads: 5,
 		TempDir:                 "/tmp",
 	}
-}
-
-// AddFlags adds the flags to flagset.
-func (c *Config) AddFlags(fs *flag.FlagSet) {
-	fs.StringVar(&c.Provider, "storage-provider", c.Provider, "snapshot storage provider")
-	fs.StringVar(&c.Container, "store-container", c.Container, "container which will be used as snapstore")
-	fs.StringVar(&c.Prefix, "store-prefix", c.Prefix, "prefix or directory inside container under which snapstore is created")
-	fs.UintVar(&c.MaxParallelChunkUploads, "max-parallel-chunk-uploads", c.MaxParallelChunkUploads, "maximum number of parallel chunk uploads allowed ")
-	fs.StringVar(&c.TempDir, "snapstore-temp-directory", c.TempDir, "temporary directory for processing")
-}
-
-// Validate validates the config.
-func (c *Config) Validate() error {
-	if c.MaxParallelChunkUploads <= 0 {
-		return fmt.Errorf("max parallel chunk uploads should be greater than zero")
-	}
-	return nil
-}
-
-// Complete completes the config.
-func (c *Config) Complete() {
-	c.Prefix = path.Join(c.Prefix, backupFormatVersion)
 }

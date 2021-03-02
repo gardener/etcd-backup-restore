@@ -22,6 +22,8 @@ import (
 	"path"
 	"sort"
 	"syscall"
+
+	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 )
 
 // LocalSnapStore is snapstore with local disk as backend
@@ -43,12 +45,12 @@ func NewLocalSnapStore(prefix string) (*LocalSnapStore, error) {
 }
 
 // Fetch should open reader for the snapshot file from store
-func (s *LocalSnapStore) Fetch(snap Snapshot) (io.ReadCloser, error) {
+func (s *LocalSnapStore) Fetch(snap brtypes.Snapshot) (io.ReadCloser, error) {
 	return os.Open(path.Join(s.prefix, snap.SnapDir, snap.SnapName))
 }
 
 // Save will write the snapshot to store
-func (s *LocalSnapStore) Save(snap Snapshot, rc io.ReadCloser) error {
+func (s *LocalSnapStore) Save(snap brtypes.Snapshot, rc io.ReadCloser) error {
 	defer rc.Close()
 	err := os.MkdirAll(path.Join(s.prefix, snap.SnapDir), 0700)
 	if err != nil && !os.IsExist(err) {
@@ -67,8 +69,8 @@ func (s *LocalSnapStore) Save(snap Snapshot, rc io.ReadCloser) error {
 }
 
 // List will list the snapshots from store
-func (s *LocalSnapStore) List() (SnapList, error) {
-	snapList := SnapList{}
+func (s *LocalSnapStore) List() (brtypes.SnapList, error) {
+	snapList := brtypes.SnapList{}
 	directories, err := ioutil.ReadDir(s.prefix)
 	if err != nil {
 		return nil, err
@@ -79,7 +81,6 @@ func (s *LocalSnapStore) List() (SnapList, error) {
 			if err != nil {
 				return nil, err
 			}
-
 			for _, f := range files {
 				snap, err := ParseSnapshot(path.Join(dir.Name(), f.Name()))
 				if err != nil {
@@ -96,7 +97,7 @@ func (s *LocalSnapStore) List() (SnapList, error) {
 }
 
 // Delete should delete the snapshot file from store
-func (s *LocalSnapStore) Delete(snap Snapshot) error {
+func (s *LocalSnapStore) Delete(snap brtypes.Snapshot) error {
 	if err := os.Remove(path.Join(s.prefix, snap.SnapDir, snap.SnapName)); err != nil {
 		return err
 	}
@@ -108,7 +109,7 @@ func (s *LocalSnapStore) Delete(snap Snapshot) error {
 }
 
 // Size should return size of the snapshot file from store
-func (s *LocalSnapStore) Size(snap Snapshot) (int64, error) {
+func (s *LocalSnapStore) Size(snap brtypes.Snapshot) (int64, error) {
 	fileInfo, err := os.Stat(path.Join(s.prefix, snap.SnapDir, snap.SnapName))
 	if err != nil {
 		return -1, err

@@ -40,13 +40,13 @@ import (
 
 var _ = Describe("Running Restorer", func() {
 	var (
-		store           snapstore.SnapStore
+		store           brtypes.SnapStore
 		rstr            *Restorer
 		restorePeerURLs []string
 		clusterUrlsMap  types.URLsMap
 		peerUrls        types.URLs
-		baseSnapshot    *snapstore.Snapshot
-		deltaSnapList   snapstore.SnapList
+		baseSnapshot    *brtypes.Snapshot
+		deltaSnapList   brtypes.SnapList
 		wg              *sync.WaitGroup
 	)
 	const (
@@ -79,7 +79,7 @@ var _ = Describe("Running Restorer", func() {
 			err = corruptEtcdDir()
 			Expect(err).ShouldNot(HaveOccurred())
 
-			store, err = snapstore.GetSnapstore(&snapstore.Config{Container: snapstoreDir, Provider: "Local"})
+			store, err = snapstore.GetSnapstore(&brtypes.SnapstoreConfig{Container: snapstoreDir, Provider: "Local"})
 			Expect(err).ShouldNot(HaveOccurred())
 
 			baseSnapshot, deltaSnapList, err = miscellaneous.GetLatestFullSnapshotAndDeltaSnapList(store)
@@ -231,7 +231,7 @@ var _ = Describe("Running Restorer", func() {
 
 	Describe("NEGATIVE:For Dynamic Loads and Negative Scenarios", func() {
 		var (
-			store               snapstore.SnapStore
+			store               brtypes.SnapStore
 			deltaSnapshotPeriod time.Duration
 			endpoints           []string
 			restorationConfig   *brtypes.RestorationConfig
@@ -243,7 +243,7 @@ var _ = Describe("Running Restorer", func() {
 			Expect(err).ShouldNot(HaveOccurred())
 			endpoints = []string{etcd.Clients[0].Addr().String()}
 
-			store, err = snapstore.GetSnapstore(&snapstore.Config{Container: snapstoreDir, Provider: "Local"})
+			store, err = snapstore.GetSnapstore(&brtypes.SnapstoreConfig{Container: snapstoreDir, Provider: "Local"})
 			Expect(err).ShouldNot(HaveOccurred())
 
 			restorationConfig = &brtypes.RestorationConfig{
@@ -460,7 +460,7 @@ var _ = Describe("Running Restorer", func() {
 				Expect(err).ShouldNot(HaveOccurred())
 				logger.Infoln("corrupted the etcd dir")
 
-				store, err = snapstore.GetSnapstore(&snapstore.Config{Container: snapstoreDir, Provider: "Local"})
+				store, err = snapstore.GetSnapstore(&brtypes.SnapstoreConfig{Container: snapstoreDir, Provider: "Local"})
 				Expect(err).ShouldNot(HaveOccurred())
 				baseSnapshot, deltaSnapList, err = miscellaneous.GetLatestFullSnapshotAndDeltaSnapList(store)
 				Expect(err).ShouldNot(HaveOccurred())
