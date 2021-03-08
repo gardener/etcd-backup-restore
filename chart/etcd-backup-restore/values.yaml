@@ -7,7 +7,7 @@ images:
   # etcd-backup-restore image to use
   etcdBackupRestore:
     repository: eu.gcr.io/gardener-project/gardener/etcdbrctl
-    tag: v0.10.0
+    tag: v0.12.0-dev-e6df91b7463cf784f651bd6cc6ac7fc4d2e5a70b
     pullPolicy: IfNotPresent
 
 resources:
@@ -63,6 +63,12 @@ backup:
   # storageProvider indicate the type of backup storage provider.
   # Supported values are ABS,GCS,S3,Swift,OSS,ECS,Local, empty means no backup.
   storageProvider: "Local"
+
+  # compression defines the specification to compress the snapshots(full as well as delta).
+  # it only supports 3 compression Policy: gzip(default), zlib, lzw.
+  compression:
+    enabled: true
+    policy: "gzip"
 
   # failBelowRevision indicates the revision below which the validation of etcd will fail and restore will not be triggered in case
   # there is no snapshot on configured backup bucket.
