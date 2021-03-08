@@ -244,7 +244,7 @@ func (b *BackupRestoreServer) runEtcdProbeLoopWithSnapshotter(ctx context.Contex
 		gcStopCh := make(chan struct{})
 		go ssr.RunGarbageCollector(gcStopCh)
 		b.logger.Infof("Starting snapshotter...")
-		startWithFullSnapshot := ssr.PrevFullSnapshot == nil || !(initialDeltaSnapshotTaken && time.Since(ssr.PrevFullSnapshot.CreatedOn).Hours() <= recentFullSnapshotPeriodInHours)
+		startWithFullSnapshot := ssr.PrevFullSnapshot == nil || !(time.Since(ssr.PrevFullSnapshot.CreatedOn).Hours() <= recentFullSnapshotPeriodInHours)
 		if err := ssr.Run(ssrStopCh, startWithFullSnapshot); err != nil {
 			if etcdErr, ok := err.(*errors.EtcdError); ok == true {
 				b.logger.Errorf("Snapshotter failed with etcd error: %v", etcdErr)
