@@ -36,7 +36,7 @@ If using `LimitBased` policy, the `max-backups` flag should be provided to indic
 ```console
 $ ./bin/etcdbrctl snapshot  \
 --storage-provider="S3" \
---etcd-endpoints http://localhost:2379 \
+--endpoints http://localhost:2379 \
 --schedule "*/1 * * * *" \
 --store-container="etcd-backup" \
 --delta-snapshot-period=10s \

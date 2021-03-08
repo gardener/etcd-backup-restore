@@ -92,6 +92,7 @@ func (b *BackupRestoreServer) startHTTPServer(initializer initializer.Initialize
 	// and running before setting the status to OK.
 	handler := &HTTPHandler{
 		Port:              b.config.ServerConfig.Port,
+		UDSPath:           b.config.ServerConfig.UDSPath,
 		Initializer:       initializer,
 		Snapshotter:       ssr,
 		Logger:            b.logger,

@@ -17,6 +17,7 @@ package server
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/gardener/etcd-backup-restore/pkg/compressor"
 	"github.com/gardener/etcd-backup-restore/pkg/etcdutil"
@@ -83,10 +84,12 @@ func (c *BackupRestoreComponentConfig) Validate() error {
 // Complete completes the config.
 func (c *BackupRestoreComponentConfig) Complete() {
 	c.SnapstoreConfig.Complete()
+	c.ServerConfig.Complete()
 }
 
 // HTTPServerConfig holds the server config.
 type HTTPServerConfig struct {
+	UDSPath         string `json:"udsPath,omitempty"`
 	Port            uint   `json:"port,omitempty"`
 	EnableProfiling bool   `json:"enableProfiling,omitempty"`
 	TLSCertFile     string `json:"server-cert,omitempty"`
@@ -96,6 +99,7 @@ type HTTPServerConfig struct {
 // NewHTTPServerConfig returns the config for http server
 func NewHTTPServerConfig() *HTTPServerConfig {
 	return &HTTPServerConfig{
+		UDSPath:         defaultUDSPath,
 		Port:            defaultServerPort,
 		EnableProfiling: false,
 	}
@@ -104,6 +108,7 @@ func NewHTTPServerConfig() *HTTPServerConfig {
 // AddFlags adds the flags to flagset.
 func (c *HTTPServerConfig) AddFlags(fs *flag.FlagSet) {
 	fs.UintVarP(&c.Port, "server-port", "p", c.Port, "port on which server should listen")
+	fs.StringVar(&c.UDSPath, "uds-path", c.UDSPath, "path of unix domain socket on which server listens for status and start requests from etcd bootstrap")
 	fs.BoolVar(&c.EnableProfiling, "enable-profiling", c.EnableProfiling, "enable profiling")
 	fs.StringVar(&c.TLSCertFile, "server-cert", "", "TLS certificate file for backup-restore server")
 	fs.StringVar(&c.TLSKeyFile, "server-key", "", "TLS key file for backup-restore server")
@@ -121,5 +126,22 @@ func (c *HTTPServerConfig) Validate() error {
 			return fmt.Errorf("TLS enabled but server TLS key file is invalid. Will not start HTTPS server: %v", err)
 		}
 	}
+
+	if f, err := os.Stat(c.UDSPath); err != nil {
+		if !os.IsNotExist(err) {
+			return fmt.Errorf("uds-path %q is not  %+v valid: %v", c.UDSPath, f, err)
+		}
+	} else {
+		if f.IsDir() {
+			return fmt.Errorf("uds-path %q is a dir", c.UDSPath)
+		}
+	}
+
 	return nil
+}
+
+// Complete completes the config.
+func (c *HTTPServerConfig) Complete() {
+	fp, _ := filepath.Abs(c.UDSPath)
+	c.UDSPath = fp
 }

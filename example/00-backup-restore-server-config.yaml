@@ -15,6 +15,7 @@ serverConfig:
   # enableProfiling: true
   # server-cert: "ssl/etcdbr/tls.crt"
   # server-key: "ssl/etcdbr/tls.key"
+  # uds-path "/var/run/etcdbrctl/etcdbrctl.socket"
 
 snapshotterConfig:
   schedule: "0 */1 * * *"
