@@ -38,14 +38,14 @@ import (
 func newFakeABSSnapstore() brtypes.SnapStore {
 	f := []pipeline.Factory{
 		pipeline.MethodFactoryMarker(),
-		newFakePolicyFactory(bucket, prefix, objectMap),
+		newFakePolicyFactory(bucket, prefixV2, objectMap),
 	}
-	p := pipeline.NewPipeline(f, pipeline.Options{HTTPSender: newFakePolicyFactory(bucket, prefix, objectMap)})
+	p := pipeline.NewPipeline(f, pipeline.Options{HTTPSender: newFakePolicyFactory(bucket, prefixV2, objectMap)})
 	u, err := url.Parse(fmt.Sprintf("https://%s.%s", "dummyaccount", brtypes.AzureBlobStorageHostName))
 	Expect(err).ShouldNot(HaveOccurred())
 	serviceURL := azblob.NewServiceURL(*u, p)
 	containerURL := serviceURL.NewContainerURL(bucket)
-	a, err := GetABSSnapstoreFromClient(bucket, prefix, "/tmp", 5, &containerURL)
+	a, err := GetABSSnapstoreFromClient(bucket, prefixV2, "/tmp", 5, &containerURL)
 	Expect(err).ShouldNot(HaveOccurred())
 	return a
 }
@@ -113,7 +113,7 @@ func (p *fakePolicy) Do(ctx context.Context, request pipeline.Request) (response
 	case "DELETE":
 		p.handleDeleteObject(httpResp)
 	default:
-		return nil, err
+		p.handleGetProperties(httpResp)
 	}
 
 	return pipeline.NewHTTPResponse(httpResp), nil
@@ -161,13 +161,15 @@ func (p *fakePolicy) handleListObjects(w *http.Response) error {
 	sort.Strings(keys)
 	for _, key := range keys {
 		if strings.Compare(key, marker) > 0 {
-			blob := blobItem{
-				Name: key,
-			}
-			blobs = append(blobs, blob)
-			if len(blobs) == limit {
-				nextMaker = key
-				break
+			if strings.Contains(key, prefix) {
+				blob := blobItem{
+					Name: key,
+				}
+				blobs = append(blobs, blob)
+				if len(blobs) == limit {
+					nextMaker = key
+					break
+				}
 			}
 		}
 	}
@@ -257,6 +259,33 @@ func (p *fakePolicy) handleBlobGetOperation(w *http.Response) {
 		w.StatusCode = http.StatusNotFound
 		w.Body = http.NoBody
 	}
+}
+
+// handleGetProperties on request `/testContainer/testObject` responds with OK Status if v2 prefix is used.
+// (Required for backward compatibility)
+func (p *fakePolicy) handleGetProperties(w *http.Response) {
+	// Check if the version of object storage exist (Backward Compatibility)
+	prefixTokens := strings.Split(w.Request.URL.Path, "/")
+	if len(prefixTokens) > 0 {
+		version := prefixTokens[len(prefixTokens)-1]
+		if version != "" {
+			for k := range p.objectMap {
+				if strings.Contains(k, version) {
+					w.StatusCode = http.StatusOK
+					w.Body = http.NoBody
+					return
+				}
+			}
+		} else {
+			w.StatusCode = http.StatusNotFound
+			w.Body = http.NoBody
+		}
+	} else {
+		w.StatusCode = http.StatusNotFound
+		w.Body = http.NoBody
+	}
+	w.StatusCode = http.StatusNotFound
+	w.Body = http.NoBody
 }
 
 // handleDeleteObject on delete request `/testContainer/testObject` responds with a `Delete` response.

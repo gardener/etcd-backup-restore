@@ -90,7 +90,16 @@ func NewSwiftSnapstoreFromClient(bucket, prefix, tempDir string, maxParallelChun
 
 // Fetch should open reader for the snapshot file from store
 func (s *SwiftSnapStore) Fetch(snap brtypes.Snapshot) (io.ReadCloser, error) {
-	resp := objects.Download(s.client, s.bucket, path.Join(s.prefix, snap.SnapDir, snap.SnapName), nil)
+	prefix := s.prefix
+
+	// If there is no snapdir, fetch from v1
+	if snap.SnapDir != "" {
+		// Change the prefix to v1 prefix
+		prefixTokens := strings.Split(s.prefix, "/")
+		prefixTokens = prefixTokens[:len(prefixTokens)-1]
+		prefix = path.Join(strings.Join(prefixTokens, "/"), backupVersionV1)
+	}
+	resp := objects.Download(s.client, s.bucket, path.Join(prefix, snap.SnapDir, snap.SnapName), nil)
 	return resp.Body, resp.Err
 }
 
@@ -133,7 +142,7 @@ func (s *SwiftSnapStore) Save(snap brtypes.Snapshot, rc io.ReadCloser) error {
 	}
 
 	logrus.Infof("Uploading snapshot of size: %d, chunkSize: %d, noOfChunks: %d", size, chunkSize, noOfChunks)
-	for offset, index := int64(0), 1; offset <= size; offset += int64(chunkSize) {
+	for offset, index := int64(0), 1; offset < size; offset += int64(chunkSize) {
 		newChunk := chunk{
 			id:     index,
 			offset: offset,
@@ -161,6 +170,7 @@ func (s *SwiftSnapStore) Save(snap brtypes.Snapshot, rc io.ReadCloser) error {
 		return fmt.Errorf("failed uploading manifest for snapshot with error: %v", res.Err)
 	}
 	logrus.Info("Manifest object uploaded successfully.")
+
 	return nil
 }
 
@@ -207,9 +217,40 @@ func (s *SwiftSnapStore) chunkUploader(wg *sync.WaitGroup, stopCh <-chan struct{
 
 // List will list the snapshots from store
 func (s *SwiftSnapStore) List() (brtypes.SnapList, error) {
+	// Probing for v1 and v2 is required for backward compatibility
+	// TODO: Remove when backward compatibility is not needed
+	var v1, v2 bool = false, false
+	var err error
+	var ls1, ls2 brtypes.SnapList
+
+	v1, ls1, err = s.isV1Present()
+	if err != nil {
+		logrus.Warnf("could not decide if v1 prefix is present (Required for backward compatibility): %v", err)
+		v1 = false
+	}
+
+	v2, ls2, err = s.isV2Present()
+	if err != nil {
+		logrus.Warnf("could not decide if v2 prefix is present (Required for backward compatibility): %v", err)
+		v2 = false
+	}
+
+	logrus.Infof("v1 is present : %v, v2 is present : %v", v1, v2)
+
+	snapList := ls2
+	// If v1 directory exists (Required for backward compatibility)
+	if v1 {
+		snapList = append(snapList, ls1...)
+	}
+
+	sort.Sort(snapList)
+	return snapList, nil
+}
+
+func (s *SwiftSnapStore) makeSnapList(prefix string) (brtypes.SnapList, error) {
 	opts := &objects.ListOpts{
 		Full:   false,
-		Prefix: s.prefix,
+		Prefix: prefix,
 	}
 	// Retrieve a pager (i.e. a paginated collection)
 	pager := objects.List(s.client, s.bucket, opts)
@@ -222,7 +263,7 @@ func (s *SwiftSnapStore) List() (brtypes.SnapList, error) {
 			return false, err
 		}
 		for _, object := range objectList {
-			name := strings.Replace(object, s.prefix+"/", "", 1)
+			name := strings.Replace(object, prefix+"/", "", 1)
 			snap, err := ParseSnapshot(name)
 			if err != nil {
 				// Warning: the file can be a non snapshot file. Do not return error.
@@ -238,13 +279,55 @@ func (s *SwiftSnapStore) List() (brtypes.SnapList, error) {
 		return nil, err
 	}
 
-	sort.Sort(snapList)
 	return snapList, nil
 
 }
 
 // Delete should delete the snapshot file from store
 func (s *SwiftSnapStore) Delete(snap brtypes.Snapshot) error {
-	result := objects.Delete(s.client, s.bucket, path.Join(s.prefix, snap.SnapDir, snap.SnapName), nil)
+	prefix := s.prefix
+	if snap.SnapDir != "" {
+		// Change the prefix to v1 prefix
+		prefixTokens := strings.Split(s.prefix, "/")
+		prefixTokens = prefixTokens[:len(prefixTokens)-1]
+		prefix = path.Join(strings.Join(prefixTokens, "/"), backupVersionV1)
+	}
+	result := objects.Delete(s.client, s.bucket, path.Join(prefix, snap.SnapDir, snap.SnapName), nil)
 	return result.Err
+}
+
+// isV1Present checks if v1 is present (Required for backward compatibility)
+func (s *SwiftSnapStore) isV1Present() (bool, brtypes.SnapList, error) {
+	prefixTokens := strings.Split(s.prefix, "/")
+	prefixTokens = prefixTokens[:len(prefixTokens)-1]
+	prefix := path.Join(strings.Join(prefixTokens, "/"), backupVersionV1)
+
+	ls, err := s.makeSnapList(prefix)
+	if err != nil {
+		return false, nil, nil
+	}
+
+	if len(ls) > 0 {
+		return true, ls, nil
+	}
+
+	return false, nil, nil
+}
+
+// isV2Present checks if v2 is present (Required for backward compatibility)
+func (s *SwiftSnapStore) isV2Present() (bool, brtypes.SnapList, error) {
+	prefixTokens := strings.Split(s.prefix, "/")
+	prefixTokens = prefixTokens[:len(prefixTokens)-1]
+	prefix := path.Join(strings.Join(prefixTokens, "/"), backupVersionV2)
+
+	ls, err := s.makeSnapList(prefix)
+	if err != nil {
+		return false, nil, nil
+	}
+
+	if len(ls) > 0 {
+		return true, ls, nil
+	}
+
+	return false, nil, nil
 }

@@ -35,7 +35,8 @@ import (
 var (
 	bucket    string = "mock-bucket"
 	objectMap        = map[string]*[]byte{}
-	prefix    string = "v1"
+	prefixV1  string = "v1"
+	prefixV2  string = "v2"
 )
 
 var _ = Describe("Snapstore", func() {
@@ -43,8 +44,12 @@ var _ = Describe("Snapstore", func() {
 		snap1        brtypes.Snapshot
 		snap2        brtypes.Snapshot
 		snap3        brtypes.Snapshot
+		snap4        brtypes.Snapshot
+		snap5        brtypes.Snapshot
 		expectedVal1 []byte
 		expectedVal2 []byte
+		expectedVal4 []byte
+		expectedVal5 []byte
 		snapstores   map[string]brtypes.SnapStore
 	)
 
@@ -68,41 +73,60 @@ var _ = Describe("Snapstore", func() {
 			LastRevision:  1958,
 			Kind:          brtypes.SnapshotKindFull,
 		}
+		snap4 = brtypes.Snapshot{
+			CreatedOn:     time.Unix(now+300, 0).UTC(),
+			StartRevision: 0,
+			LastRevision:  3058,
+			Kind:          brtypes.SnapshotKindFull,
+		}
+		snap5 = brtypes.Snapshot{
+			CreatedOn:     time.Unix(now+400, 0).UTC(),
+			StartRevision: 3058,
+			LastRevision:  3088,
+			Kind:          brtypes.SnapshotKindDelta,
+		}
 		snap1.GenerateSnapshotName()
 		snap1.GenerateSnapshotDirectory()
 		snap2.GenerateSnapshotName()
 		snap2.GenerateSnapshotDirectory()
 		snap3.GenerateSnapshotName()
 		snap3.GenerateSnapshotDirectory()
+
+		snap4.GenerateSnapshotName()
+		snap5.GenerateSnapshotName()
+
 		expectedVal1 = []byte("value1")
 		expectedVal2 = []byte("value2")
 
+		expectedVal4 = []byte("value4")
+		expectedVal5 = []byte("value5")
+
 		snapstores = map[string]brtypes.SnapStore{
-			"s3": NewS3FromClient(bucket, prefix, "/tmp", 5, &mockS3Client{
+			"s3": NewS3FromClient(bucket, prefixV2, "/tmp", 5, &mockS3Client{
 				objects:          objectMap,
-				prefix:           prefix,
+				prefix:           prefixV2,
 				multiPartUploads: map[string]*[][]byte{},
 			}),
-			"swift": NewSwiftSnapstoreFromClient(bucket, prefix, "/tmp", 5, fake.ServiceClient()),
+			"swift": NewSwiftSnapstoreFromClient(bucket, prefixV2, "/tmp", 5, fake.ServiceClient()),
 			"ABS":   newFakeABSSnapstore(),
-			"GCS": NewGCSSnapStoreFromClient(bucket, prefix, "/tmp", 5, &mockGCSClient{
+			"GCS": NewGCSSnapStoreFromClient(bucket, prefixV2, "/tmp", 5, &mockGCSClient{
 				objects: objectMap,
-				prefix:  prefix,
+				prefix:  prefixV2,
 			}),
-			"OSS": NewOSSFromBucket(prefix, "/tmp", 5, &mockOSSBucket{
+			"OSS": NewOSSFromBucket(prefixV2, "/tmp", 5, &mockOSSBucket{
 				objects:          objectMap,
-				prefix:           prefix,
+				prefix:           prefixV2,
 				multiPartUploads: map[string]*[][]byte{},
 				bucketName:       bucket,
 			}),
-			"ECS": NewS3FromClient(bucket, prefix, "/tmp", 5, &mockS3Client{
+			"ECS": NewS3FromClient(bucket, prefixV2, "/tmp", 5, &mockS3Client{
 				objects:          objectMap,
-				prefix:           prefix,
+				prefix:           prefixV2,
 				multiPartUploads: map[string]*[][]byte{},
 			}),
-			"OCS": NewS3FromClient(bucket, prefix, "/tmp", 5, &mockS3Client{
+			"OCS": NewS3FromClient(bucket, prefixV2, "/tmp", 5, &mockS3Client{
 				objects:          objectMap,
-				prefix:           prefix,
+				prefix:           prefixV2,
 				multiPartUploads: map[string]*[][]byte{},
 			}),
 		}
@@ -112,16 +136,53 @@ var _ = Describe("Snapstore", func() {
 		It("fetches snapshot", func() {
 			for key, snapStore := range snapstores {
 				logrus.Infof("Running tests for %s", key)
+				// When only v1 present
 				resetObjectMap()
-				objectMap[path.Join(prefix, snap1.SnapDir, snap1.SnapName)] = &expectedVal1
-				objectMap[path.Join(prefix, snap2.SnapDir, snap2.SnapName)] = &expectedVal2
+				objectMap[path.Join(prefixV1, snap1.SnapDir, snap1.SnapName)] = &expectedVal1
+				objectMap[path.Join(prefixV1, snap2.SnapDir, snap2.SnapName)] = &expectedVal2
+
 				rc, err := snapStore.Fetch(snap1)
-				defer rc.Close()
 				Expect(err).ShouldNot(HaveOccurred())
+				defer rc.Close()
 				buf := new(bytes.Buffer)
 				_, err = io.Copy(buf, rc)
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(buf.Bytes()).To(Equal(expectedVal1))
+
+				// When v1 and V2 present
+				resetObjectMap()
+				objectMap[path.Join(prefixV1, snap1.SnapDir, snap1.SnapName)] = &expectedVal1
+				objectMap[path.Join(prefixV2, snap4.SnapDir, snap4.SnapName)] = &expectedVal4
+				objectMap[path.Join(prefixV2, snap5.SnapDir, snap5.SnapName)] = &expectedVal5
+
+				rc, err = snapStore.Fetch(snap1)
+				Expect(err).ShouldNot(HaveOccurred())
+				defer rc.Close()
+				buf = new(bytes.Buffer)
+				_, err = io.Copy(buf, rc)
+				Expect(err).ShouldNot(HaveOccurred())
+				Expect(buf.Bytes()).To(Equal(expectedVal1))
+
+				rc, err = snapStore.Fetch(snap4)
+				Expect(err).ShouldNot(HaveOccurred())
+				defer rc.Close()
+				buf = new(bytes.Buffer)
+				_, err = io.Copy(buf, rc)
+				Expect(err).ShouldNot(HaveOccurred())
+				Expect(buf.Bytes()).To(Equal(expectedVal4))
+
+				// When only v2 present
+				resetObjectMap()
+				objectMap[path.Join(prefixV2, snap4.SnapDir, snap4.SnapName)] = &expectedVal4
+				objectMap[path.Join(prefixV2, snap5.SnapDir, snap5.SnapName)] = &expectedVal5
+
+				rc, err = snapStore.Fetch(snap5)
+				Expect(err).ShouldNot(HaveOccurred())
+				defer rc.Close()
+				buf = new(bytes.Buffer)
+				_, err = io.Copy(buf, rc)
+				Expect(err).ShouldNot(HaveOccurred())
+				Expect(buf.Bytes()).To(Equal(expectedVal5))
 			}
 		})
 	})
@@ -143,13 +204,35 @@ var _ = Describe("Snapstore", func() {
 		It("gives sorted list of snapshot", func() {
 			for key, snapStore := range snapstores {
 				logrus.Infof("Running tests for %s", key)
+				// When only v1 present
 				resetObjectMap()
-				objectMap[path.Join(prefix, snap1.SnapDir, snap1.SnapName)] = &expectedVal1
-				objectMap[path.Join(prefix, snap2.SnapDir, snap2.SnapName)] = &expectedVal2
+				objectMap[path.Join(prefixV1, snap1.SnapDir, snap1.SnapName)] = &expectedVal1
+				objectMap[path.Join(prefixV1, snap2.SnapDir, snap2.SnapName)] = &expectedVal2
 				snapList, err := snapStore.List()
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(snapList.Len()).To(Equal(2))
-				Expect(snapList[0].SnapName).To(Equal(snap1.SnapName))
+				Expect(snapList[0].SnapName).To(Equal(snap2.SnapName))
+
+				// When v1 and v2 present
+				resetObjectMap()
+				objectMap[path.Join(prefixV1, snap1.SnapDir, snap1.SnapName)] = &expectedVal1
+				objectMap[path.Join(prefixV1, snap2.SnapDir, snap2.SnapName)] = &expectedVal2
+				objectMap[path.Join(prefixV2, snap4.SnapDir, snap4.SnapName)] = &expectedVal4
+				objectMap[path.Join(prefixV2, snap5.SnapDir, snap5.SnapName)] = &expectedVal5
+				snapList, err = snapStore.List()
+				Expect(err).ShouldNot(HaveOccurred())
+				Expect(snapList.Len()).To(Equal(4))
+				Expect(snapList[0].SnapName).To(Equal(snap2.SnapName))
+				Expect(snapList[3].SnapName).To(Equal(snap5.SnapName))
+
+				// When only v2 present
+				resetObjectMap()
+				objectMap[path.Join(prefixV2, snap4.SnapDir, snap4.SnapName)] = &expectedVal4
+				objectMap[path.Join(prefixV2, snap5.SnapDir, snap5.SnapName)] = &expectedVal5
+				snapList, err = snapStore.List()
+				Expect(err).ShouldNot(HaveOccurred())
+				Expect(snapList.Len()).To(Equal(2))
+				Expect(snapList[0].SnapName).To(Equal(snap4.SnapName))
 			}
 		})
 	})
@@ -158,11 +241,36 @@ var _ = Describe("Snapstore", func() {
 		It("deletes snapshot", func() {
 			for key, snapStore := range snapstores {
 				logrus.Infof("Running tests for %s", key)
+				// When only v1 present
 				resetObjectMap()
-				objectMap[path.Join(prefix, snap1.SnapDir, snap1.SnapName)] = &expectedVal1
-				objectMap[path.Join(prefix, snap2.SnapDir, snap2.SnapName)] = &expectedVal2
+				objectMap[path.Join(prefixV1, snap1.SnapDir, snap1.SnapName)] = &expectedVal1
+				objectMap[path.Join(prefixV1, snap2.SnapDir, snap2.SnapName)] = &expectedVal2
 				prevLen := len(objectMap)
 				err := snapStore.Delete(snap2)
+				Expect(err).ShouldNot(HaveOccurred())
+				Expect(len(objectMap)).To(Equal(prevLen - 1))
+
+				// When v1 and v2 present
+				resetObjectMap()
+				objectMap[path.Join(prefixV1, snap1.SnapDir, snap1.SnapName)] = &expectedVal1
+				objectMap[path.Join(prefixV1, snap2.SnapDir, snap2.SnapName)] = &expectedVal2
+				objectMap[path.Join(prefixV2, snap4.SnapDir, snap4.SnapName)] = &expectedVal4
+				objectMap[path.Join(prefixV2, snap5.SnapDir, snap5.SnapName)] = &expectedVal5
+				prevLen = len(objectMap)
+				err = snapStore.Delete(snap2)
+				Expect(err).ShouldNot(HaveOccurred())
+				Expect(len(objectMap)).To(Equal(prevLen - 1))
+				prevLen = len(objectMap)
+				err = snapStore.Delete(snap4)
+				Expect(err).ShouldNot(HaveOccurred())
+				Expect(len(objectMap)).To(Equal(prevLen - 1))
+
+				// When only v2 present
+				resetObjectMap()
+				objectMap[path.Join(prefixV2, snap4.SnapDir, snap4.SnapName)] = &expectedVal4
+				objectMap[path.Join(prefixV2, snap5.SnapDir, snap5.SnapName)] = &expectedVal5
+				prevLen = len(objectMap)
+				err = snapStore.Delete(snap5)
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(len(objectMap)).To(Equal(prevLen - 1))
 			}
@@ -177,7 +285,8 @@ func resetObjectMap() {
 }
 
 func parseObjectNamefromURL(u *url.URL) string {
-	path := u.EscapedPath()
+
+	path := u.Path
 	if strings.HasPrefix(path, fmt.Sprintf("/%s", bucket)) {
 		splits := strings.SplitAfterN(path, fmt.Sprintf("/%s", bucket), 2)
 		if len(splits[1]) == 0 {

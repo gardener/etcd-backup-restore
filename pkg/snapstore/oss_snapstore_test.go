@@ -20,6 +20,7 @@ import (
 	"io"
 	"io/ioutil"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -48,6 +49,23 @@ type mockOSSBucket struct {
 	multiPartUploads      map[string]*[][]byte
 	multiPartUploadsMutex sync.Mutex
 	bucketName            string
+}
+
+// IsObjectExist checks if the object exist
+func (m *mockOSSBucket) IsObjectExist(objectKey string, options ...oss.Option) (bool, error) {
+	prefixTokens := strings.Split(objectKey, "/")
+	if len(prefixTokens) > 0 {
+		version := prefixTokens[len(prefixTokens)-1]
+		if version != "" {
+			for k := range m.objects {
+				if strings.Contains(k, version) {
+					return true, nil
+				}
+			}
+		}
+	}
+
+	return false, nil
 }
 
 // GetObject returns the object from map for mock test
@@ -142,12 +160,19 @@ func (m *mockOSSBucket) AbortMultipartUpload(imur oss.InitiateMultipartUploadRes
 
 // ListObject returns the objects from map for mock test
 func (m *mockOSSBucket) ListObjects(options ...oss.Option) (oss.ListObjectsResult, error) {
+	prefix, err := oss.FindOption(options, "prefix", "")
+	if err != nil {
+		return oss.ListObjectsResult{}, fmt.Errorf("Could not list object as per the prefix: %v", err)
+	}
+
 	var contents []oss.ObjectProperties
 	for key := range m.objects {
-		tempObj := oss.ObjectProperties{
-			Key: key,
+		if strings.Contains(key, fmt.Sprintf("%v", prefix)) {
+			tempObj := oss.ObjectProperties{
+				Key: key,
+			}
+			contents = append(contents, tempObj)
 		}
-		contents = append(contents, tempObj)
 	}
 	out := oss.ListObjectsResult{
 		Objects:     contents,
@@ -158,6 +183,10 @@ func (m *mockOSSBucket) ListObjects(options ...oss.Option) (oss.ListObjectsResul
 
 // DeleteObject deletes the object from map for mock test
 func (m *mockOSSBucket) DeleteObject(objectKey string, options ...oss.Option) error {
-	delete(m.objects, objectKey)
-	return nil
+	if _, ok := m.objects[objectKey]; ok {
+		delete(m.objects, objectKey)
+		return nil
+
+	}
+	return fmt.Errorf("Object not found")
 }

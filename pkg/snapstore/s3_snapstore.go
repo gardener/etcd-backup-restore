@@ -23,6 +23,7 @@ import (
 	"os"
 	"path"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -40,10 +41,9 @@ const (
 
 // S3SnapStore is snapstore with AWS S3 object store as backend
 type S3SnapStore struct {
-	prefix    string
-	client    s3iface.S3API
-	bucket    string
-	multiPart sync.Mutex
+	prefix string
+	client s3iface.S3API
+	bucket string
 	// maxParallelChunkUploads hold the maximum number of parallel chunk uploads allowed.
 	maxParallelChunkUploads uint
 	tempDir                 string
@@ -79,32 +79,20 @@ func NewS3FromClient(bucket, prefix, tempDir string, maxParallelChunkUploads uin
 	}
 }
 
-// IsSupportV2 checks for a file that is created to mark if the Backup Restore V2 is supported
-/*func (s *S3SnapStore) IsSupportV2() (bool, error) {
-	_, err := s.client.HeadObject(&s3.HeadObjectInput{
-		Bucket: aws.String(s.bucket),
-		Key:    aws.String(path.Join(s.prefix, "V2")),
-	})
-
-	if err != nil {
-		if aerr, ok := err.(awserr.Error); ok {
-			switch aerr.Code() {
-			case "NotFound":
-				return false, nil
-			default:
-				return false, err
-			}
-		}
-		return false, err
-	}
-	return true, nil
-}*/
-
 // Fetch should open reader for the snapshot file from store
 func (s *S3SnapStore) Fetch(snap brtypes.Snapshot) (io.ReadCloser, error) {
+	prefix := s.prefix
+
+	// If there is no snapdir, fetch from v1
+	if snap.SnapDir != "" {
+		// Change the prefix to v1 prefix
+		prefixTokens := strings.Split(s.prefix, "/")
+		prefixTokens = prefixTokens[:len(prefixTokens)-1]
+		prefix = path.Join(strings.Join(prefixTokens, "/"), backupVersionV1)
+	}
 	resp, err := s.client.GetObject(&s3.GetObjectInput{
 		Bucket: aws.String(s.bucket),
-		Key:    aws.String(path.Join(s.prefix, snap.SnapDir, snap.SnapName)),
+		Key:    aws.String(path.Join(prefix, snap.SnapDir, snap.SnapName)),
 	})
 	if err != nil {
 		return nil, err
@@ -129,7 +117,7 @@ func (s *S3SnapStore) Save(snap brtypes.Snapshot, rc io.ReadCloser) error {
 	if err != nil {
 		return fmt.Errorf("failed to save snapshot to tmpfile: %v", err)
 	}
-	_, err = tmpfile.Seek(0, os.SEEK_SET)
+	_, err = tmpfile.Seek(0, io.SeekStart)
 	if err != nil {
 		return err
 	}
@@ -167,7 +155,7 @@ func (s *S3SnapStore) Save(snap brtypes.Snapshot, rc io.ReadCloser) error {
 	}
 	logrus.Infof("Uploading snapshot of size: %d, chunkSize: %d, noOfChunks: %d", size, chunkSize, noOfChunks)
 
-	for offset, index := int64(0), 1; offset <= size; offset += int64(chunkSize) {
+	for offset, index := int64(0), 1; offset < size; offset += int64(chunkSize) {
 		newChunk := chunk{
 			id:     index,
 			offset: offset,
@@ -215,6 +203,26 @@ func (s *S3SnapStore) Save(snap brtypes.Snapshot, rc io.ReadCloser) error {
 	return nil
 }
 
+func (s *S3SnapStore) partUploader(wg *sync.WaitGroup, stopCh <-chan struct{}, snap *brtypes.Snapshot, file *os.File, uploadID *string, completedParts []*s3.CompletedPart, chunkUploadCh <-chan chunk, errCh chan<- chunkUploadResult) {
+	defer wg.Done()
+	for {
+		select {
+		case <-stopCh:
+			return
+		case chunk, ok := <-chunkUploadCh:
+			if !ok {
+				return
+			}
+			logrus.Infof("Uploading chunk with id: %d, offset: %d, attempt: %d", chunk.id, chunk.offset, chunk.attempt)
+			err := s.uploadPart(snap, file, uploadID, completedParts, chunk.offset, chunk.size)
+			errCh <- chunkUploadResult{
+				err:   err,
+				chunk: &chunk,
+			}
+		}
+	}
+}
+
 func (s *S3SnapStore) uploadPart(snap *brtypes.Snapshot, file *os.File, uploadID *string, completedParts []*s3.CompletedPart, offset, chunkSize int64) error {
 	fileInfo, err := file.Stat()
 	if err != nil {
@@ -248,32 +256,43 @@ func (s *S3SnapStore) uploadPart(snap *brtypes.Snapshot, file *os.File, uploadID
 	return err
 }
 
-func (s *S3SnapStore) partUploader(wg *sync.WaitGroup, stopCh <-chan struct{}, snap *brtypes.Snapshot, file *os.File, uploadID *string, completedParts []*s3.CompletedPart, chunkUploadCh <-chan chunk, errCh chan<- chunkUploadResult) {
-	defer wg.Done()
-	for {
-		select {
-		case <-stopCh:
-			return
-		case chunk, ok := <-chunkUploadCh:
-			if !ok {
-				return
-			}
-			logrus.Infof("Uploading chunk with id: %d, offset: %d, attempt: %d", chunk.id, chunk.offset, chunk.attempt)
-			err := s.uploadPart(snap, file, uploadID, completedParts, chunk.offset, chunk.size)
-			errCh <- chunkUploadResult{
-				err:   err,
-				chunk: &chunk,
-			}
-		}
-	}
-}
-
 // List will list the snapshots from store
 func (s *S3SnapStore) List() (brtypes.SnapList, error) {
+	// Probing for v1 and v2 is required for backward compatibility
+	// TODO: Remove when backward compatibility is not needed
+	var v1, v2 bool = false, false
+	var err error
+	var ls1, ls2 brtypes.SnapList
+
+	v1, ls1, err = s.isV1Present()
+	if err != nil {
+		logrus.Warnf("could not decide if v1 prefix is present (Required for backward compatibility): %v", err)
+		v1 = false
+	}
+
+	v2, ls2, err = s.isV2Present()
+	if err != nil {
+		logrus.Warnf("could not decide if v2 prefix is present (Required for backward compatibility): %v", err)
+		v2 = false
+	}
+
+	logrus.Infof("v1 is present : %v, v2 is present : %v", v1, v2)
+
+	snapList := ls2
+	// If v1 directory exists (Required for backward compatibility)
+	if v1 {
+		snapList = append(snapList, ls1...)
+	}
+
+	sort.Sort(snapList)
+	return snapList, nil
+}
+
+func (s *S3SnapStore) makeSnapList(prefix string) (brtypes.SnapList, error) {
 	var snapList brtypes.SnapList
 	in := &s3.ListObjectsInput{
 		Bucket: aws.String(s.bucket),
-		Prefix: aws.String(fmt.Sprintf("%s/", s.prefix)),
+		Prefix: aws.String(fmt.Sprintf("%s/", prefix)),
 	}
 	err := s.client.ListObjectsPages(in, func(page *s3.ListObjectsOutput, lastPage bool) bool {
 		for _, key := range page.Contents {
@@ -288,19 +307,60 @@ func (s *S3SnapStore) List() (brtypes.SnapList, error) {
 		}
 		return !lastPage
 	})
-	if err != nil {
-		return nil, err
-	}
 
-	sort.Sort(snapList)
-	return snapList, nil
+	return snapList, err
 }
 
 // Delete should delete the snapshot file from store
 func (s *S3SnapStore) Delete(snap brtypes.Snapshot) error {
-	_, err := s.client.DeleteObject(&s3.DeleteObjectInput{
+	var err error
+	prefix := s.prefix
+	if snap.SnapDir != "" {
+		// Change the prefix to v1 prefix
+		prefixTokens := strings.Split(s.prefix, "/")
+		prefixTokens = prefixTokens[:len(prefixTokens)-1]
+		prefix = path.Join(strings.Join(prefixTokens, "/"), backupVersionV1)
+	}
+	_, err = s.client.DeleteObject(&s3.DeleteObjectInput{
 		Bucket: aws.String(s.bucket),
-		Key:    aws.String(path.Join(s.prefix, snap.SnapDir, snap.SnapName)),
+		Key:    aws.String(path.Join(prefix, snap.SnapDir, snap.SnapName)),
 	})
+
 	return err
+}
+
+// isV1Present checks if v1 is present and return list in v1 (Required for backward compatibility)
+func (s *S3SnapStore) isV1Present() (bool, brtypes.SnapList, error) {
+	prefixTokens := strings.Split(s.prefix, "/")
+	prefixTokens = prefixTokens[:len(prefixTokens)-1]
+	prefix := path.Join(strings.Join(prefixTokens, "/"), backupVersionV1)
+
+	ls, err := s.makeSnapList(prefix)
+	if err != nil {
+		return false, nil, nil
+	}
+
+	if len(ls) > 0 {
+		return true, ls, nil
+	}
+
+	return false, nil, nil
+}
+
+// isV2Present checks if v2 prefix is present and return list in v2 (Required for backward compatibility)
+func (s *S3SnapStore) isV2Present() (bool, brtypes.SnapList, error) {
+	prefixTokens := strings.Split(s.prefix, "/")
+	prefixTokens = prefixTokens[:len(prefixTokens)-1]
+	prefix := path.Join(strings.Join(prefixTokens, "/"), backupVersionV2)
+
+	ls, err := s.makeSnapList(prefix)
+	if err != nil {
+		return false, nil, nil
+	}
+
+	if len(ls) > 0 {
+		return true, ls, nil
+	}
+
+	return false, nil, nil
 }

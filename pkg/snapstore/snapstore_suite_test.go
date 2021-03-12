@@ -42,7 +42,7 @@ var _ = BeforeSuite(func() {
 	logrus.Infof("Starting test server...")
 	th.SetupHTTP()
 	initializeMockSwiftServer(testObj)
-	swiftStore = snapstore.NewSwiftSnapstoreFromClient(bucket, prefix, "/tmp", 5, fake.ServiceClient())
+	swiftStore = snapstore.NewSwiftSnapstoreFromClient(bucket, prefixV2, "/tmp", 5, fake.ServiceClient())
 })
 
 var _ = AfterSuite(func() {

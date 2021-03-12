@@ -24,6 +24,7 @@ import (
 	"os"
 	"path"
 	"sort"
+	"strings"
 	"sync"
 
 	"github.com/Azure/azure-storage-blob-go/azblob"
@@ -100,7 +101,17 @@ func GetABSSnapstoreFromClient(container, prefix, tempDir string, maxParallelChu
 
 // Fetch should open reader for the snapshot file from store
 func (a *ABSSnapStore) Fetch(snap brtypes.Snapshot) (io.ReadCloser, error) {
-	blobName := path.Join(a.prefix, snap.SnapDir, snap.SnapName)
+	var err error
+	prefix := a.prefix
+
+	// If there is no snapdir, fetch from v1
+	if snap.SnapDir != "" {
+		// Change the prefix to v1 prefix
+		prefixTokens := strings.Split(a.prefix, "/")
+		prefixTokens = prefixTokens[:len(prefixTokens)-1]
+		prefix = path.Join(strings.Join(prefixTokens, "/"), backupVersionV1)
+	}
+	blobName := path.Join(prefix, snap.SnapDir, snap.SnapName)
 	blob := a.containerURL.NewBlobURL(blobName)
 	resp, err := blob.Download(context.Background(), io.SeekStart, azblob.CountToEnd, azblob.BlobAccessConditions{}, false)
 	if err != nil {
@@ -111,8 +122,39 @@ func (a *ABSSnapStore) Fetch(snap brtypes.Snapshot) (io.ReadCloser, error) {
 
 // List will list all snapshot files on store
 func (a *ABSSnapStore) List() (brtypes.SnapList, error) {
+	// Probing for v1 and v2 is required for backward compatibility
+	// TODO: Remove when backward compatibility is not needed
+	var v1, v2 bool = false, false
+	var err error
+	var ls1, ls2 brtypes.SnapList
+
+	v1, ls1, err = a.isV1Present()
+	if err != nil {
+		logrus.Warnf("could not decide if v1 prefix is present (Required for backward compatibility): %v", err)
+		v1 = false
+	}
+
+	v2, ls2, err = a.isV2Present()
+	if err != nil {
+		logrus.Warnf("could not decide if v2 prefix is present (Required for backward compatibility): %v", err)
+		v2 = false
+	}
+
+	logrus.Infof("v1 is present : %v, v2 is present : %v", v1, v2)
+
+	snapList := ls2
+	// If v1 directory exists (Required for backward compatibility)
+	if v1 {
+		snapList = append(snapList, ls1...)
+	}
+
+	sort.Sort(snapList)
+	return snapList, nil
+}
+
+func (a *ABSSnapStore) makeSnapList(prefix string) (brtypes.SnapList, error) {
 	var snapList brtypes.SnapList
-	opts := azblob.ListBlobsSegmentOptions{Prefix: path.Join(a.prefix, "/")}
+	opts := azblob.ListBlobsSegmentOptions{Prefix: path.Join(prefix, "/")}
 	for marker := (azblob.Marker{}); marker.NotDone(); {
 		// Get a result segment starting with the blob indicated by the current Marker.
 		listBlob, err := a.containerURL.ListBlobsFlatSegment(context.TODO(), marker, opts)
@@ -123,7 +165,7 @@ func (a *ABSSnapStore) List() (brtypes.SnapList, error) {
 
 		// Process the blobs returned in this result segment
 		for _, blob := range listBlob.Segment.BlobItems {
-			k := blob.Name[len(a.prefix)+1:]
+			k := blob.Name[len(prefix)+1:]
 			s, err := ParseSnapshot(k)
 			if err != nil {
 				logrus.Warnf("Invalid snapshot found. Ignoring it:%s\n", k)
@@ -132,7 +174,6 @@ func (a *ABSSnapStore) List() (brtypes.SnapList, error) {
 			}
 		}
 	}
-	sort.Sort(snapList)
 	return snapList, nil
 }
 
@@ -174,7 +215,7 @@ func (a *ABSSnapStore) Save(snap brtypes.Snapshot, rc io.ReadCloser) error {
 		go a.blockUploader(&wg, cancelCh, &snap, tmpfile, chunkUploadCh, resCh)
 	}
 	logrus.Infof("Uploading snapshot of size: %d, chunkSize: %d, noOfChunks: %d", size, chunkSize, noOfChunks)
-	for offset, index := int64(0), 1; offset <= size; offset += int64(chunkSize) {
+	for offset, index := int64(0), 1; offset < size; offset += int64(chunkSize) {
 		newChunk := chunk{
 			offset: offset,
 			size:   chunkSize,
@@ -255,10 +296,52 @@ func (a *ABSSnapStore) blockUploader(wg *sync.WaitGroup, stopCh <-chan struct{},
 
 // Delete should delete the snapshot file from store
 func (a *ABSSnapStore) Delete(snap brtypes.Snapshot) error {
-	blobName := path.Join(a.prefix, snap.SnapDir, snap.SnapName)
-	blob := a.containerURL.NewBlobURL(blobName)
-	if _, err := blob.Delete(context.TODO(), azblob.DeleteSnapshotsOptionInclude, azblob.BlobAccessConditions{}); err != nil {
-		return fmt.Errorf("failed to delete blob %s with error: %v", blobName, err)
+	var err error
+	prefix := a.prefix
+	if snap.SnapDir != "" {
+		// Change the prefix to v1 prefix
+		prefixTokens := strings.Split(a.prefix, "/")
+		prefixTokens = prefixTokens[:len(prefixTokens)-1]
+		prefix = path.Join(strings.Join(prefixTokens, "/"), backupVersionV1)
 	}
-	return nil
+	blobName := path.Join(prefix, snap.SnapDir, snap.SnapName)
+	blob := a.containerURL.NewBlobURL(blobName)
+	_, err = blob.Delete(context.TODO(), azblob.DeleteSnapshotsOptionInclude, azblob.BlobAccessConditions{})
+	return err
+}
+
+// isV1Present checks if v1 is present (Required for backward compatibility)
+func (a *ABSSnapStore) isV1Present() (bool, brtypes.SnapList, error) {
+	prefixTokens := strings.Split(a.prefix, "/")
+	prefixTokens = prefixTokens[:len(prefixTokens)-1]
+	prefix := path.Join(strings.Join(prefixTokens, "/"), backupVersionV1)
+
+	ls, err := a.makeSnapList(prefix)
+	if err != nil {
+		return false, nil, nil
+	}
+
+	if len(ls) > 0 {
+		return true, ls, nil
+	}
+
+	return false, nil, nil
+}
+
+// isV2Present checks if v2 is present (Required for backward compatibility)
+func (a *ABSSnapStore) isV2Present() (bool, brtypes.SnapList, error) {
+	prefixTokens := strings.Split(a.prefix, "/")
+	prefixTokens = prefixTokens[:len(prefixTokens)-1]
+	prefix := path.Join(strings.Join(prefixTokens, "/"), backupVersionV2)
+
+	ls, err := a.makeSnapList(prefix)
+	if err != nil {
+		return false, nil, nil
+	}
+
+	if len(ls) > 0 {
+		return true, ls, nil
+	}
+
+	return false, nil, nil
 }

@@ -72,9 +72,21 @@ func NewGCSSnapStoreFromClient(bucket, prefix, tempDir string, maxParallelChunkU
 
 // Fetch should open reader for the snapshot file from store.
 func (s *GCSSnapStore) Fetch(snap brtypes.Snapshot) (io.ReadCloser, error) {
-	objectName := path.Join(s.prefix, snap.SnapDir, snap.SnapName)
-	ctx := context.TODO()
-	return s.client.Bucket(s.bucket).Object(objectName).NewReader(ctx)
+	prefix := s.prefix
+
+	// If there is no snapdir, fetch from v1
+	if snap.SnapDir != "" {
+		// Change the prefix to v1 prefix
+		prefixTokens := strings.Split(s.prefix, "/")
+		prefixTokens = prefixTokens[:len(prefixTokens)-1]
+		prefix = path.Join(strings.Join(prefixTokens, "/"), backupVersionV1)
+	}
+	objectName := path.Join(prefix, snap.SnapDir, snap.SnapName)
+	rc, err := s.client.Bucket(s.bucket).Object(objectName).NewReader(context.TODO())
+	if err != nil {
+		return nil, err
+	}
+	return rc, nil
 }
 
 // Save will write the snapshot to store.
@@ -115,7 +127,7 @@ func (s *GCSSnapStore) Save(snap brtypes.Snapshot, rc io.ReadCloser) error {
 	}
 
 	logrus.Infof("Uploading snapshot of size: %d, chunkSize: %d, noOfChunks: %d", size, chunkSize, noOfChunks)
-	for offset, index := int64(0), 1; offset <= size; offset += int64(chunkSize) {
+	for offset, index := int64(0), 1; offset < size; offset += int64(chunkSize) {
 		newChunk := chunk{
 			id:     index,
 			offset: offset,
@@ -149,7 +161,28 @@ func (s *GCSSnapStore) Save(snap brtypes.Snapshot, rc io.ReadCloser) error {
 		return fmt.Errorf("failed uploading composite object for snapshot with error: %v", err)
 	}
 	logrus.Info("Composite object uploaded successfully.")
+
 	return nil
+}
+
+func (s *GCSSnapStore) componentUploader(wg *sync.WaitGroup, stopCh <-chan struct{}, snap *brtypes.Snapshot, file *os.File, chunkUploadCh chan chunk, errCh chan<- chunkUploadResult) {
+	defer wg.Done()
+	for {
+		select {
+		case <-stopCh:
+			return
+		case chunk, ok := <-chunkUploadCh:
+			if !ok {
+				return
+			}
+			logrus.Infof("Uploading chunk with offset : %d, attempt: %d", chunk.offset, chunk.attempt)
+			err := s.uploadComponent(snap, file, chunk.offset, chunk.size)
+			errCh <- chunkUploadResult{
+				err:   err,
+				chunk: &chunk,
+			}
+		}
+	}
 }
 
 func (s *GCSSnapStore) uploadComponent(snap *brtypes.Snapshot, file *os.File, offset, chunkSize int64) error {
@@ -177,30 +210,40 @@ func (s *GCSSnapStore) uploadComponent(snap *brtypes.Snapshot, file *os.File, of
 	return w.Close()
 }
 
-func (s *GCSSnapStore) componentUploader(wg *sync.WaitGroup, stopCh <-chan struct{}, snap *brtypes.Snapshot, file *os.File, chunkUploadCh chan chunk, errCh chan<- chunkUploadResult) {
-	defer wg.Done()
-	for {
-		select {
-		case <-stopCh:
-			return
-		case chunk, ok := <-chunkUploadCh:
-			if !ok {
-				return
-			}
-			logrus.Infof("Uploading chunk with offset : %d, attempt: %d", chunk.offset, chunk.attempt)
-			err := s.uploadComponent(snap, file, chunk.offset, chunk.size)
-			errCh <- chunkUploadResult{
-				err:   err,
-				chunk: &chunk,
-			}
-		}
-	}
-}
-
 // List will list the snapshots from store.
 func (s *GCSSnapStore) List() (brtypes.SnapList, error) {
-	it := s.client.Bucket(s.bucket).Objects(context.TODO(), &storage.Query{Prefix: s.prefix})
+	// Probing for v1 and v2 is required for backward compatibility
+	// TODO: Remove when backward compatibility is not needed
+	var v1, v2 bool = false, false
+	var err error
+	var ls1, ls2 brtypes.SnapList
 
+	v1, ls1, err = s.isV1Present()
+	if err != nil {
+		logrus.Warnf("could not decide if v1 prefix is present (Required for backward compatibility): %v", err)
+		v1 = false
+	}
+
+	v2, ls2, err = s.isV2Present()
+	if err != nil {
+		logrus.Warnf("could not decide if v2 prefix is present (Required for backward compatibility): %v", err)
+		v2 = false
+	}
+
+	logrus.Infof("v1 is present : %v, v2 is present : %v", v1, v2)
+
+	snapList := ls2
+	// If v1 directory exists (Required for backward compatibility)
+	if v1 {
+		snapList = append(snapList, ls1...)
+	}
+
+	sort.Sort(snapList)
+	return snapList, nil
+}
+
+func (s *GCSSnapStore) makeSnapList(prefix string) (brtypes.SnapList, error) {
+	it := s.client.Bucket(s.bucket).Objects(context.TODO(), &storage.Query{Prefix: prefix})
 	var attrs []*storage.ObjectAttrs
 	for {
 		attr, err := it.Next()
@@ -215,8 +258,7 @@ func (s *GCSSnapStore) List() (brtypes.SnapList, error) {
 
 	var snapList brtypes.SnapList
 	for _, v := range attrs {
-		name := strings.Replace(v.Name, s.prefix+"/", "", 1)
-		//name := v.Name[len(s.prefix):]
+		name := strings.Replace(v.Name, prefix+"/", "", 1)
 		snap, err := ParseSnapshot(name)
 		if err != nil {
 			// Warning
@@ -226,12 +268,56 @@ func (s *GCSSnapStore) List() (brtypes.SnapList, error) {
 		}
 	}
 
-	sort.Sort(snapList)
 	return snapList, nil
 }
 
 // Delete should delete the snapshot file from store.
 func (s *GCSSnapStore) Delete(snap brtypes.Snapshot) error {
-	objectName := path.Join(s.prefix, snap.SnapDir, snap.SnapName)
-	return s.client.Bucket(s.bucket).Object(objectName).Delete(context.TODO())
+	var err error
+	prefix := s.prefix
+	if snap.SnapDir != "" {
+		// Change the prefix to v1 prefix
+		prefixTokens := strings.Split(s.prefix, "/")
+		prefixTokens = prefixTokens[:len(prefixTokens)-1]
+		prefix = path.Join(strings.Join(prefixTokens, "/"), backupVersionV1)
+	}
+	objectName := path.Join(prefix, snap.SnapDir, snap.SnapName)
+	err = s.client.Bucket(s.bucket).Object(objectName).Delete(context.TODO())
+	return err
+}
+
+// isV1Present checks if v1 is present (Required for backward compatibility)
+func (s *GCSSnapStore) isV1Present() (bool, brtypes.SnapList, error) {
+	prefixTokens := strings.Split(s.prefix, "/")
+	prefixTokens = prefixTokens[:len(prefixTokens)-1]
+	prefix := path.Join(strings.Join(prefixTokens, "/"), backupVersionV1)
+
+	ls, err := s.makeSnapList(prefix)
+	if err != nil {
+		return false, nil, nil
+	}
+
+	if len(ls) > 0 {
+		return true, ls, nil
+	}
+
+	return false, nil, nil
+}
+
+// isV2Present checks if v2 is present (Required for backward compatibility)
+func (s *GCSSnapStore) isV2Present() (bool, brtypes.SnapList, error) {
+	prefixTokens := strings.Split(s.prefix, "/")
+	prefixTokens = prefixTokens[:len(prefixTokens)-1]
+	prefix := path.Join(strings.Join(prefixTokens, "/"), backupVersionV2)
+
+	ls, err := s.makeSnapList(prefix)
+	if err != nil {
+		return false, nil, nil
+	}
+
+	if len(ls) > 0 {
+		return true, ls, nil
+	}
+
+	return false, nil, nil
 }

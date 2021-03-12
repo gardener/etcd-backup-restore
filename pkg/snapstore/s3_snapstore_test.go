@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/aws/request"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/aws/aws-sdk-go/service/s3/s3iface"
@@ -39,10 +40,29 @@ type mockS3Client struct {
 	multiPartUploadsMutex sync.Mutex
 }
 
+// HeadObject checks if the prefix is present for mock test
+func (m *mockS3Client) HeadObject(in *s3.HeadObjectInput) (*s3.HeadObjectOutput, error) {
+	// Check if the version of object storage exist (Backward Compatibility)
+	prefixTokens := strings.Split(*in.Key, "/")
+	if len(prefixTokens) > 0 {
+		version := prefixTokens[len(prefixTokens)-1]
+		if version != "" {
+			for k := range m.objects {
+				if strings.Contains(k, version) {
+					return &s3.HeadObjectOutput{}, nil
+				}
+			}
+		} else {
+			return nil, awserr.New("NotFound", "", fmt.Errorf("object not found"))
+		}
+	}
+	return nil, awserr.New("NotFound", "", fmt.Errorf("object not found"))
+}
+
 // GetObject returns the object from map for mock test
 func (m *mockS3Client) GetObject(in *s3.GetObjectInput) (*s3.GetObjectOutput, error) {
-	if m.objects[*in.Key] == nil {
-		return nil, fmt.Errorf("object not found")
+	if _, ok := m.objects[*in.Key]; !ok {
+		return nil, awserr.New("NotFound", "", fmt.Errorf("object not found"))
 	}
 	// Only need to return mocked response output
 	out := s3.GetObjectOutput{
@@ -170,7 +190,7 @@ func (m *mockS3Client) ListObjects(in *s3.ListObjectsInput) (*s3.ListObjectsOutp
 	return out, nil
 }
 
-// ListObject returns the objects from map for mock test
+// ListObjectsPages returns the objects from map for mock test
 func (m *mockS3Client) ListObjectsPages(in *s3.ListObjectsInput, callback func(*s3.ListObjectsOutput, bool) bool) error {
 	var (
 		count    int64 = 0
@@ -220,6 +240,9 @@ func (m *mockS3Client) ListObjectsPages(in *s3.ListObjectsInput, callback func(*
 
 // DeleteObject deletes the object from map for mock test
 func (m *mockS3Client) DeleteObject(in *s3.DeleteObjectInput) (*s3.DeleteObjectOutput, error) {
-	delete(m.objects, *in.Key)
-	return &s3.DeleteObjectOutput{}, nil
+	if _, ok := m.objects[*in.Key]; ok {
+		delete(m.objects, *in.Key)
+		return &s3.DeleteObjectOutput{}, nil
+	}
+	return nil, awserr.New("NotFound", "", fmt.Errorf("object not found"))
 }

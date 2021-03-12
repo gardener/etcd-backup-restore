@@ -34,7 +34,7 @@ func NewSnapshot(kind string, startRevision, lastRevision int64, compressionSuff
 		CreatedOn:         time.Now().UTC(),
 		CompressionSuffix: compressionSuffix,
 	}
-	snap.GenerateSnapshotDirectory()
+	// snap.GenerateSnapshotDirectory()
 	snap.GenerateSnapshotName()
 	return snap
 }
@@ -45,11 +45,15 @@ func ParseSnapshot(snapPath string) (*brtypes.Snapshot, error) {
 	s := &brtypes.Snapshot{}
 	tok := strings.Split(snapPath, "/")
 	logrus.Debugf("no of tokens:=%d", len(tok))
-	if len(tok) <= 1 || len(tok) > 3 {
-		return nil, fmt.Errorf("invalid snapshot name: %s", snapPath)
+
+	// Last token is decided as snap name and rest of previous as directory path
+	exact := len(tok) - 1
+	snapName := tok[exact]
+	snapDir := ""
+	if exact > 0 {
+		snapDir = strings.Join(tok[:exact], "/")
 	}
-	snapName := tok[1]
-	snapDir := tok[0]
+
 	tokens := strings.Split(snapName, "-")
 	if len(tokens) != 4 {
 		return nil, fmt.Errorf("invalid snapshot name: %s", snapName)

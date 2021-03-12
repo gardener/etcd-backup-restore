@@ -34,6 +34,7 @@ func GetLatestFullSnapshotAndDeltaSnapList(store brtypes.SnapStore) (*brtypes.Sn
 		fullSnapshot  *brtypes.Snapshot
 		deltaSnapList brtypes.SnapList
 	)
+
 	snapList, err := store.List()
 	if err != nil {
 		return nil, nil, err
