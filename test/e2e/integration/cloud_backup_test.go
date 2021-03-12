@@ -124,7 +124,7 @@ var _ = Describe("CloudBackup", func() {
 		snapstoreConfig = &brtypes.SnapstoreConfig{
 			Provider:  "S3",
 			Container: os.Getenv("TEST_ID"),
-			Prefix:    path.Join("v1"),
+			Prefix:    path.Join("v2"),
 		}
 	})
 

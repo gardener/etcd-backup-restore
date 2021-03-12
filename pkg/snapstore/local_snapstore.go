@@ -17,13 +17,15 @@ package snapstore
 import (
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"path"
+	"path/filepath"
 	"sort"
+	"strings"
 	"syscall"
 
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
+	"github.com/sirupsen/logrus"
 )
 
 // LocalSnapStore is snapstore with local disk as backend
@@ -46,7 +48,7 @@ func NewLocalSnapStore(prefix string) (*LocalSnapStore, error) {
 
 // Fetch should open reader for the snapshot file from store
 func (s *LocalSnapStore) Fetch(snap brtypes.Snapshot) (io.ReadCloser, error) {
-	return os.Open(path.Join(s.prefix, snap.SnapDir, snap.SnapName))
+	return os.Open(path.Join(snap.Prefix, snap.SnapDir, snap.SnapName))
 }
 
 // Save will write the snapshot to store
@@ -70,39 +72,46 @@ func (s *LocalSnapStore) Save(snap brtypes.Snapshot, rc io.ReadCloser) error {
 
 // List will list the snapshots from store
 func (s *LocalSnapStore) List() (brtypes.SnapList, error) {
+	prefixTokens := strings.Split(s.prefix, "/")
+	// Last element of the tokens is backup version
+	// Consider the parent of the backup version level (Required for Backward Compatibility)
+	prefix := path.Join(strings.Join(prefixTokens[:len(prefixTokens)-1], "/"))
+
 	snapList := brtypes.SnapList{}
-	directories, err := ioutil.ReadDir(s.prefix)
-	if err != nil {
-		return nil, err
-	}
-	for _, dir := range directories {
-		if dir.IsDir() {
-			files, err := ioutil.ReadDir(path.Join(s.prefix, dir.Name()))
+	err := filepath.Walk(prefix, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			fmt.Printf("prevent panic by handling failure accessing a path %q: %v\n", path, err)
+			return err
+		}
+		if info.IsDir() {
+			return nil
+		}
+		if strings.Contains(path, backupVersionV1) || strings.Contains(path, backupVersionV2) {
+			snap, err := ParseSnapshot(path)
 			if err != nil {
-				return nil, err
-			}
-			for _, f := range files {
-				snap, err := ParseSnapshot(path.Join(dir.Name(), f.Name()))
-				if err != nil {
-					// Warning
-					fmt.Printf("Invalid snapshot %s found:%v\nIgnoring it.", path.Join(dir.Name(), f.Name()), err)
-				} else {
-					snapList = append(snapList, snap)
-				}
+				// Warning
+				logrus.Warnf("Invalid snapshot found. Ignoring it:%s\n", path)
+			} else {
+				snapList = append(snapList, snap)
 			}
 		}
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("error walking the path %q: %v", prefix, err)
 	}
+
 	sort.Sort(snapList)
 	return snapList, nil
 }
 
 // Delete should delete the snapshot file from store
 func (s *LocalSnapStore) Delete(snap brtypes.Snapshot) error {
-	if err := os.Remove(path.Join(s.prefix, snap.SnapDir, snap.SnapName)); err != nil {
+	if err := os.Remove(path.Join(snap.Prefix, snap.SnapDir, snap.SnapName)); err != nil {
 		return err
 	}
-	err := os.Remove(path.Join(s.prefix, snap.SnapDir))
-	if pathErr, ok := err.(*os.PathError); ok == true && pathErr.Err != syscall.ENOTEMPTY {
+	err := os.Remove(path.Join(snap.Prefix, snap.SnapDir))
+	if pathErr, ok := err.(*os.PathError); ok && pathErr.Err != syscall.ENOTEMPTY {
 		return err
 	}
 	return nil

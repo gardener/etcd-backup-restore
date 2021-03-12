@@ -35,16 +35,22 @@ import (
 var (
 	bucket    string = "mock-bucket"
 	objectMap        = map[string]*[]byte{}
-	prefix    string = "v1"
+	prefixV1  string = "v1"
+	prefixV2  string = "v2"
 )
 
-var _ = Describe("Snapstore", func() {
+var _ = Describe("Save, List, Fetch, Delete from mock snapstore", func() {
 	var (
 		snap1        brtypes.Snapshot
 		snap2        brtypes.Snapshot
 		snap3        brtypes.Snapshot
+		snap4        brtypes.Snapshot
+		snap5        brtypes.Snapshot
 		expectedVal1 []byte
 		expectedVal2 []byte
+		//expectedVal3 []byte
+		expectedVal4 []byte
+		expectedVal5 []byte
 		snapstores   map[string]brtypes.SnapStore
 	)
 
@@ -68,103 +74,202 @@ var _ = Describe("Snapstore", func() {
 			LastRevision:  1958,
 			Kind:          brtypes.SnapshotKindFull,
 		}
+		snap4 = brtypes.Snapshot{
+			CreatedOn:     time.Unix(now+300, 0).UTC(),
+			StartRevision: 0,
+			LastRevision:  3058,
+			Kind:          brtypes.SnapshotKindFull,
+		}
+		snap5 = brtypes.Snapshot{
+			CreatedOn:     time.Unix(now+400, 0).UTC(),
+			StartRevision: 3058,
+			LastRevision:  3088,
+			Kind:          brtypes.SnapshotKindDelta,
+		}
 		snap1.GenerateSnapshotName()
 		snap1.GenerateSnapshotDirectory()
 		snap2.GenerateSnapshotName()
 		snap2.GenerateSnapshotDirectory()
 		snap3.GenerateSnapshotName()
 		snap3.GenerateSnapshotDirectory()
+
+		snap4.GenerateSnapshotName()
+		snap5.GenerateSnapshotName()
+
 		expectedVal1 = []byte("value1")
 		expectedVal2 = []byte("value2")
+		//expectedVal3 = []byte("value3")
+		expectedVal4 = []byte("value4")
+		expectedVal5 = []byte("value5")
 
 		snapstores = map[string]brtypes.SnapStore{
-			"s3": NewS3FromClient(bucket, prefix, "/tmp", 5, &mockS3Client{
+			"s3": NewS3FromClient(bucket, prefixV2, "/tmp", 5, &mockS3Client{
 				objects:          objectMap,
-				prefix:           prefix,
+				prefix:           prefixV2,
 				multiPartUploads: map[string]*[][]byte{},
 			}),
-			"swift": NewSwiftSnapstoreFromClient(bucket, prefix, "/tmp", 5, fake.ServiceClient()),
+			"swift": NewSwiftSnapstoreFromClient(bucket, prefixV2, "/tmp", 5, fake.ServiceClient()),
 			"ABS":   newFakeABSSnapstore(),
-			"GCS": NewGCSSnapStoreFromClient(bucket, prefix, "/tmp", 5, &mockGCSClient{
+			"GCS": NewGCSSnapStoreFromClient(bucket, prefixV2, "/tmp", 5, &mockGCSClient{
 				objects: objectMap,
-				prefix:  prefix,
+				prefix:  prefixV2,
 			}),
-			"OSS": NewOSSFromBucket(prefix, "/tmp", 5, &mockOSSBucket{
+			"OSS": NewOSSFromBucket(prefixV2, "/tmp", 5, &mockOSSBucket{
 				objects:          objectMap,
-				prefix:           prefix,
+				prefix:           prefixV2,
 				multiPartUploads: map[string]*[][]byte{},
 				bucketName:       bucket,
 			}),
-			"ECS": NewS3FromClient(bucket, prefix, "/tmp", 5, &mockS3Client{
+			"ECS": NewS3FromClient(bucket, prefixV2, "/tmp", 5, &mockS3Client{
 				objects:          objectMap,
-				prefix:           prefix,
+				prefix:           prefixV2,
 				multiPartUploads: map[string]*[][]byte{},
 			}),
-			"OCS": NewS3FromClient(bucket, prefix, "/tmp", 5, &mockS3Client{
+			"OCS": NewS3FromClient(bucket, prefixV2, "/tmp", 5, &mockS3Client{
 				objects:          objectMap,
-				prefix:           prefix,
+				prefix:           prefixV2,
 				multiPartUploads: map[string]*[][]byte{},
 			}),
 		}
 	})
+	AfterEach(func() {
+		resetObjectMap()
+	})
 
-	Describe("Fetch operation", func() {
-		It("fetches snapshot", func() {
+	Describe("When Only v1 is present", func() {
+		It("When Only v1 is present", func() {
 			for key, snapStore := range snapstores {
-				logrus.Infof("Running tests for %s", key)
+				// Create store for mock tests
 				resetObjectMap()
-				objectMap[path.Join(prefix, snap1.SnapDir, snap1.SnapName)] = &expectedVal1
-				objectMap[path.Join(prefix, snap2.SnapDir, snap2.SnapName)] = &expectedVal2
-				rc, err := snapStore.Fetch(snap1)
-				defer rc.Close()
+				objectMap[path.Join(prefixV1, snap1.SnapDir, snap1.SnapName)] = &expectedVal1
+				objectMap[path.Join(prefixV1, snap2.SnapDir, snap2.SnapName)] = &expectedVal2
+
+				logrus.Infof("Running mock tests for %s when only v1 is present", key)
+				// List snap1 and snap3
+				snapList, err := snapStore.List()
 				Expect(err).ShouldNot(HaveOccurred())
+				Expect(snapList.Len()).To(Equal(2))
+				Expect(snapList[0].SnapName).To(Equal(snap2.SnapName))
+				// Fetch snap3
+				rc, err := snapStore.Fetch(*snapList[1])
+				Expect(err).ShouldNot(HaveOccurred())
+				defer rc.Close()
 				buf := new(bytes.Buffer)
 				_, err = io.Copy(buf, rc)
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(buf.Bytes()).To(Equal(expectedVal1))
-			}
-		})
-	})
-
-	Describe("Save snapshot", func() {
-		It("saves snapshot", func() {
-			for key, snapStore := range snapstores {
-				logrus.Infof("Running tests for %s", key)
+				// Delete snap2
+				prevLen := len(objectMap)
+				err = snapStore.Delete(*snapList[1])
+				Expect(err).ShouldNot(HaveOccurred())
+				snapList, err = snapStore.List()
+				Expect(err).ShouldNot(HaveOccurred())
+				Expect(snapList.Len()).To(Equal(prevLen - 1))
+				// Save snapshot
 				resetObjectMap()
 				dummyData := make([]byte, 6*1024*1024)
-				err := snapStore.Save(snap3, ioutil.NopCloser(bytes.NewReader(dummyData)))
+				err = snapStore.Save(snap3, ioutil.NopCloser(bytes.NewReader(dummyData)))
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(len(objectMap)).Should(BeNumerically(">", 0))
 			}
 		})
 	})
 
-	Describe("List snapshot", func() {
-		It("gives sorted list of snapshot", func() {
+	Describe("When both v1 and v2 are present", func() {
+		It("When both v1 and v2 are present", func() {
 			for key, snapStore := range snapstores {
-				logrus.Infof("Running tests for %s", key)
+				// Create store for mock tests
 				resetObjectMap()
-				objectMap[path.Join(prefix, snap1.SnapDir, snap1.SnapName)] = &expectedVal1
-				objectMap[path.Join(prefix, snap2.SnapDir, snap2.SnapName)] = &expectedVal2
+				objectMap[path.Join(prefixV1, snap1.SnapDir, snap1.SnapName)] = &expectedVal1
+				objectMap[path.Join(prefixV2, snap4.SnapDir, snap4.SnapName)] = &expectedVal4
+				objectMap[path.Join(prefixV2, snap5.SnapDir, snap5.SnapName)] = &expectedVal5
+
+				logrus.Infof("Running mock tests for %s when both v1 and v2 are present", key)
+
+				// List snap1, snap4, snap5
 				snapList, err := snapStore.List()
 				Expect(err).ShouldNot(HaveOccurred())
-				Expect(snapList.Len()).To(Equal(2))
+				Expect(snapList.Len()).To(Equal(3))
 				Expect(snapList[0].SnapName).To(Equal(snap1.SnapName))
+
+				// Fetch snap1 and snap4
+				rc, err := snapStore.Fetch(*snapList[0])
+				Expect(err).ShouldNot(HaveOccurred())
+				defer rc.Close()
+				buf := new(bytes.Buffer)
+				_, err = io.Copy(buf, rc)
+				Expect(err).ShouldNot(HaveOccurred())
+				Expect(buf.Bytes()).To(Equal(expectedVal1))
+
+				rc, err = snapStore.Fetch(*snapList[1])
+				Expect(err).ShouldNot(HaveOccurred())
+				defer rc.Close()
+				buf = new(bytes.Buffer)
+				_, err = io.Copy(buf, rc)
+				Expect(err).ShouldNot(HaveOccurred())
+				Expect(buf.Bytes()).To(Equal(expectedVal4))
+
+				// Delete snap1 and snap5
+				prevLen := len(objectMap)
+				err = snapStore.Delete(*snapList[0])
+				Expect(err).ShouldNot(HaveOccurred())
+				Expect(len(objectMap)).To(Equal(prevLen - 1))
+				prevLen = len(objectMap)
+				err = snapStore.Delete(*snapList[2])
+				Expect(err).ShouldNot(HaveOccurred())
+				Expect(len(objectMap)).To(Equal(prevLen - 1))
+
+				// Save snapshot
+				resetObjectMap()
+				dummyData := make([]byte, 6*1024*1024)
+				err = snapStore.Save(snap1, ioutil.NopCloser(bytes.NewReader(dummyData)))
+				Expect(err).ShouldNot(HaveOccurred())
+				Expect(len(objectMap)).Should(BeNumerically(">", 0))
+
+				prevLen = len(objectMap)
+				dummyData = make([]byte, 6*1024*1024)
+				err = snapStore.Save(snap4, ioutil.NopCloser(bytes.NewReader(dummyData)))
+				Expect(err).ShouldNot(HaveOccurred())
+				Expect(len(objectMap)).Should(BeNumerically(">", prevLen))
 			}
 		})
 	})
 
-	Describe("Delete snapshot", func() {
-		It("deletes snapshot", func() {
+	Describe("When Only v2 is present", func() {
+		It("When Only v2 is present", func() {
 			for key, snapStore := range snapstores {
-				logrus.Infof("Running tests for %s", key)
+				// Create store for mock tests
 				resetObjectMap()
-				objectMap[path.Join(prefix, snap1.SnapDir, snap1.SnapName)] = &expectedVal1
-				objectMap[path.Join(prefix, snap2.SnapDir, snap2.SnapName)] = &expectedVal2
-				prevLen := len(objectMap)
-				err := snapStore.Delete(snap2)
+				objectMap[path.Join(prefixV2, snap4.SnapDir, snap4.SnapName)] = &expectedVal4
+				objectMap[path.Join(prefixV2, snap5.SnapDir, snap5.SnapName)] = &expectedVal5
+
+				logrus.Infof("Running mock tests for %s when only v2 is present", key)
+				// List snap4 and snap5
+				snapList, err := snapStore.List()
 				Expect(err).ShouldNot(HaveOccurred())
-				Expect(len(objectMap)).To(Equal(prevLen - 1))
+				Expect(snapList.Len()).To(Equal(2))
+				Expect(snapList[0].SnapName).To(Equal(snap4.SnapName))
+				// Fetch snap5
+				rc, err := snapStore.Fetch(*snapList[1])
+				Expect(err).ShouldNot(HaveOccurred())
+				defer rc.Close()
+				buf := new(bytes.Buffer)
+				_, err = io.Copy(buf, rc)
+				Expect(err).ShouldNot(HaveOccurred())
+				Expect(buf.Bytes()).To(Equal(expectedVal5))
+				// Delete snap5
+				prevLen := len(objectMap)
+				err = snapStore.Delete(*snapList[1])
+				Expect(err).ShouldNot(HaveOccurred())
+				snapList, err = snapStore.List()
+				Expect(err).ShouldNot(HaveOccurred())
+				Expect(snapList.Len()).To(Equal(prevLen - 1))
+				// Save snapshot
+				resetObjectMap()
+				dummyData := make([]byte, 6*1024*1024)
+				err = snapStore.Save(snap4, ioutil.NopCloser(bytes.NewReader(dummyData)))
+				Expect(err).ShouldNot(HaveOccurred())
+				Expect(len(objectMap)).Should(BeNumerically(">", 0))
 			}
 		})
 	})
@@ -177,7 +282,8 @@ func resetObjectMap() {
 }
 
 func parseObjectNamefromURL(u *url.URL) string {
-	path := u.EscapedPath()
+
+	path := u.Path
 	if strings.HasPrefix(path, fmt.Sprintf("/%s", bucket)) {
 		splits := strings.SplitAfterN(path, fmt.Sprintf("/%s", bucket), 2)
 		if len(splits[1]) == 0 {

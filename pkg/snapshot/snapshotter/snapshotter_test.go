@@ -350,7 +350,6 @@ var _ = Describe("Snapshotter", func() {
 						StartRevision: 0,
 						LastRevision:  1001,
 					}
-					snap.GenerateSnapshotDirectory()
 					snap.GenerateSnapshotName()
 					expectedSnapList = append(expectedSnapList, snap)
 				}
@@ -365,7 +364,6 @@ var _ = Describe("Snapshotter", func() {
 						StartRevision: 0,
 						LastRevision:  1001,
 					}
-					snap.GenerateSnapshotDirectory()
 					snap.GenerateSnapshotName()
 					expectedSnapList = append(expectedSnapList, snap)
 				}
@@ -380,7 +378,6 @@ var _ = Describe("Snapshotter", func() {
 						StartRevision: 0,
 						LastRevision:  1001,
 					}
-					snap.GenerateSnapshotDirectory()
 					snap.GenerateSnapshotName()
 					expectedSnapList = append(expectedSnapList, snap)
 					snapTime = snapTime.Add(time.Duration(time.Hour))
@@ -395,7 +392,6 @@ var _ = Describe("Snapshotter", func() {
 					StartRevision: 0,
 					LastRevision:  1001,
 				}
-				snap.GenerateSnapshotDirectory()
 				snap.GenerateSnapshotName()
 				expectedSnapList = append(expectedSnapList, snap)
 				snapTime = snapTime.Add(time.Duration(time.Minute * 30))
@@ -406,7 +402,6 @@ var _ = Describe("Snapshotter", func() {
 						StartRevision: 0,
 						LastRevision:  1001,
 					}
-					snap.GenerateSnapshotDirectory()
 					snap.GenerateSnapshotName()
 					expectedSnapList = append(expectedSnapList, snap)
 					snapTime = snapTime.Add(time.Duration(time.Minute * 30))
@@ -423,7 +418,6 @@ var _ = Describe("Snapshotter", func() {
 						StartRevision: 0,
 						LastRevision:  1001,
 					}
-					snap.GenerateSnapshotDirectory()
 					snap.GenerateSnapshotName()
 					expectedSnapList = append(expectedSnapList, snap)
 					snapTime = snapTime.Add(time.Duration(time.Minute * 10))
@@ -522,7 +516,6 @@ func prepareStoreForGarbageCollection(forTime time.Time, storeContainer string) 
 			StartRevision: 0,
 			LastRevision:  1001,
 		}
-		snap.GenerateSnapshotDirectory()
 		snap.GenerateSnapshotName()
 		snapTime = snapTime.Add(time.Duration(time.Minute * 10))
 		store.Save(snap, ioutil.NopCloser(strings.NewReader(fmt.Sprintf("dummy-snapshot-content for snap created on %s", snap.CreatedOn))))

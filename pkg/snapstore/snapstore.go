@@ -31,6 +31,9 @@ const (
 
 	// maxRetryAttempts indicates the number of attempts to be retried in case of failure to upload chunk.
 	maxRetryAttempts = 5
+
+	backupVersionV1 = "v1"
+	backupVersionV2 = "v2"
 )
 
 type chunk struct {

@@ -26,9 +26,9 @@ import (
 	"strings"
 	"sync"
 
+	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 	"github.com/sirupsen/logrus"
 
-	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 	"github.com/gophercloud/gophercloud"
 	"github.com/gophercloud/gophercloud/openstack"
 	"github.com/gophercloud/gophercloud/openstack/objectstorage/v1/objects"
@@ -91,7 +91,7 @@ func NewSwiftSnapstoreFromClient(bucket, prefix, tempDir string, maxParallelChun
 
 // Fetch should open reader for the snapshot file from store
 func (s *SwiftSnapStore) Fetch(snap brtypes.Snapshot) (io.ReadCloser, error) {
-	resp := objects.Download(s.client, s.bucket, path.Join(s.prefix, snap.SnapDir, snap.SnapName), nil)
+	resp := objects.Download(s.client, s.bucket, path.Join(snap.Prefix, snap.SnapDir, snap.SnapName), nil)
 	return resp.Body, resp.Err
 }
 
@@ -134,7 +134,7 @@ func (s *SwiftSnapStore) Save(snap brtypes.Snapshot, rc io.ReadCloser) error {
 	}
 
 	logrus.Infof("Uploading snapshot of size: %d, chunkSize: %d, noOfChunks: %d", size, chunkSize, noOfChunks)
-	for offset, index := int64(0), 1; offset <= size; offset += int64(chunkSize) {
+	for offset, index := int64(0), 1; offset < size; offset += int64(chunkSize) {
 		newChunk := chunk{
 			id:     index,
 			offset: offset,
@@ -208,9 +208,14 @@ func (s *SwiftSnapStore) chunkUploader(wg *sync.WaitGroup, stopCh <-chan struct{
 
 // List will list the snapshots from store
 func (s *SwiftSnapStore) List() (brtypes.SnapList, error) {
+	prefixTokens := strings.Split(s.prefix, "/")
+	// Last element of the tokens is backup version
+	// Consider the parent of the backup version level (Required for Backward Compatibility)
+	prefix := path.Join(strings.Join(prefixTokens[:len(prefixTokens)-1], "/"))
+
 	opts := &objects.ListOpts{
 		Full:   false,
-		Prefix: s.prefix,
+		Prefix: prefix,
 	}
 	// Retrieve a pager (i.e. a paginated collection)
 	pager := objects.List(s.client, s.bucket, opts)
@@ -223,13 +228,14 @@ func (s *SwiftSnapStore) List() (brtypes.SnapList, error) {
 			return false, err
 		}
 		for _, object := range objectList {
-			name := strings.Replace(object, s.prefix+"/", "", 1)
-			snap, err := ParseSnapshot(name)
-			if err != nil {
-				// Warning: the file can be a non snapshot file. Do not return error.
-				logrus.Warnf("Invalid snapshot found. Ignoring it:%s, %v", name, err)
-			} else {
-				snapList = append(snapList, snap)
+			if strings.HasPrefix(object, backupVersionV1) || strings.HasPrefix(object, backupVersionV2) {
+				snap, err := ParseSnapshot(object)
+				if err != nil {
+					// Warning: the file can be a non snapshot file. Do not return error.
+					logrus.Warnf("Invalid snapshot found. Ignoring it:%s, %v", object, err)
+				} else {
+					snapList = append(snapList, snap)
+				}
 			}
 		}
 		return true, nil
@@ -246,6 +252,6 @@ func (s *SwiftSnapStore) List() (brtypes.SnapList, error) {
 
 // Delete should delete the snapshot file from store
 func (s *SwiftSnapStore) Delete(snap brtypes.Snapshot) error {
-	result := objects.Delete(s.client, s.bucket, path.Join(s.prefix, snap.SnapDir, snap.SnapName), nil)
+	result := objects.Delete(s.client, s.bucket, path.Join(snap.Prefix, snap.SnapDir, snap.SnapName), nil)
 	return result.Err
 }

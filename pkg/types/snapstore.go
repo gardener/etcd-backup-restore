@@ -22,7 +22,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/sirupsen/logrus"
 	flag "github.com/spf13/pflag"
 )
 
@@ -56,7 +55,7 @@ const (
 	// AzureBlobStorageHostName is the host name for azure blob storage service.
 	AzureBlobStorageHostName = "blob.core.windows.net"
 
-	backupFormatVersion = "v1"
+	backupFormatVersion = "v2"
 )
 
 // SnapStore is the interface to be implemented for different
@@ -83,6 +82,7 @@ type Snapshot struct {
 	SnapDir           string    `json:"snapDir"`
 	SnapName          string    `json:"snapName"`
 	IsChunk           bool      `json:"isChunk"`
+	Prefix            string    `json:"prefix"`            // Points to correct prefix of a snapshot in snapstore (Required for Backward Compatibility)
 	CompressionSuffix string    `json:"compressionSuffix"` // CompressionSuffix depends on compessionPolicy
 }
 
@@ -110,21 +110,14 @@ func (s SnapList) Len() int      { return len(s) }
 func (s SnapList) Swap(i, j int) { s[i], s[j] = s[j], s[i] }
 func (s SnapList) Less(i, j int) bool {
 	// Ignoring errors here, as we assume at this stage the error won't happen.
-	iCreationTime, err := s[i].GetSnapshotDirectoryCreationTimeInUnix()
-	if err != nil {
-		logrus.Errorf("Failed to get snapshot directory creation time for snapshot: %s, with error: %v", path.Join(s[i].SnapDir, s[i].SnapName), err)
-	}
-	jCreationTime, err := s[j].GetSnapshotDirectoryCreationTimeInUnix()
-	if err != nil {
-		logrus.Errorf("Failed to get snapshot directory creation time for snapshot: %s, with error: %v", path.Join(s[j].SnapDir, s[j].SnapName), err)
-	}
-	if iCreationTime < jCreationTime {
+	iLastRevision := s[i].LastRevision
+	jLastRevision := s[j].LastRevision
+
+	if iLastRevision < jLastRevision {
 		return true
 	}
-	if iCreationTime > jCreationTime {
-		return false
-	}
-	if s[i].CreatedOn.Unix() == s[j].CreatedOn.Unix() {
+
+	if iLastRevision == jLastRevision {
 		if !s[i].IsChunk && s[j].IsChunk {
 			return true
 		}
@@ -132,12 +125,13 @@ func (s SnapList) Less(i, j int) bool {
 			return false
 		}
 		if !s[i].IsChunk && !s[j].IsChunk {
-			return (s[i].StartRevision < s[j].StartRevision)
+			return (s[i].CreatedOn.Unix() < s[j].CreatedOn.Unix())
 		}
 		// If both are chunks, ordering doesn't matter.
 		return true
 	}
-	return (s[i].CreatedOn.Unix() < s[j].CreatedOn.Unix())
+
+	return false
 }
 
 // SnapstoreConfig defines the configuration to create snapshot store.

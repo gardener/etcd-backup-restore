@@ -376,7 +376,7 @@ var _ = Describe("Running Restorer", func() {
 				Expect(err).ShouldNot(HaveOccurred())
 				logger.Infof("No. of delta snapshots: %d", deltaSnapList.Len())
 
-				snapshotToRemove := path.Join(snapstoreDir, baseSnapshot.SnapDir, baseSnapshot.SnapName)
+				snapshotToRemove := path.Join(baseSnapshot.Prefix, baseSnapshot.SnapDir, baseSnapshot.SnapName)
 				logger.Infof("Snapshot to remove: %s", snapshotToRemove)
 				err = os.Remove(snapshotToRemove)
 				logger.Infof("Removed snapshot to cause corruption %s", snapshotToRemove)

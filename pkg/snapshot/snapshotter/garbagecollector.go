@@ -168,8 +168,8 @@ func (ssr *Snapshotter) RunGarbageCollector(stopCh <-chan struct{}) {
 // snapStream indicates the list of snapshot, where first snapshot is base/full snapshot followed by
 // list of incremental snapshots based on it.
 func getSnapStreamIndexList(snapList brtypes.SnapList) []int {
-	// At this stage, we assume the snapList is sorted in increasing order of time, i.e. older snapshot at
-	// lower index and newer snapshot at higher index in list.
+	// At this stage, we assume the snapList is sorted in increasing order of last revision number, i.e. snapshot with lower
+	// last revision at lower index and snapshot with higher last revision at higher index in list.
 	snapLen := len(snapList)
 	var snapStreamIndexList []int
 	snapStreamIndexList = append(snapStreamIndexList, 0)
@@ -200,7 +200,7 @@ func garbageCollectChunks(store brtypes.SnapStore, snapList brtypes.SnapList, lo
 	}
 }
 
-// garbageCollectDeltaSnapshots deletes only the delta snapshots from time sorted <snapStream>. It won't delete the full snapshot
+// garbageCollectDeltaSnapshots deletes only the delta snapshots from revision sorted <snapStream>. It won't delete the full snapshot
 // in snapstream which supposed to be at index 0 in <snapStream>.
 func (ssr *Snapshotter) garbageCollectDeltaSnapshots(snapStream brtypes.SnapList) (int, error) {
 	total := 0

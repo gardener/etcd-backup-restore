@@ -23,6 +23,7 @@ import (
 	"os"
 	"path"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -30,8 +31,9 @@ import (
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/aws/aws-sdk-go/service/s3/s3iface"
-	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 	"github.com/sirupsen/logrus"
+
+	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 )
 
 const (
@@ -84,10 +86,10 @@ func NewS3FromClient(bucket, prefix, tempDir string, maxParallelChunkUploads uin
 func (s *S3SnapStore) Fetch(snap brtypes.Snapshot) (io.ReadCloser, error) {
 	resp, err := s.client.GetObject(&s3.GetObjectInput{
 		Bucket: aws.String(s.bucket),
-		Key:    aws.String(path.Join(s.prefix, snap.SnapDir, snap.SnapName)),
+		Key:    aws.String(path.Join(snap.Prefix, snap.SnapDir, snap.SnapName)),
 	})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error while accessing %s: %v", path.Join(snap.Prefix, snap.SnapDir, snap.SnapName), err)
 	}
 	return resp.Body, nil
 }
@@ -109,7 +111,7 @@ func (s *S3SnapStore) Save(snap brtypes.Snapshot, rc io.ReadCloser) error {
 	if err != nil {
 		return fmt.Errorf("failed to save snapshot to tmpfile: %v", err)
 	}
-	_, err = tmpfile.Seek(0, os.SEEK_SET)
+	_, err = tmpfile.Seek(0, io.SeekStart)
 	if err != nil {
 		return err
 	}
@@ -147,7 +149,7 @@ func (s *S3SnapStore) Save(snap brtypes.Snapshot, rc io.ReadCloser) error {
 	}
 	logrus.Infof("Uploading snapshot of size: %d, chunkSize: %d, noOfChunks: %d", size, chunkSize, noOfChunks)
 
-	for offset, index := int64(0), 1; offset <= size; offset += int64(chunkSize) {
+	for offset, index := int64(0), 1; offset < size; offset += int64(chunkSize) {
 		newChunk := chunk{
 			id:     index,
 			offset: offset,
@@ -250,20 +252,27 @@ func (s *S3SnapStore) partUploader(wg *sync.WaitGroup, stopCh <-chan struct{}, s
 
 // List will list the snapshots from store
 func (s *S3SnapStore) List() (brtypes.SnapList, error) {
+	prefixTokens := strings.Split(s.prefix, "/")
+	// Last element of the tokens is backup version
+	// Consider the parent of the backup version level (Required for Backward Compatibility)
+	prefix := path.Join(strings.Join(prefixTokens[:len(prefixTokens)-1], "/"))
+
 	var snapList brtypes.SnapList
 	in := &s3.ListObjectsInput{
 		Bucket: aws.String(s.bucket),
-		Prefix: aws.String(fmt.Sprintf("%s/", s.prefix)),
+		Prefix: aws.String(prefix),
 	}
 	err := s.client.ListObjectsPages(in, func(page *s3.ListObjectsOutput, lastPage bool) bool {
 		for _, key := range page.Contents {
 			k := (*key.Key)[len(*page.Prefix):]
-			snap, err := ParseSnapshot(k)
-			if err != nil {
-				// Warning
-				logrus.Warnf("Invalid snapshot found. Ignoring it: %s", k)
-			} else {
-				snapList = append(snapList, snap)
+			if strings.HasPrefix(k, backupVersionV1) || strings.HasPrefix(k, backupVersionV2) {
+				snap, err := ParseSnapshot(path.Join(prefix, k))
+				if err != nil {
+					// Warning
+					logrus.Warnf("Invalid snapshot found. Ignoring it: %s", k)
+				} else {
+					snapList = append(snapList, snap)
+				}
 			}
 		}
 		return !lastPage
@@ -280,7 +289,7 @@ func (s *S3SnapStore) List() (brtypes.SnapList, error) {
 func (s *S3SnapStore) Delete(snap brtypes.Snapshot) error {
 	_, err := s.client.DeleteObject(&s3.DeleteObjectInput{
 		Bucket: aws.String(s.bucket),
-		Key:    aws.String(path.Join(s.prefix, snap.SnapDir, snap.SnapName)),
+		Key:    aws.String(path.Join(snap.Prefix, snap.SnapDir, snap.SnapName)),
 	})
 	return err
 }

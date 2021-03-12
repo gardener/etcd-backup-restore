@@ -28,10 +28,15 @@ import (
 const (
 	envStorageContainer = "STORAGE_CONTAINER"
 	defaultLocalStore   = "default.bkp"
+	backupVersion       = backupVersionV2
 )
 
 // GetSnapstore returns the snapstore object for give storageProvider with specified container
 func GetSnapstore(config *brtypes.SnapstoreConfig) (brtypes.SnapStore, error) {
+	if config.Prefix == "" {
+		config.Prefix = backupVersion
+	}
+
 	if config.Container == "" {
 		config.Container = os.Getenv(envStorageContainer)
 	}
