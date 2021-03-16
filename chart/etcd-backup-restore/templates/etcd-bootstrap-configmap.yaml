@@ -113,6 +113,18 @@ data:
     # Initial cluster state ('new' or 'existing').
     initial-cluster-state: 'new'
 
+    {{- if .Values.autoCompaction }}
+    # auto-compaction-mode ("periodic" or "revision").
+    {{- if .Values.autoCompaction.mode }}
+    auto-compaction-mode: {{ .Values.autoCompaction.mode }}
+    {{- end }}
+
+    # auto-compaction-retention defines Auto compaction retention length for etcd.
+    {{- if .Values.autoCompaction.retentionLength }}
+    auto-compaction-retention: {{ .Values.autoCompaction.retentionLength }}
+    {{- end }}
+    {{- end }}
+
 {{- if .Values.etcdTLS }}
     client-transport-security:
       # Path to the client server TLS cert file.

@@ -33,6 +33,12 @@ servicePorts:
 
 storageCapacity: 20Gi
 
+# auto-compaction mode for etcd: 'periodic' mode or 'revision' mode.
+# auto-compaction retention length for etcd.
+autoCompaction:
+  mode: periodic
+  retentionLength: "5m"
+
 backup:
   # schedule is cron standard schedule to take full snapshots.
   schedule: "0 */1 * * *"

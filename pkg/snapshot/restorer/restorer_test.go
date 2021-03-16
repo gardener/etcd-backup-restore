@@ -49,15 +49,17 @@ var _ = Describe("Running Restorer", func() {
 		wg              *sync.WaitGroup
 	)
 	const (
-		restoreName            string = "default"
-		restoreClusterToken    string = "etcd-cluster"
-		restoreCluster         string = "default=http://localhost:2380"
-		skipHashCheck          bool   = false
-		maxFetchers            uint   = 6
-		maxCallSendMsgSize            = 2 * 1024 * 1024 //2Mib
-		maxRequestBytes               = 2 * 1024 * 1024 //2Mib
-		maxTxnOps                     = 2 * 1024
-		embeddedEtcdQuotaBytes int64  = 8 * 1024 * 1024 * 1024
+		restoreName                    string = "default"
+		restoreClusterToken            string = "etcd-cluster"
+		restoreCluster                 string = "default=http://localhost:2380"
+		skipHashCheck                  bool   = false
+		maxFetchers                    uint   = 6
+		maxCallSendMsgSize                    = 2 * 1024 * 1024 //2Mib
+		maxRequestBytes                       = 2 * 1024 * 1024 //2Mib
+		maxTxnOps                             = 2 * 1024
+		embeddedEtcdQuotaBytes         int64  = 8 * 1024 * 1024 * 1024
+		defaultAutoCompactionMode      string = "periodic"
+		defaultAutoCompactionRetention string = "2m"
 	)
 
 	BeforeEach(func() {
@@ -96,6 +98,8 @@ var _ = Describe("Running Restorer", func() {
 					MaxRequestBytes:          maxRequestBytes,
 					MaxTxnOps:                maxTxnOps,
 					EmbeddedEtcdQuotaBytes:   embeddedEtcdQuotaBytes,
+					AutoCompactionMode:       defaultAutoCompactionMode,
+					AutoCompactionRetention:  defaultAutoCompactionRetention,
 				},
 				BaseSnapshot:  *baseSnapshot,
 				DeltaSnapList: deltaSnapList,
@@ -244,6 +248,8 @@ var _ = Describe("Running Restorer", func() {
 				MaxRequestBytes:          maxRequestBytes,
 				MaxTxnOps:                maxTxnOps,
 				EmbeddedEtcdQuotaBytes:   embeddedEtcdQuotaBytes,
+				AutoCompactionMode:       defaultAutoCompactionMode,
+				AutoCompactionRetention:  defaultAutoCompactionRetention,
 			}
 		})
 
