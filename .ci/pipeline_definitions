@@ -36,7 +36,7 @@ etcd-backup-restore:
         draft_release: ~
       steps:
         tm_test:
-          depends:
+          trait_depends:
           - publish
           image: eu.gcr.io/gardener-project/gardener/testmachinery/testmachinery-run:stable
           execute:
@@ -65,7 +65,7 @@ etcd-backup-restore:
         component_descriptor: ~
       steps:
         tm_test:
-          depends:
+          trait_depends:
           - publish
           image: eu.gcr.io/gardener-project/gardener/testmachinery/testmachinery-run:stable
           execute:
