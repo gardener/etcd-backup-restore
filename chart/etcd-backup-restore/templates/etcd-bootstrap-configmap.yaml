@@ -51,20 +51,16 @@ data:
             "New")
                   wget "http{{ if .Values.backupRestoreTLS }}s{{ end }}://localhost:{{ .Values.servicePorts.backupRestore }}/initialization/start?mode=$1{{- if .Values.backup.failBelowRevision }}&failbelowrevision={{ int $.Values.backup.failBelowRevision }}{{- end }}" -S -O - ;;
             "Progress")
-                  sleep 1;
                   continue;;
             "Failed")
-                  sleep 1;
                   continue;;
             "Successful")
                   echo "Bootstrap preprocessing end time: $(date)"
                   start_managed_etcd
                   break
                   ;;
-            *)
-                  sleep 1;
-                  ;;
             esac;
+            sleep 1;
           done
     }
 
@@ -77,7 +73,7 @@ data:
           echo "$VALIDATION_MARKER file present. Check return status and decide on initialization"
           run_status=`cat $VALIDATION_MARKER`
           echo "$VALIDATION_MARKER content: $run_status"
-          if [ $run_status == '143' ] || [ $run_status == '130' ] || [ $run_status == '0' ] ; then
+          if [ $run_status = '143' ] || [ $run_status = '130' ] || [ $run_status = '0' ] ; then
                 echo "Requesting sidecar to perform sanity validation"
                 check_and_start_etcd sanity
           else

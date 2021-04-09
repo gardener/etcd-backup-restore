@@ -250,7 +250,7 @@ function run_test_on_cluster() {
   export ETCD_VERSION=${ETCD_VERSION:-"v3.4.13"}
   echo "Etcd version: ${ETCD_VERSION}"
 
-  export ETCDBR_VERSION=${ETCDBR_VERSION:-${ETCDBR_VER:-"v0.10.0"}}
+  export ETCDBR_VERSION=${ETCDBR_VERSION:-${ETCDBR_VER:-"v0.11.1"}}
   echo "Etcd-backup-restore version: ${ETCDBR_VERSION}"
 
   echo "Starting integration tests on k8s cluster."
