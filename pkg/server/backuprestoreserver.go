@@ -229,6 +229,7 @@ func (b *BackupRestoreServer) runEtcdProbeLoopWithSnapshotter(ctx context.Contex
 			metrics.SnapshotRequired.With(prometheus.Labels{metrics.LabelKind: snapstore.SnapshotKindDelta}).Set(0)
 			metrics.SnapshotRequired.With(prometheus.Labels{metrics.LabelKind: snapstore.SnapshotKindFull}).Set(1)
 			if _, err := ssr.TakeFullSnapshotAndResetTimer(); err != nil {
+				metrics.SnapshotterOperationFailure.With(prometheus.Labels{metrics.LabelError: err.Error()}).Inc()
 				b.logger.Errorf("Failed to take substitute first full snapshot: %v", err)
 				continue
 			}
@@ -247,8 +248,10 @@ func (b *BackupRestoreServer) runEtcdProbeLoopWithSnapshotter(ctx context.Contex
 		startWithFullSnapshot := ssr.PrevFullSnapshot == nil || !(time.Since(ssr.PrevFullSnapshot.CreatedOn).Hours() <= recentFullSnapshotPeriodInHours)
 		if err := ssr.Run(ssrStopCh, startWithFullSnapshot); err != nil {
 			if etcdErr, ok := err.(*errors.EtcdError); ok == true {
+				metrics.SnapshotterOperationFailure.With(prometheus.Labels{metrics.LabelError: etcdErr.Error()}).Inc()
 				b.logger.Errorf("Snapshotter failed with etcd error: %v", etcdErr)
 			} else {
+				metrics.SnapshotterOperationFailure.With(prometheus.Labels{metrics.LabelError: err.Error()}).Inc()
 				b.logger.Fatalf("Snapshotter failed with error: %v", err)
 			}
 		}
