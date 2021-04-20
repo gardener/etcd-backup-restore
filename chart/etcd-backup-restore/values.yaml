@@ -7,7 +7,7 @@ images:
   # etcd-backup-restore image to use
   etcdBackupRestore:
     repository: eu.gcr.io/gardener-project/gardener/etcdbrctl
-    tag: v0.12.0-dev-e6df91b7463cf784f651bd6cc6ac7fc4d2e5a70b
+    tag: v0.12.0-dev-34f854c06838d14d6e7b08099d6cfa6fca2ad50d
     pullPolicy: IfNotPresent
 
 resources:
@@ -33,11 +33,12 @@ servicePorts:
 
 storageCapacity: 20Gi
 
-# auto-compaction mode for etcd: 'periodic' mode or 'revision' mode.
-# auto-compaction retention length for etcd.
+# autoCompaction defines the specification to be used by Etcd as well as by embedded-Etcd of backup-restore sidecar during restoration.
+# auto-compaction mode for etcd and embedded-Etcd: 'periodic' mode or 'revision' mode.
+# auto-compaction retention length for etcd as well as for  embedded-Etcd of backup-restore sidecar.
 autoCompaction:
   mode: periodic
-  retentionLength: "5m"
+  retentionLength: "30m"
 
 backup:
   # schedule is cron standard schedule to take full snapshots.

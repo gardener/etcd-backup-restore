@@ -49,17 +49,17 @@ var _ = Describe("Running Restorer", func() {
 		wg              *sync.WaitGroup
 	)
 	const (
-		restoreName                    string = "default"
-		restoreClusterToken            string = "etcd-cluster"
-		restoreCluster                 string = "default=http://localhost:2380"
-		skipHashCheck                  bool   = false
-		maxFetchers                    uint   = 6
-		maxCallSendMsgSize                    = 2 * 1024 * 1024 //2Mib
-		maxRequestBytes                       = 2 * 1024 * 1024 //2Mib
-		maxTxnOps                             = 2 * 1024
-		embeddedEtcdQuotaBytes         int64  = 8 * 1024 * 1024 * 1024
-		defaultAutoCompactionMode      string = "periodic"
-		defaultAutoCompactionRetention string = "2m"
+		restoreName             string = "default"
+		restoreClusterToken     string = "etcd-cluster"
+		restoreCluster          string = "default=http://localhost:2380"
+		skipHashCheck           bool   = false
+		maxFetchers             uint   = 6
+		maxCallSendMsgSize             = 2 * 1024 * 1024 //2Mib
+		maxRequestBytes                = 2 * 1024 * 1024 //2Mib
+		maxTxnOps                      = 2 * 1024
+		embeddedEtcdQuotaBytes  int64  = 8 * 1024 * 1024 * 1024
+		autoCompactionMode      string = "periodic"
+		autoCompactionRetention string = "2m"
 	)
 
 	BeforeEach(func() {
@@ -98,8 +98,8 @@ var _ = Describe("Running Restorer", func() {
 					MaxRequestBytes:          maxRequestBytes,
 					MaxTxnOps:                maxTxnOps,
 					EmbeddedEtcdQuotaBytes:   embeddedEtcdQuotaBytes,
-					AutoCompactionMode:       defaultAutoCompactionMode,
-					AutoCompactionRetention:  defaultAutoCompactionRetention,
+					AutoCompactionMode:       autoCompactionMode,
+					AutoCompactionRetention:  autoCompactionRetention,
 				},
 				BaseSnapshot:  *baseSnapshot,
 				DeltaSnapList: deltaSnapList,
@@ -150,6 +150,15 @@ var _ = Describe("Running Restorer", func() {
 		Context("with zero fetchers", func() {
 			It("should return error", func() {
 				restoreOpts.Config.MaxFetchers = 0
+
+				err = restoreOpts.Config.Validate()
+				Expect(err).Should(HaveOccurred())
+			})
+		})
+
+		Context("with some random auto-compaction mode", func() {
+			It("should return error", func() {
+				restoreOpts.Config.AutoCompactionMode = "someRandomMode"
 
 				err = restoreOpts.Config.Validate()
 				Expect(err).Should(HaveOccurred())
@@ -248,8 +257,8 @@ var _ = Describe("Running Restorer", func() {
 				MaxRequestBytes:          maxRequestBytes,
 				MaxTxnOps:                maxTxnOps,
 				EmbeddedEtcdQuotaBytes:   embeddedEtcdQuotaBytes,
-				AutoCompactionMode:       defaultAutoCompactionMode,
-				AutoCompactionRetention:  defaultAutoCompactionRetention,
+				AutoCompactionMode:       autoCompactionMode,
+				AutoCompactionRetention:  autoCompactionRetention,
 			}
 		})
 

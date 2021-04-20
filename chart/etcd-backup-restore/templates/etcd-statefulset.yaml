@@ -138,6 +138,14 @@ spec:
         - --compression-policy={{ .Values.backup.compression.policy }}
         {{- end }}
 {{- end }}
+{{- if .Values.autoCompaction }}
+        {{- if .Values.autoCompaction.mode }}
+        - --auto-compaction-mode={{ .Values.autoCompaction.mode }}
+        {{- end }}
+        {{- if .Values.autoCompaction.retentionLength }}
+        - --auto-compaction-retention={{ .Values.autoCompaction.retentionLength }}
+        {{- end }}
+{{- end }}
         image: {{ .Values.images.etcdBackupRestore.repository }}:{{ .Values.images.etcdBackupRestore.tag }}
         imagePullPolicy: {{ .Values.images.etcdBackupRestore.pullPolicy }}
         ports:

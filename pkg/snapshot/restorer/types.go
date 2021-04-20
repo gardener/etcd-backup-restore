@@ -38,7 +38,7 @@ const (
 	defaultMaxTxnOps                = 10 * 1024
 	defaultEmbeddedEtcdQuotaBytes   = 8 * 1024 * 1024 * 1024 //8Gib
 	defaultAutoCompactionMode       = "periodic"             // only 2 mode is supported: 'periodic' or 'revision'
-	defaultAutoCompactionRetention  = "5m"
+	defaultAutoCompactionRetention  = "30m"
 )
 
 // Restorer is a struct for etcd data directory restorer
