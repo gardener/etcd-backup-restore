@@ -10,10 +10,14 @@ spec:
   - name: etcd
     image: {{ .etcdImage }}
     command:
-    - "/bootstrap/bootstrap.sh"
+    - "/var/etcd/bin/bootstrap.sh"
     env:
     - name: GODEBUG
       value: gctrace=1
+    - name: ENABLE_TLS
+      value: "false"
+    - name: BACKUP_ENDPOINT
+      value: "http://localhost:8080"
     livenessProbe:
       exec:
         command:
@@ -56,8 +60,8 @@ spec:
     volumeMounts:
     - mountPath: /var/etcd/data
       name: etcd
-    - mountPath: /bootstrap
-      name: bootstrap
+    - mountPath: /var/etcd/config
+      name: config
   - name: backup-restore
     image: {{ .etcdbrImage }}
     command:
@@ -99,7 +103,7 @@ spec:
   - name: etcd
     persistentVolumeClaim:
       claimName: etcd
-  - name: bootstrap
+  - name: config
     configMap:
       defaultMode: 356
       name: etcd

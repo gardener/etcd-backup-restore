@@ -240,10 +240,10 @@ function run_test_on_cluster() {
     setup-aws-infrastructure
   fi
 
-  export ETCD_VERSION=${ETCD_VERSION:-"v3.4.13"}
+  export ETCD_VERSION=${ETCD_VERSION:-"v3.4.13-bootstrap"}
   echo "Etcd version: ${ETCD_VERSION}"
 
-  export ETCDBR_VERSION=${ETCDBR_VERSION:-${ETCDBR_VER:-"v0.11.1"}}
+  export ETCDBR_VERSION=${ETCDBR_VERSION:-${ETCDBR_VER:-"v0.12.0"}}
   echo "Etcd-backup-restore version: ${ETCDBR_VERSION}"
 
   echo "Starting integration tests on k8s cluster."

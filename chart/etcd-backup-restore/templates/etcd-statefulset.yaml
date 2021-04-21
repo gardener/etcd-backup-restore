@@ -19,7 +19,7 @@ spec:
   template:
     metadata:
       annotations:
-        checksum/configmap-etcd-bootstrap: {{ include (print $.Template.BasePath "/etcd-bootstrap-configmap.yaml") . | sha256sum }}
+        checksum/configmap-etcd: {{ include (print $.Template.BasePath "/etcd-configmap.yaml") . | sha256sum }}
 {{- if .Values.podAnnotations }}
 {{ toYaml .Values.podAnnotations | indent 8 }}
 {{- end }}
@@ -71,11 +71,16 @@ spec:
           protocol: TCP
         resources:
 {{ toYaml .Values.resources.etcd | indent 10 }}
+        env:
+        - name: ENABLE_TLS
+          value: "{{ if .Values.backupRestoreTLS }}true{{ else }}false{{ end }}"
+        - name: BACKUP_ENDPOINT
+          value: "http{{ if .Values.backupRestoreTLS }}s{{ end }}://localhost:{{ .Values.servicePorts.backupRestore }}"
+        - name: FAIL_BELOW_REVISION_PARAMETER
+          value: "{{ if .Values.backup.failBelowRevision }}&failbelowrevision={{ int $.Values.backup.failBelowRevision }}{{ end }}"
         volumeMounts:
         - name: {{ .Release.Name }}-etcd
           mountPath: /var/etcd/data/
-        - name: etcd-bootstrap-sh
-          mountPath: /var/etcd/bin/
         - name: etcd-config-file
           mountPath: /var/etcd/config/
 {{- if .Values.etcdTLS }}
@@ -287,13 +292,6 @@ spec:
           mountPath: "/root/.gcp/"
 {{- end }}
       volumes:
-      - name: etcd-bootstrap-sh
-        configMap:
-          name: {{ .Release.Name }}-etcd-bootstrap
-          defaultMode: 0744
-          items:
-          - key: bootstrap.sh
-            path: bootstrap.sh
       - name: etcd-config-file
         configMap:
           name: {{ .Release.Name }}-etcd-bootstrap
