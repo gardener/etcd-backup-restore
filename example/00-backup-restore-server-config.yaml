@@ -41,6 +41,8 @@ restorationConfig:
   skipHashCheck: false
   maxFetchers: 6
   embeddedEtcdQuotaBytes: 8589934592
+  autoCompactionMode: "periodic"
+  autoCompactionRetention: "30m"
 
 defragmentationSchedule: "0 0 */3 * *"
 

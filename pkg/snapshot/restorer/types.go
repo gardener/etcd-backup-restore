@@ -37,6 +37,8 @@ const (
 	defaultMaxRequestBytes          = 10 * 1024 * 1024 //10Mib
 	defaultMaxTxnOps                = 10 * 1024
 	defaultEmbeddedEtcdQuotaBytes   = 8 * 1024 * 1024 * 1024 //8Gib
+	defaultAutoCompactionMode       = "periodic"             // only 2 mode is supported: 'periodic' or 'revision'
+	defaultAutoCompactionRetention  = "30m"
 )
 
 // Restorer is a struct for etcd data directory restorer
@@ -71,6 +73,8 @@ type RestorationConfig struct {
 	MaxTxnOps                uint     `json:"MaxTxnOps,omitempty"`
 	MaxCallSendMsgSize       int      `json:"maxCallSendMsgSize,omitempty"`
 	EmbeddedEtcdQuotaBytes   int64    `json:"embeddedEtcdQuotaBytes,omitempty"`
+	AutoCompactionMode       string   `json:"autoCompactionMode,omitempty"`
+	AutoCompactionRetention  string   `json:"autoCompactionRetention,omitempty"`
 }
 
 type initIndex int

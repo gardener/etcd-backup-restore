@@ -36,6 +36,8 @@ func NewRestorationConfig() *RestorationConfig {
 		MaxRequestBytes:          defaultMaxRequestBytes,
 		MaxTxnOps:                defaultMaxTxnOps,
 		EmbeddedEtcdQuotaBytes:   int64(defaultEmbeddedEtcdQuotaBytes),
+		AutoCompactionMode:       defaultAutoCompactionMode,
+		AutoCompactionRetention:  defaultAutoCompactionRetention,
 	}
 }
 
@@ -52,6 +54,8 @@ func (c *RestorationConfig) AddFlags(fs *flag.FlagSet) {
 	fs.UintVar(&c.MaxRequestBytes, "max-request-bytes", c.MaxRequestBytes, "Maximum client request size in bytes the server will accept")
 	fs.UintVar(&c.MaxTxnOps, "max-txn-ops", c.MaxTxnOps, "Maximum number of operations permitted in a transaction")
 	fs.Int64Var(&c.EmbeddedEtcdQuotaBytes, "embedded-etcd-quota-bytes", c.EmbeddedEtcdQuotaBytes, "maximum backend quota for the embedded etcd used for applying delta snapshots")
+	fs.StringVar(&c.AutoCompactionMode, "auto-compaction-mode", c.AutoCompactionMode, "mode for auto-compaction: 'periodic' for duration based retention. 'revision' for revision number based retention.")
+	fs.StringVar(&c.AutoCompactionRetention, "auto-compaction-retention", c.AutoCompactionRetention, "Auto-compaction retention length.")
 }
 
 // Validate validates the config.
@@ -70,6 +74,9 @@ func (c *RestorationConfig) Validate() error {
 	}
 	if c.EmbeddedEtcdQuotaBytes <= 0 {
 		return fmt.Errorf("Etcd Quota size for etcd must be greater than 0")
+	}
+	if c.AutoCompactionMode != "periodic" && c.AutoCompactionMode != "revision" {
+		return fmt.Errorf("UnSupported auto-compaction-mode")
 	}
 	c.RestoreDataDir = path.Clean(c.RestoreDataDir)
 	return nil

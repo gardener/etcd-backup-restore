@@ -350,6 +350,8 @@ func StartEmbeddedEtcd(logger *logrus.Entry, ro *RestoreOptions) (*embed.Etcd, e
 	cfg.MaxRequestBytes = ro.Config.MaxRequestBytes
 	cfg.MaxTxnOps = ro.Config.MaxTxnOps
 	cfg.Logger = "zap"
+	cfg.AutoCompactionMode = ro.Config.AutoCompactionMode
+	cfg.AutoCompactionRetention = ro.Config.AutoCompactionRetention
 	e, err := embed.StartEtcd(cfg)
 	if err != nil {
 		return nil, err
