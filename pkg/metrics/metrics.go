@@ -31,10 +31,13 @@ const (
 	ValueSucceededFalse = "false"
 	// LabelKind is a metrics label indicates kind of snapshot associated with metric.
 	LabelKind = "kind"
+	//LabelError is a metric error to indicate error occured
+	LabelError = "error"
 
-	namespaceEtcdBR    = "etcdbr"
-	subsystemSnapshot  = "snapshot"
-	subsystemSnapstore = "snapstore"
+	namespaceEtcdBR      = "etcdbr"
+	subsystemSnapshot    = "snapshot"
+	subsystemSnapstore   = "snapstore"
+	subsystemSnapshotter = "snapshotter"
 )
 
 var (
@@ -152,6 +155,17 @@ var (
 			Help:      "Total number of revisions stored in delta snapshots taken since the latest full snapshot.",
 		},
 		[]string{},
+	)
+
+	//SnapshotterOperationFailure is metric to count the number of snapshotter operations that have errored out
+	SnapshotterOperationFailure = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: namespaceEtcdBR,
+			Subsystem: subsystemSnapshotter,
+			Name:      "failure",
+			Help:      "Total number of snapshotter errors.",
+		},
+		[]string{LabelError},
 	)
 )
 
@@ -319,6 +333,9 @@ func init() {
 	// SnapstoreLatestDeltasSize
 	SnapstoreLatestDeltasRevisionsTotal.With(prometheus.Labels(map[string]string{}))
 
+	//SnapshotterOperationFailure
+	SnapshotterOperationFailure.With(prometheus.Labels(map[string]string{LabelError: ""}))
+
 	// Metrics have to be registered to be exposed:
 	prometheus.MustRegister(GCSnapshotCounter)
 
@@ -333,4 +350,6 @@ func init() {
 
 	prometheus.MustRegister(SnapstoreLatestDeltasTotal)
 	prometheus.MustRegister(SnapstoreLatestDeltasRevisionsTotal)
+
+	prometheus.MustRegister(SnapshotterOperationFailure)
 }

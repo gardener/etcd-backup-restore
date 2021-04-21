@@ -30,3 +30,4 @@ default.etcd*
 # developers workspace
 tmp
 dev
+*.DS_Store
