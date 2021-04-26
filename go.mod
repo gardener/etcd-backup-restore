@@ -5,7 +5,7 @@ go 1.14
 require (
 	cloud.google.com/go v0.50.0
 	cloud.google.com/go/storage v1.0.0
-	github.com/Azure/azure-pipeline-go v0.2.2
+	github.com/Azure/azure-pipeline-go v0.2.3
 	github.com/Azure/azure-storage-blob-go v0.8.0
 	github.com/MakeNowJust/heredoc v1.0.0 // indirect
 	github.com/aliyun/aliyun-oss-go-sdk v2.0.3+incompatible
@@ -19,7 +19,6 @@ require (
 	github.com/gorilla/websocket v1.4.1 // indirect
 	github.com/grpc-ecosystem/go-grpc-middleware v1.1.0 // indirect
 	github.com/grpc-ecosystem/grpc-gateway v1.11.2 // indirect
-	github.com/mattn/go-ieproxy v0.0.0-20190805055040-f9202b1cfdeb // indirect
 	github.com/onsi/ginkgo v1.14.0
 	github.com/onsi/gomega v1.10.1
 	github.com/prometheus/client_golang v1.7.1
