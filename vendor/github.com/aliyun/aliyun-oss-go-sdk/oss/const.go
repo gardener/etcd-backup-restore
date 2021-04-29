@@ -58,6 +58,7 @@ type AlgorithmType string
 const (
 	KMSAlgorithm AlgorithmType = "KMS"
 	AESAlgorithm AlgorithmType = "AES256"
+	SM4Algorithm AlgorithmType = "SM4"
 )
 
 // StorageClassType bucket storage type
@@ -72,6 +73,28 @@ const (
 
 	// StorageArchive archive
 	StorageArchive StorageClassType = "Archive"
+
+	// StorageColdArchive cold archive
+	StorageColdArchive StorageClassType = "ColdArchive"
+)
+
+//RedundancyType bucket data Redundancy type
+type DataRedundancyType string
+
+const (
+	// RedundancyLRS Local redundancy, default value
+	RedundancyLRS DataRedundancyType = "LRS"
+
+	// RedundancyZRS Same city redundancy
+	RedundancyZRS DataRedundancyType = "ZRS"
+)
+
+//ObjecthashFuncType
+type ObjecthashFuncType string
+
+const (
+	HashFuncSha1   ObjecthashFuncType = "SHA-1"
+	HashFuncSha256 ObjecthashFuncType = "SHA-256"
 )
 
 // PayerType the type of request payer
@@ -83,6 +106,20 @@ const (
 
 	// BucketOwner the requester who send the request
 	BucketOwner PayerType = "BucketOwner"
+)
+
+//RestoreMode the restore mode for coldArchive object
+type RestoreMode string
+
+const (
+	//RestoreExpedited object will be restored in 1 hour
+	RestoreExpedited RestoreMode = "Expedited"
+
+	//RestoreStandard object will be restored in 2-5 hours
+	RestoreStandard RestoreMode = "Standard"
+
+	//RestoreBulk object will be restored in 5-10 hours
+	RestoreBulk RestoreMode = "Bulk"
 )
 
 // HTTPMethod HTTP request method
@@ -139,6 +176,10 @@ const (
 	HTTPHeaderOssSecurityToken               = "X-Oss-Security-Token"
 	HTTPHeaderOssServerSideEncryption        = "X-Oss-Server-Side-Encryption"
 	HTTPHeaderOssServerSideEncryptionKeyID   = "X-Oss-Server-Side-Encryption-Key-Id"
+	HTTPHeaderOssServerSideDataEncryption    = "X-Oss-Server-Side-Data-Encryption"
+	HTTPHeaderSSECAlgorithm                  = "X-Oss-Server-Side-Encryption-Customer-Algorithm"
+	HTTPHeaderSSECKey                        = "X-Oss-Server-Side-Encryption-Customer-Key"
+	HTTPHeaderSSECKeyMd5                     = "X-Oss-Server-Side-Encryption-Customer-Key-MD5"
 	HTTPHeaderOssCopySource                  = "X-Oss-Copy-Source"
 	HTTPHeaderOssCopySourceRange             = "X-Oss-Copy-Source-Range"
 	HTTPHeaderOssCopySourceIfMatch           = "X-Oss-Copy-Source-If-Match"
@@ -157,6 +198,11 @@ const (
 	HTTPHeaderOssTagging                     = "X-Oss-Tagging"
 	HTTPHeaderOssTaggingDirective            = "X-Oss-Tagging-Directive"
 	HTTPHeaderOssTrafficLimit                = "X-Oss-Traffic-Limit"
+	HTTPHeaderOssForbidOverWrite             = "X-Oss-Forbid-Overwrite"
+	HTTPHeaderOssRangeBehavior               = "X-Oss-Range-Behavior"
+	HTTPHeaderOssTaskID                      = "X-Oss-Task-Id"
+	HTTPHeaderOssHashCtx                     = "X-Oss-Hash-Ctx"
+	HTTPHeaderOssMd5Ctx                      = "X-Oss-Md5-Ctx"
 )
 
 // HTTP Param
@@ -166,6 +212,12 @@ const (
 	HTTPParamSignature     = "Signature"
 	HTTPParamSecurityToken = "security-token"
 	HTTPParamPlaylistName  = "playlistName"
+
+	HTTPParamSignatureVersion    = "x-oss-signature-version"
+	HTTPParamExpiresV2           = "x-oss-expires"
+	HTTPParamAccessKeyIDV2       = "x-oss-access-key-id"
+	HTTPParamSignatureV2         = "x-oss-signature"
+	HTTPParamAdditionalHeadersV2 = "x-oss-additional-headers"
 )
 
 // Other constants
@@ -182,5 +234,24 @@ const (
 
 	NullVersion = "null"
 
-	Version = "v2.0.3" // Go SDK version
+	Version = "v2.1.8" // Go SDK version
+)
+
+// FrameType
+const (
+	DataFrameType        = 8388609
+	ContinuousFrameType  = 8388612
+	EndFrameType         = 8388613
+	MetaEndFrameCSVType  = 8388614
+	MetaEndFrameJSONType = 8388615
+)
+
+// AuthVersion the version of auth
+type AuthVersionType string
+
+const (
+	// AuthV1 v1
+	AuthV1 AuthVersionType = "v1"
+	// AuthV2 v2
+	AuthV2 AuthVersionType = "v2"
 )
