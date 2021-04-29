@@ -8,7 +8,7 @@ require (
 	github.com/Azure/azure-pipeline-go v0.2.2
 	github.com/Azure/azure-storage-blob-go v0.8.0
 	github.com/MakeNowJust/heredoc v1.0.0 // indirect
-	github.com/aliyun/aliyun-oss-go-sdk v2.0.3+incompatible
+	github.com/aliyun/aliyun-oss-go-sdk v2.1.8+incompatible
 	github.com/aws/aws-sdk-go v1.32.6
 	github.com/baiyubin/aliyun-sts-go-sdk v0.0.0-20180326062324-cfa1a18b161f // indirect
 	github.com/coreos/go-systemd v0.0.0-20191104093116-d3cd4ed1dbcf // indirect
@@ -31,6 +31,7 @@ require (
 	go.etcd.io/bbolt v1.3.3
 	go.etcd.io/etcd v0.0.0-20191023171146-3cf2f69b5738
 	go.opencensus.io v0.22.1 // indirect
+	go.uber.org/zap v1.10.0
 	golang.org/x/net v0.0.0-20200707034311-ab3426394381 // indirect
 	golang.org/x/sys v0.0.0-20200728102440-3e129f6d46b1 // indirect
 	golang.org/x/time v0.0.0-20190921001708-c4c64cad1fd0 // indirect

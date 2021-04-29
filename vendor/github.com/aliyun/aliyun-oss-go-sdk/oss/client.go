@@ -49,7 +49,10 @@ func New(endpoint, accessKeyID, accessKeySecret string, options ...ClientOption)
 
 	// URL parse
 	url := &urlMaker{}
-	url.Init(config.Endpoint, config.IsCname, config.IsUseProxy)
+	err := url.Init(config.Endpoint, config.IsCname, config.IsUseProxy)
+	if err != nil {
+		return nil, err
+	}
 
 	// HTTP connect
 	conn := &Conn{config: config, url: url}
@@ -65,8 +68,12 @@ func New(endpoint, accessKeyID, accessKeySecret string, options ...ClientOption)
 		option(client)
 	}
 
+	if config.AuthVersion != AuthV1 && config.AuthVersion != AuthV2 {
+		return nil, fmt.Errorf("Init client Error, invalid Auth version: %v", config.AuthVersion)
+	}
+
 	// Create HTTP connection
-	err := conn.init(config, url, client.HTTPClient)
+	err = conn.init(config, url, client.HTTPClient)
 
 	return client, err
 }
@@ -79,6 +86,11 @@ func New(endpoint, accessKeyID, accessKeySecret string, options ...ClientOption)
 // error    it's nil if no error, otherwise it's an error object.
 //
 func (client Client) Bucket(bucketName string) (*Bucket, error) {
+	err := CheckBucketName(bucketName)
+	if err != nil {
+		return nil, err
+	}
+
 	return &Bucket{
 		client,
 		bucketName,
@@ -100,18 +112,31 @@ func (client Client) CreateBucket(bucketName string, options ...Option) error {
 
 	buffer := new(bytes.Buffer)
 
-	isOptSet, val, _ := isOptionSet(options, storageClass)
-	if isOptSet {
-		cbConfig := createBucketConfiguration{StorageClass: val.(StorageClassType)}
-		bs, err := xml.Marshal(cbConfig)
-		if err != nil {
-			return err
-		}
-		buffer.Write(bs)
+	var cbConfig createBucketConfiguration
+	cbConfig.StorageClass = StorageStandard
 
-		contentType := http.DetectContentType(buffer.Bytes())
-		headers[HTTPHeaderContentType] = contentType
+	isStorageSet, valStroage, _ := IsOptionSet(options, storageClass)
+	isRedundancySet, valRedundancy, _ := IsOptionSet(options, redundancyType)
+	isObjectHashFuncSet, valHashFunc, _ := IsOptionSet(options, objectHashFunc)
+	if isStorageSet {
+		cbConfig.StorageClass = valStroage.(StorageClassType)
 	}
+
+	if isRedundancySet {
+		cbConfig.DataRedundancyType = valRedundancy.(DataRedundancyType)
+	}
+
+	if isObjectHashFuncSet {
+		cbConfig.ObjectHashFunction = valHashFunc.(ObjecthashFuncType)
+	}
+
+	bs, err := xml.Marshal(cbConfig)
+	if err != nil {
+		return err
+	}
+	buffer.Write(bs)
+	contentType := http.DetectContentType(buffer.Bytes())
+	headers[HTTPHeaderContentType] = contentType
 
 	params := map[string]interface{}{}
 	resp, err := client.do("PUT", bucketName, params, headers, buffer, options...)
@@ -120,7 +145,7 @@ func (client Client) CreateBucket(bucketName string, options ...Option) error {
 	}
 
 	defer resp.Body.Close()
-	return checkRespCode(resp.StatusCode, []int{http.StatusOK})
+	return CheckRespCode(resp.StatusCode, []int{http.StatusOK})
 }
 
 // ListBuckets lists buckets of the current account under the given endpoint, with optional filters.
@@ -136,7 +161,7 @@ func (client Client) CreateBucket(bucketName string, options ...Option) error {
 func (client Client) ListBuckets(options ...Option) (ListBucketsResult, error) {
 	var out ListBucketsResult
 
-	params, err := getRawParams(options)
+	params, err := GetRawParams(options)
 	if err != nil {
 		return out, err
 	}
@@ -184,7 +209,7 @@ func (client Client) DeleteBucket(bucketName string, options ...Option) error {
 	}
 
 	defer resp.Body.Close()
-	return checkRespCode(resp.StatusCode, []int{http.StatusNoContent})
+	return CheckRespCode(resp.StatusCode, []int{http.StatusNoContent})
 }
 
 // GetBucketLocation gets the bucket location.
@@ -227,7 +252,7 @@ func (client Client) SetBucketACL(bucketName string, bucketACL ACLType) error {
 		return err
 	}
 	defer resp.Body.Close()
-	return checkRespCode(resp.StatusCode, []int{http.StatusOK})
+	return CheckRespCode(resp.StatusCode, []int{http.StatusOK})
 }
 
 // GetBucketACL gets the bucket ACL.
@@ -286,7 +311,7 @@ func (client Client) SetBucketLifecycle(bucketName string, rules []LifecycleRule
 		return err
 	}
 	defer resp.Body.Close()
-	return checkRespCode(resp.StatusCode, []int{http.StatusOK})
+	return CheckRespCode(resp.StatusCode, []int{http.StatusOK})
 }
 
 // DeleteBucketLifecycle deletes the bucket's lifecycle.
@@ -304,7 +329,7 @@ func (client Client) DeleteBucketLifecycle(bucketName string) error {
 		return err
 	}
 	defer resp.Body.Close()
-	return checkRespCode(resp.StatusCode, []int{http.StatusNoContent})
+	return CheckRespCode(resp.StatusCode, []int{http.StatusNoContent})
 }
 
 // GetBucketLifecycle gets the bucket's lifecycle settings.
@@ -325,6 +350,14 @@ func (client Client) GetBucketLifecycle(bucketName string) (GetBucketLifecycleRe
 	defer resp.Body.Close()
 
 	err = xmlUnmarshal(resp.Body, &out)
+
+	// NonVersionTransition is not suggested to use
+	// to keep compatible
+	for k, rule := range out.Rules {
+		if len(rule.NonVersionTransitions) > 0 {
+			out.Rules[k].NonVersionTransition = &(out.Rules[k].NonVersionTransitions[0])
+		}
+	}
 	return out, err
 }
 
@@ -372,7 +405,7 @@ func (client Client) SetBucketReferer(bucketName string, referers []string, allo
 		return err
 	}
 	defer resp.Body.Close()
-	return checkRespCode(resp.StatusCode, []int{http.StatusOK})
+	return CheckRespCode(resp.StatusCode, []int{http.StatusOK})
 }
 
 // GetBucketReferer gets the bucket's referrer white list.
@@ -440,7 +473,7 @@ func (client Client) SetBucketLogging(bucketName, targetBucket, targetPrefix str
 		return err
 	}
 	defer resp.Body.Close()
-	return checkRespCode(resp.StatusCode, []int{http.StatusOK})
+	return CheckRespCode(resp.StatusCode, []int{http.StatusOK})
 }
 
 // DeleteBucketLogging deletes the logging configuration to disable the logging on the bucket.
@@ -457,7 +490,7 @@ func (client Client) DeleteBucketLogging(bucketName string) error {
 		return err
 	}
 	defer resp.Body.Close()
-	return checkRespCode(resp.StatusCode, []int{http.StatusNoContent})
+	return CheckRespCode(resp.StatusCode, []int{http.StatusNoContent})
 }
 
 // GetBucketLogging gets the bucket's logging settings
@@ -515,7 +548,7 @@ func (client Client) SetBucketWebsite(bucketName, indexDocument, errorDocument s
 		return err
 	}
 	defer resp.Body.Close()
-	return checkRespCode(resp.StatusCode, []int{http.StatusOK})
+	return CheckRespCode(resp.StatusCode, []int{http.StatusOK})
 }
 
 // SetBucketWebsiteDetail sets the bucket's static website's detail
@@ -548,7 +581,36 @@ func (client Client) SetBucketWebsiteDetail(bucketName string, wxml WebsiteXML, 
 		return err
 	}
 	defer resp.Body.Close()
-	return checkRespCode(resp.StatusCode, []int{http.StatusOK})
+	return CheckRespCode(resp.StatusCode, []int{http.StatusOK})
+}
+
+// SetBucketWebsiteXml sets the bucket's static website's rule
+//
+// OSS supports static web site hosting for the bucket data. When the bucket is enabled with that, you can access the file in the bucket like the way to access a static website.
+// For more information, please check out: https://help.aliyun.com/document_detail/oss/user_guide/static_host_website.html
+//
+// bucketName the bucket name to enable static web site.
+//
+// wxml the website's detail
+//
+// error    it's nil if no error, otherwise it's an error object.
+//
+func (client Client) SetBucketWebsiteXml(bucketName string, webXml string, options ...Option) error {
+	buffer := new(bytes.Buffer)
+	buffer.Write([]byte(webXml))
+
+	contentType := http.DetectContentType(buffer.Bytes())
+	headers := make(map[string]string)
+	headers[HTTPHeaderContentType] = contentType
+
+	params := map[string]interface{}{}
+	params["website"] = nil
+	resp, err := client.do("PUT", bucketName, params, headers, buffer, options...)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	return CheckRespCode(resp.StatusCode, []int{http.StatusOK})
 }
 
 // DeleteBucketWebsite deletes the bucket's static web site settings.
@@ -565,7 +627,7 @@ func (client Client) DeleteBucketWebsite(bucketName string) error {
 		return err
 	}
 	defer resp.Body.Close()
-	return checkRespCode(resp.StatusCode, []int{http.StatusNoContent})
+	return CheckRespCode(resp.StatusCode, []int{http.StatusNoContent})
 }
 
 // GetBucketWebsite gets the bucket's default page (index page) and the error page.
@@ -586,6 +648,28 @@ func (client Client) GetBucketWebsite(bucketName string) (GetBucketWebsiteResult
 	defer resp.Body.Close()
 
 	err = xmlUnmarshal(resp.Body, &out)
+	return out, err
+}
+
+// GetBucketWebsiteXml gets the bucket's website config xml config.
+//
+// bucketName    the bucket name
+//
+// string   the bucket's xml config, It's only valid when error is nil.
+// error    it's nil if no error, otherwise it's an error object.
+//
+func (client Client) GetBucketWebsiteXml(bucketName string) (string, error) {
+	params := map[string]interface{}{}
+	params["website"] = nil
+	resp, err := client.do("GET", bucketName, params, nil, nil)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	body, err := ioutil.ReadAll(resp.Body)
+
+	out := string(body)
 	return out, err
 }
 
@@ -628,7 +712,7 @@ func (client Client) SetBucketCORS(bucketName string, corsRules []CORSRule) erro
 		return err
 	}
 	defer resp.Body.Close()
-	return checkRespCode(resp.StatusCode, []int{http.StatusOK})
+	return CheckRespCode(resp.StatusCode, []int{http.StatusOK})
 }
 
 // DeleteBucketCORS deletes the bucket's static website settings.
@@ -645,7 +729,7 @@ func (client Client) DeleteBucketCORS(bucketName string) error {
 		return err
 	}
 	defer resp.Body.Close()
-	return checkRespCode(resp.StatusCode, []int{http.StatusNoContent})
+	return CheckRespCode(resp.StatusCode, []int{http.StatusNoContent})
 }
 
 // GetBucketCORS gets the bucket's CORS settings.
@@ -697,6 +781,10 @@ func (client Client) GetBucketInfo(bucketName string, options ...Option) (GetBuc
 		if out.BucketInfo.SseRule.SSEAlgorithm == "None" {
 			out.BucketInfo.SseRule.SSEAlgorithm = ""
 		}
+
+		if out.BucketInfo.SseRule.KMSDataEncryption == "None" {
+			out.BucketInfo.SseRule.KMSDataEncryption = ""
+		}
 	}
 	return out, err
 }
@@ -728,7 +816,7 @@ func (client Client) SetBucketVersioning(bucketName string, versioningConfig Ver
 		return err
 	}
 	defer resp.Body.Close()
-	return checkRespCode(resp.StatusCode, []int{http.StatusOK})
+	return CheckRespCode(resp.StatusCode, []int{http.StatusOK})
 }
 
 // GetBucketVersioning get bucket versioning status:Enabled、Suspended
@@ -776,7 +864,7 @@ func (client Client) SetBucketEncryption(bucketName string, encryptionRule Serve
 		return err
 	}
 	defer resp.Body.Close()
-	return checkRespCode(resp.StatusCode, []int{http.StatusOK})
+	return CheckRespCode(resp.StatusCode, []int{http.StatusOK})
 }
 
 // GetBucketEncryption get bucket encryption
@@ -809,7 +897,7 @@ func (client Client) DeleteBucketEncryption(bucketName string, options ...Option
 		return err
 	}
 	defer resp.Body.Close()
-	return checkRespCode(resp.StatusCode, []int{http.StatusNoContent})
+	return CheckRespCode(resp.StatusCode, []int{http.StatusNoContent})
 }
 
 //
@@ -840,7 +928,7 @@ func (client Client) SetBucketTagging(bucketName string, tagging Tagging, option
 		return err
 	}
 	defer resp.Body.Close()
-	return checkRespCode(resp.StatusCode, []int{http.StatusOK})
+	return CheckRespCode(resp.StatusCode, []int{http.StatusOK})
 }
 
 // GetBucketTagging get tagging of the bucket
@@ -873,7 +961,7 @@ func (client Client) DeleteBucketTagging(bucketName string, options ...Option) e
 		return err
 	}
 	defer resp.Body.Close()
-	return checkRespCode(resp.StatusCode, []int{http.StatusNoContent})
+	return CheckRespCode(resp.StatusCode, []int{http.StatusNoContent})
 }
 
 // GetBucketStat get bucket stat
@@ -941,7 +1029,7 @@ func (client Client) SetBucketPolicy(bucketName string, policy string, options .
 	}
 	defer resp.Body.Close()
 
-	return checkRespCode(resp.StatusCode, []int{http.StatusOK})
+	return CheckRespCode(resp.StatusCode, []int{http.StatusOK})
 }
 
 // DeleteBucketPolicy API operation for Object Storage Service.
@@ -961,7 +1049,7 @@ func (client Client) DeleteBucketPolicy(bucketName string, options ...Option) er
 	}
 
 	defer resp.Body.Close()
-	return checkRespCode(resp.StatusCode, []int{http.StatusNoContent})
+	return CheckRespCode(resp.StatusCode, []int{http.StatusNoContent})
 }
 
 // SetBucketRequestPayment API operation for Object Storage Service.
@@ -997,7 +1085,7 @@ func (client Client) SetBucketRequestPayment(bucketName string, paymentConfig Re
 		return err
 	}
 	defer resp.Body.Close()
-	return checkRespCode(resp.StatusCode, []int{http.StatusOK})
+	return CheckRespCode(resp.StatusCode, []int{http.StatusOK})
 }
 
 // GetBucketRequestPayment API operation for Object Storage Service.
@@ -1052,7 +1140,7 @@ func (client Client) GetUserQoSInfo(options ...Option) (UserQoSConfiguration, er
 //
 // Set Bucket Qos information.
 //
-// bucketName tht bucket name.
+// bucketName the bucket name.
 //
 // qosConf the qos configuration.
 //
@@ -1080,14 +1168,14 @@ func (client Client) SetBucketQoSInfo(bucketName string, qosConf BucketQoSConfig
 	}
 
 	defer resp.Body.Close()
-	return checkRespCode(resp.StatusCode, []int{http.StatusOK})
+	return CheckRespCode(resp.StatusCode, []int{http.StatusOK})
 }
 
 // GetBucketQosInfo API operation for Object Storage Service.
 //
 // Get Bucket Qos information.
 //
-// bucketName tht bucket name.
+// bucketName the bucket name.
 //
 // BucketQoSConfiguration the  return qos configuration.
 //
@@ -1112,7 +1200,7 @@ func (client Client) GetBucketQosInfo(bucketName string, options ...Option) (Buc
 //
 // Delete Bucket QoS information.
 //
-// bucketName tht bucket name.
+// bucketName the bucket name.
 //
 // error    it's nil if no error, otherwise it's an error object.
 //
@@ -1126,7 +1214,378 @@ func (client Client) DeleteBucketQosInfo(bucketName string, options ...Option) e
 	}
 	defer resp.Body.Close()
 
-	return checkRespCode(resp.StatusCode, []int{http.StatusNoContent})
+	return CheckRespCode(resp.StatusCode, []int{http.StatusNoContent})
+}
+
+// SetBucketInventory API operation for Object Storage Service
+//
+// Set the Bucket inventory.
+//
+// bucketName tht bucket name.
+//
+// inventoryConfig the inventory configuration.
+//
+// error    it's nil if no error, otherwise it's an error.
+//
+func (client Client) SetBucketInventory(bucketName string, inventoryConfig InventoryConfiguration, options ...Option) error {
+	params := map[string]interface{}{}
+	params["inventoryId"] = inventoryConfig.Id
+	params["inventory"] = nil
+
+	var bs []byte
+	bs, err := xml.Marshal(inventoryConfig)
+
+	if err != nil {
+		return err
+	}
+
+	buffer := new(bytes.Buffer)
+	buffer.Write(bs)
+
+	contentType := http.DetectContentType(buffer.Bytes())
+	headers := make(map[string]string)
+	headers[HTTPHeaderContentType] = contentType
+
+	resp, err := client.do("PUT", bucketName, params, headers, buffer, options...)
+
+	if err != nil {
+		return err
+	}
+
+	defer resp.Body.Close()
+
+	return CheckRespCode(resp.StatusCode, []int{http.StatusOK})
+}
+
+// GetBucketInventory API operation for Object Storage Service
+//
+// Get the Bucket inventory.
+//
+// bucketName tht bucket name.
+//
+// strInventoryId the inventory id.
+//
+// InventoryConfiguration the inventory configuration.
+//
+// error    it's nil if no error, otherwise it's an error.
+//
+func (client Client) GetBucketInventory(bucketName string, strInventoryId string, options ...Option) (InventoryConfiguration, error) {
+	var out InventoryConfiguration
+	params := map[string]interface{}{}
+	params["inventory"] = nil
+	params["inventoryId"] = strInventoryId
+
+	resp, err := client.do("GET", bucketName, params, nil, nil, options...)
+	if err != nil {
+		return out, err
+	}
+	defer resp.Body.Close()
+
+	err = xmlUnmarshal(resp.Body, &out)
+	return out, err
+}
+
+// ListBucketInventory API operation for Object Storage Service
+//
+// List the Bucket inventory.
+//
+// bucketName tht bucket name.
+//
+// continuationToken the users token.
+//
+// ListInventoryConfigurationsResult list all inventory configuration by .
+//
+// error    it's nil if no error, otherwise it's an error.
+//
+func (client Client) ListBucketInventory(bucketName, continuationToken string, options ...Option) (ListInventoryConfigurationsResult, error) {
+	var out ListInventoryConfigurationsResult
+	params := map[string]interface{}{}
+	params["inventory"] = nil
+	if continuationToken == "" {
+		params["continuation-token"] = nil
+	} else {
+		params["continuation-token"] = continuationToken
+	}
+
+	resp, err := client.do("GET", bucketName, params, nil, nil, options...)
+	if err != nil {
+		return out, err
+	}
+	defer resp.Body.Close()
+
+	err = xmlUnmarshal(resp.Body, &out)
+	return out, err
+}
+
+// DeleteBucketInventory API operation for Object Storage Service.
+//
+// Delete Bucket inventory information.
+//
+// bucketName tht bucket name.
+//
+// strInventoryId the inventory id.
+//
+// error    it's nil if no error, otherwise it's an error.
+//
+func (client Client) DeleteBucketInventory(bucketName, strInventoryId string, options ...Option) error {
+	params := map[string]interface{}{}
+	params["inventory"] = nil
+	params["inventoryId"] = strInventoryId
+
+	resp, err := client.do("DELETE", bucketName, params, nil, nil, options...)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	return CheckRespCode(resp.StatusCode, []int{http.StatusNoContent})
+}
+
+// SetBucketAsyncTask API operation for set async fetch task
+//
+// bucketName tht bucket name.
+//
+// asynConf  configruation
+//
+// error  it's nil if success, otherwise it's an error.
+func (client Client) SetBucketAsyncTask(bucketName string, asynConf AsyncFetchTaskConfiguration, options ...Option) (AsyncFetchTaskResult, error) {
+	var out AsyncFetchTaskResult
+	params := map[string]interface{}{}
+	params["asyncFetch"] = nil
+
+	var bs []byte
+	bs, err := xml.Marshal(asynConf)
+
+	if err != nil {
+		return out, err
+	}
+
+	buffer := new(bytes.Buffer)
+	buffer.Write(bs)
+
+	contentType := http.DetectContentType(buffer.Bytes())
+	headers := make(map[string]string)
+	headers[HTTPHeaderContentType] = contentType
+
+	resp, err := client.do("POST", bucketName, params, headers, buffer, options...)
+
+	if err != nil {
+		return out, err
+	}
+
+	defer resp.Body.Close()
+	err = xmlUnmarshal(resp.Body, &out)
+	return out, err
+}
+
+// GetBucketAsyncTask API operation for set async fetch task
+//
+// bucketName tht bucket name.
+//
+// taskid  returned by SetBucketAsyncTask
+//
+// error  it's nil if success, otherwise it's an error.
+func (client Client) GetBucketAsyncTask(bucketName string, taskID string, options ...Option) (AsynFetchTaskInfo, error) {
+	var out AsynFetchTaskInfo
+	params := map[string]interface{}{}
+	params["asyncFetch"] = nil
+
+	headers := make(map[string]string)
+	headers[HTTPHeaderOssTaskID] = taskID
+	resp, err := client.do("GET", bucketName, params, headers, nil, options...)
+	if err != nil {
+		return out, err
+	}
+	defer resp.Body.Close()
+	err = xmlUnmarshal(resp.Body, &out)
+	return out, err
+}
+
+// InitiateBucketWorm creates bucket worm Configuration
+// bucketName the bucket name.
+// retentionDays the retention period in days
+// error    it's nil if no error, otherwise it's an error object.
+//
+func (client Client) InitiateBucketWorm(bucketName string, retentionDays int, options ...Option) (string, error) {
+	var initiateWormConf InitiateWormConfiguration
+	initiateWormConf.RetentionPeriodInDays = retentionDays
+
+	var respHeader http.Header
+	isOptSet, _, _ := IsOptionSet(options, responseHeader)
+	if !isOptSet {
+		options = append(options, GetResponseHeader(&respHeader))
+	}
+
+	bs, err := xml.Marshal(initiateWormConf)
+	if err != nil {
+		return "", err
+	}
+	buffer := new(bytes.Buffer)
+	buffer.Write(bs)
+
+	contentType := http.DetectContentType(buffer.Bytes())
+	headers := make(map[string]string)
+	headers[HTTPHeaderContentType] = contentType
+
+	params := map[string]interface{}{}
+	params["worm"] = nil
+
+	resp, err := client.do("POST", bucketName, params, headers, buffer, options...)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	respOpt, _ := FindOption(options, responseHeader, nil)
+	wormID := ""
+	err = CheckRespCode(resp.StatusCode, []int{http.StatusOK})
+	if err == nil && respOpt != nil {
+		wormID = (respOpt.(*http.Header)).Get("x-oss-worm-id")
+	}
+	return wormID, err
+}
+
+// AbortBucketWorm delete bucket worm Configuration
+// bucketName the bucket name.
+// error    it's nil if no error, otherwise it's an error object.
+//
+func (client Client) AbortBucketWorm(bucketName string, options ...Option) error {
+	params := map[string]interface{}{}
+	params["worm"] = nil
+	resp, err := client.do("DELETE", bucketName, params, nil, nil, options...)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	return CheckRespCode(resp.StatusCode, []int{http.StatusNoContent})
+}
+
+// CompleteBucketWorm complete bucket worm Configuration
+// bucketName the bucket name.
+// wormID the worm id
+// error    it's nil if no error, otherwise it's an error object.
+//
+func (client Client) CompleteBucketWorm(bucketName string, wormID string, options ...Option) error {
+	params := map[string]interface{}{}
+	params["wormId"] = wormID
+	resp, err := client.do("POST", bucketName, params, nil, nil, options...)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	return CheckRespCode(resp.StatusCode, []int{http.StatusOK})
+}
+
+// ExtendBucketWorm exetend bucket worm Configuration
+// bucketName the bucket name.
+// retentionDays the retention period in days
+// wormID the worm id
+// error    it's nil if no error, otherwise it's an error object.
+//
+func (client Client) ExtendBucketWorm(bucketName string, retentionDays int, wormID string, options ...Option) error {
+	var extendWormConf ExtendWormConfiguration
+	extendWormConf.RetentionPeriodInDays = retentionDays
+
+	bs, err := xml.Marshal(extendWormConf)
+	if err != nil {
+		return err
+	}
+	buffer := new(bytes.Buffer)
+	buffer.Write(bs)
+
+	contentType := http.DetectContentType(buffer.Bytes())
+	headers := make(map[string]string)
+	headers[HTTPHeaderContentType] = contentType
+
+	params := map[string]interface{}{}
+	params["wormId"] = wormID
+	params["wormExtend"] = nil
+
+	resp, err := client.do("POST", bucketName, params, headers, buffer, options...)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	return CheckRespCode(resp.StatusCode, []int{http.StatusOK})
+}
+
+// GetBucketWorm get bucket worm Configuration
+// bucketName the bucket name.
+// error    it's nil if no error, otherwise it's an error object.
+//
+func (client Client) GetBucketWorm(bucketName string, options ...Option) (WormConfiguration, error) {
+	var out WormConfiguration
+	params := map[string]interface{}{}
+	params["worm"] = nil
+
+	resp, err := client.do("GET", bucketName, params, nil, nil, options...)
+	if err != nil {
+		return out, err
+	}
+	defer resp.Body.Close()
+	err = xmlUnmarshal(resp.Body, &out)
+	return out, err
+}
+
+// SetBucketTransferAcc set bucket transfer acceleration configuration
+// bucketName the bucket name.
+// accConf bucket transfer acceleration configuration
+// error    it's nil if no error, otherwise it's an error object.
+//
+func (client Client) SetBucketTransferAcc(bucketName string, accConf TransferAccConfiguration, options ...Option) error {
+	bs, err := xml.Marshal(accConf)
+	if err != nil {
+		return err
+	}
+	buffer := new(bytes.Buffer)
+	buffer.Write(bs)
+
+	contentType := http.DetectContentType(buffer.Bytes())
+	headers := make(map[string]string)
+	headers[HTTPHeaderContentType] = contentType
+
+	params := map[string]interface{}{}
+	params["transferAcceleration"] = nil
+	resp, err := client.do("PUT", bucketName, params, headers, buffer, options...)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	return CheckRespCode(resp.StatusCode, []int{http.StatusOK})
+}
+
+// GetBucketTransferAcc get bucket transfer acceleration configuration
+// bucketName the bucket name.
+// accConf bucket transfer acceleration configuration
+// error    it's nil if no error, otherwise it's an error object.
+//
+func (client Client) GetBucketTransferAcc(bucketName string, options ...Option) (TransferAccConfiguration, error) {
+	var out TransferAccConfiguration
+	params := map[string]interface{}{}
+	params["transferAcceleration"] = nil
+	resp, err := client.do("GET", bucketName, params, nil, nil)
+	if err != nil {
+		return out, err
+	}
+	defer resp.Body.Close()
+
+	err = xmlUnmarshal(resp.Body, &out)
+	return out, err
+}
+
+// DeleteBucketTransferAcc delete bucket transfer acceleration configuration
+// bucketName the bucket name.
+// error    it's nil if no error, otherwise it's an error object.
+//
+func (client Client) DeleteBucketTransferAcc(bucketName string, options ...Option) error {
+	params := map[string]interface{}{}
+	params["transferAcceleration"] = nil
+	resp, err := client.do("DELETE", bucketName, params, nil, nil)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	return CheckRespCode(resp.StatusCode, []int{http.StatusNoContent})
 }
 
 // LimitUploadSpeed set upload bandwidth limit speed,default is 0,unlimited
@@ -1217,6 +1676,7 @@ func EnableCRC(isEnableCRC bool) ClientOption {
 func UserAgent(userAgent string) ClientOption {
 	return func(client *Client) {
 		client.Config.UserAgent = userAgent
+		client.Config.UserSetUa = true
 	}
 }
 
@@ -1290,14 +1750,57 @@ func SetLocalAddr(localAddr net.Addr) ClientOption {
 	}
 }
 
+// AuthVersion  sets auth version: v1 or v2 signature which oss_server needed
+func AuthVersion(authVersion AuthVersionType) ClientOption {
+	return func(client *Client) {
+		client.Config.AuthVersion = authVersion
+	}
+}
+
+// AdditionalHeaders sets special http headers needed to be signed
+func AdditionalHeaders(headers []string) ClientOption {
+	return func(client *Client) {
+		client.Config.AdditionalHeaders = headers
+	}
+}
+
+// only effective from go1.7 onward,RedirectEnabled set http redirect enabled or not
+func RedirectEnabled(enabled bool) ClientOption {
+	return func(client *Client) {
+		client.Config.RedirectEnabled = enabled
+	}
+}
+
 // Private
 func (client Client) do(method, bucketName string, params map[string]interface{},
 	headers map[string]string, data io.Reader, options ...Option) (*Response, error) {
+	err := CheckBucketName(bucketName)
+	if len(bucketName) > 0 && err != nil {
+		return nil, err
+	}
+
+	// option headers
+	addHeaders := make(map[string]string)
+	err = handleOptions(addHeaders, options)
+	if err != nil {
+		return nil, err
+	}
+
+	// merge header
+	if headers == nil {
+		headers = make(map[string]string)
+	}
+
+	for k, v := range addHeaders {
+		if _, ok := headers[k]; !ok {
+			headers[k] = v
+		}
+	}
 
 	resp, err := client.Conn.Do(method, bucketName, "", params, headers, data, 0, nil)
 
 	// get response header
-	respHeader, _ := findOption(options, responseHeader, nil)
+	respHeader, _ := FindOption(options, responseHeader, nil)
 	if respHeader != nil {
 		pRespHeader := respHeader.(*http.Header)
 		*pRespHeader = resp.Headers
