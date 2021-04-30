@@ -1,4 +1,18 @@
 etcd-backup-restore:
+  inherit:
+    tm_test_default: &tm_test_default
+      trait_depends:
+      - publish
+      image: eu.gcr.io/gardener-project/gardener/testmachinery/testmachinery-run:stable
+      execute:
+      - tm-tests-playground
+      - --flavor-tm-chart=etcd
+      - --landscape=playground
+      - --tm-landscape=external
+      - --
+      - --testrun-prefix=playground
+      - --set=projectNamespace=garden-it
+
   template: 'default'
   base_definition:
     repo: ~
@@ -36,20 +50,13 @@ etcd-backup-restore:
         draft_release: ~
       steps:
         tm_test:
-          trait_depends:
-          - publish
-          image: eu.gcr.io/gardener-project/gardener/testmachinery/testmachinery-run:stable
-          execute:
-          - tm-tests-playground
-          - --flavor-tm-chart=etcd
-          - --landscape=playground
-          - --tm-landscape=external
-          - --
-          - --testrun-prefix=playground
-          - --set=projectNamespace=garden-it
+          <<: *tm_test_default
     pull-request:
       traits:
         pull-request: ~
+      steps:
+        tm_test:
+          <<: *tm_test_default
     release:
       traits:
         version:
@@ -65,14 +72,4 @@ etcd-backup-restore:
         component_descriptor: ~
       steps:
         tm_test:
-          trait_depends:
-          - publish
-          image: eu.gcr.io/gardener-project/gardener/testmachinery/testmachinery-run:stable
-          execute:
-          - tm-tests-playground
-          - --flavor-tm-chart=etcd
-          - --landscape=playground
-          - --tm-landscape=external
-          - --
-          - --testrun-prefix=playground
-          - --set=projectNamespace=garden-it
+          <<: *tm_test_default

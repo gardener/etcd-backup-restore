@@ -103,10 +103,11 @@ subjectAltName = @alt_names
 
 [ alt_names ]
 DNS.1 = main-etcd-0
-DNS.2 = main-etcd-client
-DNS.3 = main-etcd-client.mynamespace
-DNS.4 = main-etcd-client.mynamespace.svc
-DNS.5 = main-etcd-client.mynamespace.svc.cluster.local
+DNS.2 = main-etcd-local
+DNS.3 = main-etcd-client
+DNS.4 = main-etcd-client.mynamespace
+DNS.5 = main-etcd-client.mynamespace.svc
+DNS.6 = main-etcd-client.mynamespace.svc.cluster.local
 
 [ v3_ext ]
 keyUsage=critical,digitalSignature,keyEncipherment
@@ -139,10 +140,11 @@ Follow the same steps as [generating TLS key-pair for etcd](#generating-tls-key-
 [ alt_names ]
 DNS.1 = localhost
 DNS.2 = main-backup-0
-DNS.3 = main-backup-client
-DNS.4 = main-backup-client.mynamespace
-DNS.5 = main-backup-client.mynamespace.svc
-DNS.6 = main-backup-client.mynamespace.svc.cluster.local
+DNS.3 = main-backup-local
+DNS.4 = main-backup-client
+DNS.5 = main-backup-client.mynamespace
+DNS.6 = main-backup-client.mynamespace.svc
+DNS.7 = main-backup-client.mynamespace.svc.cluster.local
 ```
 
 Here, we add `localhost` to the DNS entries so that the etcd bootstrap script may be allowed to trigger data initialization on the backup sidecar via HTTPS.
