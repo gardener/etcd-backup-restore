@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/gardener/etcd-backup-restore/pkg/compressor"
+	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 	"github.com/gardener/etcd-backup-restore/test/utils"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -83,7 +84,8 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 	compressionConfig := compressor.NewCompressorConfig()
 	compressionConfig.Enabled = true
 	compressionConfig.CompressionPolicy = "gzip"
-	err = utils.RunSnapshotter(logger, testSnapshotDir, deltaSnapshotPeriod, endpoints, ctx.Done(), true, compressionConfig)
+	snapstoreConfig := brtypes.SnapstoreConfig{Container: testSnapshotDir, Provider: "Local"}
+	err = utils.RunSnapshotter(logger, snapstoreConfig, deltaSnapshotPeriod, endpoints, ctx.Done(), true, compressionConfig)
 	Expect(err).ShouldNot(HaveOccurred())
 
 	// Wait unitil the populator finishes with populating ETCD

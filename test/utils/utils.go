@@ -184,8 +184,8 @@ func ContextWithWaitGroupFollwedByGracePeriod(parent context.Context, wg *sync.W
 }
 
 // RunSnapshotter creates a snapshotter object and runs it for a duration specified by 'snapshotterDurationSeconds'
-func RunSnapshotter(logger *logrus.Entry, container string, deltaSnapshotPeriod time.Duration, endpoints []string, stopCh <-chan struct{}, startWithFullSnapshot bool, compressionConfig *compressor.CompressionConfig) error {
-	store, err := snapstore.GetSnapstore(&brtypes.SnapstoreConfig{Container: container, Provider: "Local"})
+func RunSnapshotter(logger *logrus.Entry, snapstoreConfig brtypes.SnapstoreConfig, deltaSnapshotPeriod time.Duration, endpoints []string, stopCh <-chan struct{}, startWithFullSnapshot bool, compressionConfig *compressor.CompressionConfig) error {
+	store, err := snapstore.GetSnapstore(&snapstoreConfig)
 	if err != nil {
 		return err
 	}

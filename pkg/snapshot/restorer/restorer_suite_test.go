@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/gardener/etcd-backup-restore/pkg/compressor"
+	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 
 	"github.com/gardener/etcd-backup-restore/test/utils"
 	. "github.com/onsi/ginkgo"
@@ -78,12 +79,12 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 	ctx := utils.ContextWithWaitGroupFollwedByGracePeriod(populatorCtx, wg, deltaSnapshotPeriod+2*time.Second)
 
 	compressionConfig := compressor.NewCompressorConfig()
-	err = utils.RunSnapshotter(logger, snapstoreDir, deltaSnapshotPeriod, endpoints, ctx.Done(), true, compressionConfig)
+	snapstoreConfig := brtypes.SnapstoreConfig{Container: snapstoreDir, Provider: "Local"}
+	err = utils.RunSnapshotter(logger, snapstoreConfig, deltaSnapshotPeriod, endpoints, ctx.Done(), true, compressionConfig)
 	Expect(err).ShouldNot(HaveOccurred())
 
 	keyTo = resp.KeyTo
 	return data
-
 }, func(data []byte) {})
 
 var _ = SynchronizedAfterSuite(func() {}, cleanUp)
