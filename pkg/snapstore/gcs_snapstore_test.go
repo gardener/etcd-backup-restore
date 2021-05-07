@@ -21,6 +21,7 @@ import (
 	"io"
 	"io/ioutil"
 	"sort"
+	"strings"
 	"sync"
 
 	"cloud.google.com/go/storage"
@@ -50,10 +51,12 @@ func (m *mockBucketHandle) Object(name string) stiface.ObjectHandle {
 	return &mockObjectHandle{object: name, client: m.client}
 }
 
-func (m *mockBucketHandle) Objects(context.Context, *storage.Query) stiface.ObjectIterator {
+func (m *mockBucketHandle) Objects(ctx context.Context, st *storage.Query) stiface.ObjectIterator {
 	var keys []string
 	for key := range m.client.objects {
-		keys = append(keys, key)
+		if strings.Contains(key, st.Prefix) {
+			keys = append(keys, key)
+		}
 	}
 	sort.Strings(keys)
 	return &mockObjectIterator{keys: keys}

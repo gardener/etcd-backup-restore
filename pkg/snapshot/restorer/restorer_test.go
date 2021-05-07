@@ -27,6 +27,7 @@ import (
 	"github.com/gardener/etcd-backup-restore/pkg/compressor"
 	"github.com/gardener/etcd-backup-restore/pkg/miscellaneous"
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
+	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 	"github.com/gardener/etcd-backup-restore/test/utils"
 	"github.com/sirupsen/logrus"
 	"go.etcd.io/etcd/clientv3"
@@ -39,13 +40,13 @@ import (
 
 var _ = Describe("Running Restorer", func() {
 	var (
-		store           snapstore.SnapStore
+		store           brtypes.SnapStore
 		rstr            *Restorer
 		restorePeerURLs []string
 		clusterUrlsMap  types.URLsMap
 		peerUrls        types.URLs
-		baseSnapshot    *snapstore.Snapshot
-		deltaSnapList   snapstore.SnapList
+		baseSnapshot    *brtypes.Snapshot
+		deltaSnapList   brtypes.SnapList
 		wg              *sync.WaitGroup
 	)
 	const (
@@ -72,21 +73,21 @@ var _ = Describe("Running Restorer", func() {
 	})
 
 	Describe("For pre-loaded Snapstore", func() {
-		var restoreOpts RestoreOptions
+		var restoreOpts brtypes.RestoreOptions
 
 		BeforeEach(func() {
 			err = corruptEtcdDir()
 			Expect(err).ShouldNot(HaveOccurred())
 
-			store, err = snapstore.GetSnapstore(&snapstore.Config{Container: snapstoreDir, Provider: "Local"})
+			store, err = snapstore.GetSnapstore(&brtypes.SnapstoreConfig{Container: snapstoreDir, Provider: "Local"})
 			Expect(err).ShouldNot(HaveOccurred())
 
 			baseSnapshot, deltaSnapList, err = miscellaneous.GetLatestFullSnapshotAndDeltaSnapList(store)
 			Expect(err).ShouldNot(HaveOccurred())
 
 			rstr = NewRestorer(store, logger)
-			restoreOpts = RestoreOptions{
-				Config: &RestorationConfig{
+			restoreOpts = brtypes.RestoreOptions{
+				Config: &brtypes.RestorationConfig{
 					RestoreDataDir:           etcdDir,
 					InitialClusterToken:      restoreClusterToken,
 					InitialCluster:           restoreCluster,
@@ -101,7 +102,7 @@ var _ = Describe("Running Restorer", func() {
 					AutoCompactionMode:       autoCompactionMode,
 					AutoCompactionRetention:  autoCompactionRetention,
 				},
-				BaseSnapshot:  *baseSnapshot,
+				BaseSnapshot:  baseSnapshot,
 				DeltaSnapList: deltaSnapList,
 				ClusterURLs:   clusterUrlsMap,
 				PeerURLs:      peerUrls,
@@ -230,10 +231,10 @@ var _ = Describe("Running Restorer", func() {
 
 	Describe("NEGATIVE:For Dynamic Loads and Negative Scenarios", func() {
 		var (
-			store               snapstore.SnapStore
+			store               brtypes.SnapStore
 			deltaSnapshotPeriod time.Duration
 			endpoints           []string
-			restorationConfig   *RestorationConfig
+			restorationConfig   *brtypes.RestorationConfig
 		)
 
 		BeforeEach(func() {
@@ -242,10 +243,10 @@ var _ = Describe("Running Restorer", func() {
 			Expect(err).ShouldNot(HaveOccurred())
 			endpoints = []string{etcd.Clients[0].Addr().String()}
 
-			store, err = snapstore.GetSnapstore(&snapstore.Config{Container: snapstoreDir, Provider: "Local"})
+			store, err = snapstore.GetSnapstore(&brtypes.SnapstoreConfig{Container: snapstoreDir, Provider: "Local"})
 			Expect(err).ShouldNot(HaveOccurred())
 
-			restorationConfig = &RestorationConfig{
+			restorationConfig = &brtypes.RestorationConfig{
 				RestoreDataDir:           etcdDir,
 				InitialClusterToken:      restoreClusterToken,
 				InitialCluster:           restoreCluster,
@@ -281,7 +282,7 @@ var _ = Describe("Running Restorer", func() {
 				logger.Infoln("Starting snapshotter with basesnapshot set to false")
 				ssrCtx := utils.ContextWithWaitGroupFollwedByGracePeriod(testCtx, wg, 2)
 				compressionConfig := compressor.NewCompressorConfig()
-				err = runSnapshotter(logger, deltaSnapshotPeriod, endpoints, ssrCtx.Done(), startWithFullSnapshot, compressionConfig)
+				err = utils.RunSnapshotter(logger, snapstoreDir, deltaSnapshotPeriod, endpoints, ssrCtx.Done(), startWithFullSnapshot, compressionConfig)
 				Expect(err).ShouldNot(HaveOccurred())
 				etcd.Server.Stop()
 				etcd.Close()
@@ -295,15 +296,18 @@ var _ = Describe("Running Restorer", func() {
 				logger.Infof("Base snapshot is %v", baseSnapshot)
 
 				rstr = NewRestorer(store, logger)
-				restoreOpts := RestoreOptions{
+				restoreOpts := brtypes.RestoreOptions{
 					Config:        restorationConfig,
+					BaseSnapshot:  baseSnapshot,
 					DeltaSnapList: deltaSnapList,
 					ClusterURLs:   clusterUrlsMap,
 					PeerURLs:      peerUrls,
 				}
 
-				restoreOpts.BaseSnapshot.SnapDir = ""
-				restoreOpts.BaseSnapshot.SnapName = ""
+				if baseSnapshot != nil {
+					restoreOpts.BaseSnapshot.SnapDir = ""
+					restoreOpts.BaseSnapshot.SnapName = ""
+				}
 
 				err := rstr.Restore(restoreOpts)
 
@@ -323,7 +327,7 @@ var _ = Describe("Running Restorer", func() {
 				defer cancelPopulator()
 				ssrCtx := utils.ContextWithWaitGroupFollwedByGracePeriod(testCtx, wg, time.Second)
 				compressionConfig := compressor.NewCompressorConfig()
-				err = runSnapshotter(logger, deltaSnapshotPeriod, endpoints, ssrCtx.Done(), true, compressionConfig)
+				err = utils.RunSnapshotter(logger, snapstoreDir, deltaSnapshotPeriod, endpoints, ssrCtx.Done(), true, compressionConfig)
 				Expect(err).ShouldNot(HaveOccurred())
 				etcd.Server.Stop()
 				etcd.Close()
@@ -337,9 +341,9 @@ var _ = Describe("Running Restorer", func() {
 
 				rstr = NewRestorer(store, logger)
 
-				restoreOpts := RestoreOptions{
+				restoreOpts := brtypes.RestoreOptions{
 					Config:        restorationConfig,
-					BaseSnapshot:  *baseSnapshot,
+					BaseSnapshot:  baseSnapshot,
 					DeltaSnapList: deltaSnapList,
 					ClusterURLs:   clusterUrlsMap,
 					PeerURLs:      peerUrls,
@@ -361,7 +365,7 @@ var _ = Describe("Running Restorer", func() {
 				defer cancelPopulator()
 				ssrCtx := utils.ContextWithWaitGroupFollwedByGracePeriod(testCtx, wg, time.Second)
 				compressionConfig := compressor.NewCompressorConfig()
-				err = runSnapshotter(logger, deltaSnapshotPeriod, endpoints, ssrCtx.Done(), true, compressionConfig)
+				err = utils.RunSnapshotter(logger, snapstoreDir, deltaSnapshotPeriod, endpoints, ssrCtx.Done(), true, compressionConfig)
 				Expect(err).ShouldNot(HaveOccurred())
 				etcd.Close()
 
@@ -380,9 +384,9 @@ var _ = Describe("Running Restorer", func() {
 
 				rstr = NewRestorer(store, logger)
 
-				restoreOpts := RestoreOptions{
+				restoreOpts := brtypes.RestoreOptions{
 					Config:        restorationConfig,
-					BaseSnapshot:  *baseSnapshot,
+					BaseSnapshot:  baseSnapshot,
 					DeltaSnapList: deltaSnapList,
 					ClusterURLs:   clusterUrlsMap,
 					PeerURLs:      peerUrls,
@@ -407,7 +411,7 @@ var _ = Describe("Running Restorer", func() {
 				defer cancelPopulator()
 				ssrCtx := utils.ContextWithWaitGroupFollwedByGracePeriod(testCtx, wg, 2*time.Second)
 				compressionConfig := compressor.NewCompressorConfig()
-				err = runSnapshotter(logger, deltaSnapshotPeriod, endpoints, ssrCtx.Done(), true, compressionConfig)
+				err = utils.RunSnapshotter(logger, snapstoreDir, deltaSnapshotPeriod, endpoints, ssrCtx.Done(), true, compressionConfig)
 				Expect(err).ShouldNot(HaveOccurred())
 				etcd.Close()
 
@@ -416,9 +420,9 @@ var _ = Describe("Running Restorer", func() {
 
 				rstr = NewRestorer(store, logger)
 
-				restoreOpts := RestoreOptions{
+				restoreOpts := brtypes.RestoreOptions{
 					Config:        restorationConfig,
-					BaseSnapshot:  *baseSnapshot,
+					BaseSnapshot:  baseSnapshot,
 					DeltaSnapList: deltaSnapList,
 					ClusterURLs:   clusterUrlsMap,
 					PeerURLs:      peerUrls,
@@ -445,7 +449,7 @@ var _ = Describe("Running Restorer", func() {
 
 				logger.Infoln("Starting snapshotter while loading is happening")
 				compressionConfig := compressor.NewCompressorConfig()
-				err = runSnapshotter(logger, deltaSnapshotPeriod, endpoints, ssrCtx.Done(), true, compressionConfig)
+				err = utils.RunSnapshotter(logger, snapstoreDir, deltaSnapshotPeriod, endpoints, ssrCtx.Done(), true, compressionConfig)
 				Expect(err).ShouldNot(HaveOccurred())
 
 				time.Sleep(time.Duration(5 * time.Second))
@@ -456,16 +460,16 @@ var _ = Describe("Running Restorer", func() {
 				Expect(err).ShouldNot(HaveOccurred())
 				logger.Infoln("corrupted the etcd dir")
 
-				store, err = snapstore.GetSnapstore(&snapstore.Config{Container: snapstoreDir, Provider: "Local"})
+				store, err = snapstore.GetSnapstore(&brtypes.SnapstoreConfig{Container: snapstoreDir, Provider: "Local"})
 				Expect(err).ShouldNot(HaveOccurred())
 				baseSnapshot, deltaSnapList, err = miscellaneous.GetLatestFullSnapshotAndDeltaSnapList(store)
 				Expect(err).ShouldNot(HaveOccurred())
 
 				rstr = NewRestorer(store, logger)
 
-				restoreOpts := RestoreOptions{
+				restoreOpts := brtypes.RestoreOptions{
 					Config:        restorationConfig,
-					BaseSnapshot:  *baseSnapshot,
+					BaseSnapshot:  baseSnapshot,
 					DeltaSnapList: deltaSnapList,
 					ClusterURLs:   clusterUrlsMap,
 					PeerURLs:      peerUrls,
@@ -494,7 +498,7 @@ var _ = Describe("Running Restorer", func() {
 				compressionConfig := compressor.NewCompressorConfig()
 				compressionConfig.Enabled = false
 				ctx, cancel := context.WithTimeout(testCtx, time.Duration(2*time.Second))
-				err = runSnapshotter(logger, deltaSnapshotPeriod, endpoints, ctx.Done(), true, compressionConfig)
+				err = utils.RunSnapshotter(logger, snapstoreDir, deltaSnapshotPeriod, endpoints, ctx.Done(), true, compressionConfig)
 				Expect(err).ShouldNot(HaveOccurred())
 				cancel()
 
@@ -508,7 +512,7 @@ var _ = Describe("Running Restorer", func() {
 				compressionConfig.Enabled = true
 				compressionConfig.CompressionPolicy = "lzw"
 				ctx, cancel = context.WithTimeout(testCtx, time.Duration(2*time.Second))
-				err = runSnapshotter(logger, deltaSnapshotPeriod, endpoints, ctx.Done(), false, compressionConfig)
+				err = utils.RunSnapshotter(logger, snapstoreDir, deltaSnapshotPeriod, endpoints, ctx.Done(), false, compressionConfig)
 				Expect(err).ShouldNot(HaveOccurred())
 				cancel()
 
@@ -521,7 +525,7 @@ var _ = Describe("Running Restorer", func() {
 				compressionConfig = compressor.NewCompressorConfig()
 				compressionConfig.Enabled = true
 				ctx, cancel = context.WithTimeout(testCtx, time.Duration(2*time.Second))
-				err = runSnapshotter(logger, deltaSnapshotPeriod, endpoints, ctx.Done(), false, compressionConfig)
+				err = utils.RunSnapshotter(logger, snapstoreDir, deltaSnapshotPeriod, endpoints, ctx.Done(), false, compressionConfig)
 				Expect(err).ShouldNot(HaveOccurred())
 				cancel()
 
@@ -535,7 +539,7 @@ var _ = Describe("Running Restorer", func() {
 				compressionConfig.Enabled = true
 				compressionConfig.CompressionPolicy = "zlib"
 				ctx, cancel = context.WithTimeout(testCtx, time.Duration(2*time.Second))
-				err = runSnapshotter(logger, deltaSnapshotPeriod, endpoints, ctx.Done(), false, compressionConfig)
+				err = utils.RunSnapshotter(logger, snapstoreDir, deltaSnapshotPeriod, endpoints, ctx.Done(), false, compressionConfig)
 				Expect(err).ShouldNot(HaveOccurred())
 				cancel()
 
@@ -548,9 +552,9 @@ var _ = Describe("Running Restorer", func() {
 
 				rstr = NewRestorer(store, logger)
 
-				restoreOpts := RestoreOptions{
+				restoreOpts := brtypes.RestoreOptions{
 					Config:        restorationConfig,
-					BaseSnapshot:  *baseSnapshot,
+					BaseSnapshot:  baseSnapshot,
 					DeltaSnapList: deltaSnapList,
 					ClusterURLs:   clusterUrlsMap,
 					PeerURLs:      peerUrls,
@@ -576,7 +580,7 @@ var _ = Describe("Running Restorer", func() {
 				compressionConfig := compressor.NewCompressorConfig()
 				compressionConfig.Enabled = true
 				ctx, cancel := context.WithTimeout(testCtx, time.Duration(2*time.Second))
-				err = runSnapshotter(logger, deltaSnapshotPeriod, endpoints, ctx.Done(), true, compressionConfig)
+				err = utils.RunSnapshotter(logger, snapstoreDir, deltaSnapshotPeriod, endpoints, ctx.Done(), true, compressionConfig)
 				Expect(err).ShouldNot(HaveOccurred())
 				cancel()
 
@@ -590,7 +594,7 @@ var _ = Describe("Running Restorer", func() {
 				compressionConfig.Enabled = true
 				compressionConfig.CompressionPolicy = "lzw"
 				ctx, cancel = context.WithTimeout(testCtx, time.Duration(2*time.Second))
-				err = runSnapshotter(logger, deltaSnapshotPeriod, endpoints, ctx.Done(), false, compressionConfig)
+				err = utils.RunSnapshotter(logger, snapstoreDir, deltaSnapshotPeriod, endpoints, ctx.Done(), false, compressionConfig)
 				Expect(err).ShouldNot(HaveOccurred())
 				cancel()
 
@@ -604,7 +608,7 @@ var _ = Describe("Running Restorer", func() {
 				compressionConfig.Enabled = true
 				compressionConfig.CompressionPolicy = "zlib"
 				ctx, cancel = context.WithTimeout(testCtx, time.Duration(2*time.Second))
-				err = runSnapshotter(logger, deltaSnapshotPeriod, endpoints, ctx.Done(), false, compressionConfig)
+				err = utils.RunSnapshotter(logger, snapstoreDir, deltaSnapshotPeriod, endpoints, ctx.Done(), false, compressionConfig)
 				Expect(err).ShouldNot(HaveOccurred())
 				cancel()
 
@@ -616,7 +620,7 @@ var _ = Describe("Running Restorer", func() {
 				// start the Snapshotter with compression not enabled to take delta snapshot.
 				compressionConfig = compressor.NewCompressorConfig()
 				ctx, cancel = context.WithTimeout(testCtx, time.Duration(2*time.Second))
-				err = runSnapshotter(logger, deltaSnapshotPeriod, endpoints, ctx.Done(), false, compressionConfig)
+				err = utils.RunSnapshotter(logger, snapstoreDir, deltaSnapshotPeriod, endpoints, ctx.Done(), false, compressionConfig)
 				Expect(err).ShouldNot(HaveOccurred())
 				cancel()
 
@@ -629,9 +633,9 @@ var _ = Describe("Running Restorer", func() {
 
 				rstr = NewRestorer(store, logger)
 
-				restoreOpts := RestoreOptions{
+				restoreOpts := brtypes.RestoreOptions{
 					Config:        restorationConfig,
-					BaseSnapshot:  *baseSnapshot,
+					BaseSnapshot:  baseSnapshot,
 					DeltaSnapList: deltaSnapList,
 					ClusterURLs:   clusterUrlsMap,
 					PeerURLs:      peerUrls,

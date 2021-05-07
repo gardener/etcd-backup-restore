@@ -21,6 +21,7 @@ import (
 	"strconv"
 	"time"
 
+	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 	"github.com/sirupsen/logrus"
 )
 
@@ -30,7 +31,7 @@ const (
 )
 
 // GetSnapstore returns the snapstore object for give storageProvider with specified container
-func GetSnapstore(config *Config) (SnapStore, error) {
+func GetSnapstore(config *brtypes.SnapstoreConfig) (brtypes.SnapStore, error) {
 	if config.Container == "" {
 		config.Container = os.Getenv(envStorageContainer)
 	}
@@ -53,47 +54,47 @@ func GetSnapstore(config *Config) (SnapStore, error) {
 		config.MaxParallelChunkUploads = 5
 	}
 	switch config.Provider {
-	case SnapstoreProviderLocal, "":
+	case brtypes.SnapstoreProviderLocal, "":
 		if config.Container == "" {
 			config.Container = defaultLocalStore
 		}
 		return NewLocalSnapStore(path.Join(config.Container, config.Prefix))
-	case SnapstoreProviderS3:
+	case brtypes.SnapstoreProviderS3:
 		if config.Container == "" {
 			return nil, fmt.Errorf("storage container name not specified")
 		}
 		return NewS3SnapStore(config.Container, config.Prefix, config.TempDir, config.MaxParallelChunkUploads)
-	case SnapstoreProviderABS:
+	case brtypes.SnapstoreProviderABS:
 		if config.Container == "" {
 			return nil, fmt.Errorf("storage container name not specified")
 		}
 		return NewABSSnapStore(config.Container, config.Prefix, config.TempDir, config.MaxParallelChunkUploads)
-	case SnapstoreProviderGCS:
+	case brtypes.SnapstoreProviderGCS:
 		if config.Container == "" {
 			return nil, fmt.Errorf("storage container name not specified")
 		}
 		return NewGCSSnapStore(config.Container, config.Prefix, config.TempDir, config.MaxParallelChunkUploads)
-	case SnapstoreProviderSwift:
+	case brtypes.SnapstoreProviderSwift:
 		if config.Container == "" {
 			return nil, fmt.Errorf("storage container name not specified")
 		}
 		return NewSwiftSnapStore(config.Container, config.Prefix, config.TempDir, config.MaxParallelChunkUploads)
-	case SnapstoreProviderOSS:
+	case brtypes.SnapstoreProviderOSS:
 		if config.Container == "" {
 			return nil, fmt.Errorf("storage container name not specified")
 		}
 		return NewOSSSnapStore(config.Container, config.Prefix, config.TempDir, config.MaxParallelChunkUploads)
-	case SnapstoreProviderECS:
+	case brtypes.SnapstoreProviderECS:
 		if config.Container == "" {
 			return nil, fmt.Errorf("storage container name not specified")
 		}
 		return NewECSSnapStore(config.Container, config.Prefix, config.TempDir, config.MaxParallelChunkUploads)
-	case SnapstoreProviderOCS:
+	case brtypes.SnapstoreProviderOCS:
 		if config.Container == "" {
 			return nil, fmt.Errorf("storage container name not specified")
 		}
 		return NewOCSSnapStore(config.Container, config.Prefix, config.TempDir, config.MaxParallelChunkUploads)
-	case SnapstoreProviderFakeFailed:
+	case brtypes.SnapstoreProviderFakeFailed:
 		return NewFailedSnapStore(), nil
 	default:
 		return nil, fmt.Errorf("unsupported storage provider : %s", config.Provider)

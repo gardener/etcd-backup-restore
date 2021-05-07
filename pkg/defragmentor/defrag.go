@@ -20,7 +20,7 @@ import (
 
 	"github.com/gardener/etcd-backup-restore/pkg/etcdutil"
 	"github.com/gardener/etcd-backup-restore/pkg/metrics"
-	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
+	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 	"github.com/prometheus/client_golang/prometheus"
 	cron "github.com/robfig/cron/v3"
 	"github.com/sirupsen/logrus"
@@ -31,7 +31,7 @@ const (
 )
 
 // CallbackFunc is type decalration for callback function for defragmentor
-type CallbackFunc func(ctx context.Context) (*snapstore.Snapshot, error)
+type CallbackFunc func(ctx context.Context) (*brtypes.Snapshot, error)
 
 // defragmentorJob implement the cron.Job for etcd defragmentation.
 type defragmentorJob struct {

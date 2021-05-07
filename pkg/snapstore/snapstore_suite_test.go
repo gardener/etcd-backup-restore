@@ -20,6 +20,7 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
+	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 	th "github.com/gophercloud/gophercloud/testhelper"
 	fake "github.com/gophercloud/gophercloud/testhelper/client"
 	. "github.com/onsi/ginkgo"
@@ -28,7 +29,7 @@ import (
 
 var (
 	testObj    *testing.T
-	swiftStore snapstore.SnapStore
+	swiftStore brtypes.SnapStore
 )
 
 func TestSnapstore(t *testing.T) {
@@ -41,7 +42,7 @@ var _ = BeforeSuite(func() {
 	logrus.Infof("Starting test server...")
 	th.SetupHTTP()
 	initializeMockSwiftServer(testObj)
-	swiftStore = snapstore.NewSwiftSnapstoreFromClient(bucket, prefix, "/tmp", 5, fake.ServiceClient())
+	swiftStore = snapstore.NewSwiftSnapstoreFromClient(bucket, prefixV2, "/tmp", 5, fake.ServiceClient())
 })
 
 var _ = AfterSuite(func() {

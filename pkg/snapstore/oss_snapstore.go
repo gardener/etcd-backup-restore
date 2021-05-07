@@ -22,14 +22,17 @@ import (
 	"os"
 	"path"
 	"sort"
+	"strings"
 	"sync"
 
 	"github.com/aliyun/aliyun-oss-go-sdk/oss"
+	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 	"github.com/sirupsen/logrus"
 )
 
 // OSSBucket is an interface for oss.Bucket used in snapstore
 type OSSBucket interface {
+	IsObjectExist(objectKey string, options ...oss.Option) (bool, error)
 	GetObject(objectKey string, options ...oss.Option) (io.ReadCloser, error)
 	InitiateMultipartUpload(objectKey string, options ...oss.Option) (oss.InitiateMultipartUploadResult, error)
 	CompleteMultipartUpload(imur oss.InitiateMultipartUploadResult, parts []oss.UploadPart, options ...oss.Option) (oss.CompleteMultipartUploadResult, error)
@@ -95,16 +98,25 @@ func NewOSSFromBucket(prefix, tempDir string, maxParallelChunkUploads uint, buck
 }
 
 // Fetch should open reader for the snapshot file from store
-func (s *OSSSnapStore) Fetch(snap Snapshot) (io.ReadCloser, error) {
-	body, err := s.bucket.GetObject(path.Join(s.prefix, snap.SnapDir, snap.SnapName))
+func (s *OSSSnapStore) Fetch(snap brtypes.Snapshot) (io.ReadCloser, error) {
+	prefix := s.prefix
+
+	// If there is no snapdir, fetch from v1
+	if snap.SnapDir != "" {
+		// Change the prefix to v1 prefix
+		prefixTokens := strings.Split(s.prefix, "/")
+		prefixTokens = prefixTokens[:len(prefixTokens)-1]
+		prefix = path.Join(strings.Join(prefixTokens, "/"), backupVersionV1)
+	}
+	rc, err := s.bucket.GetObject(path.Join(prefix, snap.SnapDir, snap.SnapName))
 	if err != nil {
 		return nil, err
 	}
-	return body, nil
+	return rc, nil
 }
 
 // Save will write the snapshot to store
-func (s *OSSSnapStore) Save(snap Snapshot, rc io.ReadCloser) error {
+func (s *OSSSnapStore) Save(snap brtypes.Snapshot, rc io.ReadCloser) error {
 	tmpfile, err := ioutil.TempFile(s.tempDir, tmpBackupFilePrefix)
 	if err != nil {
 		rc.Close()
@@ -218,17 +230,48 @@ func (s *OSSSnapStore) uploadPart(imur oss.InitiateMultipartUploadResult, file *
 }
 
 // List will list the snapshots from store
-func (s *OSSSnapStore) List() (SnapList, error) {
-	var snapList SnapList
+func (s *OSSSnapStore) List() (brtypes.SnapList, error) {
+	// Probing for v1 and v2 is required for backward compatibility
+	// TODO: Remove when backward compatibility is not needed
+	var v1, v2 bool = false, false
+	var err error
+	var ls1, ls2 brtypes.SnapList
+
+	v1, ls1, err = s.isV1Present()
+	if err != nil {
+		logrus.Warnf("could not decide if v1 prefix is present (Required for backward compatibility): %v", err)
+		v1 = false
+	}
+
+	v2, ls2, err = s.isV2Present()
+	if err != nil {
+		logrus.Warnf("could not decide if v2 prefix is present (Required for backward compatibility): %v", err)
+		v2 = false
+	}
+
+	logrus.Infof("v1 is present : %v, v2 is present : %v", v1, v2)
+
+	snapList := ls2
+	// If v1 directory exists (Required for backward compatibility)
+	if v1 {
+		snapList = append(snapList, ls1...)
+	}
+
+	sort.Sort(snapList)
+	return snapList, nil
+}
+
+func (s *OSSSnapStore) makeSnapList(prefix string) (brtypes.SnapList, error) {
+	var snapList brtypes.SnapList
 
 	marker := ""
 	for {
-		lsRes, err := s.bucket.ListObjects(oss.Marker(marker), oss.Prefix(s.prefix))
+		lsRes, err := s.bucket.ListObjects(oss.Marker(marker), oss.Prefix(prefix))
 		if err != nil {
 			return nil, err
 		}
 		for _, object := range lsRes.Objects {
-			snap, err := ParseSnapshot(object.Key[len(s.prefix)+1:])
+			snap, err := ParseSnapshot(object.Key[len(prefix)+1:])
 			if err != nil {
 				// Warning
 				logrus.Warnf("Invalid snapshot found. Ignoring it: %s", object.Key)
@@ -248,8 +291,53 @@ func (s *OSSSnapStore) List() (SnapList, error) {
 }
 
 // Delete should delete the snapshot file from store
-func (s *OSSSnapStore) Delete(snap Snapshot) error {
-	return s.bucket.DeleteObject(path.Join(s.prefix, snap.SnapDir, snap.SnapName))
+func (s *OSSSnapStore) Delete(snap brtypes.Snapshot) error {
+	var err error
+	prefix := s.prefix
+	if snap.SnapDir != "" {
+		// Change the prefix to v1 prefix
+		prefixTokens := strings.Split(s.prefix, "/")
+		prefixTokens = prefixTokens[:len(prefixTokens)-1]
+		prefix = path.Join(strings.Join(prefixTokens, "/"), backupVersionV1)
+	}
+	err = s.bucket.DeleteObject(path.Join(prefix, snap.SnapDir, snap.SnapName))
+	return err
+}
+
+// isV1Present checks if v1 is present (Required for backward compatibility)
+func (s *OSSSnapStore) isV1Present() (bool, brtypes.SnapList, error) {
+	prefixTokens := strings.Split(s.prefix, "/")
+	prefixTokens = prefixTokens[:len(prefixTokens)-1]
+	prefix := path.Join(strings.Join(prefixTokens, "/"), backupVersionV1)
+
+	ls, err := s.makeSnapList(prefix)
+	if err != nil {
+		return false, nil, nil
+	}
+
+	if len(ls) > 0 {
+		return true, ls, nil
+	}
+
+	return false, nil, nil
+}
+
+// isV2Present checks if v2 prefix is present (Required for backward compatibility)
+func (s *OSSSnapStore) isV2Present() (bool, brtypes.SnapList, error) {
+	prefixTokens := strings.Split(s.prefix, "/")
+	prefixTokens = prefixTokens[:len(prefixTokens)-1]
+	prefix := path.Join(strings.Join(prefixTokens, "/"), backupVersionV2)
+
+	ls, err := s.makeSnapList(prefix)
+	if err != nil {
+		return false, nil, nil
+	}
+
+	if len(ls) > 0 {
+		return true, ls, nil
+	}
+
+	return false, nil, nil
 }
 
 func authOptionsFromEnv() (authOptions, error) {

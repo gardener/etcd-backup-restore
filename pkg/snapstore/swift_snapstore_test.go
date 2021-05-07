@@ -111,10 +111,15 @@ func handleDownloadObject(w http.ResponseWriter, r *http.Request) {
 func handleListObjectNames(w http.ResponseWriter, r *http.Request) {
 	marker := r.URL.Query().Get("marker")
 
+	prefix := r.URL.Query().Get("prefix")
+
 	// To store the keys in slice in sorted order
 	var keys, contents []string
 	for k := range objectMap {
-		keys = append(keys, k)
+		// Check if the version of object storage exist (Backward Compatibility)
+		if strings.Contains(k, prefix) {
+			keys = append(keys, k)
+		}
 	}
 	sort.Strings(keys)
 
