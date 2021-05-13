@@ -44,26 +44,26 @@ func (e *EtcdInitializer) Initialize(mode validator.Mode, failBelowRevision int6
 	start := time.Now()
 	dataDirStatus, err := e.Validator.Validate(mode, failBelowRevision)
 	if dataDirStatus == validator.DataDirectoryStatusUnknown {
-		metrics.ValidationDurationSeconds.With(prometheus.Labels{metrics.LabelSucceeded: metrics.ValueSucceededFalse}).Observe(time.Now().Sub(start).Seconds())
+		metrics.ValidationDurationSeconds.With(prometheus.Labels{metrics.LabelSucceeded: metrics.ValueSucceededFalse}).Observe(time.Since(start).Seconds())
 		return fmt.Errorf("error while initializing: %v", err)
 	}
 
 	if dataDirStatus == validator.FailBelowRevisionConsistencyError {
-		metrics.ValidationDurationSeconds.With(prometheus.Labels{metrics.LabelSucceeded: metrics.ValueSucceededFalse}).Observe(time.Now().Sub(start).Seconds())
+		metrics.ValidationDurationSeconds.With(prometheus.Labels{metrics.LabelSucceeded: metrics.ValueSucceededFalse}).Observe(time.Since(start).Seconds())
 		return fmt.Errorf("failed to initialize since fail below revision check failed")
 	}
 
-	metrics.ValidationDurationSeconds.With(prometheus.Labels{metrics.LabelSucceeded: metrics.ValueSucceededTrue}).Observe(time.Now().Sub(start).Seconds())
+	metrics.ValidationDurationSeconds.With(prometheus.Labels{metrics.LabelSucceeded: metrics.ValueSucceededTrue}).Observe(time.Since(start).Seconds())
 
 	if dataDirStatus != validator.DataDirectoryValid {
 		start := time.Now()
 		restored, err := e.restoreCorruptData()
 		if err != nil {
-			metrics.RestorationDurationSeconds.With(prometheus.Labels{metrics.LabelSucceeded: metrics.ValueSucceededFalse}).Observe(time.Now().Sub(start).Seconds())
+			metrics.RestorationDurationSeconds.With(prometheus.Labels{metrics.LabelSucceeded: metrics.ValueSucceededFalse}).Observe(time.Since(start).Seconds())
 			return fmt.Errorf("error while restoring corrupt data: %v", err)
 		}
 		if restored {
-			metrics.RestorationDurationSeconds.With(prometheus.Labels{metrics.LabelSucceeded: metrics.ValueSucceededTrue}).Observe(time.Now().Sub(start).Seconds())
+			metrics.RestorationDurationSeconds.With(prometheus.Labels{metrics.LabelSucceeded: metrics.ValueSucceededTrue}).Observe(time.Since(start).Seconds())
 		}
 	}
 	return nil
@@ -131,8 +131,8 @@ func (e *EtcdInitializer) restoreCorruptData() (bool, error) {
 	}
 
 	rs := restorer.NewRestorer(store, logrus.NewEntry(logger))
-	if err := rs.Restore(tempRestoreOptions); err != nil {
-		err = fmt.Errorf("Failed to restore snapshot: %v", err)
+	if err := rs.RestoreAndStopEtcd(tempRestoreOptions); err != nil {
+		err = fmt.Errorf("failed to restore snapshot: %v", err)
 		return false, err
 	}
 
@@ -176,7 +176,7 @@ func (e *EtcdInitializer) removeContents(dataDir string) error {
 	}
 
 	if err := os.Rename(filepath.Join(fmt.Sprintf("%s.%s", dataDir, "part")), filepath.Join(dataDir)); err != nil {
-		return fmt.Errorf("Failed to rename temp restore directory %s to data directory %s with err: %v", filepath.Join(fmt.Sprintf("%s.%s", dataDir, "part")), dataDir, err)
+		return fmt.Errorf("failed to rename temp restore directory %s to data directory %s with err: %v", filepath.Join(fmt.Sprintf("%s.%s", dataDir, "part")), dataDir, err)
 	}
 	return nil
 }

@@ -16,11 +16,8 @@ package restorer_test
 
 import (
 	"context"
-	"fmt"
-	"math"
 	"os"
 	"path"
-	"strconv"
 	"sync"
 	"time"
 
@@ -29,8 +26,6 @@ import (
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 	"github.com/gardener/etcd-backup-restore/test/utils"
-	"github.com/sirupsen/logrus"
-	"go.etcd.io/etcd/clientv3"
 	"go.etcd.io/etcd/pkg/types"
 
 	. "github.com/gardener/etcd-backup-restore/pkg/snapshot/restorer"
@@ -124,7 +119,7 @@ var _ = Describe("Running Restorer", func() {
 				restoreOpts.Config.InitialAdvertisePeerURLs = []string{"http://localhost:2390"}
 				restoreOpts.ClusterURLs, err = types.NewURLsMap(restoreOpts.Config.InitialCluster)
 
-				err = rstr.Restore(restoreOpts)
+				err = rstr.RestoreAndStopEtcd(restoreOpts)
 				Expect(err).Should(HaveOccurred())
 			})
 		})
@@ -133,7 +128,7 @@ var _ = Describe("Running Restorer", func() {
 			It("should fail to restore", func() {
 				restoreOpts.Config.RestoreDataDir = ""
 
-				err = rstr.Restore(restoreOpts)
+				err = rstr.RestoreAndStopEtcd(restoreOpts)
 				Expect(err).Should(HaveOccurred())
 			})
 		})
@@ -143,7 +138,7 @@ var _ = Describe("Running Restorer", func() {
 				restoreOpts.BaseSnapshot.SnapDir = "test"
 				restoreOpts.BaseSnapshot.SnapName = "test"
 
-				err := rstr.Restore(restoreOpts)
+				err := rstr.RestoreAndStopEtcd(restoreOpts)
 				Expect(err).Should(HaveOccurred())
 			})
 		})
@@ -169,10 +164,10 @@ var _ = Describe("Running Restorer", func() {
 		Context("with maximum of one fetcher allowed", func() {
 			It("should restore etcd data directory", func() {
 				restoreOpts.Config.MaxFetchers = 1
-				err = rstr.Restore(restoreOpts)
+				err = rstr.RestoreAndStopEtcd(restoreOpts)
 				Expect(err).ShouldNot(HaveOccurred())
 
-				err = checkDataConsistency(testCtx, restoreOpts.Config.RestoreDataDir, logger)
+				err = utils.CheckDataConsistency(testCtx, restoreOpts.Config.RestoreDataDir, keyTo, logger)
 				Expect(err).ShouldNot(HaveOccurred())
 			})
 		})
@@ -181,10 +176,10 @@ var _ = Describe("Running Restorer", func() {
 			It("should restore etcd data directory", func() {
 				restoreOpts.Config.MaxFetchers = 4
 
-				err = rstr.Restore(restoreOpts)
+				err = rstr.RestoreAndStopEtcd(restoreOpts)
 				Expect(err).ShouldNot(HaveOccurred())
 
-				err = checkDataConsistency(testCtx, restoreOpts.Config.RestoreDataDir, logger)
+				err = utils.CheckDataConsistency(testCtx, restoreOpts.Config.RestoreDataDir, keyTo, logger)
 				Expect(err).ShouldNot(HaveOccurred())
 			})
 		})
@@ -193,10 +188,10 @@ var _ = Describe("Running Restorer", func() {
 			It("should restore etcd data directory", func() {
 				restoreOpts.Config.MaxFetchers = 100
 
-				err = rstr.Restore(restoreOpts)
+				err = rstr.RestoreAndStopEtcd(restoreOpts)
 				Expect(err).ShouldNot(HaveOccurred())
 
-				err = checkDataConsistency(testCtx, restoreOpts.Config.RestoreDataDir, logger)
+				err = utils.CheckDataConsistency(testCtx, restoreOpts.Config.RestoreDataDir, keyTo, logger)
 				Expect(err).ShouldNot(HaveOccurred())
 			})
 		})
@@ -309,10 +304,10 @@ var _ = Describe("Running Restorer", func() {
 					restoreOpts.BaseSnapshot.SnapName = ""
 				}
 
-				err := rstr.Restore(restoreOpts)
+				err := rstr.RestoreAndStopEtcd(restoreOpts)
 
 				Expect(err).ShouldNot(HaveOccurred())
-				err = checkDataConsistency(testCtx, restoreOpts.Config.RestoreDataDir, logger)
+				err = utils.CheckDataConsistency(testCtx, restoreOpts.Config.RestoreDataDir, keyTo, logger)
 				Expect(err).ShouldNot(HaveOccurred())
 			})
 		})
@@ -349,7 +344,7 @@ var _ = Describe("Running Restorer", func() {
 					PeerURLs:      peerUrls,
 				}
 
-				err = rstr.Restore(restoreOpts)
+				err = rstr.RestoreAndStopEtcd(restoreOpts)
 
 				Expect(err).ShouldNot(HaveOccurred())
 
@@ -392,7 +387,7 @@ var _ = Describe("Running Restorer", func() {
 					PeerURLs:      peerUrls,
 				}
 
-				err = rstr.Restore(restoreOpts)
+				err = rstr.RestoreAndStopEtcd(restoreOpts)
 				Expect(err).Should(HaveOccurred())
 				// the below consistency fails with index out of range error hence commented,
 				// but the etcd directory is filled partially as part of the restore which should be relooked.
@@ -429,7 +424,7 @@ var _ = Describe("Running Restorer", func() {
 				}
 
 				logger.Infoln("starting restore, restore directory exists already")
-				err = rstr.Restore(restoreOpts)
+				err = rstr.RestoreAndStopEtcd(restoreOpts)
 				logger.Infof("Failed to restore because :: %s", err)
 
 				Expect(err).Should(HaveOccurred())
@@ -476,9 +471,9 @@ var _ = Describe("Running Restorer", func() {
 				}
 
 				logger.Infoln("starting restore while snapshotter is running")
-				err = rstr.Restore(restoreOpts)
+				err = rstr.RestoreAndStopEtcd(restoreOpts)
 				Expect(err).ShouldNot(HaveOccurred())
-				err = checkDataConsistency(testCtx, restoreOpts.Config.RestoreDataDir, logger)
+				err = utils.CheckDataConsistency(testCtx, restoreOpts.Config.RestoreDataDir, keyTo, logger)
 				Expect(err).ShouldNot(HaveOccurred())
 
 				// Although the test has passed but the logic currently doesn't stop snapshotter explicitly but assumes that restore
@@ -560,9 +555,9 @@ var _ = Describe("Running Restorer", func() {
 					PeerURLs:      peerUrls,
 				}
 
-				err = rstr.Restore(restoreOpts)
+				err = rstr.RestoreAndStopEtcd(restoreOpts)
 				Expect(err).ShouldNot(HaveOccurred())
-				err = checkDataConsistency(testCtx, restoreOpts.Config.RestoreDataDir, logger)
+				err = utils.CheckDataConsistency(testCtx, restoreOpts.Config.RestoreDataDir, keyTo, logger)
 				Expect(err).ShouldNot(HaveOccurred())
 			})
 		})
@@ -641,9 +636,9 @@ var _ = Describe("Running Restorer", func() {
 					PeerURLs:      peerUrls,
 				}
 
-				err = rstr.Restore(restoreOpts)
+				err = rstr.RestoreAndStopEtcd(restoreOpts)
 				Expect(err).ShouldNot(HaveOccurred())
-				err = checkDataConsistency(testCtx, restoreOpts.Config.RestoreDataDir, logger)
+				err = utils.CheckDataConsistency(testCtx, restoreOpts.Config.RestoreDataDir, keyTo, logger)
 				Expect(err).ShouldNot(HaveOccurred())
 			})
 		})
@@ -651,65 +646,6 @@ var _ = Describe("Running Restorer", func() {
 	})
 
 })
-
-// checkDataConsistency starts an embedded etcd and checks for correctness of the values stored in etcd against the keys 'keyFrom' through 'keyTo'
-func checkDataConsistency(ctx context.Context, dir string, logger *logrus.Entry) error {
-	etcd, err := utils.StartEmbeddedEtcd(ctx, dir, logger)
-	if err != nil {
-		return fmt.Errorf("unable to start embedded etcd server: %v", err)
-	}
-	defer etcd.Close()
-	endpoints := []string{etcd.Clients[0].Addr().String()}
-	cli, err := clientv3.New(clientv3.Config{
-		Endpoints:   endpoints,
-		DialTimeout: 10 * time.Second,
-	})
-	if err != nil {
-		return fmt.Errorf("unable to start etcd client: %v", err)
-	}
-	defer cli.Close()
-
-	var (
-		key      string
-		value    string
-		resKey   string
-		resValue string
-	)
-
-	for currKey := 0; currKey <= keyTo; currKey++ {
-		key = utils.KeyPrefix + strconv.Itoa(currKey)
-		value = utils.ValuePrefix + strconv.Itoa(currKey)
-
-		resp, err := cli.Get(testCtx, key, clientv3.WithLimit(1))
-		if err != nil {
-			return fmt.Errorf("unable to get value from etcd: %v", err)
-		}
-		if len(resp.Kvs) == 0 {
-			// handles deleted keys as every 10th key is deleted during populate etcd call
-			// this handling is also done in the populateEtcd() in restorer_suite_test.go file
-			// also it assumes that the deltaSnapshotDuration is more than 10 --
-			// if you change the constant please change the factor accordingly to have coverage of delete scenarios.
-			if math.Mod(float64(currKey), 10) == 0 {
-				continue //it should continue as key was put for action delete
-			} else {
-				return fmt.Errorf("entry not found for key %s", key)
-			}
-		}
-		res := resp.Kvs[0]
-		resKey = string(res.Key)
-		resValue = string(res.Value)
-
-		if resKey != key {
-			return fmt.Errorf("key mismatch for %s and %s", resKey, key)
-		}
-		if resValue != value {
-			return fmt.Errorf("invalid etcd data - value mismatch for %s and %s", resValue, value)
-		}
-	}
-	fmt.Printf("Data consistency for key-value pairs (%[1]s%[3]d, %[2]s%[3]d) through (%[1]s%[4]d, %[2]s%[4]d) has been verified\n", utils.KeyPrefix, utils.ValuePrefix, 0, keyTo)
-
-	return nil
-}
 
 // corruptEtcdDir corrupts the etcd directory by deleting it
 func corruptEtcdDir() error {

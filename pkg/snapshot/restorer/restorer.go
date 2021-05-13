@@ -35,6 +35,7 @@ import (
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 	"github.com/sirupsen/logrus"
 	"go.etcd.io/etcd/clientv3"
+	"go.etcd.io/etcd/embed"
 	"go.etcd.io/etcd/etcdserver"
 	"go.etcd.io/etcd/etcdserver/api/membership"
 	"go.etcd.io/etcd/etcdserver/api/snap"
@@ -75,38 +76,50 @@ func NewRestorer(store brtypes.SnapStore, logger *logrus.Entry) *Restorer {
 	}
 }
 
-// Restore restore the etcd data directory as per specified restore options.
-func (r *Restorer) Restore(ro brtypes.RestoreOptions) error {
-	if err := r.RestoreFromBaseSnapshot(ro); err != nil {
-		return fmt.Errorf("failed to restore from the base snapshot :%v", err)
+// RestoreAndStopEtcd restore the etcd data directory as per specified restore options but doesn't return the ETCD server that it statrted.
+func (r *Restorer) RestoreAndStopEtcd(ro brtypes.RestoreOptions) error {
+	embeddedEtcd, err := r.Restore(ro)
+	defer func() {
+		if embeddedEtcd != nil {
+			embeddedEtcd.Server.Stop()
+			embeddedEtcd.Close()
+		}
+	}()
+	return err
+}
+
+// Restore restore the etcd data directory as per specified restore options but returns the ETCD server that it statrted.
+func (r *Restorer) Restore(ro brtypes.RestoreOptions) (*embed.Etcd, error) {
+	if err := r.restoreFromBaseSnapshot(ro); err != nil {
+		return nil, fmt.Errorf("failed to restore from the base snapshot :%v", err)
 	}
 	if len(ro.DeltaSnapList) == 0 {
 		r.logger.Infof("No delta snapshots present over base snapshot.")
-		return nil
+		return nil, nil
 	}
 	r.logger.Infof("Starting embedded etcd server...")
 	e, err := miscellaneous.StartEmbeddedEtcd(r.logger, &ro)
 	if err != nil {
-		return err
+		return e, err
 	}
-	defer func() {
-		e.Server.Stop()
-		e.Close()
-	}()
 
 	cfg := clientv3.Config{MaxCallSendMsgSize: ro.Config.MaxCallSendMsgSize, Endpoints: []string{e.Clients[0].Addr().String()}}
 	client, err := clientv3.New(cfg)
 	if err != nil {
-		return err
+		return e, err
 	}
 	defer client.Close()
 
 	r.logger.Infof("Applying delta snapshots...")
-	return r.ApplyDeltaSnapshots(client, ro)
+	if err := r.applyDeltaSnapshots(client, ro); err != nil {
+		return e, err
+	}
+
+	return e, nil
 }
 
-// RestoreFromBaseSnapshot restore the etcd data directory from base snapshot.
-func (r *Restorer) RestoreFromBaseSnapshot(ro brtypes.RestoreOptions) error {
+// restoreFromBaseSnapshot restore the etcd data directory from base snapshot.
+func (r *Restorer) restoreFromBaseSnapshot(ro brtypes.RestoreOptions) error {
 	var err error
 	if path.Join(ro.BaseSnapshot.SnapDir, ro.BaseSnapshot.SnapName) == "" {
 		r.logger.Warnf("Base snapshot path not provided. Will do nothing.")
@@ -341,8 +354,8 @@ func makeWALAndSnap(logger *zap.Logger, waldir, snapdir string, cl *membership.R
 	return w.SaveSnapshot(walpb.Snapshot{Index: commit, Term: term})
 }
 
-// ApplyDeltaSnapshots fetches the events from delta snapshots in parallel and applies them to the embedded etcd sequentially.
-func (r *Restorer) ApplyDeltaSnapshots(client *clientv3.Client, ro brtypes.RestoreOptions) error {
+// applyDeltaSnapshots fetches the events from delta snapshots in parallel and applies them to the embedded etcd sequentially.
+func (r *Restorer) applyDeltaSnapshots(client *clientv3.Client, ro brtypes.RestoreOptions) error {
 	snapList := ro.DeltaSnapList
 	numMaxFetchers := ro.Config.MaxFetchers
 

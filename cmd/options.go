@@ -127,13 +127,6 @@ func (c *initializerOptions) complete() {
 	c.restorerOptions.complete()
 }
 
-type restoreOpts interface {
-	getRestorationConfig() *brtypes.RestorationConfig
-	getSnapstoreConfig() *brtypes.SnapstoreConfig
-	validate() error
-	complete()
-}
-
 type compactOptions struct {
 	*restorerOptions
 	needDefragmentation bool
@@ -150,37 +143,11 @@ func newCompactOptions() *compactOptions {
 	}
 }
 
-func (c *compactOptions) getRestorationConfig() *brtypes.RestorationConfig {
-	return c.restorationConfig
-}
-
-func (c *compactOptions) getSnapstoreConfig() *brtypes.SnapstoreConfig {
-	return c.snapstoreConfig
-}
-
 // AddFlags adds the flags to flagset.
 func (c *compactOptions) addFlags(fs *flag.FlagSet) {
 	c.restorationConfig.AddFlags(fs)
 	c.snapstoreConfig.AddFlags(fs)
 	fs.BoolVar(&c.needDefragmentation, "defragment", c.needDefragmentation, "defragment after compaction")
-}
-
-// Validate validates the config.
-func (c *compactOptions) validate() error {
-	if err := c.snapstoreConfig.Validate(); err != nil {
-		return err
-	}
-
-	if err := c.snapstoreConfig.Validate(); err != nil {
-		return err
-	}
-
-	return c.restorationConfig.Validate()
-}
-
-// complete completes the config.
-func (c *compactOptions) complete() {
-	c.snapstoreConfig.Complete()
 }
 
 type restorerOptions struct {
@@ -194,14 +161,6 @@ func newRestorerOptions() *restorerOptions {
 		restorationConfig: brtypes.NewRestorationConfig(),
 		snapstoreConfig:   snapstore.NewSnapstoreConfig(),
 	}
-}
-
-func (c *restorerOptions) getRestorationConfig() *brtypes.RestorationConfig {
-	return c.restorationConfig
-}
-
-func (c *restorerOptions) getSnapstoreConfig() *brtypes.SnapstoreConfig {
-	return c.snapstoreConfig
 }
 
 // AddFlags adds the flags to flagset.
@@ -221,7 +180,7 @@ func (c *restorerOptions) validate() error {
 
 // complete completes the config.
 func (c *restorerOptions) complete() {
-	//c.snapstoreConfig.Complete()
+	c.snapstoreConfig.Complete()
 }
 
 type validatorOptions struct {

@@ -16,7 +16,6 @@ package cmd
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/gardener/etcd-backup-restore/pkg/compactor"
 	"github.com/sirupsen/logrus"
@@ -30,7 +29,7 @@ func NewCompactCommand(ctx context.Context) *cobra.Command {
 	compactCmd := &cobra.Command{
 		Use:   "compact",
 		Short: "compacts multiple incremental snapshots in etcd backup into a single full snapshot",
-		Long:  fmt.Sprintf(`Compacts an existing backup stored in snapshot store.`),
+		Long:  "Compacts an existing backup stored in snapshot store.",
 		Run: func(cmd *cobra.Command, args []string) {
 			/* Compact operation
 			- Restore from all the latest snapshots (Base + Delta).
@@ -40,19 +39,18 @@ func NewCompactCommand(ctx context.Context) *cobra.Command {
 			*/
 			logger := logrus.New()
 
-			options, store, err := BuildRestoreOptionsAndStore(opts)
+			options, store, err := BuildRestoreOptionsAndStore(opts.restorerOptions)
 			if err != nil {
 				return
 			}
 
 			cp := compactor.NewCompactor(store, logrus.NewEntry(logger))
-			res, err := cp.Compact(options, opts.needDefragmentation)
+			snapshot, err := cp.Compact(options, opts.needDefragmentation)
 			if err != nil {
 				logger.Fatalf("Failed to restore snapshot: %v", err)
 				return
 			}
-			// logger.Infof("Compacted snapshot is in: %v", filepath.Join(opts.snapstoreConfig.Container, res.Snapshot.SnapDir, res.Snapshot.SnapName))
-			logger.Infof("Compacted snapshot is in: %v", res.Path)
+			logger.Infof("Compacted snapshot name : %v", snapshot.SnapName)
 
 		},
 	}

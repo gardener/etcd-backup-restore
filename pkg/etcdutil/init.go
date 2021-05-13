@@ -16,7 +16,6 @@ package etcdutil
 
 import (
 	"fmt"
-	"time"
 
 	"github.com/gardener/etcd-backup-restore/pkg/wrappers"
 	flag "github.com/spf13/pflag"
@@ -26,7 +25,7 @@ import (
 func NewEtcdConnectionConfig() *EtcdConnectionConfig {
 	return &EtcdConnectionConfig{
 		Endpoints:          []string{defaultEtcdConnectionEndpoint},
-		ConnectionTimeout:  wrappers.Duration{Duration: 30 * time.Second},
+		ConnectionTimeout:  wrappers.Duration{Duration: DefaultDefragConnectionTimeout},
 		InsecureTransport:  true,
 		InsecureSkipVerify: false,
 	}

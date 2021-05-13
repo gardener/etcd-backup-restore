@@ -16,7 +16,6 @@ package cmd
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/gardener/etcd-backup-restore/pkg/snapshot/restorer"
 	"github.com/sirupsen/logrus"
@@ -30,7 +29,7 @@ func NewRestoreCommand(ctx context.Context) *cobra.Command {
 	restoreCmd := &cobra.Command{
 		Use:   "restore",
 		Short: "restores an etcd member data directory from snapshots",
-		Long:  fmt.Sprintf(`Restores an etcd member data directory from existing backup stored in snapshot store.`),
+		Long:  "Restores an etcd member data directory from existing backup stored in snapshot store.",
 		Run: func(cmd *cobra.Command, args []string) {
 			/* Restore operation
 			- Find the latest snapshot.
@@ -44,7 +43,7 @@ func NewRestoreCommand(ctx context.Context) *cobra.Command {
 			}
 
 			rs := restorer.NewRestorer(store, logrus.NewEntry(logger))
-			if err := rs.Restore(*options); err != nil {
+			if err := rs.RestoreAndStopEtcd(*options); err != nil {
 				logger.Fatalf("Failed to restore snapshot: %v", err)
 				return
 			}

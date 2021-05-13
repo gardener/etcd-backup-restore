@@ -291,45 +291,18 @@ func (ssr *Snapshotter) takeFullSnapshot() (*brtypes.Snapshot, error) {
 	} else {
 		ctx, cancel = context.WithTimeout(context.TODO(), ssr.etcdConnectionConfig.ConnectionTimeout.Duration)
 		defer cancel()
-		rc, err := client.Snapshot(ctx)
-		if err != nil {
-			return nil, &errors.EtcdError{
-				Message: fmt.Sprintf("failed to create etcd snapshot: %v", err),
-			}
-		}
-
 		// compressionSuffix is useful in backward compatibility(restoring from uncompressed snapshots).
 		// it is also helpful in inferring which compression Policy to be used to decompress the snapshot.
 		compressionSuffix, err := compressor.GetCompressionSuffix(ssr.compressionConfig.Enabled, ssr.compressionConfig.CompressionPolicy)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get compressionSuffix: %v", err)
 		}
-		ssr.logger.Infof("Successfully opened snapshot reader on etcd")
-		s := snapstore.NewSnapshot(brtypes.SnapshotKindFull, 0, lastRevision, compressionSuffix)
 
-		startTime := time.Now()
-
-		// if compression is enabled
-		//    then compress the snapshot.
-		if ssr.compressionConfig.Enabled {
-			ssr.logger.Info("start the Compression of full snapshot")
-			rc, err = compressor.CompressSnapshot(rc, ssr.compressionConfig.CompressionPolicy)
-			if err != nil {
-				return nil, fmt.Errorf("unable to compress full snapshot: %v", err)
-			}
+		s, err := etcdutil.TakeAndSaveFullSnapshot(ctx, client, ssr.store, lastRevision, ssr.compressionConfig, compressionSuffix, ssr.logger)
+		if err != nil {
+			return nil, err
 		}
-		defer rc.Close()
 
-		if err := ssr.store.Save(*s, rc); err != nil {
-			timeTaken := time.Now().Sub(startTime).Seconds()
-			metrics.SnapshotDurationSeconds.With(prometheus.Labels{metrics.LabelKind: brtypes.SnapshotKindFull, metrics.LabelSucceeded: metrics.ValueSucceededFalse}).Observe(timeTaken)
-			return nil, &errors.SnapstoreError{
-				Message: fmt.Sprintf("failed to save snapshot: %v", err),
-			}
-		}
-		timeTaken := time.Now().Sub(startTime).Seconds()
-		metrics.SnapshotDurationSeconds.With(prometheus.Labels{metrics.LabelKind: brtypes.SnapshotKindFull, metrics.LabelSucceeded: metrics.ValueSucceededTrue}).Observe(timeTaken)
-		logrus.Infof("Total time to save snapshot: %f seconds.", timeTaken)
 		ssr.prevSnapshot = s
 		ssr.PrevFullSnapshot = s
 		ssr.PrevDeltaSnapshots = nil

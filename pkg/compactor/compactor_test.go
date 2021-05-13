@@ -2,12 +2,16 @@ package compactor_test
 
 import (
 	"fmt"
+	"io/ioutil"
 	"os"
+	"path"
 
 	"github.com/gardener/etcd-backup-restore/pkg/compactor"
 	"github.com/gardener/etcd-backup-restore/pkg/miscellaneous"
+	"github.com/gardener/etcd-backup-restore/pkg/snapshot/restorer"
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
+	"github.com/gardener/etcd-backup-restore/test/utils"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	"go.etcd.io/etcd/pkg/types"
@@ -46,6 +50,8 @@ var _ = Describe("Running Compactor", func() {
 
 	Describe("Compact while a etcd server is running", func() {
 		var restoreOpts *brtypes.RestoreOptions
+		var compactedSnapshot *brtypes.Snapshot
+		var restoreDir string
 
 		BeforeEach(func() {
 			dir = fmt.Sprintf("%s/etcd/snapshotter.bkp", testSuitDir)
@@ -73,10 +79,15 @@ var _ = Describe("Running Compactor", func() {
 			}
 		})
 
-		AfterEach(func() {
-		})
-
 		Context("with defragmention allowed", func() {
+			AfterEach(func() {
+				_, err := os.Stat(restoreDir)
+				if err == nil {
+					os.RemoveAll(restoreDir)
+				}
+				store.Delete(*compactedSnapshot)
+			})
+
 			It("should create a snapshot", func() {
 				restoreOpts.Config.MaxFetchers = 4
 
@@ -88,22 +99,69 @@ var _ = Describe("Running Compactor", func() {
 				restoreOpts.DeltaSnapList = deltaSnapList
 
 				// Take the compacted full snapshot with defragmnetation allowed
-				res, err := cptr.Compact(restoreOpts, true)
+				_, err = cptr.Compact(restoreOpts, true)
 				Expect(err).ShouldNot(HaveOccurred())
 
 				// Check if the compacted full snapshot is really present
-				// fi, err := os.Stat(filepath.Join(dir, res.Snapshot.SnapDir, res.Snapshot.SnapName))
-				fi, err := os.Stat(res.Path)
+				snapList, err := store.List()
+				Expect(err).ShouldNot(HaveOccurred())
+
+				compactedSnapshot = snapList[len(snapList)-1]
+				fi, err := os.Stat(path.Join(compactedSnapshot.Prefix, compactedSnapshot.SnapDir, compactedSnapshot.SnapName))
+				Expect(err).ShouldNot(HaveOccurred())
+
+				size := fi.Size()
+				Expect(size).ShouldNot(BeZero())
+			})
+			It("should restore from compacted snapshot", func() {
+				restoreOpts.Config.MaxFetchers = 4
+
+				// Fetch latest snapshots
+				baseSnapshot, deltaSnapList, err := miscellaneous.GetLatestFullSnapshotAndDeltaSnapList(store)
+				Expect(err).ShouldNot(HaveOccurred())
+
+				restoreOpts.BaseSnapshot = baseSnapshot
+				restoreOpts.DeltaSnapList = deltaSnapList
+
+				// Take the compacted full snapshot with defragmnetation allowed
+				_, err = cptr.Compact(restoreOpts, true)
+				Expect(err).ShouldNot(HaveOccurred())
+
+				compactedSnapshot, deltaSnapList, err = miscellaneous.GetLatestFullSnapshotAndDeltaSnapList(store)
+				Expect(err).ShouldNot(HaveOccurred())
+
+				fi, err := os.Stat(path.Join(compactedSnapshot.Prefix, compactedSnapshot.SnapDir, compactedSnapshot.SnapName))
 				Expect(err).ShouldNot(HaveOccurred())
 
 				size := fi.Size()
 				Expect(size).ShouldNot(BeZero())
 
-				err = os.Remove(res.Path)
+				// Restore from the compacted snapshot
+				restoreDir, err = ioutil.TempDir("/tmp", "restore-")
+				Expect(err).ShouldNot(HaveOccurred())
+
+				restoreOpts.Config.RestoreDataDir = restoreDir
+
+				restoreOpts.BaseSnapshot = compactedSnapshot
+				restoreOpts.DeltaSnapList = deltaSnapList
+
+				rstr := restorer.NewRestorer(store, logger)
+
+				err = rstr.RestoreAndStopEtcd(*restoreOpts)
+
+				Expect(err).ShouldNot(HaveOccurred())
+				err = utils.CheckDataConsistency(testCtx, restoreOpts.Config.RestoreDataDir, keyTo, logger)
 				Expect(err).ShouldNot(HaveOccurred())
 			})
 		})
 		Context("with defragmention not allowed", func() {
+			AfterEach(func() {
+				_, err := os.Stat(restoreDir)
+				if err != nil {
+					os.RemoveAll(restoreDir)
+				}
+				store.Delete(*compactedSnapshot)
+			})
 			It("should create a snapshot", func() {
 				restoreOpts.Config.MaxFetchers = 4
 
@@ -115,18 +173,58 @@ var _ = Describe("Running Compactor", func() {
 				restoreOpts.DeltaSnapList = deltaSnapList
 
 				// Take the compacted full snapshot with defragmnetation not allowed
-				res, err := cptr.Compact(restoreOpts, false)
+				_, err = cptr.Compact(restoreOpts, false)
 				Expect(err).ShouldNot(HaveOccurred())
 
 				// Check if the compacted full snapshot is really present
-				// fi, err := os.Stat(filepath.Join(dir, res.Snapshot.SnapDir, res.Snapshot.SnapName))
-				fi, err := os.Stat(res.Path)
+				snapList, err := store.List()
+				Expect(err).ShouldNot(HaveOccurred())
+
+				compactedSnapshot = snapList[len(snapList)-1]
+				fi, err := os.Stat(path.Join(compactedSnapshot.Prefix, compactedSnapshot.SnapDir, compactedSnapshot.SnapName))
+				Expect(err).ShouldNot(HaveOccurred())
+
+				size := fi.Size()
+				Expect(size).ShouldNot(BeZero())
+			})
+			It("should restore from compacted snapshot", func() {
+				restoreOpts.Config.MaxFetchers = 4
+
+				// Fetch latest snapshots
+				baseSnapshot, deltaSnapList, err := miscellaneous.GetLatestFullSnapshotAndDeltaSnapList(store)
+				Expect(err).ShouldNot(HaveOccurred())
+
+				restoreOpts.BaseSnapshot = baseSnapshot
+				restoreOpts.DeltaSnapList = deltaSnapList
+
+				// Take the compacted full snapshot with defragmnetation not allowed
+				_, err = cptr.Compact(restoreOpts, false)
+				Expect(err).ShouldNot(HaveOccurred())
+
+				// Check if the compacted full snapshot is really present
+				compactedSnapshot, deltaSnapList, err = miscellaneous.GetLatestFullSnapshotAndDeltaSnapList(store)
+				Expect(err).ShouldNot(HaveOccurred())
+				fi, err := os.Stat(path.Join(compactedSnapshot.Prefix, compactedSnapshot.SnapDir, compactedSnapshot.SnapName))
 				Expect(err).ShouldNot(HaveOccurred())
 
 				size := fi.Size()
 				Expect(size).ShouldNot(BeZero())
 
-				err = os.Remove(res.Path)
+				// Restore from the compacted snapshot
+				restoreDir, err = ioutil.TempDir("/tmp", "restore-")
+				Expect(err).ShouldNot(HaveOccurred())
+
+				restoreOpts.Config.RestoreDataDir = restoreDir
+
+				restoreOpts.BaseSnapshot = compactedSnapshot
+				restoreOpts.DeltaSnapList = deltaSnapList
+
+				rstr := restorer.NewRestorer(store, logger)
+
+				err = rstr.RestoreAndStopEtcd(*restoreOpts)
+
+				Expect(err).ShouldNot(HaveOccurred())
+				err = utils.CheckDataConsistency(testCtx, restoreOpts.Config.RestoreDataDir, keyTo, logger)
 				Expect(err).ShouldNot(HaveOccurred())
 			})
 		})

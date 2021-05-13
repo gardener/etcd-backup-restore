@@ -33,7 +33,7 @@ func printVersionInfo() {
 }
 
 // BuildRestoreOptionsAndStore forms the RestoreOptions and Store object
-func BuildRestoreOptionsAndStore(opts restoreOpts) (*brtypes.RestoreOptions, brtypes.SnapStore, error) {
+func BuildRestoreOptionsAndStore(opts *restorerOptions) (*brtypes.RestoreOptions, brtypes.SnapStore, error) {
 	if err := opts.validate(); err != nil {
 		logger.Fatalf("failed to validate the options: %v", err)
 		return nil, nil, err
@@ -41,17 +41,17 @@ func BuildRestoreOptionsAndStore(opts restoreOpts) (*brtypes.RestoreOptions, brt
 
 	opts.complete()
 
-	clusterUrlsMap, err := types.NewURLsMap(opts.getRestorationConfig().InitialCluster)
+	clusterUrlsMap, err := types.NewURLsMap(opts.restorationConfig.InitialCluster)
 	if err != nil {
 		logger.Fatalf("failed creating url map for restore cluster: %v", err)
 	}
 
-	peerUrls, err := types.NewURLs(opts.getRestorationConfig().InitialAdvertisePeerURLs)
+	peerUrls, err := types.NewURLs(opts.restorationConfig.InitialAdvertisePeerURLs)
 	if err != nil {
 		logger.Fatalf("failed parsing peers urls for restore cluster: %v", err)
 	}
 
-	store, err := snapstore.GetSnapstore(opts.getSnapstoreConfig())
+	store, err := snapstore.GetSnapstore(opts.snapstoreConfig)
 	if err != nil {
 		logger.Fatalf("failed to create restore snapstore from configured storage provider: %v", err)
 	}
@@ -64,11 +64,11 @@ func BuildRestoreOptionsAndStore(opts restoreOpts) (*brtypes.RestoreOptions, brt
 
 	if baseSnap == nil {
 		logger.Infof("No base snapshot found. Will do nothing.")
-		return nil, nil, fmt.Errorf("No base snapshot found")
+		return nil, nil, fmt.Errorf("no base snapshot found")
 	}
 
 	return &brtypes.RestoreOptions{
-		Config:        opts.getRestorationConfig(),
+		Config:        opts.restorationConfig,
 		BaseSnapshot:  baseSnap,
 		DeltaSnapList: deltaSnapList,
 		ClusterURLs:   clusterUrlsMap,

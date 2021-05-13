@@ -17,9 +17,20 @@ package etcdutil
 import (
 	"context"
 	"crypto/tls"
+	"fmt"
+	"time"
 
 	"go.etcd.io/etcd/clientv3"
 	"go.etcd.io/etcd/pkg/transport"
+
+	"github.com/gardener/etcd-backup-restore/pkg/compressor"
+	"github.com/gardener/etcd-backup-restore/pkg/errors"
+	"github.com/gardener/etcd-backup-restore/pkg/metrics"
+	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/sirupsen/logrus"
+
+	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 )
 
 // GetTLSClientForEtcd creates an etcd client using the TLS config params.
@@ -74,4 +85,71 @@ func GetTLSClientForEtcd(tlsConfig *EtcdConnectionConfig) (*clientv3.Client, err
 	}
 
 	return clientv3.New(*cfg)
+}
+
+// DefragmentData defragment the data directory of each etcd member.
+func DefragmentData(defragCtx context.Context, client *clientv3.Client, endpoints []string, logger *logrus.Entry) error {
+	for _, ep := range endpoints {
+		var dbSizeBeforeDefrag, dbSizeAfterDefrag int64
+		logger.Infof("Defragmenting etcd member[%s]", ep)
+
+		if status, err := client.Status(defragCtx, ep); err != nil {
+			logger.Warnf("Failed to get status of etcd member[%s] with error: %v", ep, err)
+		} else {
+			dbSizeBeforeDefrag = status.DbSize
+		}
+		start := time.Now()
+		if _, err := client.Defragment(defragCtx, ep); err != nil {
+			metrics.DefragmentationDurationSeconds.With(prometheus.Labels{metrics.LabelSucceeded: metrics.ValueSucceededFalse}).Observe(time.Since(start).Seconds())
+			logger.Errorf("Failed to defragment etcd member[%s] with error: %v", ep, err)
+			return err
+		}
+		metrics.DefragmentationDurationSeconds.With(prometheus.Labels{metrics.LabelSucceeded: metrics.ValueSucceededTrue}).Observe(time.Since(start).Seconds())
+		logger.Infof("Finished defragmenting etcd member[%s]", ep)
+		// Since below request for status races with other etcd operations. So, size returned in
+		// status might vary from the precise size just after defragmentation.
+		if status, err := client.Status(defragCtx, ep); err != nil {
+			logger.Warnf("Failed to get status of etcd member[%s] with error: %v", ep, err)
+		} else {
+			dbSizeAfterDefrag = status.DbSize
+			logger.Infof("Probable DB size change for etcd member [%s]:  %dB -> %dB after defragmentation", ep, dbSizeBeforeDefrag, dbSizeAfterDefrag)
+		}
+	}
+	return nil
+}
+
+// TakeAndSaveFullSnapshot takes full snapshot and save it to store
+func TakeAndSaveFullSnapshot(ctx context.Context, client *clientv3.Client, store brtypes.SnapStore, lastRevision int64, cc *compressor.CompressionConfig, suffix string, logger *logrus.Entry) (*brtypes.Snapshot, error) {
+	rc, err := client.Snapshot(ctx)
+	if err != nil {
+		return nil, &errors.EtcdError{
+			Message: fmt.Sprintf("failed to create etcd snapshot: %v", err),
+		}
+	}
+	if cc.Enabled {
+		rc, err = compressor.CompressSnapshot(rc, cc.CompressionPolicy)
+		if err != nil {
+			return nil, fmt.Errorf("unable to obtain reader for compressed file: %v", err)
+		}
+	}
+	defer rc.Close()
+
+	logger.Infof("Successfully opened snapshot reader on etcd")
+
+	// Then save the snapshot to the store.
+	snapshot := snapstore.NewSnapshot(brtypes.SnapshotKindFull, 0, lastRevision, suffix)
+	startTime := time.Now()
+	if err := store.Save(*snapshot, rc); err != nil {
+		timeTaken := time.Since(startTime)
+		metrics.SnapshotDurationSeconds.With(prometheus.Labels{metrics.LabelKind: brtypes.SnapshotKindFull, metrics.LabelSucceeded: metrics.ValueSucceededFalse}).Observe(timeTaken.Seconds())
+		return nil, &errors.SnapstoreError{
+			Message: fmt.Sprintf("failed to save snapshot: %v", err),
+		}
+	}
+
+	timeTaken := time.Since(startTime)
+	metrics.SnapshotDurationSeconds.With(prometheus.Labels{metrics.LabelKind: brtypes.SnapshotKindFull, metrics.LabelSucceeded: metrics.ValueSucceededTrue}).Observe(timeTaken.Seconds())
+	logger.Infof("Total time to save snapshot: %f seconds.", timeTaken.Seconds())
+
+	return snapshot, nil
 }

@@ -3,18 +3,15 @@ package compactor
 import (
 	"context"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"os"
-	"path/filepath"
 	"time"
 
 	"github.com/gardener/etcd-backup-restore/pkg/compressor"
-	"github.com/gardener/etcd-backup-restore/pkg/metrics"
+	"github.com/gardener/etcd-backup-restore/pkg/etcdutil"
 	"github.com/gardener/etcd-backup-restore/pkg/miscellaneous"
 	"github.com/gardener/etcd-backup-restore/pkg/snapshot/restorer"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
-	"github.com/prometheus/client_golang/prometheus"
 	"github.com/sirupsen/logrus"
 	"go.etcd.io/etcd/clientv3"
 )
@@ -49,35 +46,20 @@ func NewCompactor(store brtypes.SnapStore, logger *logrus.Entry) *Compactor {
 }
 
 // Compact is mainly responsible for applying snapshots (full + delta), compacting, drefragmenting, taking the snapshot and saving it sequentially.
-func (cp *Compactor) Compact(ro *brtypes.RestoreOptions, needDefragmentation bool) (*brtypes.CompactionResult, error) {
+func (cp *Compactor) Compact(ro *brtypes.RestoreOptions, needDefragmentation bool) (*brtypes.Snapshot, error) {
 	cp.logger.Info("Start compacting")
 
+	// Deepcopy restoration options ro to avoid any mutation of the passing object
+	cmpctOptions := ro.DeepCopy()
+
 	// If no basesnapshot is found, abort compaction as there would be nothing to compact
-	if ro.BaseSnapshot == nil {
+	if cmpctOptions.BaseSnapshot == nil {
 		cp.logger.Error("No base snapshot found. Nothing is available for compaction")
-		return nil, fmt.Errorf("No base snapshot found. Nothing is available for compaction")
+		return nil, fmt.Errorf("no base snapshot found. Nothing is available for compaction")
 	}
-
-	// Set suffix of compacted snapshot that will be result of this compaction
-	suffix := ro.BaseSnapshot.CompressionSuffix
-	if len(ro.DeltaSnapList) > 0 {
-		suffix = ro.DeltaSnapList[ro.DeltaSnapList.Len()-1].CompressionSuffix
-	}
-
-	// TODO: Remove this provision of saving the compacted snapshot in current directory when we change directory structure
-	cwd, err := os.Getwd()
-	if err != nil {
-		return nil, fmt.Errorf("Unable to create file to save compacted snapshot %v", err)
-	}
-
-	cmpctdFileName := filepath.Join(cwd, filepath.Base(fmt.Sprintf("%s-%d%s", "compacted", time.Now().UTC().Unix(), suffix)))
-	cmpctdFile, err := os.Create(cmpctdFileName)
-	defer cmpctdFile.Close()
-	cp.logger.Infof("Created compacted snapshot in: %s", cmpctdFileName)
-	// Remove till here
 
 	// Set a temporary etcd data directory for embedded etcd
-	cmpctDir, err := ioutil.TempDir("/tmp", "compactor")
+	cmpctDir, err := ioutil.TempDir("/tmp", "compactor-")
 	if err != nil {
 		cp.logger.Errorf("Unable to create temporary etcd directory for compaction: %s", err.Error())
 		return nil, err
@@ -85,49 +67,42 @@ func (cp *Compactor) Compact(ro *brtypes.RestoreOptions, needDefragmentation boo
 
 	defer os.RemoveAll(cmpctDir)
 
-	ro.Config.RestoreDataDir = cmpctDir
+	cmpctOptions.Config.RestoreDataDir = cmpctDir
 
-	var client *clientv3.Client
-	var ep []string
-
-	// Then restore from the base snapshot
+	// Then restore from the snapshots
 	r := restorer.NewRestorer(cp.store, cp.logger)
-	/*if err := r.Restore(*ro); err != nil {
-		return nil, fmt.Errorf("Unable to restore snapshots during compaction: %v", err)
-	}*/
-
-	if err := r.RestoreFromBaseSnapshot(*ro); err != nil {
-		return nil, fmt.Errorf("Failed to restore from the base snapshot :%v", err)
-	}
-
-	cp.logger.Infof("Starting embedded etcd server for compaction...")
-	e, err := miscellaneous.StartEmbeddedEtcd(cp.logger, ro)
+	embeddedEtcd, err := r.Restore(*cmpctOptions)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("unable to restore snapshots during compaction: %v", err)
 	}
+
+	cp.logger.Info("Restoration for compaction is over")
+	// There is a possibility that restore operation may not start an embedded ETCD.
+	if embeddedEtcd == nil {
+		embeddedEtcd, err = miscellaneous.StartEmbeddedEtcd(cp.logger, cmpctOptions)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	defer func() {
-		e.Server.Stop()
-		e.Close()
+		embeddedEtcd.Server.Stop()
+		embeddedEtcd.Close()
 	}()
 
-	ep = []string{e.Clients[0].Addr().String()}
-	cfg := clientv3.Config{MaxCallSendMsgSize: ro.Config.MaxCallSendMsgSize, Endpoints: ep}
-	client, err = clientv3.New(cfg)
+	ep := []string{embeddedEtcd.Clients[0].Addr().String()}
+
+	// Then compact ETCD
+
+	// Build Client
+	cfg := clientv3.Config{MaxCallSendMsgSize: cmpctOptions.Config.MaxCallSendMsgSize, Endpoints: ep}
+	client, err := clientv3.New(cfg)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to build client")
 	}
 	defer client.Close()
 
-	if len(ro.DeltaSnapList) > 0 {
-		cp.logger.Infof("Applying delta snapshots...")
-		if err := r.ApplyDeltaSnapshots(client, *ro); err != nil {
-			cp.logger.Warnf("Could not apply the delta snapshots: %v", err)
-		}
-	} else {
-		cp.logger.Infof("No delta snapshots present over base snapshot.")
-	}
-
-	// Then compact ETCD
+	// Build contxt
 	ctx := context.TODO()
 	revCheckCtx, cancel := context.WithTimeout(ctx, etcdDialTimeout)
 	getResponse, err := client.Get(revCheckCtx, "foo")
@@ -137,39 +112,18 @@ func (cp *Compactor) Compact(ro *brtypes.RestoreOptions, needDefragmentation boo
 	}
 	etcdRevision := getResponse.Header.GetRevision()
 
-	client.Compact(ctx, etcdRevision)
+	// Compact
+	if _, err := client.Compact(ctx, etcdRevision); err != nil {
+		return nil, fmt.Errorf("failed to compact: %v", err)
+	}
 
 	// Then defrag the ETCD
 	if needDefragmentation {
-		var dbSizeBeforeDefrag, dbSizeAfterDefrag int64
-		statusReqCtx, cancel := context.WithTimeout(ctx, etcdDialTimeout)
-		status, err := client.Status(statusReqCtx, ep[0])
-		cancel()
+		defragCtx, defragCancel := context.WithTimeout(ctx, etcdutil.DefaultDefragConnectionTimeout)
+		err := etcdutil.DefragmentData(defragCtx, client, ep, cp.logger)
+		defragCancel()
 		if err != nil {
-			cp.logger.Warnf("Failed to get status of etcd member[%s] with error: %v", ep, err)
-		} else {
-			dbSizeBeforeDefrag = status.DbSize
-		}
-
-		start := time.Now()
-		defragCtx, cancel := context.WithTimeout(ctx, time.Duration(60*time.Second))
-		_, err = client.Defragment(defragCtx, ep[0])
-		cancel()
-		if err != nil {
-			cp.logger.Errorf("Total time taken to defragment: %v", time.Now().Sub(start).Seconds())
-			cp.logger.Errorf("Failed to defragment etcd member[%s] with error: %v", ep, err)
-		}
-		cp.logger.Infof("Total time taken to defragment: %v", time.Now().Sub(start).Seconds())
-		cp.logger.Infof("Finished defragmenting etcd member[%s]", ep)
-
-		statusReqCtx, cancel = context.WithTimeout(ctx, etcdDialTimeout)
-		status, err = client.Status(statusReqCtx, ep[0])
-		cancel()
-		if err != nil {
-			cp.logger.Warnf("Failed to get status of etcd member[%s] with error: %v", ep, err)
-		} else {
-			dbSizeAfterDefrag = status.DbSize
-			cp.logger.Infof("Probable DB size change for etcd member [%s]:  %dB -> %dB after defragmentation", ep, dbSizeBeforeDefrag, dbSizeAfterDefrag)
+			cp.logger.Errorf("failed to defragment: %v", err)
 		}
 	}
 
@@ -177,51 +131,22 @@ func (cp *Compactor) Compact(ro *brtypes.RestoreOptions, needDefragmentation boo
 	snapshotReqCtx, cancel := context.WithTimeout(ctx, etcdDialTimeout)
 	defer cancel()
 
-	rc, err := client.Snapshot(snapshotReqCtx)
-	if err != nil {
-		return nil, fmt.Errorf("Failed to create etcd snapshot out of compacted DB: %v", err)
+	// Determine suffix of compacted snapshot that will be result of this compaction
+	suffix := cmpctOptions.BaseSnapshot.CompressionSuffix
+	if len(cmpctOptions.DeltaSnapList) > 0 {
+		suffix = cmpctOptions.DeltaSnapList[cmpctOptions.DeltaSnapList.Len()-1].CompressionSuffix
 	}
 
 	isCompressed, compressionPolicy, err := compressor.IsSnapshotCompressed(suffix)
 	if err != nil {
-		return nil, fmt.Errorf("Unable to determine if snapshot is compressed: %v", ro.BaseSnapshot.CompressionSuffix)
-	}
-	if isCompressed {
-		rc, err = compressor.CompressSnapshot(rc, compressionPolicy)
-		if err != nil {
-			return nil, fmt.Errorf("Unable to obtain reader for compressed file: %v", err)
-		}
-	}
-	defer rc.Close()
-
-	cp.logger.Infof("Successfully opened snapshot reader on etcd")
-
-	// TODO: Save the snapshots to store when we change the directory structure
-	// Then save the snapshot to the store.
-	//s := snapstore.NewSnapshot(snapstore.SnapshotKindFull, 0, etcdRevision, ro.BaseSnapshot.CompressionSuffix)
-	startTime := time.Now()
-	/*if err := cp.store.Save(*s, rc); err != nil {
-		timeTaken := time.Now().Sub(startTime).Seconds()
-		metrics.SnapshotDurationSeconds.With(prometheus.Labels{metrics.LabelKind: snapstore.SnapshotKindFull, metrics.LabelSucceeded: metrics.ValueSucceededFalse}).Observe(timeTaken)
-		return nil, fmt.Errorf("failed to save snapshot: %v", err)
-	}*/
-
-	// TODO: Remove this copy when directory structure is changed
-	if _, err = io.Copy(cmpctdFile, rc); err != nil {
-		return nil, fmt.Errorf("Unable to create compacted snapshot: %v", err)
+		return nil, fmt.Errorf("unable to determine if snapshot is compressed: %v", cmpctOptions.BaseSnapshot.CompressionSuffix)
 	}
 
-	timeTaken := time.Now().Sub(startTime).Seconds()
-	metrics.SnapshotDurationSeconds.With(prometheus.Labels{metrics.LabelKind: brtypes.SnapshotKindFull, metrics.LabelSucceeded: metrics.ValueSucceededTrue}).Observe(timeTaken)
-	cp.logger.Infof("Total time to save snapshot: %f seconds.", timeTaken)
-
-	compactionDuration, err := time.ParseDuration(fmt.Sprintf("%fs", timeTaken))
+	cc := &compressor.CompressionConfig{Enabled: isCompressed, CompressionPolicy: compressionPolicy}
+	snapshot, err := etcdutil.TakeAndSaveFullSnapshot(snapshotReqCtx, client, cp.store, etcdRevision, cc, suffix, cp.logger)
 	if err != nil {
-		cp.logger.Warnf("Could not record compaction duration: %v", err)
+		return nil, err
 	}
-	return &brtypes.CompactionResult{
-		//Snapshot:               s,
-		Path:                   cmpctdFileName,
-		LastCompactionDuration: compactionDuration,
-	}, nil
+
+	return snapshot, nil
 }
