@@ -46,7 +46,8 @@ type SwiftSnapStore struct {
 }
 
 const (
-	swiftNoOfChunk int64 = 1000 //Default configuration in swift installation
+	// Total number of chunks to be uploaded must be one less than maximum limit allowed.
+	swiftNoOfChunk int64 = 999 //Default configuration in swift installation
 )
 
 // NewSwiftSnapStore create new SwiftSnapStore from shared configuration with specified bucket
