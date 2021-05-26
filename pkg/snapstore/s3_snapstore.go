@@ -34,7 +34,8 @@ import (
 )
 
 const (
-	s3NoOfChunk int64 = 10000 //Default configuration in swift installation
+	// Total number of chunks to be uploaded must be one less than maximum limit allowed.
+	s3NoOfChunk int64 = 9999
 )
 
 // S3SnapStore is snapstore with AWS S3 object store as backend

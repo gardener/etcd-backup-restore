@@ -43,7 +43,8 @@ type GCSSnapStore struct {
 }
 
 const (
-	gcsNoOfChunk int64 = 32
+	// Total number of chunks to be uploaded must be one less than maximum limit allowed.
+	gcsNoOfChunk int64 = 31
 )
 
 // NewGCSSnapStore create new GCSSnapStore from shared configuration with specified bucket.

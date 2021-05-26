@@ -40,7 +40,8 @@ type OSSBucket interface {
 }
 
 const (
-	ossNoOfChunk    int64 = 10000
+	// Total number of chunks to be uploaded must be one less than maximum limit allowed.
+	ossNoOfChunk    int64 = 9999
 	ossEndPoint           = "ALICLOUD_ENDPOINT"
 	accessKeyID           = "ALICLOUD_ACCESS_KEY_ID"
 	accessKeySecret       = "ALICLOUD_ACCESS_KEY_SECRET"
