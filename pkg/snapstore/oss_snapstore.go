@@ -22,10 +22,13 @@ import (
 	"os"
 	"path"
 	"sort"
+	"strings"
 	"sync"
 
 	"github.com/aliyun/aliyun-oss-go-sdk/oss"
 	"github.com/sirupsen/logrus"
+
+	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 )
 
 // OSSBucket is an interface for oss.Bucket used in snapstore
@@ -96,8 +99,8 @@ func NewOSSFromBucket(prefix, tempDir string, maxParallelChunkUploads uint, buck
 }
 
 // Fetch should open reader for the snapshot file from store
-func (s *OSSSnapStore) Fetch(snap Snapshot) (io.ReadCloser, error) {
-	body, err := s.bucket.GetObject(path.Join(s.prefix, snap.SnapDir, snap.SnapName))
+func (s *OSSSnapStore) Fetch(snap brtypes.Snapshot) (io.ReadCloser, error) {
+	body, err := s.bucket.GetObject(path.Join(snap.Prefix, snap.SnapDir, snap.SnapName))
 	if err != nil {
 		return nil, err
 	}
@@ -105,7 +108,7 @@ func (s *OSSSnapStore) Fetch(snap Snapshot) (io.ReadCloser, error) {
 }
 
 // Save will write the snapshot to store
-func (s *OSSSnapStore) Save(snap Snapshot, rc io.ReadCloser) error {
+func (s *OSSSnapStore) Save(snap brtypes.Snapshot, rc io.ReadCloser) error {
 	tmpfile, err := ioutil.TempFile(s.tempDir, tmpBackupFilePrefix)
 	if err != nil {
 		rc.Close()
@@ -219,22 +222,29 @@ func (s *OSSSnapStore) uploadPart(imur oss.InitiateMultipartUploadResult, file *
 }
 
 // List will list the snapshots from store
-func (s *OSSSnapStore) List() (SnapList, error) {
-	var snapList SnapList
+func (s *OSSSnapStore) List() (brtypes.SnapList, error) {
+	prefixTokens := strings.Split(s.prefix, "/")
+	// Last element of the tokens is backup version
+	// Consider the parent of the backup version level (Required for Backward Compatibility)
+	prefix := path.Join(strings.Join(prefixTokens[:len(prefixTokens)-1], "/"))
+
+	var snapList brtypes.SnapList
 
 	marker := ""
 	for {
-		lsRes, err := s.bucket.ListObjects(oss.Marker(marker), oss.Prefix(s.prefix))
+		lsRes, err := s.bucket.ListObjects(oss.Marker(marker), oss.Prefix(prefix))
 		if err != nil {
 			return nil, err
 		}
 		for _, object := range lsRes.Objects {
-			snap, err := ParseSnapshot(object.Key[len(s.prefix)+1:])
-			if err != nil {
-				// Warning
-				logrus.Warnf("Invalid snapshot found. Ignoring it: %s", object.Key)
-			} else {
-				snapList = append(snapList, snap)
+			if strings.HasPrefix(object.Key, backupVersionV1) || strings.HasPrefix(object.Key, backupVersionV2) {
+				snap, err := ParseSnapshot(object.Key)
+				if err != nil {
+					// Warning
+					logrus.Warnf("Invalid snapshot found. Ignoring it: %s", object.Key)
+				} else {
+					snapList = append(snapList, snap)
+				}
 			}
 		}
 		if lsRes.IsTruncated {
@@ -249,8 +259,8 @@ func (s *OSSSnapStore) List() (SnapList, error) {
 }
 
 // Delete should delete the snapshot file from store
-func (s *OSSSnapStore) Delete(snap Snapshot) error {
-	return s.bucket.DeleteObject(path.Join(s.prefix, snap.SnapDir, snap.SnapName))
+func (s *OSSSnapStore) Delete(snap brtypes.Snapshot) error {
+	return s.bucket.DeleteObject(path.Join(snap.Prefix, snap.SnapDir, snap.SnapName))
 }
 
 func authOptionsFromEnv() (authOptions, error) {

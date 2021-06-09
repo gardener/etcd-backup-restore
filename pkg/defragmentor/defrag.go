@@ -16,22 +16,15 @@ package defragmentor
 
 import (
 	"context"
-	"time"
 
 	"github.com/gardener/etcd-backup-restore/pkg/etcdutil"
-	"github.com/gardener/etcd-backup-restore/pkg/metrics"
-	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
-	"github.com/prometheus/client_golang/prometheus"
+	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 	cron "github.com/robfig/cron/v3"
 	"github.com/sirupsen/logrus"
 )
 
-const (
-	etcdDialTimeout = time.Second * 30
-)
-
 // CallbackFunc is type decalration for callback function for defragmentor
-type CallbackFunc func(ctx context.Context) (*snapstore.Snapshot, error)
+type CallbackFunc func(ctx context.Context) (*brtypes.Snapshot, error)
 
 // defragmentorJob implement the cron.Job for etcd defragmentation.
 type defragmentorJob struct {
@@ -52,7 +45,16 @@ func NewDefragmentorJob(ctx context.Context, etcdConnectionConfig *etcdutil.Etcd
 }
 
 func (d *defragmentorJob) Run() {
-	if err := d.defragData(); err != nil {
+	client, err := etcdutil.GetTLSClientForEtcd(d.etcdConnectionConfig)
+	if err != nil {
+		d.logger.Warnf("failed to create etcd client for defragmentation")
+	}
+	defer client.Close()
+
+	defragCtx, defragCancel := context.WithTimeout(d.ctx, d.etcdConnectionConfig.ConnectionTimeout.Duration)
+	err = etcdutil.DefragmentData(defragCtx, client, d.etcdConnectionConfig.Endpoints, d.logger)
+	defragCancel()
+	if err != nil {
 		d.logger.Warnf("Failed to defrag data with error: %v", err)
 	} else {
 		if d.callback != nil {
@@ -61,52 +63,6 @@ func (d *defragmentorJob) Run() {
 			}
 		}
 	}
-}
-
-// defragData defragment the data directory of each etcd member.
-func (d *defragmentorJob) defragData() error {
-	client, err := etcdutil.GetTLSClientForEtcd(d.etcdConnectionConfig)
-	if err != nil {
-		d.logger.Warnf("failed to create etcd client for defragmentation")
-		return err
-	}
-	defer client.Close()
-
-	for _, ep := range d.etcdConnectionConfig.Endpoints {
-		var dbSizeBeforeDefrag, dbSizeAfterDefrag int64
-		d.logger.Infof("Defragmenting etcd member[%s]", ep)
-		statusReqCtx, cancel := context.WithTimeout(d.ctx, etcdDialTimeout)
-		status, err := client.Status(statusReqCtx, ep)
-		cancel()
-		if err != nil {
-			d.logger.Warnf("Failed to get status of etcd member[%s] with error: %v", ep, err)
-		} else {
-			dbSizeBeforeDefrag = status.DbSize
-		}
-		start := time.Now()
-		defragCtx, cancel := context.WithTimeout(d.ctx, d.etcdConnectionConfig.ConnectionTimeout.Duration)
-		_, err = client.Defragment(defragCtx, ep)
-		cancel()
-		if err != nil {
-			metrics.DefragmentationDurationSeconds.With(prometheus.Labels{metrics.LabelSucceeded: metrics.ValueSucceededFalse}).Observe(time.Now().Sub(start).Seconds())
-			d.logger.Errorf("Failed to defragment etcd member[%s] with error: %v", ep, err)
-			return err
-		}
-		metrics.DefragmentationDurationSeconds.With(prometheus.Labels{metrics.LabelSucceeded: metrics.ValueSucceededTrue}).Observe(time.Now().Sub(start).Seconds())
-		d.logger.Infof("Finished defragmenting etcd member[%s]", ep)
-		// Since below request for status races with other etcd operations. So, size returned in
-		// status might vary from the precise size just after defragmentation.
-		statusReqCtx, cancel = context.WithTimeout(d.ctx, etcdDialTimeout)
-		status, err = client.Status(statusReqCtx, ep)
-		cancel()
-		if err != nil {
-			d.logger.Warnf("Failed to get status of etcd member[%s] with error: %v", ep, err)
-		} else {
-			dbSizeAfterDefrag = status.DbSize
-			d.logger.Infof("Probable DB size change for etcd member [%s]:  %dB -> %dB after defragmentation", ep, dbSizeBeforeDefrag, dbSizeAfterDefrag)
-		}
-	}
-	return nil
 }
 
 // DefragDataPeriodically defragments the data directory of each etcd member.

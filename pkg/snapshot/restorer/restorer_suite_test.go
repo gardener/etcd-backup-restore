@@ -23,11 +23,8 @@ import (
 	"time"
 
 	"github.com/gardener/etcd-backup-restore/pkg/compressor"
-	"github.com/gardener/etcd-backup-restore/pkg/wrappers"
+	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 
-	"github.com/gardener/etcd-backup-restore/pkg/etcdutil"
-	"github.com/gardener/etcd-backup-restore/pkg/snapshot/snapshotter"
-	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	"github.com/gardener/etcd-backup-restore/test/utils"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -80,13 +77,14 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 
 	deltaSnapshotPeriod := time.Second
 	ctx := utils.ContextWithWaitGroupFollwedByGracePeriod(populatorCtx, wg, deltaSnapshotPeriod+2*time.Second)
+
 	compressionConfig := compressor.NewCompressorConfig()
-	err = runSnapshotter(logger, deltaSnapshotPeriod, endpoints, ctx.Done(), true, compressionConfig)
+	snapstoreConfig := brtypes.SnapstoreConfig{Container: snapstoreDir, Provider: "Local"}
+	err = utils.RunSnapshotter(logger, snapstoreConfig, deltaSnapshotPeriod, endpoints, ctx.Done(), true, compressionConfig)
 	Expect(err).ShouldNot(HaveOccurred())
 
 	keyTo = resp.KeyTo
 	return data
-
 }, func(data []byte) {})
 
 var _ = SynchronizedAfterSuite(func() {}, cleanUp)
@@ -103,32 +101,4 @@ func cleanUp() {
 	err = os.RemoveAll(path.Join(restoreDir, "member"))
 	Expect(err).ShouldNot(HaveOccurred())
 
-}
-
-// runSnapshotter creates a snapshotter object and runs it for a duration specified by 'snapshotterDurationSeconds'
-func runSnapshotter(logger *logrus.Entry, deltaSnapshotPeriod time.Duration, endpoints []string, stopCh <-chan struct{}, startWithFullSnapshot bool, compressionConfig *compressor.CompressionConfig) error {
-	store, err := snapstore.GetSnapstore(&snapstore.Config{Container: snapstoreDir, Provider: "Local"})
-	if err != nil {
-		return err
-	}
-
-	etcdConnectionConfig := etcdutil.NewEtcdConnectionConfig()
-	etcdConnectionConfig.ConnectionTimeout.Duration = 10 * time.Second
-	etcdConnectionConfig.Endpoints = endpoints
-
-	snapshotterConfig := &snapshotter.Config{
-		FullSnapshotSchedule:     "0 0 1 1 *",
-		DeltaSnapshotPeriod:      wrappers.Duration{Duration: deltaSnapshotPeriod},
-		DeltaSnapshotMemoryLimit: snapshotter.DefaultDeltaSnapMemoryLimit,
-		GarbageCollectionPeriod:  wrappers.Duration{Duration: time.Minute},
-		GarbageCollectionPolicy:  snapshotter.GarbageCollectionPolicyLimitBased,
-		MaxBackups:               1,
-	}
-
-	ssr, err := snapshotter.NewSnapshotter(logger, snapshotterConfig, store, etcdConnectionConfig, compressionConfig)
-	if err != nil {
-		return err
-	}
-
-	return ssr.Run(stopCh, startWithFullSnapshot)
 }

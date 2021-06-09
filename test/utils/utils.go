@@ -23,6 +23,12 @@ import (
 	"sync"
 	"time"
 
+	"github.com/gardener/etcd-backup-restore/pkg/compressor"
+	"github.com/gardener/etcd-backup-restore/pkg/etcdutil"
+	"github.com/gardener/etcd-backup-restore/pkg/snapshot/snapshotter"
+	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
+	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
+	"github.com/gardener/etcd-backup-restore/pkg/wrappers"
 	"github.com/sirupsen/logrus"
 	"go.etcd.io/etcd/clientv3"
 	"go.etcd.io/etcd/embed"
@@ -175,4 +181,91 @@ func ContextWithGracePeriod(parent context.Context, gracePeriod time.Duration) c
 func ContextWithWaitGroupFollwedByGracePeriod(parent context.Context, wg *sync.WaitGroup, gracePeriod time.Duration) context.Context {
 	ctx := ContextWithWaitGroup(parent, wg)
 	return ContextWithGracePeriod(ctx, gracePeriod)
+}
+
+// RunSnapshotter creates a snapshotter object and runs it for a duration specified by 'snapshotterDurationSeconds'
+func RunSnapshotter(logger *logrus.Entry, snapstoreConfig brtypes.SnapstoreConfig, deltaSnapshotPeriod time.Duration, endpoints []string, stopCh <-chan struct{}, startWithFullSnapshot bool, compressionConfig *compressor.CompressionConfig) error {
+	store, err := snapstore.GetSnapstore(&snapstoreConfig)
+	if err != nil {
+		return err
+	}
+
+	etcdConnectionConfig := etcdutil.NewEtcdConnectionConfig()
+	etcdConnectionConfig.ConnectionTimeout.Duration = 10 * time.Second
+	etcdConnectionConfig.Endpoints = endpoints
+
+	snapshotterConfig := &brtypes.SnapshotterConfig{
+		FullSnapshotSchedule:     "0 0 1 1 *",
+		DeltaSnapshotPeriod:      wrappers.Duration{Duration: deltaSnapshotPeriod},
+		DeltaSnapshotMemoryLimit: brtypes.DefaultDeltaSnapMemoryLimit,
+		GarbageCollectionPeriod:  wrappers.Duration{Duration: time.Minute},
+		GarbageCollectionPolicy:  brtypes.GarbageCollectionPolicyLimitBased,
+		MaxBackups:               1,
+	}
+
+	ssr, err := snapshotter.NewSnapshotter(logger, snapshotterConfig, store, etcdConnectionConfig, compressionConfig)
+	if err != nil {
+		return err
+	}
+
+	return ssr.Run(stopCh, startWithFullSnapshot)
+}
+
+// CheckDataConsistency starts an embedded etcd and checks for correctness of the values stored in etcd against the keys 'keyFrom' through 'keyTo'
+func CheckDataConsistency(ctx context.Context, dir string, keyTo int, logger *logrus.Entry) error {
+	etcd, err := StartEmbeddedEtcd(ctx, dir, logger)
+	if err != nil {
+		return fmt.Errorf("unable to start embedded etcd server: %v", err)
+	}
+	defer etcd.Close()
+	endpoints := []string{etcd.Clients[0].Addr().String()}
+	cli, err := clientv3.New(clientv3.Config{
+		Endpoints:   endpoints,
+		DialTimeout: 10 * time.Second,
+	})
+	if err != nil {
+		return fmt.Errorf("unable to start etcd client: %v", err)
+	}
+	defer cli.Close()
+
+	var (
+		key      string
+		value    string
+		resKey   string
+		resValue string
+	)
+
+	for currKey := 0; currKey <= keyTo; currKey++ {
+		key = KeyPrefix + strconv.Itoa(currKey)
+		value = ValuePrefix + strconv.Itoa(currKey)
+
+		resp, err := cli.Get(ctx, key, clientv3.WithLimit(1))
+		if err != nil {
+			return fmt.Errorf("unable to get value from etcd: %v", err)
+		}
+		if len(resp.Kvs) == 0 {
+			// handles deleted keys as every 10th key is deleted during populate etcd call
+			// this handling is also done in the populateEtcd() in restorer_suite_test.go file
+			// also it assumes that the deltaSnapshotDuration is more than 10 --
+			// if you change the constant please change the factor accordingly to have coverage of delete scenarios.
+			if math.Mod(float64(currKey), 10) == 0 {
+				continue //it should continue as key was put for action delete
+			} else {
+				return fmt.Errorf("entry not found for key %s", key)
+			}
+		}
+		res := resp.Kvs[0]
+		resKey = string(res.Key)
+		resValue = string(res.Value)
+
+		if resKey != key {
+			return fmt.Errorf("key mismatch for %s and %s", resKey, key)
+		}
+		if resValue != value {
+			return fmt.Errorf("invalid etcd data - value mismatch for %s and %s", resValue, value)
+		}
+	}
+	fmt.Printf("Data consistency for key-value pairs (%[1]s%[3]d, %[2]s%[3]d) through (%[1]s%[4]d, %[2]s%[4]d) has been verified\n", KeyPrefix, ValuePrefix, 0, keyTo)
+
+	return nil
 }

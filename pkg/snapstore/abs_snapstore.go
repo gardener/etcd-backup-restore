@@ -24,10 +24,13 @@ import (
 	"os"
 	"path"
 	"sort"
+	"strings"
 	"sync"
 
 	"github.com/Azure/azure-storage-blob-go/azblob"
 	"github.com/sirupsen/logrus"
+
+	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 )
 
 const (
@@ -64,7 +67,7 @@ func NewABSSnapStore(container, prefix, tempDir string, maxParallelChunkUploads 
 		Retry: azblob.RetryOptions{
 			TryTimeout: downloadTimeout,
 		}})
-	u, err := url.Parse(fmt.Sprintf("https://%s.%s", storageAccount, AzureBlobStorageHostName))
+	u, err := url.Parse(fmt.Sprintf("https://%s.%s", storageAccount, brtypes.AzureBlobStorageHostName))
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse service url: %v", err)
 	}
@@ -98,8 +101,8 @@ func GetABSSnapstoreFromClient(container, prefix, tempDir string, maxParallelChu
 }
 
 // Fetch should open reader for the snapshot file from store
-func (a *ABSSnapStore) Fetch(snap Snapshot) (io.ReadCloser, error) {
-	blobName := path.Join(a.prefix, snap.SnapDir, snap.SnapName)
+func (a *ABSSnapStore) Fetch(snap brtypes.Snapshot) (io.ReadCloser, error) {
+	blobName := path.Join(snap.Prefix, snap.SnapDir, snap.SnapName)
 	blob := a.containerURL.NewBlobURL(blobName)
 	resp, err := blob.Download(context.Background(), io.SeekStart, azblob.CountToEnd, azblob.BlobAccessConditions{}, false)
 	if err != nil {
@@ -109,9 +112,14 @@ func (a *ABSSnapStore) Fetch(snap Snapshot) (io.ReadCloser, error) {
 }
 
 // List will list all snapshot files on store
-func (a *ABSSnapStore) List() (SnapList, error) {
-	var snapList SnapList
-	opts := azblob.ListBlobsSegmentOptions{Prefix: path.Join(a.prefix, "/")}
+func (a *ABSSnapStore) List() (brtypes.SnapList, error) {
+	prefixTokens := strings.Split(a.prefix, "/")
+	// Last element of the tokens is backup version
+	// Consider the parent of the backup version level (Required for Backward Compatibility)
+	prefix := path.Join(strings.Join(prefixTokens[:len(prefixTokens)-1], "/"))
+
+	var snapList brtypes.SnapList
+	opts := azblob.ListBlobsSegmentOptions{Prefix: prefix}
 	for marker := (azblob.Marker{}); marker.NotDone(); {
 		// Get a result segment starting with the blob indicated by the current Marker.
 		listBlob, err := a.containerURL.ListBlobsFlatSegment(context.TODO(), marker, opts)
@@ -122,12 +130,13 @@ func (a *ABSSnapStore) List() (SnapList, error) {
 
 		// Process the blobs returned in this result segment
 		for _, blob := range listBlob.Segment.BlobItems {
-			k := blob.Name[len(a.prefix)+1:]
-			s, err := ParseSnapshot(k)
-			if err != nil {
-				logrus.Warnf("Invalid snapshot found. Ignoring it:%s\n", k)
-			} else {
-				snapList = append(snapList, s)
+			if strings.HasPrefix(blob.Name, backupVersionV1) || strings.HasPrefix(blob.Name, backupVersionV2) {
+				s, err := ParseSnapshot(path.Join(prefix, blob.Name))
+				if err != nil {
+					logrus.Warnf("Invalid snapshot found. Ignoring it:%s\n", blob.Name)
+				} else {
+					snapList = append(snapList, s)
+				}
 			}
 		}
 	}
@@ -136,7 +145,7 @@ func (a *ABSSnapStore) List() (SnapList, error) {
 }
 
 // Save will write the snapshot to store
-func (a *ABSSnapStore) Save(snap Snapshot, rc io.ReadCloser) error {
+func (a *ABSSnapStore) Save(snap brtypes.Snapshot, rc io.ReadCloser) error {
 	// Save it locally
 	tmpfile, err := ioutil.TempFile(a.tempDir, tmpBackupFilePrefix)
 	if err != nil {
@@ -173,7 +182,7 @@ func (a *ABSSnapStore) Save(snap Snapshot, rc io.ReadCloser) error {
 		go a.blockUploader(&wg, cancelCh, &snap, tmpfile, chunkUploadCh, resCh)
 	}
 	logrus.Infof("Uploading snapshot of size: %d, chunkSize: %d, noOfChunks: %d", size, chunkSize, noOfChunks)
-	for offset, index := int64(0), 1; offset <= size; offset += int64(chunkSize) {
+	for offset, index := int64(0), 1; offset < size; offset += int64(chunkSize) {
 		newChunk := chunk{
 			offset: offset,
 			size:   chunkSize,
@@ -207,7 +216,7 @@ func (a *ABSSnapStore) Save(snap Snapshot, rc io.ReadCloser) error {
 	return nil
 }
 
-func (a *ABSSnapStore) uploadBlock(snap *Snapshot, file *os.File, offset, chunkSize int64) error {
+func (a *ABSSnapStore) uploadBlock(snap *brtypes.Snapshot, file *os.File, offset, chunkSize int64) error {
 	fileInfo, err := file.Stat()
 	if err != nil {
 		return err
@@ -232,7 +241,7 @@ func (a *ABSSnapStore) uploadBlock(snap *Snapshot, file *os.File, offset, chunkS
 	return nil
 }
 
-func (a *ABSSnapStore) blockUploader(wg *sync.WaitGroup, stopCh <-chan struct{}, snap *Snapshot, file *os.File, chunkUploadCh chan chunk, errCh chan<- chunkUploadResult) {
+func (a *ABSSnapStore) blockUploader(wg *sync.WaitGroup, stopCh <-chan struct{}, snap *brtypes.Snapshot, file *os.File, chunkUploadCh chan chunk, errCh chan<- chunkUploadResult) {
 	defer wg.Done()
 	for {
 		select {
@@ -253,8 +262,8 @@ func (a *ABSSnapStore) blockUploader(wg *sync.WaitGroup, stopCh <-chan struct{},
 }
 
 // Delete should delete the snapshot file from store
-func (a *ABSSnapStore) Delete(snap Snapshot) error {
-	blobName := path.Join(a.prefix, snap.SnapDir, snap.SnapName)
+func (a *ABSSnapStore) Delete(snap brtypes.Snapshot) error {
+	blobName := path.Join(snap.Prefix, snap.SnapDir, snap.SnapName)
 	blob := a.containerURL.NewBlobURL(blobName)
 	if _, err := blob.Delete(context.TODO(), azblob.DeleteSnapshotsOptionInclude, azblob.BlobAccessConditions{}); err != nil {
 		return fmt.Errorf("failed to delete blob %s with error: %v", blobName, err)

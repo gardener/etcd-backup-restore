@@ -26,9 +26,9 @@ import (
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 
 	"github.com/gardener/etcd-backup-restore/pkg/initializer/validator"
-	"github.com/gardener/etcd-backup-restore/pkg/snapshot/restorer"
 
 	"github.com/gardener/etcd-backup-restore/pkg/server"
+	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 	"github.com/ghodss/yaml"
 	"github.com/sirupsen/logrus"
 	flag "github.com/spf13/pflag"
@@ -127,15 +127,38 @@ func (c *initializerOptions) complete() {
 	c.restorerOptions.complete()
 }
 
+type compactOptions struct {
+	*restorerOptions
+	needDefragmentation bool
+}
+
+// newCompactOptions returns the validation config.
+func newCompactOptions() *compactOptions {
+	return &compactOptions{
+		restorerOptions: &restorerOptions{
+			restorationConfig: brtypes.NewRestorationConfig(),
+			snapstoreConfig:   snapstore.NewSnapstoreConfig(),
+		},
+		needDefragmentation: true,
+	}
+}
+
+// AddFlags adds the flags to flagset.
+func (c *compactOptions) addFlags(fs *flag.FlagSet) {
+	c.restorationConfig.AddFlags(fs)
+	c.snapstoreConfig.AddFlags(fs)
+	fs.BoolVar(&c.needDefragmentation, "defragment", c.needDefragmentation, "defragment after compaction")
+}
+
 type restorerOptions struct {
-	restorationConfig *restorer.RestorationConfig
-	snapstoreConfig   *snapstore.Config
+	restorationConfig *brtypes.RestorationConfig
+	snapstoreConfig   *brtypes.SnapstoreConfig
 }
 
 // newRestorerOptions returns the validation config.
 func newRestorerOptions() *restorerOptions {
 	return &restorerOptions{
-		restorationConfig: restorer.NewRestorationConfig(),
+		restorationConfig: brtypes.NewRestorationConfig(),
 		snapstoreConfig:   snapstore.NewSnapstoreConfig(),
 	}
 }
@@ -186,8 +209,8 @@ func (c *validatorOptions) validate() error {
 type snapshotterOptions struct {
 	etcdConnectionConfig    *etcdutil.EtcdConnectionConfig
 	compressionConfig       *compressor.CompressionConfig
-	snapstoreConfig         *snapstore.Config
-	snapshotterConfig       *snapshotter.Config
+	snapstoreConfig         *brtypes.SnapstoreConfig
+	snapshotterConfig       *brtypes.SnapshotterConfig
 	defragmentationSchedule string
 }
 

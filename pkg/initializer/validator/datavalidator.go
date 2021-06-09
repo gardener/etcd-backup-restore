@@ -26,8 +26,8 @@ import (
 	"time"
 
 	"github.com/gardener/etcd-backup-restore/pkg/miscellaneous"
-	"github.com/gardener/etcd-backup-restore/pkg/snapshot/restorer"
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
+	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 	"github.com/sirupsen/logrus"
 	bolt "go.etcd.io/bbolt"
 	"go.etcd.io/etcd/clientv3"
@@ -291,15 +291,15 @@ func (d *DataValidator) checkFullRevisionConsistency(dataDir string, latestSnaps
 	var latestSyncedEtcdRevision int64
 
 	d.Logger.Info("Starting embedded etcd server...")
-	ro := &restorer.RestoreOptions{
-		Config: &restorer.RestorationConfig{
+	ro := &brtypes.RestoreOptions{
+		Config: &brtypes.RestorationConfig{
 			RestoreDataDir:         dataDir,
 			EmbeddedEtcdQuotaBytes: d.Config.EmbeddedEtcdQuotaBytes,
 			MaxRequestBytes:        defaultMaxRequestBytes,
 			MaxTxnOps:              defaultMaxTxnOps,
 		},
 	}
-	e, err := restorer.StartEmbeddedEtcd(logrus.NewEntry(d.Logger), ro)
+	e, err := miscellaneous.StartEmbeddedEtcd(logrus.NewEntry(d.Logger), ro)
 	if err != nil {
 		d.Logger.Infof("unable to start embedded etcd: %v", err)
 		return DataDirectoryCorrupt, err

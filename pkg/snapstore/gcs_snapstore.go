@@ -30,6 +30,8 @@ import (
 	stiface "github.com/gardener/etcd-backup-restore/pkg/snapstore/gcs"
 	"github.com/sirupsen/logrus"
 	"google.golang.org/api/iterator"
+
+	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 )
 
 // GCSSnapStore is snapstore with GCS object store as backend.
@@ -71,14 +73,14 @@ func NewGCSSnapStoreFromClient(bucket, prefix, tempDir string, maxParallelChunkU
 }
 
 // Fetch should open reader for the snapshot file from store.
-func (s *GCSSnapStore) Fetch(snap Snapshot) (io.ReadCloser, error) {
-	objectName := path.Join(s.prefix, snap.SnapDir, snap.SnapName)
+func (s *GCSSnapStore) Fetch(snap brtypes.Snapshot) (io.ReadCloser, error) {
+	objectName := path.Join(snap.Prefix, snap.SnapDir, snap.SnapName)
 	ctx := context.TODO()
 	return s.client.Bucket(s.bucket).Object(objectName).NewReader(ctx)
 }
 
 // Save will write the snapshot to store.
-func (s *GCSSnapStore) Save(snap Snapshot, rc io.ReadCloser) error {
+func (s *GCSSnapStore) Save(snap brtypes.Snapshot, rc io.ReadCloser) error {
 	tmpfile, err := ioutil.TempFile(s.tempDir, tmpBackupFilePrefix)
 	if err != nil {
 		rc.Close()
@@ -115,7 +117,7 @@ func (s *GCSSnapStore) Save(snap Snapshot, rc io.ReadCloser) error {
 	}
 
 	logrus.Infof("Uploading snapshot of size: %d, chunkSize: %d, noOfChunks: %d", size, chunkSize, noOfChunks)
-	for offset, index := int64(0), 1; offset <= size; offset += int64(chunkSize) {
+	for offset, index := int64(0), 1; offset < size; offset += int64(chunkSize) {
 		newChunk := chunk{
 			id:     index,
 			offset: offset,
@@ -152,7 +154,7 @@ func (s *GCSSnapStore) Save(snap Snapshot, rc io.ReadCloser) error {
 	return nil
 }
 
-func (s *GCSSnapStore) uploadComponent(snap *Snapshot, file *os.File, offset, chunkSize int64) error {
+func (s *GCSSnapStore) uploadComponent(snap *brtypes.Snapshot, file *os.File, offset, chunkSize int64) error {
 	fileInfo, err := file.Stat()
 	if err != nil {
 		return err
@@ -177,7 +179,7 @@ func (s *GCSSnapStore) uploadComponent(snap *Snapshot, file *os.File, offset, ch
 	return w.Close()
 }
 
-func (s *GCSSnapStore) componentUploader(wg *sync.WaitGroup, stopCh <-chan struct{}, snap *Snapshot, file *os.File, chunkUploadCh chan chunk, errCh chan<- chunkUploadResult) {
+func (s *GCSSnapStore) componentUploader(wg *sync.WaitGroup, stopCh <-chan struct{}, snap *brtypes.Snapshot, file *os.File, chunkUploadCh chan chunk, errCh chan<- chunkUploadResult) {
 	defer wg.Done()
 	for {
 		select {
@@ -198,8 +200,13 @@ func (s *GCSSnapStore) componentUploader(wg *sync.WaitGroup, stopCh <-chan struc
 }
 
 // List will list the snapshots from store.
-func (s *GCSSnapStore) List() (SnapList, error) {
-	it := s.client.Bucket(s.bucket).Objects(context.TODO(), &storage.Query{Prefix: s.prefix})
+func (s *GCSSnapStore) List() (brtypes.SnapList, error) {
+	prefixTokens := strings.Split(s.prefix, "/")
+	// Last element of the tokens is backup version
+	// Consider the parent of the backup version level (Required for Backward Compatibility)
+	prefix := path.Join(strings.Join(prefixTokens[:len(prefixTokens)-1], "/"))
+
+	it := s.client.Bucket(s.bucket).Objects(context.TODO(), &storage.Query{Prefix: prefix})
 
 	var attrs []*storage.ObjectAttrs
 	for {
@@ -213,16 +220,16 @@ func (s *GCSSnapStore) List() (SnapList, error) {
 		attrs = append(attrs, attr)
 	}
 
-	var snapList SnapList
+	var snapList brtypes.SnapList
 	for _, v := range attrs {
-		name := strings.Replace(v.Name, s.prefix+"/", "", 1)
-		//name := v.Name[len(s.prefix):]
-		snap, err := ParseSnapshot(name)
-		if err != nil {
-			// Warning
-			logrus.Warnf("Invalid snapshot found. Ignoring it:%s\n", name)
-		} else {
-			snapList = append(snapList, snap)
+		if strings.HasPrefix(v.Name, backupVersionV1) || strings.HasPrefix(v.Name, backupVersionV2) {
+			snap, err := ParseSnapshot(v.Name)
+			if err != nil {
+				// Warning
+				logrus.Warnf("Invalid snapshot found. Ignoring it:%s\n", v.Name)
+			} else {
+				snapList = append(snapList, snap)
+			}
 		}
 	}
 
@@ -231,7 +238,7 @@ func (s *GCSSnapStore) List() (SnapList, error) {
 }
 
 // Delete should delete the snapshot file from store.
-func (s *GCSSnapStore) Delete(snap Snapshot) error {
-	objectName := path.Join(s.prefix, snap.SnapDir, snap.SnapName)
+func (s *GCSSnapStore) Delete(snap brtypes.Snapshot) error {
+	objectName := path.Join(snap.Prefix, snap.SnapDir, snap.SnapName)
 	return s.client.Bucket(s.bucket).Object(objectName).Delete(context.TODO())
 }

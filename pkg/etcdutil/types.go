@@ -15,10 +15,17 @@
 package etcdutil
 
 import (
+	"time"
+
 	"github.com/gardener/etcd-backup-restore/pkg/wrappers"
 )
 
-const defaultEtcdConnectionEndpoint string = "127.0.0.1:2379"
+const (
+	defaultEtcdConnectionEndpoint string = "127.0.0.1:2379"
+
+	// DefaultDefragConnectionTimeout for timeout during ETCD defrag call
+	DefaultDefragConnectionTimeout time.Duration = 30 * time.Second
+)
 
 // EtcdConnectionConfig holds the etcd connection config.
 type EtcdConnectionConfig struct {

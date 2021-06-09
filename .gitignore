@@ -22,6 +22,7 @@ test/output
 test/e2e_test_data
 default.bkp*
 default.etcd*
+compctedsnap.bkp*
 
 # IDE config
 .vscode

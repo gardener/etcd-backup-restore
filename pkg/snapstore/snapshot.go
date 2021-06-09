@@ -1,4 +1,4 @@
-// Copyright (c) 2018 SAP SE or an SAP affiliate company. All rights reserved. This file is licensed under the Apache Software License, v. 2 except as noted otherwise in the LICENSE file.
+// Copyright (c) 2021 SAP SE or an SAP affiliate company. All rights reserved. This file is licensed under the Apache Software License, v. 2 except as noted otherwise in the LICENSE file.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -21,50 +21,76 @@ import (
 	"strings"
 	"time"
 
+	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 	"github.com/sirupsen/logrus"
 )
 
 // NewSnapshot returns the snapshot object.
-func NewSnapshot(kind string, startRevision, lastRevision int64, compressionSuffix string) *Snapshot {
-	snap := &Snapshot{
+func NewSnapshot(kind string, startRevision, lastRevision int64, compressionSuffix string) *brtypes.Snapshot {
+	snap := &brtypes.Snapshot{
 		Kind:              kind,
 		StartRevision:     startRevision,
 		LastRevision:      lastRevision,
 		CreatedOn:         time.Now().UTC(),
 		CompressionSuffix: compressionSuffix,
 	}
-	snap.GenerateSnapshotDirectory()
 	snap.GenerateSnapshotName()
 	return snap
 }
 
-// GenerateSnapshotName prepares the snapshot name from metadata
-func (s *Snapshot) GenerateSnapshotName() {
-	s.SnapName = fmt.Sprintf("%s-%08d-%08d-%d%s", s.Kind, s.StartRevision, s.LastRevision, s.CreatedOn.Unix(), s.CompressionSuffix)
-}
-
-// GenerateSnapshotDirectory prepares the snapshot directory name from metadata
-func (s *Snapshot) GenerateSnapshotDirectory() {
-	s.SnapDir = fmt.Sprintf("Backup-%d", s.CreatedOn.Unix())
-}
-
-// GetSnapshotDirectoryCreationTimeInUnix returns the creation time for snapshot directory.
-func (s *Snapshot) GetSnapshotDirectoryCreationTimeInUnix() (int64, error) {
-	tok := strings.TrimPrefix(s.SnapDir, "Backup-")
-	return strconv.ParseInt(tok, 10, 64)
-}
-
 // ParseSnapshot parse <snapPath> to create snapshot structure
-func ParseSnapshot(snapPath string) (*Snapshot, error) {
+func ParseSnapshot(snapPath string) (*brtypes.Snapshot, error) {
+	logrus.Infof("Snap path: %s", snapPath)
 	var err error
-	s := &Snapshot{}
+	var backupVersion string = ""
+	s := &brtypes.Snapshot{}
+	// First try if the path contains v1
+	lastIndex := strings.LastIndex(snapPath, "v1/")
+	if lastIndex >= 0 {
+		backupVersion = backupVersionV1
+	}
+
+	// Then try if the path contains v2
+	if backupVersion == "" {
+		lastIndex = strings.LastIndex(snapPath, "v2/")
+		if lastIndex >= 0 {
+			backupVersion = backupVersionV2
+		}
+	}
+
+	if backupVersion == "" {
+		return nil, fmt.Errorf("invalid snapPath %v, does not contain any backupVersion", snapPath)
+	}
+
+	lastIndex = lastIndex + 3
+	prefix := snapPath[:lastIndex]
+	snapPath = snapPath[lastIndex:]
+
 	tok := strings.Split(snapPath, "/")
-	logrus.Debugf("no of tokens:=%d", len(tok))
-	if len(tok) <= 1 || len(tok) > 3 {
+	if len(tok) < 1 || len(tok) > 3 {
 		return nil, fmt.Errorf("invalid snapshot name: %s", snapPath)
 	}
-	snapName := tok[1]
-	snapDir := tok[0]
+
+	var snapName, snapDir string = "", ""
+	// Get snap name from the tokens
+	// Consider the token before snap name
+	// If it's v1, then consider the token as snapDir
+	// If it's v2, then no snapDir exist
+	switch backupVersion {
+	case backupVersionV1:
+		if len(tok) == 3 {
+			s.IsChunk = true
+		}
+		snapDir = tok[0]
+		snapName = path.Join(tok[1:]...)
+	case backupVersionV2:
+		if len(tok) == 2 {
+			s.IsChunk = true
+		}
+		snapName = path.Join(tok[0:]...)
+	}
+
+	logrus.Infof("Prefix: %s, Snap Directory: %s, Snap Name: %s", prefix, snapDir, snapName)
 	tokens := strings.Split(snapName, "-")
 	if len(tokens) != 4 {
 		return nil, fmt.Errorf("invalid snapshot name: %s", snapName)
@@ -72,17 +98,12 @@ func ParseSnapshot(snapPath string) (*Snapshot, error) {
 
 	//parse kind
 	switch tokens[0] {
-	case SnapshotKindFull:
-		s.Kind = SnapshotKindFull
-	case SnapshotKindDelta:
-		s.Kind = SnapshotKindDelta
+	case brtypes.SnapshotKindFull:
+		s.Kind = brtypes.SnapshotKindFull
+	case brtypes.SnapshotKindDelta:
+		s.Kind = brtypes.SnapshotKindDelta
 	default:
 		return nil, fmt.Errorf("unknown snapshot kind: %s", tokens[0])
-	}
-
-	if len(tok) == 3 {
-		s.IsChunk = true
-		snapName = path.Join(snapName, tok[2])
 	}
 
 	//parse start revision
@@ -112,40 +133,6 @@ func ParseSnapshot(snapPath string) (*Snapshot, error) {
 	s.CreatedOn = time.Unix(unixTime, 0).UTC()
 	s.SnapName = snapName
 	s.SnapDir = snapDir
+	s.Prefix = prefix
 	return s, nil
-}
-
-// SnapList override sorting related function
-func (s SnapList) Len() int      { return len(s) }
-func (s SnapList) Swap(i, j int) { s[i], s[j] = s[j], s[i] }
-func (s SnapList) Less(i, j int) bool {
-	// Ignoring errors here, as we assume at this stage the error won't happen.
-	iCreationTime, err := s[i].GetSnapshotDirectoryCreationTimeInUnix()
-	if err != nil {
-		logrus.Errorf("Failed to get snapshot directory creation time for snapshot: %s, with error: %v", path.Join(s[i].SnapDir, s[i].SnapName), err)
-	}
-	jCreationTime, err := s[j].GetSnapshotDirectoryCreationTimeInUnix()
-	if err != nil {
-		logrus.Errorf("Failed to get snapshot directory creation time for snapshot: %s, with error: %v", path.Join(s[j].SnapDir, s[j].SnapName), err)
-	}
-	if iCreationTime < jCreationTime {
-		return true
-	}
-	if iCreationTime > jCreationTime {
-		return false
-	}
-	if s[i].CreatedOn.Unix() == s[j].CreatedOn.Unix() {
-		if !s[i].IsChunk && s[j].IsChunk {
-			return true
-		}
-		if s[i].IsChunk && !s[j].IsChunk {
-			return false
-		}
-		if !s[i].IsChunk && !s[j].IsChunk {
-			return (s[i].StartRevision < s[j].StartRevision)
-		}
-		// If both are chunks, ordering doesn't matter.
-		return true
-	}
-	return (s[i].CreatedOn.Unix() < s[j].CreatedOn.Unix())
 }
