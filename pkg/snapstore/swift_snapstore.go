@@ -228,7 +228,7 @@ func (s *SwiftSnapStore) List() (brtypes.SnapList, error) {
 			return false, err
 		}
 		for _, object := range objectList {
-			if strings.HasPrefix(object, backupVersionV1) || strings.HasPrefix(object, backupVersionV2) {
+			if strings.Contains(object, backupVersionV1) || strings.Contains(object, backupVersionV2) {
 				snap, err := ParseSnapshot(object)
 				if err != nil {
 					// Warning: the file can be a non snapshot file. Do not return error.

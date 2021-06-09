@@ -265,7 +265,7 @@ func (s *S3SnapStore) List() (brtypes.SnapList, error) {
 	err := s.client.ListObjectsPages(in, func(page *s3.ListObjectsOutput, lastPage bool) bool {
 		for _, key := range page.Contents {
 			k := (*key.Key)[len(*page.Prefix):]
-			if strings.HasPrefix(k, backupVersionV1) || strings.HasPrefix(k, backupVersionV2) {
+			if strings.Contains(k, backupVersionV1) || strings.Contains(k, backupVersionV2) {
 				snap, err := ParseSnapshot(path.Join(prefix, k))
 				if err != nil {
 					// Warning

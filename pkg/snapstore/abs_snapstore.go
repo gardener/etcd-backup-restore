@@ -130,7 +130,7 @@ func (a *ABSSnapStore) List() (brtypes.SnapList, error) {
 
 		// Process the blobs returned in this result segment
 		for _, blob := range listBlob.Segment.BlobItems {
-			if strings.HasPrefix(blob.Name, backupVersionV1) || strings.HasPrefix(blob.Name, backupVersionV2) {
+			if strings.Contains(blob.Name, backupVersionV1) || strings.Contains(blob.Name, backupVersionV2) {
 				s, err := ParseSnapshot(path.Join(prefix, blob.Name))
 				if err != nil {
 					logrus.Warnf("Invalid snapshot found. Ignoring it:%s\n", blob.Name)

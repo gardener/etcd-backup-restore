@@ -222,7 +222,7 @@ func (s *GCSSnapStore) List() (brtypes.SnapList, error) {
 
 	var snapList brtypes.SnapList
 	for _, v := range attrs {
-		if strings.HasPrefix(v.Name, backupVersionV1) || strings.HasPrefix(v.Name, backupVersionV2) {
+		if strings.Contains(v.Name, backupVersionV1) || strings.Contains(v.Name, backupVersionV2) {
 			snap, err := ParseSnapshot(v.Name)
 			if err != nil {
 				// Warning
