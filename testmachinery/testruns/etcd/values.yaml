@@ -21,6 +21,12 @@ shoot:
   floatingPoolName: ""
   loadbalancerProvider: ""
 
+etcdbr:
+  aws:
+    accessKeyId: ""
+    secretAccessKey: ""
+    region: ""
+
 kubeconfigs:
   gardener: ""
   seed: ""
