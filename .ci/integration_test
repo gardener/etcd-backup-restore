@@ -270,24 +270,26 @@ function run_test_on_cluster() {
 }
 
 function run_test_on_tm() {
-  if [ "$ACCESS_KEY_ID" == "" ] || [ "$SECRET_ACCESS_KEY" == "" ] || [ "$AWS_REGION" == "" ] ; then
+  if [ "$ACCESS_KEY_ID" == "" ] || [ "$SECRET_ACCESS_KEY_B64" == "" ] || [ "$AWS_REGION" == "" ] ; then
     echo "AWS S3 credentials unavailable. Exiting."
     exit 1
   fi
+  export SECRET_ACCESS_KEY=`echo $SECRET_ACCESS_KEY_B64 | base64 -d`
   export REGION=$AWS_REGION
 
   get_tm_test_id
   export STORAGE_CONTAINER=$TEST_ID
   export ETCDBR_VER=$EFFECTIVE_VERSION
+
   setup_awscli
   write_aws_secret "${ACCESS_KEY_ID}" "${SECRET_ACCESS_KEY}" "${REGION}"
   create_s3_bucket
 
-  INTEGRATION_TEST_KUBECONFIG=$TM_KUBECONFIG_PATH/shoot.config
+  export INTEGRATION_TEST_KUBECONFIG=$TM_KUBECONFIG_PATH/shoot.config
   echo "Starting integration tests on TM cluster $PROJECT_NAMESPACE/$SHOOT_NAME."
   run_test_on_cluster
   echo "Done with integration test on TM cluster."
-  delete_s3_bucket
+  cleanup-aws-infrastructure
 }
 
 case $1 in

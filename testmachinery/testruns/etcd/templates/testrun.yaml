@@ -58,19 +58,13 @@ spec:
     value: {{ .Values.shoot.effectiveVersion }}
   - name: ACCESS_KEY_ID
     type: env
-    valueFrom:
-      secretKeyRef:
-        name: shoot-operator-aws
-        key: accessKeyID
-  - name: SECRET_ACCESS_KEY
+    value: {{ .Values.etcdbr.aws.accessKeyId }}
+  - name: SECRET_ACCESS_KEY_B64
     type: env
-    valueFrom:
-      secretKeyRef:
-        name: shoot-operator-aws
-        key: secretAccessKey
+    value: {{ .Values.etcdbr.aws.secretAccessKey }}
   - name: AWS_REGION
     type: env
-    value: eu-west-1
+    value: {{ .Values.etcdbr.aws.region }}
 
   # the execution flow:
   testflow:

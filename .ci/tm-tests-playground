@@ -8,6 +8,14 @@ TM_LANDSCAPE="external"
 LANDSCAPE=""
 ARGUMENTS=""
 
+function fetch_aws_secret() {
+  echo "Fetching aws credentials from secret server..."
+  export ACCESS_KEY_ID=`cli.py config attribute --cfg-type aws --cfg-name etcd-backup-restore --key access_key_id`
+  export SECRET_ACCESS_KEY=`cli.py config attribute --cfg-type aws --cfg-name etcd-backup-restore --key secret_access_key`
+  export SECRET_ACCESS_KEY_B64=`echo $SECRET_ACCESS_KEY | base64`
+  export REGION=`cli.py config attribute --cfg-type aws --cfg-name etcd-backup-restore --key region`
+  echo "Successfully fetched aws credentials from secret server."
+}
 
 for i in "$@"
 do
@@ -76,6 +84,8 @@ echo "Testmachinery landscape: ${TM_LANDSCAPE}"
 echo "Arguments: ${ARGUMENTS}"
 echo "EFFECTIVE_VERSION: ${EFFECTIVE_VERSION}"
 
+fetch_aws_secret
+
 export SOURCE_PATH="$(readlink -f "$(dirname ${0})/..")"
 mkdir -p /tm
 TM_CLUSTER=/tm/kubeconfig
@@ -110,4 +120,7 @@ kubectl cluster-info
     --flavored-testruns-chart-path=$FLAVOR_TESTRUN_CHART_PATH \
     --flavor-config=$SOURCE_PATH/testmachinery/flavors/$FLAVOR_CONFIG \
     --set=shoot.effectiveVersion=$EFFECTIVE_VERSION \
+    --set=etcdbr.aws.accessKeyId=$ACCESS_KEY_ID \
+    --set=etcdbr.aws.secretAccessKey=$SECRET_ACCESS_KEY_B64 \
+    --set=etcdbr.aws.region=$REGION \
     $ARGUMENTS
