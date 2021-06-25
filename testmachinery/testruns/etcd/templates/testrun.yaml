@@ -33,7 +33,7 @@ spec:
       revision: master
     - type: git
       repo: https://github.com/gardener/etcd-backup-restore
-      revision: master
+      revision: {{ .Values.shoot.gitRevision }}
 
   kubeconfigs:
     gardener: {{ b64enc .Values.kubeconfigs.gardener }}
@@ -56,6 +56,9 @@ spec:
   - name: EFFECTIVE_VERSION
     type: env
     value: {{ .Values.shoot.effectiveVersion }}
+  - name: GIT_REVISION
+    type: env
+    value: {{ .Values.shoot.gitRevision }}
   - name: ACCESS_KEY_ID
     type: env
     value: {{ .Values.etcdbr.aws.accessKeyId }}

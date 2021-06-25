@@ -40,7 +40,7 @@ func NewSnapshot(kind string, startRevision, lastRevision int64, compressionSuff
 
 // ParseSnapshot parse <snapPath> to create snapshot structure
 func ParseSnapshot(snapPath string) (*brtypes.Snapshot, error) {
-	logrus.Infof("Snap path: %s", snapPath)
+	logrus.Debugf("Snap path: %s", snapPath)
 	var err error
 	var backupVersion string = ""
 	s := &brtypes.Snapshot{}
@@ -90,7 +90,7 @@ func ParseSnapshot(snapPath string) (*brtypes.Snapshot, error) {
 		snapName = path.Join(tok[0:]...)
 	}
 
-	logrus.Infof("Prefix: %s, Snap Directory: %s, Snap Name: %s", prefix, snapDir, snapName)
+	logrus.Debugf("Prefix: %s, Snap Directory: %s, Snap Name: %s", prefix, snapDir, snapName)
 	tokens := strings.Split(snapName, "-")
 	if len(tokens) != 4 {
 		return nil, fmt.Errorf("invalid snapshot name: %s", snapName)

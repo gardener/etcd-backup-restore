@@ -104,8 +104,7 @@ function get_test_id() {
 }
 
 function get_tm_test_id() {
-  git_commit_remote=`echo \`git ls-remote $URL HEAD\` | cut -d' ' -f 1`
-  export TEST_ID=${TM_TEST_ID_PREFIX}-${git_commit_remote}
+  export TEST_ID=${TM_TEST_ID_PREFIX}-${GIT_REVISION}
   echo "Test id: ${TEST_ID}"
 }
 

@@ -84,6 +84,9 @@ echo "Testmachinery landscape: ${TM_LANDSCAPE}"
 echo "Arguments: ${ARGUMENTS}"
 echo "EFFECTIVE_VERSION: ${EFFECTIVE_VERSION}"
 
+export GIT_REVISION="${EFFECTIVE_VERSION##*\-}" # split string by '-' and get last item
+echo "GIT_REVISION: ${GIT_REVISION}"
+
 fetch_aws_secret
 
 export SOURCE_PATH="$(readlink -f "$(dirname ${0})/..")"
@@ -120,6 +123,7 @@ kubectl cluster-info
     --flavored-testruns-chart-path=$FLAVOR_TESTRUN_CHART_PATH \
     --flavor-config=$SOURCE_PATH/testmachinery/flavors/$FLAVOR_CONFIG \
     --set=shoot.effectiveVersion=$EFFECTIVE_VERSION \
+    --set=shoot.gitRevision=$GIT_REVISION \
     --set=etcdbr.aws.accessKeyId=$ACCESS_KEY_ID \
     --set=etcdbr.aws.secretAccessKey=$SECRET_ACCESS_KEY_B64 \
     --set=etcdbr.aws.region=$REGION \
