@@ -65,6 +65,8 @@ func StartEmbeddedEtcd(ctx context.Context, etcdDir string, logger *logrus.Entry
 	cfg.ACUrls = []url.URL{*acurl}
 	cfg.InitialCluster = cfg.InitialClusterFromName(cfg.Name)
 	cfg.Logger = "zap"
+	cfg.AutoCompactionMode = "periodic"
+	cfg.AutoCompactionRetention = "5m"
 	e, err := embed.StartEtcd(cfg)
 	if err != nil {
 		return nil, err

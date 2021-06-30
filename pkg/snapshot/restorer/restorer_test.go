@@ -65,7 +65,7 @@ var _ = Describe("Running Restorer", func() {
 		maxTxnOps                      = 2 * 1024
 		embeddedEtcdQuotaBytes  int64  = 8 * 1024 * 1024 * 1024
 		autoCompactionMode      string = "periodic"
-		autoCompactionRetention string = "2m"
+		autoCompactionRetention string = "5m"
 	)
 
 	BeforeEach(func() {
