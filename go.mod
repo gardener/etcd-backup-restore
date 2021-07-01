@@ -37,7 +37,7 @@ require (
 	google.golang.org/api v0.14.0
 	helm.sh/helm/v3 v3.2.4
 	k8s.io/api v0.18.0
-	k8s.io/apimachinery v0.18.0
+	k8s.io/apimachinery v0.21.2
 	k8s.io/client-go v11.0.0+incompatible
 	rsc.io/letsencrypt v0.0.3 // indirect
 )
