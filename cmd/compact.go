@@ -16,10 +16,12 @@ package cmd
 
 import (
 	"context"
+	"strings"
 
 	"github.com/gardener/etcd-backup-restore/pkg/compactor"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
+	"go.etcd.io/etcd/mvcc"
 )
 
 // NewCompactCommand compacts the ETCD instance
@@ -47,7 +49,11 @@ func NewCompactCommand(ctx context.Context) *cobra.Command {
 			cp := compactor.NewCompactor(store, logrus.NewEntry(logger))
 			snapshot, err := cp.Compact(options, opts.needDefragmentation)
 			if err != nil {
-				logger.Fatalf("Failed to restore snapshot: %v", err)
+				if strings.Contains(err.Error(), mvcc.ErrCompacted.Error()) {
+					logger.Warnf("Stopping backup compaction: %v", err)
+				} else {
+					logger.Fatalf("Failed to compact snapshot: %v", err)
+				}
 				return
 			}
 			logger.Infof("Compacted snapshot name : %v", snapshot.SnapName)
