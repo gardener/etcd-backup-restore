@@ -12,4 +12,4 @@ spec:
   args:
   - >-
     .ci/integration_test tm
-  image: eu.gcr.io/gardener-project/cc/job-image-golang:0.11.0
+  image: eu.gcr.io/gardener-project/gardener/testmachinery/base-step:0.205.0

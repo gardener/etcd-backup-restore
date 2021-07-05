@@ -15,6 +15,7 @@ shoot:
   zone: ""
   k8sVersion: ""
   effectiveVersion: ""
+  gitRevision: ""
   machinetype: ""
   autoscalerMin: ""
   autoscalerMax: ""
