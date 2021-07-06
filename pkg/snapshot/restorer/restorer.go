@@ -148,7 +148,7 @@ func (r *Restorer) restoreFromBaseSnapshot(ro brtypes.RestoreOptions) error {
 
 	walDir := filepath.Join(memberDir, "wal")
 	snapdir := filepath.Join(memberDir, "snap")
-	if err = r.makeDB(snapdir, ro.BaseSnapshot, len(cl.Members()), false); err != nil {
+	if err = r.makeDB(snapdir, ro.BaseSnapshot, len(cl.Members()), ro.Config.SkipHashCheck); err != nil {
 		return err
 	}
 	return makeWALAndSnap(r.zapLogger, walDir, snapdir, cl, ro.Config.Name)
