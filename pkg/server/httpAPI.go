@@ -75,6 +75,7 @@ type HTTPHandler struct {
 	EnableTLS                 bool
 	ServerTLSCertFile         string
 	ServerTLSKeyFile          string
+	HTTPHandlerMutex          *sync.Mutex
 }
 
 // GetStatus returns the current status in the HTTPHandler
@@ -88,6 +89,20 @@ func (h *HTTPHandler) SetStatus(status int) {
 		h.Logger.Infof("Setting status to : %d", status)
 	}
 	h.status = status
+}
+
+// SetSnapshotterToNil sets the current HTTPHandler.Snapshotter to Nil in the HTTPHandler.
+func (h *HTTPHandler) SetSnapshotterToNil() {
+	h.HTTPHandlerMutex.Lock()
+	defer h.HTTPHandlerMutex.Unlock()
+	h.Snapshotter = nil
+}
+
+// SetSnapshotter sets the current HTTPHandler.Snapshotter in the HTTPHandler.
+func (h *HTTPHandler) SetSnapshotter(ssr *snapshotter.Snapshotter) {
+	h.HTTPHandlerMutex.Lock()
+	defer h.HTTPHandlerMutex.Unlock()
+	h.Snapshotter = ssr
 }
 
 // RegisterHandler registers the handler for different requests

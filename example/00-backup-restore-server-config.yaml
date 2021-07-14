@@ -51,3 +51,7 @@ defragmentationSchedule: "0 0 */3 * *"
 compressionConfig:
    enabled: true
    policy: "gzip"
+
+leaderElectionConfig:
+  reelectionPeriod: "5s"
+  etcdConnectionTimeout: "5s"
