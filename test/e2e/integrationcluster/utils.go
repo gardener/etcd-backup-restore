@@ -20,7 +20,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"path"
 	"strings"
 	"time"
 
@@ -313,7 +312,7 @@ func getSnapstore(storageProvider, storageContainer, storePrefix string) (brtype
 	snapstoreConfig := &brtypes.SnapstoreConfig{
 		Provider:  storageProvider,
 		Container: storageContainer,
-		Prefix:    path.Join(storePrefix, "v1"),
+		Prefix:    storePrefix,
 	}
 	store, err := snapstore.GetSnapstore(snapstoreConfig)
 	if err != nil {

@@ -73,6 +73,9 @@ var _ = Describe("Defrag", func() {
 			oldDBSize := oldStatus.DbSize
 			oldRevision := oldStatus.Header.GetRevision()
 
+			// compact the ETCD DB to let the defragmentor have full effect
+			_, err = client.Compact(testCtx, oldRevision)
+			Expect(err).ShouldNot(HaveOccurred())
 			defragmentorJob := NewDefragmentorJob(testCtx, etcdConnectionConfig, logger, nil)
 			defragmentorJob.Run()
 

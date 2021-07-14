@@ -24,6 +24,7 @@ import (
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
+	. "github.com/onsi/gomega/gstruct"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -202,9 +203,32 @@ var _ = Describe("Backup", func() {
 			newFullSnap, newDeltaSnapList, err := miscellaneous.GetLatestFullSnapshotAndDeltaSnapList(store)
 			Expect(err).ShouldNot(HaveOccurred())
 
-			Expect(latestSnapshots.FullSnapshot).Should(Or(Equal(fullSnap), Equal(newFullSnap)))
-			for i, snap := range latestSnapshots.DeltaSnapshots {
-				Expect(snap).Should(Or(Equal(deltaSnapList[i]), Equal(newDeltaSnapList[i])))
+			if latestSnapshots.FullSnapshot == nil {
+				Expect(latestSnapshots.FullSnapshot).Should(Or(Equal(fullSnap), Equal(newFullSnap)))
+			} else {
+				// prefix is not determined during http call So prefix can't be tested here.
+				Expect(*latestSnapshots.FullSnapshot).To(MatchFields(IgnoreExtras, Fields{
+					"Kind":              Or(Equal(fullSnap.Kind), Equal(newFullSnap.Kind)),
+					"StartRevision":     Or(Equal(fullSnap.StartRevision), Equal(newFullSnap.StartRevision)),
+					"LastRevision":      Or(Equal(fullSnap.LastRevision), Equal(newFullSnap.LastRevision)),
+					"CreatedOn":         Or(Equal(fullSnap.CreatedOn), Equal(newFullSnap.CreatedOn)),
+					"CompressionSuffix": Or(Equal(fullSnap.CompressionSuffix), Equal(newFullSnap.CompressionSuffix)),
+				}))
+			}
+
+			if len(latestSnapshots.DeltaSnapshots) == 0 {
+				Expect(len(latestSnapshots.DeltaSnapshots)).Should(Or(Equal(len(deltaSnapList)), Equal(len(newDeltaSnapList))))
+			} else {
+				for i, snap := range latestSnapshots.DeltaSnapshots {
+					// prefix is not determined during http call, so prefix can't be tested here
+					Expect(*snap).To(MatchFields(IgnoreExtras, Fields{
+						"Kind":              Or(Equal(deltaSnapList[i].Kind), Equal(newDeltaSnapList[i].Kind)),
+						"StartRevision":     Or(Equal(deltaSnapList[i].StartRevision), Equal(newDeltaSnapList[i].StartRevision)),
+						"LastRevision":      Or(Equal(deltaSnapList[i].LastRevision), Equal(newDeltaSnapList[i].LastRevision)),
+						"CreatedOn":         Or(Equal(deltaSnapList[i].CreatedOn), Equal(newDeltaSnapList[i].CreatedOn)),
+						"CompressionSuffix": Or(Equal(deltaSnapList[i].CompressionSuffix), Equal(newDeltaSnapList[i].CompressionSuffix)),
+					}))
+				}
 			}
 		})
 	})
