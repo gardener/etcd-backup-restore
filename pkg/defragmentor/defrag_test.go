@@ -47,9 +47,9 @@ var _ = Describe("Defrag", func() {
 		BeforeEach(func() {
 			now := time.Now().Unix()
 			client, err := etcdutil.GetTLSClientForEtcd(etcdConnectionConfig)
+			Expect(err).ShouldNot(HaveOccurred())
 			defer client.Close()
 			logger.Infof("etcdConnectionConfig %v, Endpoint %v", etcdConnectionConfig, endpoints)
-			Expect(err).ShouldNot(HaveOccurred())
 			for index := 0; index <= 1000; index++ {
 				ctx, cancel := context.WithTimeout(testCtx, etcdConnectionConfig.ConnectionTimeout.Duration)
 				client.Put(ctx, fmt.Sprintf("%s%d%d", keyPrefix, now, index), valuePrefix)

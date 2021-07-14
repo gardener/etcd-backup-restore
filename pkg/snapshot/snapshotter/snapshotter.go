@@ -272,6 +272,7 @@ func (ssr *Snapshotter) takeFullSnapshot() (*brtypes.Snapshot, error) {
 			Message: fmt.Sprintf("failed to create etcd client: %v", err),
 		}
 	}
+	defer client.Close()
 
 	ctx, cancel := context.WithTimeout(context.TODO(), ssr.etcdConnectionConfig.ConnectionTimeout.Duration)
 	// Note: Although Get and snapshot call are not atomic, so revision number in snapshot file
@@ -326,10 +327,16 @@ func (ssr *Snapshotter) takeFullSnapshot() (*brtypes.Snapshot, error) {
 		return ssr.prevSnapshot, nil
 	}
 
+	ssrEtcdClient, err := etcdutil.GetTLSClientForEtcd(ssr.etcdConnectionConfig)
+	if err != nil {
+		return nil, &errors.EtcdError{
+			Message: fmt.Sprintf("failed to create etcd client for snapshotter: %v", err),
+		}
+	}
 	watchCtx, cancelWatch := context.WithCancel(context.TODO())
 	ssr.cancelWatch = cancelWatch
-	ssr.etcdClient = client
-	ssr.watchCh = client.Watch(watchCtx, "", clientv3.WithPrefix(), clientv3.WithRev(ssr.prevSnapshot.LastRevision+1))
+	ssr.etcdClient = ssrEtcdClient
+	ssr.watchCh = ssrEtcdClient.Watch(watchCtx, "", clientv3.WithPrefix(), clientv3.WithRev(ssr.prevSnapshot.LastRevision+1))
 	ssr.logger.Infof("Applied watch on etcd from revision: %d", ssr.prevSnapshot.LastRevision+1)
 
 	return ssr.prevSnapshot, nil
@@ -435,6 +442,7 @@ func (ssr *Snapshotter) CollectEventsSincePrevSnapshot(stopCh <-chan struct{}) (
 			Message: fmt.Sprintf("failed to create etcd client: %v", err),
 		}
 	}
+	defer client.Close()
 
 	ctx, cancel := context.WithTimeout(context.TODO(), ssr.etcdConnectionConfig.ConnectionTimeout.Duration)
 	resp, err := client.Get(ctx, "", clientv3.WithLastRev()...)
@@ -455,11 +463,17 @@ func (ssr *Snapshotter) CollectEventsSincePrevSnapshot(stopCh <-chan struct{}) (
 		metrics.SnapshotRequired.With(prometheus.Labels{metrics.LabelKind: brtypes.SnapshotKindFull}).Set(1)
 	}
 
+	ssrEtcdClient, err := etcdutil.GetTLSClientForEtcd(ssr.etcdConnectionConfig)
+	if err != nil {
+		return false, &errors.EtcdError{
+			Message: fmt.Sprintf("failed to create etcd client for snapshotter: %v", err),
+		}
+	}
 	// TODO: Use parent context. Passing parent context here directly requires some additional management of error handling.
 	watchCtx, cancelWatch := context.WithCancel(context.TODO())
 	ssr.cancelWatch = cancelWatch
-	ssr.etcdClient = client
-	ssr.watchCh = client.Watch(watchCtx, "", clientv3.WithPrefix(), clientv3.WithRev(ssr.prevSnapshot.LastRevision+1))
+	ssr.etcdClient = ssrEtcdClient
+	ssr.watchCh = ssrEtcdClient.Watch(watchCtx, "", clientv3.WithPrefix(), clientv3.WithRev(ssr.prevSnapshot.LastRevision+1))
 	ssr.logger.Infof("Applied watch on etcd from revision: %d", ssr.prevSnapshot.LastRevision+1)
 
 	if ssr.prevSnapshot.LastRevision == lastEtcdRevision {

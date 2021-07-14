@@ -298,6 +298,7 @@ func (b *BackupRestoreServer) probeEtcd(ctx context.Context) error {
 			Message: fmt.Sprintf("failed to create etcd client: %v", err),
 		}
 	}
+	defer client.Close()
 
 	ctx, cancel := context.WithTimeout(ctx, b.config.EtcdConnectionConfig.ConnectionTimeout.Duration)
 	defer cancel()
