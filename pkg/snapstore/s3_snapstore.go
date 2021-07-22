@@ -28,17 +28,22 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/aws/aws-sdk-go/service/s3/s3iface"
 	"github.com/sirupsen/logrus"
+	"k8s.io/utils/pointer"
 
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 )
 
 const (
 	// Total number of chunks to be uploaded must be one less than maximum limit allowed.
-	s3NoOfChunk int64 = 9999
+	s3NoOfChunk        int64 = 9999
+	awsSecretAccessKey       = "AWS_SECRET_ACCESS_KEY"
+	awsAcessKeyID            = "AWS_ACCESS_KEY_ID"
+	awsRegion                = "AWS_REGION"
 )
 
 // S3SnapStore is snapstore with AWS S3 object store as backend
@@ -53,12 +58,8 @@ type S3SnapStore struct {
 }
 
 // NewS3SnapStore create new S3SnapStore from shared configuration with specified bucket
-func NewS3SnapStore(bucket, prefix, tempDir string, maxParallelChunkUploads uint) (*S3SnapStore, error) {
-	return newS3FromSessionOpt(bucket, prefix, tempDir, maxParallelChunkUploads, session.Options{
-		// Setting this is equal to the AWS_SDK_LOAD_CONFIG environment variable was set.
-		// We want to save the work to set AWS_SDK_LOAD_CONFIG=1 outside.
-		SharedConfigState: session.SharedConfigEnable,
-	})
+func NewS3SnapStore(config *brtypes.SnapstoreConfig) (*S3SnapStore, error) {
+	return newS3FromSessionOpt(config.Container, config.Prefix, config.TempDir, config.MaxParallelChunkUploads, getSessionOptions(getEnvPrefixString(config.IsSource)))
 }
 
 // newS3FromSessionOpt will create the new S3 snapstore object from S3 session options
@@ -69,6 +70,22 @@ func newS3FromSessionOpt(bucket, prefix, tempDir string, maxParallelChunkUploads
 	}
 	cli := s3.New(sess)
 	return NewS3FromClient(bucket, prefix, tempDir, maxParallelChunkUploads, cli), nil
+}
+
+func getSessionOptions(prefixString string) session.Options {
+	if _, isSet := os.LookupEnv(prefixString + awsAcessKeyID); isSet {
+		return session.Options{
+			Config: aws.Config{
+				Credentials: credentials.NewStaticCredentials(os.Getenv(prefixString+awsAcessKeyID), os.Getenv(prefixString+awsSecretAccessKey), ""),
+				Region:      pointer.StringPtr(os.Getenv(awsRegion)),
+			},
+		}
+	}
+	return session.Options{
+		// Setting this is equal to the AWS_SDK_LOAD_CONFIG environment variable was set.
+		// We want to save the work to set AWS_SDK_LOAD_CONFIG=1 outside.
+		SharedConfigState: session.SharedConfigEnable,
+	}
 }
 
 // NewS3FromClient will create the new S3 snapstore object from S3 client
@@ -119,9 +136,10 @@ func (s *S3SnapStore) Save(snap brtypes.Snapshot, rc io.ReadCloser) error {
 	ctx := context.TODO()
 	ctx, cancel := context.WithTimeout(ctx, chunkUploadTimeout)
 	defer cancel()
+	prefix := adaptPrefix(&snap, s.prefix)
 	uploadOutput, err := s.client.CreateMultipartUploadWithContext(ctx, &s3.CreateMultipartUploadInput{
 		Bucket: aws.String(s.bucket),
-		Key:    aws.String(path.Join(s.prefix, snap.SnapDir, snap.SnapName)),
+		Key:    aws.String(path.Join(prefix, snap.SnapDir, snap.SnapName)),
 	})
 	if err != nil {
 		return fmt.Errorf("failed to initiate multipart upload %v", err)
@@ -170,7 +188,7 @@ func (s *S3SnapStore) Save(snap brtypes.Snapshot, rc io.ReadCloser) error {
 		logrus.Infof("Aborting the multipart upload with upload ID : %s", *uploadOutput.UploadId)
 		_, err = s.client.AbortMultipartUploadWithContext(ctx, &s3.AbortMultipartUploadInput{
 			Bucket:   &s.bucket,
-			Key:      aws.String(path.Join(s.prefix, snap.SnapDir, snap.SnapName)),
+			Key:      aws.String(path.Join(prefix, snap.SnapDir, snap.SnapName)),
 			UploadId: uploadOutput.UploadId,
 		})
 	} else {
@@ -180,7 +198,7 @@ func (s *S3SnapStore) Save(snap brtypes.Snapshot, rc io.ReadCloser) error {
 		logrus.Infof("Finishing the multipart upload with upload ID : %s", *uploadOutput.UploadId)
 		_, err = s.client.CompleteMultipartUploadWithContext(ctx, &s3.CompleteMultipartUploadInput{
 			Bucket:   &s.bucket,
-			Key:      aws.String(path.Join(s.prefix, snap.SnapDir, snap.SnapName)),
+			Key:      aws.String(path.Join(prefix, snap.SnapDir, snap.SnapName)),
 			UploadId: uploadOutput.UploadId,
 			MultipartUpload: &s3.CompletedMultipartUpload{
 				Parts: completedParts,
@@ -213,7 +231,7 @@ func (s *S3SnapStore) uploadPart(snap *brtypes.Snapshot, file *os.File, uploadID
 	partNumber := ((offset / chunkSize) + 1)
 	in := &s3.UploadPartInput{
 		Bucket:     aws.String(s.bucket),
-		Key:        aws.String(path.Join(s.prefix, snap.SnapDir, snap.SnapName)),
+		Key:        aws.String(path.Join(adaptPrefix(snap, s.prefix), snap.SnapDir, snap.SnapName)),
 		PartNumber: &partNumber,
 		UploadId:   uploadID,
 		Body:       sr,
@@ -250,7 +268,7 @@ func (s *S3SnapStore) partUploader(wg *sync.WaitGroup, stopCh <-chan struct{}, s
 	}
 }
 
-// List will list the snapshots from store
+// List will return sorted list with all snapshot files on store.
 func (s *S3SnapStore) List() (brtypes.SnapList, error) {
 	prefixTokens := strings.Split(s.prefix, "/")
 	// Last element of the tokens is backup version

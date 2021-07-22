@@ -36,6 +36,10 @@ import (
 	"github.com/gophercloud/utils/openstack/clientconfig"
 )
 
+const (
+	envPrefixSource = "SOURCE_OS_"
+)
+
 // SwiftSnapStore is snapstore with Openstack Swift as backend
 type SwiftSnapStore struct {
 	prefix string
@@ -52,8 +56,8 @@ const (
 )
 
 // NewSwiftSnapStore create new SwiftSnapStore from shared configuration with specified bucket
-func NewSwiftSnapStore(bucket, prefix, tempDir string, maxParallelChunkUploads uint) (*SwiftSnapStore, error) {
-	authOpts, err := clientconfig.AuthOptions(nil)
+func NewSwiftSnapStore(config *brtypes.SnapstoreConfig) (*SwiftSnapStore, error) {
+	authOpts, err := clientconfig.AuthOptions(getClientOpts(config.IsSource))
 	if err != nil {
 		return nil, err
 	}
@@ -74,8 +78,17 @@ func NewSwiftSnapStore(bucket, prefix, tempDir string, maxParallelChunkUploads u
 
 	}
 
-	return NewSwiftSnapstoreFromClient(bucket, prefix, tempDir, maxParallelChunkUploads, client), nil
+	return NewSwiftSnapstoreFromClient(config.Container, config.Prefix, config.TempDir, config.MaxParallelChunkUploads, client), nil
 
+}
+
+func getClientOpts(isSource bool) *clientconfig.ClientOpts {
+	if isSource {
+		return &clientconfig.ClientOpts{
+			EnvPrefix: envPrefixSource,
+		}
+	}
+	return &clientconfig.ClientOpts{}
 }
 
 // NewSwiftSnapstoreFromClient will create the new Swift snapstore object from Swift client
@@ -153,12 +166,13 @@ func (s *SwiftSnapStore) Save(snap brtypes.Snapshot, rc io.ReadCloser) error {
 	}
 	logrus.Info("All chunk uploaded successfully. Uploading manifest.")
 	b := make([]byte, 0)
+	prefix := adaptPrefix(&snap, s.prefix)
 	opts := objects.CreateOpts{
 		Content:        bytes.NewReader(b),
 		ContentLength:  chunkSize,
-		ObjectManifest: path.Join(s.bucket, s.prefix, snap.SnapDir, snap.SnapName),
+		ObjectManifest: path.Join(s.bucket, prefix, snap.SnapDir, snap.SnapName),
 	}
-	if res := objects.Create(s.client, s.bucket, path.Join(s.prefix, snap.SnapDir, snap.SnapName), opts); res.Err != nil {
+	if res := objects.Create(s.client, s.bucket, path.Join(prefix, snap.SnapDir, snap.SnapName), opts); res.Err != nil {
 		return fmt.Errorf("failed uploading manifest for snapshot with error: %v", res.Err)
 	}
 	logrus.Info("Manifest object uploaded successfully.")
@@ -182,7 +196,7 @@ func (s *SwiftSnapStore) uploadChunk(snap *brtypes.Snapshot, file *os.File, offs
 		ContentLength: size,
 	}
 	partNumber := ((offset / chunkSize) + 1)
-	res := objects.Create(s.client, s.bucket, path.Join(s.prefix, snap.SnapDir, snap.SnapName, fmt.Sprintf("%010d", partNumber)), opts)
+	res := objects.Create(s.client, s.bucket, path.Join(adaptPrefix(snap, s.prefix), snap.SnapDir, snap.SnapName, fmt.Sprintf("%010d", partNumber)), opts)
 	return res.Err
 }
 
@@ -206,7 +220,7 @@ func (s *SwiftSnapStore) chunkUploader(wg *sync.WaitGroup, stopCh <-chan struct{
 	}
 }
 
-// List will list the snapshots from store
+// List will return sorted list with all snapshot files on store.
 func (s *SwiftSnapStore) List() (brtypes.SnapList, error) {
 	prefixTokens := strings.Split(s.prefix, "/")
 	// Last element of the tokens is backup version

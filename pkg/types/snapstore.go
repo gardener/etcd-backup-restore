@@ -65,7 +65,7 @@ const (
 type SnapStore interface {
 	// Fetch should open reader for the snapshot file from store.
 	Fetch(Snapshot) (io.ReadCloser, error)
-	// List will list all snapshot files on store.
+	// List will return sorted list with all snapshot files on store.
 	List() (SnapList, error)
 	// Save will write the snapshot to store.
 	Save(Snapshot, io.ReadCloser) error
@@ -146,15 +146,26 @@ type SnapstoreConfig struct {
 	MaxParallelChunkUploads uint `json:"maxParallelChunkUploads,omitempty"`
 	// Temporary Directory
 	TempDir string `json:"tempDir,omitempty"`
+	// IsSource determines if this SnapStore is the source for a copy operation
+	IsSource bool `json:"isSource,omitempty"`
 }
 
 // AddFlags adds the flags to flagset.
 func (c *SnapstoreConfig) AddFlags(fs *flag.FlagSet) {
-	fs.StringVar(&c.Provider, "storage-provider", c.Provider, "snapshot storage provider")
-	fs.StringVar(&c.Container, "store-container", c.Container, "container which will be used as snapstore")
-	fs.StringVar(&c.Prefix, "store-prefix", c.Prefix, "prefix or directory inside container under which snapstore is created")
-	fs.UintVar(&c.MaxParallelChunkUploads, "max-parallel-chunk-uploads", c.MaxParallelChunkUploads, "maximum number of parallel chunk uploads allowed ")
-	fs.StringVar(&c.TempDir, "snapstore-temp-directory", c.TempDir, "temporary directory for processing")
+	c.addFlags(fs, "")
+}
+
+// AddSourceFlags adds the flags to flagset using `source-` prefix for all parameters.
+func (c *SnapstoreConfig) AddSourceFlags(fs *flag.FlagSet) {
+	c.addFlags(fs, "source-")
+}
+
+func (c *SnapstoreConfig) addFlags(fs *flag.FlagSet, parameterPrefix string) {
+	fs.StringVar(&c.Provider, parameterPrefix+"storage-provider", c.Provider, "snapshot storage provider")
+	fs.StringVar(&c.Container, parameterPrefix+"store-container", c.Container, "container which will be used as snapstore")
+	fs.StringVar(&c.Prefix, parameterPrefix+"store-prefix", c.Prefix, "prefix or directory inside container under which snapstore is created")
+	fs.UintVar(&c.MaxParallelChunkUploads, parameterPrefix+"max-parallel-chunk-uploads", c.MaxParallelChunkUploads, "maximum number of parallel chunk uploads allowed ")
+	fs.StringVar(&c.TempDir, parameterPrefix+"snapstore-temp-directory", c.TempDir, "temporary directory for processing")
 }
 
 // Validate validates the config.
@@ -168,4 +179,19 @@ func (c *SnapstoreConfig) Validate() error {
 // Complete completes the config.
 func (c *SnapstoreConfig) Complete() {
 	c.Prefix = path.Join(c.Prefix, backupFormatVersion)
+}
+
+// MergeWith completes the config based on other config
+func (c *SnapstoreConfig) MergeWith(other *SnapstoreConfig) {
+	if c.Provider == "" {
+		c.Provider = other.Provider
+	}
+	if c.Prefix == "" {
+		c.Prefix = other.Prefix
+	} else {
+		c.Prefix = path.Join(c.Prefix, backupFormatVersion)
+	}
+	if c.TempDir == "" {
+		c.TempDir = other.TempDir
+	}
 }

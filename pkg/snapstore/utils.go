@@ -19,6 +19,7 @@ import (
 	"os"
 	"path"
 	"strconv"
+	"strings"
 	"time"
 
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
@@ -26,9 +27,11 @@ import (
 )
 
 const (
-	envStorageContainer = "STORAGE_CONTAINER"
-	defaultLocalStore   = "default.bkp"
-	backupVersion       = backupVersionV2
+	envStorageContainer       = "STORAGE_CONTAINER"
+	sourceEnvStorageContainer = "SOURCE_STORAGE_CONTAINER"
+	defaultLocalStore         = "default.bkp"
+	backupVersion             = backupVersionV2
+	sourcePrefixString        = "SOURCE_"
 )
 
 // GetSnapstore returns the snapstore object for give storageProvider with specified container
@@ -38,7 +41,15 @@ func GetSnapstore(config *brtypes.SnapstoreConfig) (brtypes.SnapStore, error) {
 	}
 
 	if config.Container == "" {
-		config.Container = os.Getenv(envStorageContainer)
+		if config.IsSource {
+			config.Container = os.Getenv(sourceEnvStorageContainer)
+		} else {
+			config.Container = os.Getenv(envStorageContainer)
+		}
+	}
+
+	if config.Container == "" && config.Provider != "" && config.Provider != brtypes.SnapstoreProviderLocal {
+		return nil, fmt.Errorf("storage container name not specified")
 	}
 
 	if len(config.TempDir) == 0 {
@@ -58,6 +69,7 @@ func GetSnapstore(config *brtypes.SnapstoreConfig) (brtypes.SnapStore, error) {
 	if config.MaxParallelChunkUploads <= 0 {
 		config.MaxParallelChunkUploads = 5
 	}
+
 	switch config.Provider {
 	case brtypes.SnapstoreProviderLocal, "":
 		if config.Container == "" {
@@ -65,40 +77,19 @@ func GetSnapstore(config *brtypes.SnapstoreConfig) (brtypes.SnapStore, error) {
 		}
 		return NewLocalSnapStore(path.Join(config.Container, config.Prefix))
 	case brtypes.SnapstoreProviderS3:
-		if config.Container == "" {
-			return nil, fmt.Errorf("storage container name not specified")
-		}
-		return NewS3SnapStore(config.Container, config.Prefix, config.TempDir, config.MaxParallelChunkUploads)
+		return NewS3SnapStore(config)
 	case brtypes.SnapstoreProviderABS:
-		if config.Container == "" {
-			return nil, fmt.Errorf("storage container name not specified")
-		}
-		return NewABSSnapStore(config.Container, config.Prefix, config.TempDir, config.MaxParallelChunkUploads)
+		return NewABSSnapStore(config)
 	case brtypes.SnapstoreProviderGCS:
-		if config.Container == "" {
-			return nil, fmt.Errorf("storage container name not specified")
-		}
-		return NewGCSSnapStore(config.Container, config.Prefix, config.TempDir, config.MaxParallelChunkUploads)
+		return NewGCSSnapStore(config)
 	case brtypes.SnapstoreProviderSwift:
-		if config.Container == "" {
-			return nil, fmt.Errorf("storage container name not specified")
-		}
-		return NewSwiftSnapStore(config.Container, config.Prefix, config.TempDir, config.MaxParallelChunkUploads)
+		return NewSwiftSnapStore(config)
 	case brtypes.SnapstoreProviderOSS:
-		if config.Container == "" {
-			return nil, fmt.Errorf("storage container name not specified")
-		}
-		return NewOSSSnapStore(config.Container, config.Prefix, config.TempDir, config.MaxParallelChunkUploads)
+		return NewOSSSnapStore(config)
 	case brtypes.SnapstoreProviderECS:
-		if config.Container == "" {
-			return nil, fmt.Errorf("storage container name not specified")
-		}
-		return NewECSSnapStore(config.Container, config.Prefix, config.TempDir, config.MaxParallelChunkUploads)
+		return NewECSSnapStore(config)
 	case brtypes.SnapstoreProviderOCS:
-		if config.Container == "" {
-			return nil, fmt.Errorf("storage container name not specified")
-		}
-		return NewOCSSnapStore(config.Container, config.Prefix, config.TempDir, config.MaxParallelChunkUploads)
+		return NewOCSSnapStore(config)
 	case brtypes.SnapstoreProviderFakeFailed:
 		return NewFailedSnapStore(), nil
 	default:
@@ -162,4 +153,19 @@ func collectChunkUploadError(chunkUploadCh chan<- chunk, resCh <-chan chunkUploa
 		}
 	}
 	return nil
+}
+
+func getEnvPrefixString(isSource bool) string {
+	if isSource {
+		return sourcePrefixString
+	}
+	return ""
+}
+
+func adaptPrefix(snap *brtypes.Snapshot, snapstorePrefix string) string {
+	if strings.Contains(snap.Prefix, "/"+backupVersionV1) && strings.Contains(snapstorePrefix, "/"+backupVersionV2) {
+		return strings.Replace(snapstorePrefix, "/"+backupVersionV2, "/"+backupVersionV1, 1)
+	}
+
+	return snapstorePrefix
 }

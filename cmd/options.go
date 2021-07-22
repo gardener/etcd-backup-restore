@@ -16,16 +16,16 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"io/ioutil"
 
 	"github.com/gardener/etcd-backup-restore/pkg/compressor"
 	"github.com/gardener/etcd-backup-restore/pkg/snapshot/snapshotter"
+	"github.com/gardener/etcd-backup-restore/pkg/types"
 
 	"github.com/gardener/etcd-backup-restore/pkg/etcdutil"
-
-	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
-
 	"github.com/gardener/etcd-backup-restore/pkg/initializer/validator"
+	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 
 	"github.com/gardener/etcd-backup-restore/pkg/server"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
@@ -254,11 +254,51 @@ func (c *snapshotterOptions) validate() error {
 	if err := c.compressionConfig.Validate(); err != nil {
 		return err
 	}
-
 	return c.etcdConnectionConfig.Validate()
 }
 
 // complete completes the config.
 func (c *snapshotterOptions) complete() {
 	c.snapstoreConfig.Complete()
+}
+
+type copierOptions struct {
+	sourceSnapStoreConfig *types.SnapstoreConfig
+	snapstoreConfig       *types.SnapstoreConfig
+	maxBackups            int
+	maxBackupAge          int
+}
+
+func newCopierOptions() *copierOptions {
+	sourceSnapStoreConfig := snapstore.NewSnapstoreConfig()
+	sourceSnapStoreConfig.IsSource = true
+	return &copierOptions{
+		sourceSnapStoreConfig: sourceSnapStoreConfig,
+		snapstoreConfig:       snapstore.NewSnapstoreConfig(),
+	}
+}
+
+func (c *copierOptions) addFlags(fs *flag.FlagSet) {
+	fs.IntVar(&c.maxBackups, "max-backups-to-copy", -1, "copy the specified number of backups sorted by date from newest to oldest")
+	fs.IntVar(&c.maxBackupAge, "max-backup-age", -1, "copy only the backups not older than the specified number of days")
+	c.sourceSnapStoreConfig.AddSourceFlags(fs)
+	c.snapstoreConfig.AddFlags(fs)
+}
+
+func (c *copierOptions) validate() error {
+	if c.maxBackups < -1 {
+		return errors.New("parameter max-backups-to-copy must not be less than -1")
+	}
+	if c.maxBackupAge < -1 {
+		return errors.New("parameter max-backup-age must not be less than -1")
+	}
+	if err := c.snapstoreConfig.Validate(); err != nil {
+		return err
+	}
+	return c.sourceSnapStoreConfig.Validate()
+}
+
+func (c *copierOptions) complete() {
+	c.snapstoreConfig.Complete()
+	c.sourceSnapStoreConfig.MergeWith(c.snapstoreConfig)
 }

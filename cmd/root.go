@@ -40,6 +40,7 @@ from previously taken snapshot.`,
 		NewRestoreCommand(ctx),
 		NewCompactCommand(ctx),
 		NewInitializeCommand(ctx),
-		NewServerCommand(ctx))
+		NewServerCommand(ctx),
+		NewCopyCommand(ctx))
 	return RootCmd
 }

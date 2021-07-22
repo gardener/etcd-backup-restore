@@ -70,7 +70,7 @@ func (s *LocalSnapStore) Save(snap brtypes.Snapshot, rc io.ReadCloser) error {
 	return f.Sync()
 }
 
-// List will list the snapshots from store
+// List will return sorted list with all snapshot files on store.
 func (s *LocalSnapStore) List() (brtypes.SnapList, error) {
 	prefixTokens := strings.Split(s.prefix, "/")
 	// Last element of the tokens is backup version

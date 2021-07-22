@@ -144,3 +144,35 @@ INFO[0008] Successfully restored the etcd data directory.
 ### Etcdbrctl server
 
 With sub-command `server` you can start a http server which exposes an endpoint to initialize etcd over REST interface. The server also keeps the backup schedule thread running to keep taking periodic backups. This is mainly made available to manage an etcd instance running in a Kubernetes cluster. You can deploy the example [helm chart](../../chart/etcd-backup-restore) on a Kubernetes cluster to have a fault-resilient, self-healing etcd cluster.
+
+## Etcdbrctl copy
+
+With sub-command `copy` you can copy all snapshots (Full and Delta) fom one snapstore to another. Using the two filter parameters `max-backups-to-copy` and `max-backup-age` you can also limit the number of snapshots that will be copied or target only the newest snapshots.
+
+```console
+$ ./bin/etcdbrctl copy \
+--storage-provider="GCS" \
+--snapstore-temp-directory="/temp" \
+--store-prefix="target-prefix" \
+--store-container="target-container" \
+--source-store-prefix="prefix" \
+--source-store-container="container" \
+--source-storage-provider="GCS" \
+--max-backup-age=15 \
+INFO[0000] etcd-backup-restore Version: v0.14.0-dev     
+INFO[0000] Git SHA: b821ee55                            
+INFO[0000] Go Version: go1.16.5                         
+INFO[0000] Go OS/Arch: darwin/amd64                     
+INFO[0000] Getting source backups...                     actor=copier
+...
+INFO[0026] Copying Incr snapshot Incr-ID.gz...  actor=copier
+INFO[0027] Uploading snapshot of size: 123456, chunkSize: 123456, noOfChunks: 1
+INFO[0027] Triggered chunk upload for all chunks, total: 1
+INFO[0027] No of Chunks:= 1
+INFO[0027] Uploading chunk with offset : 0, attempt: 0
+INFO[0027] Received chunk result for id: 1, offset: 0
+INFO[0027] Received successful chunk result for all chunks. Stopping workers.
+INFO[0027] All chunk uploaded successfully. Uploading composite object.
+INFO[0027] Composite object uploaded successfully.
+INFO[0027] Shutting down...
+```

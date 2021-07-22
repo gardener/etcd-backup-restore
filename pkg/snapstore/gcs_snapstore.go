@@ -30,8 +30,13 @@ import (
 	stiface "github.com/gardener/etcd-backup-restore/pkg/snapstore/gcs"
 	"github.com/sirupsen/logrus"
 	"google.golang.org/api/iterator"
+	"google.golang.org/api/option"
 
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
+)
+
+const (
+	sourceStoreCredentials = "SOURCE_GOOGLE_APPLICATION_CREDENTIALS"
 )
 
 // GCSSnapStore is snapstore with GCS object store as backend.
@@ -50,15 +55,23 @@ const (
 )
 
 // NewGCSSnapStore create new GCSSnapStore from shared configuration with specified bucket.
-func NewGCSSnapStore(bucket, prefix, tempDir string, maxParallelChunkUploads uint) (*GCSSnapStore, error) {
+func NewGCSSnapStore(config *brtypes.SnapstoreConfig) (*GCSSnapStore, error) {
 	ctx := context.TODO()
-	cli, err := storage.NewClient(ctx)
+	var opts []option.ClientOption
+	if config.IsSource {
+		filename := os.Getenv(sourceStoreCredentials)
+		if filename == "" {
+			return nil, fmt.Errorf("Environment variable %s is not set", sourceStoreCredentials)
+		}
+		opts = append(opts, option.WithCredentialsFile(filename))
+	}
+	cli, err := storage.NewClient(ctx, opts...)
 	if err != nil {
 		return nil, err
 	}
 	gcsClient := stiface.AdaptClient(cli)
 
-	return NewGCSSnapStoreFromClient(bucket, prefix, tempDir, maxParallelChunkUploads, gcsClient), nil
+	return NewGCSSnapStoreFromClient(config.Container, config.Prefix, config.TempDir, config.MaxParallelChunkUploads, gcsClient), nil
 }
 
 // NewGCSSnapStoreFromClient create new GCSSnapStore from shared configuration with specified bucket.
@@ -137,12 +150,13 @@ func (s *GCSSnapStore) Save(snap brtypes.Snapshot, rc io.ReadCloser) error {
 	logrus.Info("All chunk uploaded successfully. Uploading composite object.")
 	bh := s.client.Bucket(s.bucket)
 	var subObjects []stiface.ObjectHandle
+	prefix := adaptPrefix(&snap, s.prefix)
 	for partNumber := int64(1); partNumber <= noOfChunks; partNumber++ {
-		name := path.Join(s.prefix, snap.SnapDir, snap.SnapName, fmt.Sprintf("%010d", partNumber))
+		name := path.Join(prefix, snap.SnapDir, snap.SnapName, fmt.Sprintf("%010d", partNumber))
 		obj := bh.Object(name)
 		subObjects = append(subObjects, obj)
 	}
-	name := path.Join(s.prefix, snap.SnapDir, snap.SnapName)
+	name := path.Join(prefix, snap.SnapDir, snap.SnapName)
 	obj := bh.Object(name)
 	c := obj.ComposerFrom(subObjects...)
 	ctx, cancel := context.WithTimeout(context.TODO(), chunkUploadTimeout)
@@ -167,7 +181,7 @@ func (s *GCSSnapStore) uploadComponent(snap *brtypes.Snapshot, file *os.File, of
 	sr := io.NewSectionReader(file, offset, size)
 	bh := s.client.Bucket(s.bucket)
 	partNumber := ((offset / chunkSize) + 1)
-	name := path.Join(s.prefix, snap.SnapDir, snap.SnapName, fmt.Sprintf("%010d", partNumber))
+	name := path.Join(adaptPrefix(snap, s.prefix), snap.SnapDir, snap.SnapName, fmt.Sprintf("%010d", partNumber))
 	obj := bh.Object(name)
 	ctx, cancel := context.WithTimeout(context.TODO(), chunkUploadTimeout)
 	defer cancel()
@@ -199,7 +213,7 @@ func (s *GCSSnapStore) componentUploader(wg *sync.WaitGroup, stopCh <-chan struc
 	}
 }
 
-// List will list the snapshots from store.
+// List will return sorted list with all snapshot files on store.
 func (s *GCSSnapStore) List() (brtypes.SnapList, error) {
 	prefixTokens := strings.Split(s.prefix, "/")
 	// Last element of the tokens is backup version
@@ -226,10 +240,10 @@ func (s *GCSSnapStore) List() (brtypes.SnapList, error) {
 			snap, err := ParseSnapshot(v.Name)
 			if err != nil {
 				// Warning
-				logrus.Warnf("Invalid snapshot found. Ignoring it:%s\n", v.Name)
-			} else {
-				snapList = append(snapList, snap)
+				logrus.Warnf("Invalid snapshot %s found, ignoring it: %v", v.Name, err)
+				continue
 			}
+			snapList = append(snapList, snap)
 		}
 	}
 
