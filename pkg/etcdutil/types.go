@@ -23,8 +23,12 @@ import (
 const (
 	defaultEtcdConnectionEndpoint string = "127.0.0.1:2379"
 
-	// DefaultDefragConnectionTimeout for timeout during ETCD defrag call
-	DefaultDefragConnectionTimeout time.Duration = 30 * time.Second
+	// DefaultEtcdConnectionTimeout defines default timeout duration for etcd client connection.
+	DefaultEtcdConnectionTimeout time.Duration = 30 * time.Second
+	// DefaultDefragConnectionTimeout defines default timeout duration for ETCD defrag call.
+	DefaultDefragConnectionTimeout time.Duration = 8 * time.Minute
+	// DefaultSnapshotTimeout defines default timeout duration for taking FullSnapshot.
+	DefaultSnapshotTimeout time.Duration = 8 * time.Minute
 )
 
 // EtcdConnectionConfig holds the etcd connection config.
@@ -35,6 +39,8 @@ type EtcdConnectionConfig struct {
 	Username           string            `json:"username,omitempty"`
 	Password           string            `json:"password,omitempty"`
 	ConnectionTimeout  wrappers.Duration `json:"connectionTimeout,omitempty"`
+	SnapshotTimeout    wrappers.Duration `json:"snapshotTimeout,omitempty"`
+	DefragTimeout      wrappers.Duration `json:"defragTimeout,omitempty"`
 	InsecureTransport  bool              `json:"insecureTransport,omitempty"`
 	InsecureSkipVerify bool              `json:"insecureSkipVerify,omitempty"`
 	CertFile           string            `json:"certFile,omitempty"`

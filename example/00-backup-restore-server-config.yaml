@@ -4,6 +4,8 @@ etcdConnectionConfig:
   # username: admin
   # password: admin
   connectionTimeout: 10s
+  snapshotTimeout: 8m
+  defragTimeout: 8m
   # insecureTransport: true
   # insecureSkipVerify: true
   # certFile: "ssl/etcd/tls.crt"

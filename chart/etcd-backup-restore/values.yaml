@@ -60,6 +60,8 @@ backup:
   garbageCollectionPeriod: "1m"
 
   etcdConnectionTimeout: "30s"
+  etcdSnapshotTimeout: "8m"
+  etcdDefragTimeout: "8m"
   # etcdQuotaBytes used to Raise alarms when backend DB size exceeds the given quota bytes
   etcdQuotaBytes: 8589934592 #8GB
 

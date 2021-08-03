@@ -41,6 +41,8 @@ var _ = Describe("Defrag", func() {
 		etcdConnectionConfig = etcdutil.NewEtcdConnectionConfig()
 		etcdConnectionConfig.Endpoints = endpoints
 		etcdConnectionConfig.ConnectionTimeout.Duration = 30 * time.Second
+		etcdConnectionConfig.SnapshotTimeout.Duration = 30 * time.Second
+		etcdConnectionConfig.DefragTimeout.Duration = 30 * time.Second
 	})
 
 	Context("Defragmentation", func() {
@@ -89,7 +91,7 @@ var _ = Describe("Defrag", func() {
 		})
 
 		It("should keep size of DB same in case of timeout", func() {
-			etcdConnectionConfig.ConnectionTimeout.Duration = time.Microsecond
+			etcdConnectionConfig.DefragTimeout.Duration = time.Microsecond
 			client, err := etcdutil.GetTLSClientForEtcd(etcdConnectionConfig)
 			Expect(err).ShouldNot(HaveOccurred())
 			defer client.Close()

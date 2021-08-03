@@ -25,7 +25,9 @@ import (
 func NewEtcdConnectionConfig() *EtcdConnectionConfig {
 	return &EtcdConnectionConfig{
 		Endpoints:          []string{defaultEtcdConnectionEndpoint},
-		ConnectionTimeout:  wrappers.Duration{Duration: DefaultDefragConnectionTimeout},
+		ConnectionTimeout:  wrappers.Duration{Duration: DefaultEtcdConnectionTimeout},
+		SnapshotTimeout:    wrappers.Duration{Duration: DefaultSnapshotTimeout},
+		DefragTimeout:      wrappers.Duration{Duration: DefaultDefragConnectionTimeout},
 		InsecureTransport:  true,
 		InsecureSkipVerify: false,
 	}
@@ -37,6 +39,8 @@ func (c *EtcdConnectionConfig) AddFlags(fs *flag.FlagSet) {
 	fs.StringVar(&c.Username, "etcd-username", c.Username, "etcd server username, if one is required")
 	fs.StringVar(&c.Password, "etcd-password", c.Password, "etcd server password, if one is required")
 	fs.DurationVar(&c.ConnectionTimeout.Duration, "etcd-connection-timeout", c.ConnectionTimeout.Duration, "etcd client connection timeout")
+	fs.DurationVar(&c.SnapshotTimeout.Duration, "etcd-snapshot-timeout", c.SnapshotTimeout.Duration, "timeout duration for taking etcd snapshots")
+	fs.DurationVar(&c.DefragTimeout.Duration, "etcd-defrag-timeout", c.DefragTimeout.Duration, "timeout duration for etcd defrag call")
 	fs.BoolVar(&c.InsecureTransport, "insecure-transport", c.InsecureTransport, "disable transport security for client connections")
 	fs.BoolVar(&c.InsecureSkipVerify, "insecure-skip-tls-verify", c.InsecureTransport, "skip server certificate verification")
 	fs.StringVar(&c.CertFile, "cert", c.CertFile, "identify secure client using this TLS certificate file")
@@ -48,6 +52,15 @@ func (c *EtcdConnectionConfig) AddFlags(fs *flag.FlagSet) {
 func (c *EtcdConnectionConfig) Validate() error {
 	if c.ConnectionTimeout.Duration <= 0 {
 		return fmt.Errorf("connection timeout should be greater than zero")
+	}
+	if c.SnapshotTimeout.Duration <= 0 {
+		return fmt.Errorf("snapshot timeout should be greater than zero")
+	}
+	if c.SnapshotTimeout.Duration < c.ConnectionTimeout.Duration {
+		return fmt.Errorf("snapshot timeout should be greater than or equal to connection timeout")
+	}
+	if c.DefragTimeout.Duration <= 0 {
+		return fmt.Errorf("etcd defrag timeout should be greater than zero")
 	}
 	return nil
 }

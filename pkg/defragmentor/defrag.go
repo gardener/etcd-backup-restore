@@ -51,7 +51,7 @@ func (d *defragmentorJob) Run() {
 	}
 	defer client.Close()
 
-	defragCtx, defragCancel := context.WithTimeout(d.ctx, d.etcdConnectionConfig.ConnectionTimeout.Duration)
+	defragCtx, defragCancel := context.WithTimeout(d.ctx, d.etcdConnectionConfig.DefragTimeout.Duration)
 	err = etcdutil.DefragmentData(defragCtx, client, d.etcdConnectionConfig.Endpoints, d.logger)
 	defragCancel()
 	if err != nil {

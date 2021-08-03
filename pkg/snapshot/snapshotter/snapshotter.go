@@ -290,7 +290,8 @@ func (ssr *Snapshotter) takeFullSnapshot() (*brtypes.Snapshot, error) {
 	if ssr.prevSnapshot.Kind == brtypes.SnapshotKindFull && ssr.prevSnapshot.LastRevision == lastRevision {
 		ssr.logger.Infof("There are no updates since last snapshot, skipping full snapshot.")
 	} else {
-		ctx, cancel = context.WithTimeout(context.TODO(), ssr.etcdConnectionConfig.ConnectionTimeout.Duration)
+		// Note: As FullSnapshot size can be very large, so to avoid context timeout use "SnapshotTimeout" in context.WithTimeout()
+		ctx, cancel = context.WithTimeout(context.TODO(), ssr.etcdConnectionConfig.SnapshotTimeout.Duration)
 		defer cancel()
 		// compressionSuffix is useful in backward compatibility(restoring from uncompressed snapshots).
 		// it is also helpful in inferring which compression Policy to be used to decompress the snapshot.
