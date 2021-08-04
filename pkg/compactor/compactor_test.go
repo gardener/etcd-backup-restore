@@ -63,15 +63,16 @@ var _ = Describe("Running Compactor", func() {
 			cptr = compactor.NewCompactor(store, logger)
 			restoreOpts = &brtypes.RestoreOptions{
 				Config: &brtypes.RestorationConfig{
-					InitialClusterToken:      restoreClusterToken,
 					InitialCluster:           restoreCluster,
-					Name:                     restoreName,
+					InitialClusterToken:      restoreClusterToken,
+					RestoreDataDir:           "/tmp",
 					InitialAdvertisePeerURLs: restorePeerURLs,
+					Name:                     restoreName,
 					SkipHashCheck:            skipHashCheck,
 					MaxFetchers:              maxFetchers,
-					MaxCallSendMsgSize:       maxCallSendMsgSize,
 					MaxRequestBytes:          maxRequestBytes,
 					MaxTxnOps:                maxTxnOps,
+					MaxCallSendMsgSize:       maxCallSendMsgSize,
 					EmbeddedEtcdQuotaBytes:   embeddedEtcdQuotaBytes,
 				},
 				ClusterURLs: clusterUrlsMap,

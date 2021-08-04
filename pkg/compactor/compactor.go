@@ -59,7 +59,11 @@ func (cp *Compactor) Compact(ro *brtypes.RestoreOptions, needDefragmentation boo
 	}
 
 	// Set a temporary etcd data directory for embedded etcd
-	cmpctDir, err := ioutil.TempDir("/tmp", "compactor-")
+	prefix := cmpctOptions.Config.RestoreDataDir
+	if prefix == "" {
+		prefix = "/tmp"
+	}
+	cmpctDir, err := ioutil.TempDir(prefix, "compactor-")
 	if err != nil {
 		cp.logger.Errorf("Unable to create temporary etcd directory for compaction: %s", err.Error())
 		return nil, err
