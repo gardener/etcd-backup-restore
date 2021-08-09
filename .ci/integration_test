@@ -42,6 +42,10 @@ export GOBIN="${SOURCE_PATH}/bin"
 export PATH="${GOBIN}:${PATH}"
 cd "${SOURCE_PATH}"
 
+if [ "$USE_CC_SERVER_CACHE" == true ] ; then
+  export CC_CACHE_FILE_FLAG="--cache-file dev/server.cache"
+fi
+
 ##############################################################################
 
 # Declare global variables
@@ -59,9 +63,10 @@ function setup_test_environment() {
   setup_awscli
 }
 
-function setup_ginkgo(){
+function setup_ginkgo() {
     echo "Installing Ginkgo..."
     GO111MODULE=off go get -u github.com/onsi/ginkgo/ginkgo
+    ginkgo version
     echo "Successfully installed Ginkgo."
 }
 
@@ -133,9 +138,9 @@ EOF
 
 function create_aws_secret() {
   echo "Fetching aws credentials from secret server..."
-  export ACCESS_KEY_ID=`/cc/utils/cli.py config attribute --cfg-type aws --cfg-name etcd-backup-restore --key access_key_id`
-  export SECRET_ACCESS_KEY=`/cc/utils/cli.py config attribute --cfg-type aws --cfg-name etcd-backup-restore --key secret_access_key`
-  export REGION=`/cc/utils/cli.py config attribute --cfg-type aws --cfg-name etcd-backup-restore --key region`
+  export ACCESS_KEY_ID=`/cc/utils/cli.py config $CC_CACHE_FILE_FLAG attribute --cfg-type aws --cfg-name etcd-backup-restore --key access_key_id`
+  export SECRET_ACCESS_KEY=`/cc/utils/cli.py config $CC_CACHE_FILE_FLAG attribute --cfg-type aws --cfg-name etcd-backup-restore --key secret_access_key`
+  export REGION=`/cc/utils/cli.py config $CC_CACHE_FILE_FLAG attribute --cfg-type aws --cfg-name etcd-backup-restore --key region`
   echo "Successfully fetched aws credentials from secret server."
 
   write_aws_secret "${ACCESS_KEY_ID}" "${SECRET_ACCESS_KEY}" "${REGION}"
@@ -239,10 +244,10 @@ function run_test_on_cluster() {
     setup-aws-infrastructure
   fi
 
-  export ETCD_VERSION=${ETCD_VERSION:-"v3.4.13-bootstrap"}
+  export ETCD_VERSION=${ETCD_VERSION:-"v3.4.13-bootstrap-1"}
   echo "Etcd version: ${ETCD_VERSION}"
 
-  export ETCDBR_VERSION=${ETCDBR_VERSION:-${ETCDBR_VER:-"v0.12.0"}}
+  export ETCDBR_VERSION=${ETCDBR_VERSION:-${ETCDBR_VER:-"v0.12.1"}}
   echo "Etcd-backup-restore version: ${ETCDBR_VERSION}"
 
   echo "Starting integration tests on k8s cluster."
@@ -250,7 +255,7 @@ function run_test_on_cluster() {
   set +e
 
   if [ -r "$INTEGRATION_TEST_KUBECONFIG" ]; then
-    KUBECONFIG=$INTEGRATION_TEST_KUBECONFIG STORAGE_CONTAINER=$TEST_ID ginkgo -v -timeout=15m -mod=vendor test/e2e/integrationcluster
+    KUBECONFIG=$INTEGRATION_TEST_KUBECONFIG ginkgo -v -timeout=15m -mod=vendor test/e2e/integrationcluster
     TEST_RESULT=$?
     echo "Successfully completed all tests."
   else
