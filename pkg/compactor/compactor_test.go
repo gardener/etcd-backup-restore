@@ -5,12 +5,14 @@ import (
 	"io/ioutil"
 	"os"
 	"path"
+	"time"
 
 	"github.com/gardener/etcd-backup-restore/pkg/compactor"
 	"github.com/gardener/etcd-backup-restore/pkg/miscellaneous"
 	"github.com/gardener/etcd-backup-restore/pkg/snapshot/restorer"
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
+	"github.com/gardener/etcd-backup-restore/pkg/wrappers"
 	"github.com/gardener/etcd-backup-restore/test/utils"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -37,6 +39,9 @@ var _ = Describe("Running Compactor", func() {
 		maxRequestBytes               = 2 * 1024 * 1024 //2Mib
 		maxTxnOps                     = 2 * 1024
 		embeddedEtcdQuotaBytes int64  = 8 * 1024 * 1024 * 1024
+		snapshotTimeout               = 30 * time.Second
+		defragTimeout                 = 30 * time.Second
+		needDefragmentation           = true
 	)
 
 	BeforeEach(func() {
@@ -50,6 +55,8 @@ var _ = Describe("Running Compactor", func() {
 
 	Describe("Compact while a etcd server is running", func() {
 		var restoreOpts *brtypes.RestoreOptions
+		var compactorConfig *brtypes.CompactorConfig
+		var compactOptions *brtypes.CompactOptions
 		var compactedSnapshot *brtypes.Snapshot
 		var restoreDir string
 
@@ -78,6 +85,15 @@ var _ = Describe("Running Compactor", func() {
 				ClusterURLs: clusterUrlsMap,
 				PeerURLs:    peerUrls,
 			}
+			compactorConfig = &brtypes.CompactorConfig{
+				NeedDefragmentation: needDefragmentation,
+				SnapshotTimeout:     wrappers.Duration{Duration: snapshotTimeout},
+				DefragTimeout:       wrappers.Duration{Duration: defragTimeout},
+			}
+			compactOptions = &brtypes.CompactOptions{
+				RestoreOptions:  restoreOpts,
+				CompactorConfig: compactorConfig,
+			}
 		})
 
 		Context("with defragmention allowed", func() {
@@ -100,7 +116,7 @@ var _ = Describe("Running Compactor", func() {
 				restoreOpts.DeltaSnapList = deltaSnapList
 
 				// Take the compacted full snapshot with defragmnetation allowed
-				_, err = cptr.Compact(restoreOpts, true)
+				_, err = cptr.Compact(compactOptions)
 				Expect(err).ShouldNot(HaveOccurred())
 
 				// Check if the compacted full snapshot is really present
@@ -125,7 +141,7 @@ var _ = Describe("Running Compactor", func() {
 				restoreOpts.DeltaSnapList = deltaSnapList
 
 				// Take the compacted full snapshot with defragmnetation allowed
-				_, err = cptr.Compact(restoreOpts, true)
+				_, err = cptr.Compact(compactOptions)
 				Expect(err).ShouldNot(HaveOccurred())
 
 				compactedSnapshot, deltaSnapList, err = miscellaneous.GetLatestFullSnapshotAndDeltaSnapList(store)
@@ -174,7 +190,8 @@ var _ = Describe("Running Compactor", func() {
 				restoreOpts.DeltaSnapList = deltaSnapList
 
 				// Take the compacted full snapshot with defragmnetation not allowed
-				_, err = cptr.Compact(restoreOpts, false)
+				compactOptions.NeedDefragmentation = false
+				_, err = cptr.Compact(compactOptions)
 				Expect(err).ShouldNot(HaveOccurred())
 
 				// Check if the compacted full snapshot is really present
@@ -199,7 +216,8 @@ var _ = Describe("Running Compactor", func() {
 				restoreOpts.DeltaSnapList = deltaSnapList
 
 				// Take the compacted full snapshot with defragmnetation not allowed
-				_, err = cptr.Compact(restoreOpts, false)
+				compactOptions.NeedDefragmentation = false
+				_, err = cptr.Compact(compactOptions)
 				Expect(err).ShouldNot(HaveOccurred())
 
 				// Check if the compacted full snapshot is really present
@@ -242,7 +260,7 @@ var _ = Describe("Running Compactor", func() {
 				restoreOpts.DeltaSnapList = deltaSnapList
 
 				// Try capturing the compacted full snapshot
-				_, err = cptr.Compact(restoreOpts, false)
+				_, err = cptr.Compact(compactOptions)
 				Expect(err).Should(HaveOccurred())
 			})
 		})

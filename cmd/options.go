@@ -129,7 +129,7 @@ func (c *initializerOptions) complete() {
 
 type compactOptions struct {
 	*restorerOptions
-	needDefragmentation bool
+	compactorConfig *brtypes.CompactorConfig
 }
 
 // newCompactOptions returns the validation config.
@@ -139,7 +139,7 @@ func newCompactOptions() *compactOptions {
 			restorationConfig: brtypes.NewRestorationConfig(),
 			snapstoreConfig:   snapstore.NewSnapstoreConfig(),
 		},
-		needDefragmentation: true,
+		compactorConfig: brtypes.NewCompactorConfig(),
 	}
 }
 
@@ -147,7 +147,12 @@ func newCompactOptions() *compactOptions {
 func (c *compactOptions) addFlags(fs *flag.FlagSet) {
 	c.restorationConfig.AddFlags(fs)
 	c.snapstoreConfig.AddFlags(fs)
-	fs.BoolVar(&c.needDefragmentation, "defragment", c.needDefragmentation, "defragment after compaction")
+	c.compactorConfig.AddFlags(fs)
+}
+
+// Validate validates the config.
+func (c *compactOptions) validate() error {
+	return c.compactorConfig.Validate()
 }
 
 type restorerOptions struct {
