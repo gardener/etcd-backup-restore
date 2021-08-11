@@ -48,15 +48,9 @@ etcd-backup-restore:
       traits:
         component_descriptor: ~
         draft_release: ~
-      steps:
-        tm_test:
-          <<: *tm_test_default
     pull-request:
       traits:
         pull-request: ~
-      steps:
-        tm_test:
-          <<: *tm_test_default
     release:
       traits:
         version:
@@ -70,6 +64,3 @@ etcd-backup-restore:
               channel_name: 'C0177NLL8V9' # gardener-etcd
               slack_cfg_name: 'scp_workspace'
         component_descriptor: ~
-      steps:
-        tm_test:
-          <<: *tm_test_default
