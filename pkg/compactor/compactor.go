@@ -46,11 +46,11 @@ func NewCompactor(store brtypes.SnapStore, logger *logrus.Entry) *Compactor {
 }
 
 // Compact is mainly responsible for applying snapshots (full + delta), compacting, drefragmenting, taking the snapshot and saving it sequentially.
-func (cp *Compactor) Compact(ro *brtypes.RestoreOptions, needDefragmentation bool) (*brtypes.Snapshot, error) {
+func (cp *Compactor) Compact(opts *brtypes.CompactOptions) (*brtypes.Snapshot, error) {
 	cp.logger.Info("Start compacting")
 
 	// Deepcopy restoration options ro to avoid any mutation of the passing object
-	cmpctOptions := ro.DeepCopy()
+	cmpctOptions := opts.RestoreOptions.DeepCopy()
 
 	// If no basesnapshot is found, abort compaction as there would be nothing to compact
 	if cmpctOptions.BaseSnapshot == nil {
@@ -122,8 +122,8 @@ func (cp *Compactor) Compact(ro *brtypes.RestoreOptions, needDefragmentation boo
 	}
 
 	// Then defrag the ETCD
-	if needDefragmentation {
-		defragCtx, defragCancel := context.WithTimeout(ctx, etcdutil.DefaultDefragConnectionTimeout)
+	if opts.NeedDefragmentation {
+		defragCtx, defragCancel := context.WithTimeout(ctx, opts.DefragTimeout.Duration)
 		err := etcdutil.DefragmentData(defragCtx, client, ep, cp.logger)
 		defragCancel()
 		if err != nil {
@@ -132,7 +132,7 @@ func (cp *Compactor) Compact(ro *brtypes.RestoreOptions, needDefragmentation boo
 	}
 
 	// Then take snapeshot of ETCD
-	snapshotReqCtx, cancel := context.WithTimeout(ctx, etcdDialTimeout)
+	snapshotReqCtx, cancel := context.WithTimeout(ctx, opts.SnapshotTimeout.Duration)
 	defer cancel()
 
 	// Determine suffix of compacted snapshot that will be result of this compaction

@@ -19,6 +19,7 @@ import (
 	"strings"
 
 	"github.com/gardener/etcd-backup-restore/pkg/compactor"
+	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"go.etcd.io/etcd/mvcc"
@@ -40,6 +41,10 @@ func NewCompactCommand(ctx context.Context) *cobra.Command {
 			- Save the snapshot
 			*/
 			logger := logrus.New()
+			if err := opts.validate(); err != nil {
+				logger.Fatalf("failed to validate the options: %v", err)
+				return
+			}
 
 			options, store, err := BuildRestoreOptionsAndStore(opts.restorerOptions)
 			if err != nil {
@@ -47,7 +52,12 @@ func NewCompactCommand(ctx context.Context) *cobra.Command {
 			}
 
 			cp := compactor.NewCompactor(store, logrus.NewEntry(logger))
-			snapshot, err := cp.Compact(options, opts.needDefragmentation)
+			compactOptions := &brtypes.CompactOptions{
+				RestoreOptions:  options,
+				CompactorConfig: opts.compactorConfig,
+			}
+
+			snapshot, err := cp.Compact(compactOptions)
 			if err != nil {
 				if strings.Contains(err.Error(), mvcc.ErrCompacted.Error()) {
 					logger.Warnf("Stopping backup compaction: %v", err)
