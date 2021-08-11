@@ -111,13 +111,12 @@ func (a *ABSSnapStore) Fetch(snap brtypes.Snapshot) (io.ReadCloser, error) {
 	return resp.Body(azblob.RetryReaderOptions{}), nil
 }
 
-// List will list all snapshot files on store
+// List will return sorted list with all snapshot files on store.
 func (a *ABSSnapStore) List() (brtypes.SnapList, error) {
 	prefixTokens := strings.Split(a.prefix, "/")
 	// Last element of the tokens is backup version
 	// Consider the parent of the backup version level (Required for Backward Compatibility)
 	prefix := path.Join(strings.Join(prefixTokens[:len(prefixTokens)-1], "/"))
-
 	var snapList brtypes.SnapList
 	opts := azblob.ListBlobsSegmentOptions{Prefix: prefix}
 	for marker := (azblob.Marker{}); marker.NotDone(); {
@@ -131,7 +130,9 @@ func (a *ABSSnapStore) List() (brtypes.SnapList, error) {
 		// Process the blobs returned in this result segment
 		for _, blob := range listBlob.Segment.BlobItems {
 			if strings.Contains(blob.Name, backupVersionV1) || strings.Contains(blob.Name, backupVersionV2) {
-				s, err := ParseSnapshot(path.Join(prefix, blob.Name))
+				//the blob may contain the full path in its name including the prefix
+				blobName := strings.TrimPrefix(blob.Name, prefix)
+				s, err := ParseSnapshot(path.Join(prefix, blobName))
 				if err != nil {
 					logrus.Warnf("Invalid snapshot found. Ignoring it:%s\n", blob.Name)
 				} else {
