@@ -238,6 +238,7 @@ function run_test_on_cluster() {
     setup_ginkgo
   fi
 
+  export TEST_ID=${STORAGE_CONTAINER}
   if [ "$STORAGE_CONTAINER" == "" ]; then
     setup_awscli
     get_test_id
@@ -255,7 +256,7 @@ function run_test_on_cluster() {
   set +e
 
   if [ -r "$INTEGRATION_TEST_KUBECONFIG" ]; then
-    KUBECONFIG=$INTEGRATION_TEST_KUBECONFIG ginkgo -v -timeout=15m -mod=vendor test/e2e/integrationcluster
+    KUBECONFIG=$INTEGRATION_TEST_KUBECONFIG STORAGE_CONTAINER=$TEST_ID ginkgo -v -timeout=15m -mod=vendor test/e2e/integrationcluster
     TEST_RESULT=$?
     echo "Successfully completed all tests."
   else
