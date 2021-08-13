@@ -32,7 +32,7 @@ func NewLeaderElectionConfig() *Config {
 
 // AddFlags adds the flags to flagset.
 func (c *Config) AddFlags(fs *flag.FlagSet) {
-	fs.DurationVar(&c.EtcdConnectionTimeout.Duration, "etcd-connection-timeout-leader-election", c.EtcdConnectionTimeout.Duration, "etcd client connection timeout during leader election.")
+	fs.DurationVar(&c.EtcdConnectionTimeout.Duration, "etcd-connection-timeout-leader-election", c.EtcdConnectionTimeout.Duration, "timeout duration of etcd client connection during leader election.")
 	fs.DurationVar(&c.ReelectionPeriod.Duration, "reelection-period", c.ReelectionPeriod.Duration, "Period after which election will be re-triggered to check the leadership status.")
 }
 

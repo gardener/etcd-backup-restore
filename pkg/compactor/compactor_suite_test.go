@@ -32,6 +32,10 @@ import (
 	"go.etcd.io/etcd/embed"
 )
 
+const (
+	embeddedEtcdPortNo = "9089"
+)
+
 var (
 	testSuitDir, testEtcdDir, testSnapshotDir string
 	testCtx                                   = context.Background()
@@ -65,7 +69,7 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 	logger.Infof("Snapshot Directory is: %s", testSnapshotDir)
 
 	// Start the main ETCD process that will run untill all compaction test cases are run
-	etcd, err = utils.StartEmbeddedEtcd(testCtx, testEtcdDir, logger)
+	etcd, err = utils.StartEmbeddedEtcd(testCtx, testEtcdDir, logger, embeddedEtcdPortNo)
 	Expect(err).ShouldNot(HaveOccurred())
 	endpoints = []string{etcd.Clients[0].Addr().String()}
 	logger.Infof("endpoints: %s", endpoints)

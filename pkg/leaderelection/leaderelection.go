@@ -128,65 +128,16 @@ func (le *LeaderElector) IsLeader(ctx context.Context) (bool, error) {
 
 	response, err := client.Status(ctx, endPoint)
 	if err != nil {
-		le.logger.Errorf("Failed to get status of etcd endPoint: %v with error: %v", le.EtcdConnectionConfig.Endpoints[0], err)
+		le.logger.Errorf("Failed to get status of etcd endPoint: %v with error: %v", endPoint, err)
 		return false, err
 	}
 
 	if response.Header.MemberId == response.Leader {
 		return true, nil
-	} else if response.Leader == NoLeaderID {
+	} else if response.Leader == NoLeaderState {
 		return false, &errors.EtcdError{
 			Message: fmt.Sprintf("Currently there is no Etcd Leader present may be due to etcd quorum loss or election is being held."),
 		}
 	}
 	return false, nil
-}
-
-// GetLeader will return the LeaderID as well as PeerURLs of etcd leader.
-func (le *LeaderElector) GetLeader(ctx context.Context) (uint64, []string, error) {
-	le.logger.Info("getting the etcd leaderID...")
-	var endPoint string
-	client, err := etcdutil.GetTLSClientForEtcd(le.EtcdConnectionConfig)
-	if err != nil {
-		return NoLeaderID, nil, &errors.EtcdError{
-			Message: fmt.Sprintf("Failed to create etcd client: %v", err),
-		}
-	}
-	defer client.Close()
-
-	if len(le.EtcdConnectionConfig.Endpoints) > 0 {
-		endPoint = le.EtcdConnectionConfig.Endpoints[0]
-	} else {
-		return NoLeaderID, nil, &errors.EtcdError{
-			Message: fmt.Sprintf("Etcd endpoints are not passed correctly"),
-		}
-	}
-
-	ctx, cancel := context.WithTimeout(ctx, le.Config.EtcdConnectionTimeout.Duration)
-	defer cancel()
-
-	response, err := client.Status(ctx, endPoint)
-	if err != nil {
-		le.logger.Errorf("Failed to get status of etcd endPoint: %v with error: %v", le.EtcdConnectionConfig.Endpoints[0], err)
-		return NoLeaderID, nil, err
-	}
-
-	if response.Leader == NoLeaderID {
-		return NoLeaderID, nil, &errors.EtcdError{
-			Message: fmt.Sprintf("Currently there is no Etcd Leader present may be due to etcd quorum loss."),
-		}
-	}
-
-	membersInfo, err := client.MemberList(ctx)
-	if err != nil {
-		le.logger.Errorf("Failed to get memberList of etcd with error: %v", err)
-		return response.Leader, nil, err
-	}
-
-	for _, member := range membersInfo.Members {
-		if response.Leader == member.GetID() {
-			return response.Leader, member.GetPeerURLs(), nil
-		}
-	}
-	return response.Leader, nil, nil
 }

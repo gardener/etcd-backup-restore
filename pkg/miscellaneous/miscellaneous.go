@@ -15,16 +15,19 @@
 package miscellaneous
 
 import (
+	"context"
 	"fmt"
 	"net/url"
 	"path/filepath"
 	"sort"
 	"time"
 
+	"github.com/gardener/etcd-backup-restore/pkg/etcdutil"
 	"github.com/gardener/etcd-backup-restore/pkg/metrics"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/sirupsen/logrus"
+	"go.etcd.io/etcd/clientv3"
 	"go.etcd.io/etcd/embed"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -175,4 +178,45 @@ func GetKubernetesClientSetOrError() (client.Client, error) {
 // GetFakeKubernetesClientSet creates a fake client set. To be used for unit tests
 func GetFakeKubernetesClientSet() client.Client {
 	return fake.NewClientBuilder().Build()
+}
+
+// GetAllEtcdEndpoints returns the endPoints of all etcd-member.
+func GetAllEtcdEndpoints(ctx context.Context, client *clientv3.Client, etcdConnectionConfig *etcdutil.EtcdConnectionConfig, logger *logrus.Entry) ([]string, error) {
+	var etcdEndpoints []string
+
+	ctx, cancel := context.WithTimeout(ctx, etcdConnectionConfig.ConnectionTimeout.Duration)
+	defer cancel()
+
+	membersInfo, err := client.MemberList(ctx)
+	if err != nil {
+		logger.Errorf("Failed to get memberList of etcd with error: %v", err)
+		return nil, err
+	}
+
+	for _, member := range membersInfo.Members {
+		etcdEndpoints = append(etcdEndpoints, member.GetClientURLs()...)
+	}
+
+	return etcdEndpoints, nil
+}
+
+// IsEtcdClusterHealthy checks whether all members of etcd cluster are in healthy state or not.
+func IsEtcdClusterHealthy(ctx context.Context, client *clientv3.Client, etcdConnectionConfig *etcdutil.EtcdConnectionConfig, etcdEndpoints []string, logger *logrus.Entry) (bool, error) {
+
+	// checks the health of all etcd members.
+	for _, endPoint := range etcdEndpoints {
+		if err := func() error {
+			ctx, cancel := context.WithTimeout(ctx, etcdConnectionConfig.ConnectionTimeout.Duration)
+			defer cancel()
+			if _, err := client.Status(ctx, endPoint); err != nil {
+				logger.Errorf("Failed to get status of etcd endPoint: %v with error: %v", endPoint, err)
+				return err
+			}
+			return nil
+		}(); err != nil {
+			return false, err
+		}
+	}
+
+	return true, nil
 }

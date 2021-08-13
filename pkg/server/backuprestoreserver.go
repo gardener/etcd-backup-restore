@@ -173,7 +173,7 @@ func (b *BackupRestoreServer) runServerWithSnapshotter(ctx context.Context, rest
 		return err
 	}
 
-	handler := b.startHTTPServer(etcdInitializer, ssr)
+	handler := b.startHTTPServer(etcdInitializer, nil)
 	defer handler.Stop()
 
 	leaderCallbacks := &leaderelection.LeaderCallbacks{
@@ -185,9 +185,13 @@ func (b *BackupRestoreServer) runServerWithSnapshotter(ctx context.Context, rest
 				b.logger.Errorf("Failed to create new Snapshotter object: %v", err)
 				return
 			}
+			// set "http handler" with the latest/new snapshotter object
+			handler.SetSnapshotter(ssr)
+
 			go b.runEtcdProbeLoopWithSnapshotter(leCtx, handler, ssr, ssrStopCh, ackCh)
 
 			go handleSsrStopRequest(leCtx, handler, ssr, ackCh, ssrStopCh)
+			go defragmentor.DefragDataPeriodically(leCtx, b.config.EtcdConnectionConfig, b.defragmentationSchedule, ssr.TriggerFullSnapshot, b.logger)
 		},
 		OnStoppedLeading: func() {
 			// stops the running snapshotter
@@ -208,8 +212,6 @@ func (b *BackupRestoreServer) runServerWithSnapshotter(ctx context.Context, rest
 	}
 
 	go handleAckState(handler, ackCh)
-
-	go defragmentor.DefragDataPeriodically(ctx, b.config.EtcdConnectionConfig, b.defragmentationSchedule, ssr.TriggerFullSnapshot, b.logger)
 
 	//TODO @aaronfern: Add functionality for member garbage collection
 	if b.config.HealthConfig.MemberLeaseRenewalEnabled {

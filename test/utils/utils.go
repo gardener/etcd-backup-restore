@@ -20,6 +20,7 @@ import (
 	"math"
 	"net/url"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -38,11 +39,13 @@ const (
 	KeyPrefix = "/etcdbr/test/key-"
 	// ValuePrefix is prefix for value inserted in etcd as a part of etcd-backup-restore tests.
 	ValuePrefix = "val-"
+	// EmbeddedEtcdPortNo defines PortNo which can be used to start EmbeddedEtcd.
+	EmbeddedEtcdPortNo = "12379"
 )
 
-// StartEmbeddedEtcd starts the embedded etcd for test purpose with minimal configuration at random port.
-// To get the exact client endpoints it is listinging on, use returns etcd.Clients[0].Addr().String()
-func StartEmbeddedEtcd(ctx context.Context, etcdDir string, logger *logrus.Entry) (*embed.Etcd, error) {
+// StartEmbeddedEtcd starts the embedded etcd for test purpose with minimal configuration at a given port.
+// To get the exact client endpoints it is listening on, use returns etcd.Clients[0].Addr().String()
+func StartEmbeddedEtcd(ctx context.Context, etcdDir string, logger *logrus.Entry, port string) (*embed.Etcd, error) {
 	logger.Infoln("Starting embedded etcd...")
 	cfg := embed.NewConfig()
 	cfg.Dir = etcdDir
@@ -50,10 +53,10 @@ func StartEmbeddedEtcd(ctx context.Context, etcdDir string, logger *logrus.Entry
 	cfg.Debug = false
 	cfg.GRPCKeepAliveTimeout = 0
 	cfg.SnapshotCount = 10
-	DefaultListenPeerURLs := "http://localhost:0"
-	DefaultListenClientURLs := "http://localhost:0"
-	DefaultInitialAdvertisePeerURLs := "http://localhost:0"
-	DefaultAdvertiseClientURLs := "http://localhost:0"
+	DefaultListenPeerURLs := "http://localhost:" + getPeerPortNo(port)
+	DefaultListenClientURLs := "http://localhost:" + getClientPortNo(port)
+	DefaultInitialAdvertisePeerURLs := DefaultListenPeerURLs
+	DefaultAdvertiseClientURLs := DefaultListenClientURLs
 	lpurl, _ := url.Parse(DefaultListenPeerURLs)
 	apurl, _ := url.Parse(DefaultInitialAdvertisePeerURLs)
 	lcurl, _ := url.Parse(DefaultListenClientURLs)
@@ -82,6 +85,28 @@ func StartEmbeddedEtcd(ctx context.Context, etcdDir string, logger *logrus.Entry
 		return nil, fmt.Errorf("server took too long to start")
 	}
 	return e, nil
+}
+
+// getPeerPortNo returns the Peer PortNo.
+func getPeerPortNo(port string) string {
+	if len(strings.TrimSpace(port)) == 0 {
+		return "0"
+	}
+
+	lastDigit, err := strconv.Atoi(port[len(port)-1:])
+	if err != nil {
+		return "0"
+	}
+
+	return strings.TrimSpace(port[:len(port)-1] + strconv.Itoa((lastDigit+1)%10))
+}
+
+// getClientPortNo returns the Client PortNo.
+func getClientPortNo(port string) string {
+	if len(strings.TrimSpace(port)) == 0 {
+		return "0"
+	}
+	return strings.TrimSpace(port)
 }
 
 // EtcdDataPopulationResponse is response about etcd data population
@@ -216,7 +241,7 @@ func RunSnapshotter(logger *logrus.Entry, snapstoreConfig brtypes.SnapstoreConfi
 
 // CheckDataConsistency starts an embedded etcd and checks for correctness of the values stored in etcd against the keys 'keyFrom' through 'keyTo'
 func CheckDataConsistency(ctx context.Context, dir string, keyTo int, logger *logrus.Entry) error {
-	etcd, err := StartEmbeddedEtcd(ctx, dir, logger)
+	etcd, err := StartEmbeddedEtcd(ctx, dir, logger, EmbeddedEtcdPortNo)
 	if err != nil {
 		return fmt.Errorf("unable to start embedded etcd server: %v", err)
 	}

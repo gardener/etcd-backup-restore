@@ -119,6 +119,8 @@ func (h *HTTPHandler) RegisterHandler() {
 	mux.HandleFunc("/snapshot/delta", h.serveDeltaSnapshotTrigger)
 	mux.HandleFunc("/snapshot/latest", h.serveLatestSnapshotMetadata)
 	mux.HandleFunc("/healthz", h.serveHealthz)
+	//mux.HandleFunc("/forward/full", h.serveFullSnapshotTrigger)
+	//mux.HandleFunc("/forward/delta", h.serveDeltaSnapshotTrigger)
 	mux.Handle("/metrics", promhttp.Handler())
 
 	h.server = &http.Server{

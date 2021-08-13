@@ -37,10 +37,10 @@ const (
 	// DefaultCurrentState defines default currentState of backup-restore as "Follower".
 	DefaultCurrentState = StateFollower
 
-	// NoLeaderID defines the state when etcd returns LeaderID as 0.
-	NoLeaderID uint64 = 0
+	// NoLeaderState defines the state when etcd returns LeaderID as 0.
+	NoLeaderState uint64 = 0
 
-	// DefaultReelectionPeriod defines default ReelectionPeriod.
+	// DefaultReelectionPeriod defines default time period for Reelection.
 	DefaultReelectionPeriod = 5 * time.Second
 	// DefaultEtcdConnectionTimeout defines default ConnectionTimeout for etcd client.
 	DefaultEtcdConnectionTimeout = 5 * time.Second

@@ -108,13 +108,14 @@ var _ = Describe("Defrag", func() {
 
 			ctx, cancel := context.WithTimeout(testCtx, etcdDialTimeout)
 			oldStatus, err := clientMaintenance.Status(ctx, endpoints[0])
-			cancel()
+
 			Expect(err).ShouldNot(HaveOccurred())
 			oldDBSize := oldStatus.DbSize
 			oldRevision := oldStatus.Header.GetRevision()
 
-			defragmentorJob := NewDefragmentorJob(testCtx, etcdConnectionConfig, logger, nil)
+			defragmentorJob := NewDefragmentorJob(ctx, etcdConnectionConfig, logger, nil)
 			defragmentorJob.Run()
+			cancel()
 
 			ctx, cancel = context.WithTimeout(testCtx, etcdDialTimeout)
 			newStatus, err := clientMaintenance.Status(ctx, endpoints[0])
@@ -154,7 +155,7 @@ var _ = Describe("Defrag", func() {
 			oldDBSize := oldStatus.DbSize
 			oldRevision := oldStatus.Header.GetRevision()
 
-			defragThreadCtx, cancelDefragThread := context.WithTimeout(testCtx, time.Second*time.Duration(135))
+			defragThreadCtx, cancelDefragThread := context.WithTimeout(testCtx, time.Second*time.Duration(235))
 			defer cancelDefragThread()
 			DefragDataPeriodically(defragThreadCtx, etcdConnectionConfig, defragSchedule, func(_ context.Context, _ bool) (*brtypes.Snapshot, error) {
 				defragCount++
