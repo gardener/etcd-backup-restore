@@ -388,7 +388,6 @@ func (ssr *Snapshotter) TakeDeltaSnapshot() (*brtypes.Snapshot, error) {
 		return nil, fmt.Errorf("failed to get compressionSuffix: %v", err)
 	}
 	snap := snapstore.NewSnapshot(brtypes.SnapshotKindDelta, ssr.prevSnapshot.LastRevision+1, ssr.lastEventRevision, compressionSuffix)
-	snap.SnapDir = ssr.prevSnapshot.SnapDir
 
 	// compute hash
 	hash := sha256.New()
