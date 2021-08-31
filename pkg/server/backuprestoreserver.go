@@ -106,22 +106,24 @@ func (b *BackupRestoreServer) Run(ctx context.Context) error {
 
 // startHTTPServer creates and starts the HTTP handler
 // with status 503 (Service Unavailable)
-func (b *BackupRestoreServer) startHTTPServer(initializer initializer.Initializer, ssr *snapshotter.Snapshotter) *HTTPHandler {
+func (b *BackupRestoreServer) startHTTPServer(initializer initializer.Initializer, storageProvider string, etcdConfig *etcdutil.EtcdConnectionConfig, ssr *snapshotter.Snapshotter) *HTTPHandler {
 	// Start http handler with Error state and wait till snapshotter is up
 	// and running before setting the status to OK.
 	handler := &HTTPHandler{
-		Port:              b.config.ServerConfig.Port,
-		Initializer:       initializer,
-		Snapshotter:       ssr,
-		Logger:            b.logger,
-		StopCh:            make(chan struct{}),
-		EnableProfiling:   b.config.ServerConfig.EnableProfiling,
-		ReqCh:             make(chan struct{}),
-		AckCh:             make(chan struct{}),
-		EnableTLS:         (b.config.ServerConfig.TLSCertFile != "" && b.config.ServerConfig.TLSKeyFile != ""),
-		ServerTLSCertFile: b.config.ServerConfig.TLSCertFile,
-		ServerTLSKeyFile:  b.config.ServerConfig.TLSKeyFile,
-		HTTPHandlerMutex:  &sync.Mutex{},
+		Port:                 b.config.ServerConfig.Port,
+		Initializer:          initializer,
+		Snapshotter:          ssr,
+		Logger:               b.logger,
+		StopCh:               make(chan struct{}),
+		EnableProfiling:      b.config.ServerConfig.EnableProfiling,
+		ReqCh:                make(chan struct{}),
+		AckCh:                make(chan struct{}),
+		EnableTLS:            (b.config.ServerConfig.TLSCertFile != "" && b.config.ServerConfig.TLSKeyFile != ""),
+		ServerTLSCertFile:    b.config.ServerConfig.TLSCertFile,
+		ServerTLSKeyFile:     b.config.ServerConfig.TLSKeyFile,
+		HTTPHandlerMutex:     &sync.Mutex{},
+		EtcdConnectionConfig: etcdConfig,
+		StorageProvider:      storageProvider,
 	}
 	handler.SetStatus(http.StatusServiceUnavailable)
 	b.logger.Info("Registering the http request handlers...")
@@ -139,7 +141,7 @@ func (b *BackupRestoreServer) runServerWithoutSnapshotter(ctx context.Context, r
 
 	// If no storage provider is given, snapshotter will be nil, in which
 	// case the status is set to OK as soon as etcd probe is successful
-	handler := b.startHTTPServer(etcdInitializer, nil)
+	handler := b.startHTTPServer(etcdInitializer, b.config.SnapstoreConfig.Provider, b.config.EtcdConnectionConfig, nil)
 	defer handler.Stop()
 
 	// start defragmentation without trigerring full snapshot
@@ -173,7 +175,7 @@ func (b *BackupRestoreServer) runServerWithSnapshotter(ctx context.Context, rest
 		return err
 	}
 
-	handler := b.startHTTPServer(etcdInitializer, nil)
+	handler := b.startHTTPServer(etcdInitializer, b.config.SnapstoreConfig.Provider, b.config.EtcdConnectionConfig, nil)
 	defer handler.Stop()
 
 	leaderCallbacks := &leaderelection.LeaderCallbacks{

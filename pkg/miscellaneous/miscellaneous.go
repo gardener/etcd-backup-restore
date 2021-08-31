@@ -17,11 +17,13 @@ package miscellaneous
 import (
 	"context"
 	"fmt"
+	"net"
 	"net/url"
 	"path/filepath"
 	"sort"
 	"time"
 
+	"github.com/gardener/etcd-backup-restore/pkg/errors"
 	"github.com/gardener/etcd-backup-restore/pkg/etcdutil"
 	"github.com/gardener/etcd-backup-restore/pkg/metrics"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
@@ -33,6 +35,11 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
 	fake "sigs.k8s.io/controller-runtime/pkg/client/fake"
+)
+
+const (
+	// NoLeaderState defines the state when etcd returns LeaderID as 0.
+	NoLeaderState uint64 = 0
 )
 
 // GetLatestFullSnapshotAndDeltaSnapList returns the latest snapshot
@@ -219,4 +226,68 @@ func IsEtcdClusterHealthy(ctx context.Context, client *clientv3.Client, etcdConn
 	}
 
 	return true, nil
+}
+
+// GetLeader will return the LeaderID as well as url of etcd leader.
+func GetLeader(ctx context.Context, etcdConnectionConfig *etcdutil.EtcdConnectionConfig) (uint64, []string, error) {
+	var endPoint string
+	client, err := etcdutil.GetTLSClientForEtcd(etcdConnectionConfig)
+	if err != nil {
+		return NoLeaderState, nil, &errors.EtcdError{
+			Message: fmt.Sprintf("Failed to create etcd client: %v", err),
+		}
+	}
+	defer client.Close()
+
+	ctx, cancel := context.WithTimeout(ctx, etcdConnectionConfig.ConnectionTimeout.Duration)
+	defer cancel()
+
+	if len(etcdConnectionConfig.Endpoints) > 0 {
+		endPoint = etcdConnectionConfig.Endpoints[0]
+	} else {
+		return NoLeaderState, nil, fmt.Errorf("Etcd endpoints are not passed correctly")
+	}
+
+	response, err := client.Status(ctx, endPoint)
+	if err != nil {
+		return NoLeaderState, nil, err
+	}
+
+	if response.Leader == NoLeaderState {
+		return NoLeaderState, nil, &errors.EtcdError{
+			Message: fmt.Sprintf("Currently there is no Etcd Leader present may be due to etcd quorum loss."),
+		}
+	}
+
+	membersInfo, err := client.MemberList(ctx)
+	if err != nil {
+		return response.Leader, nil, err
+	}
+
+	for _, member := range membersInfo.Members {
+		if response.Leader == member.GetID() {
+			return response.Leader, member.GetClientURLs(), nil
+		}
+	}
+	return response.Leader, nil, nil
+}
+
+// GetBackupLeaderEndPoint takes etcd leader endpoint and portNo. of backup-restore and returns the backupLeader endpoint.
+func GetBackupLeaderEndPoint(endPoints []string, port uint) (string, error) {
+	if len(endPoints) == 0 {
+		return "", fmt.Errorf("Etcd endpoints are not passed correctly")
+	}
+
+	url, err := url.Parse(endPoints[0])
+	if err != nil {
+		return "", err
+	}
+
+	host, _, err := net.SplitHostPort(url.Host)
+	if err != nil {
+		return "", err
+	}
+
+	backupLeaderEndPoint := fmt.Sprintf("%s://%s:%s", url.Scheme, host, fmt.Sprintf("%d", port))
+	return backupLeaderEndPoint, nil
 }
