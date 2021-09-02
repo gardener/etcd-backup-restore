@@ -48,7 +48,9 @@ func (le *LeaderElector) Run(ctx context.Context) error {
 		select {
 		case <-ctx.Done():
 			le.logger.Info("Shutting down LeaderElection...")
-			leCancel()
+			if leCancel != nil {
+				leCancel()
+			}
 			return nil
 		case <-time.After(le.Config.ReelectionPeriod.Duration):
 			isLeader, err := le.IsLeader(ctx)

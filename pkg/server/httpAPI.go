@@ -26,11 +26,11 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/gardener/etcd-backup-restore/pkg/etcdutil"
 	"github.com/gardener/etcd-backup-restore/pkg/initializer"
 	"github.com/gardener/etcd-backup-restore/pkg/initializer/validator"
 	"github.com/gardener/etcd-backup-restore/pkg/miscellaneous"
 	"github.com/gardener/etcd-backup-restore/pkg/snapshot/snapshotter"
+	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/sirupsen/logrus"
 )
@@ -66,7 +66,7 @@ const (
 type HTTPHandler struct {
 	Initializer               initializer.Initializer
 	Snapshotter               *snapshotter.Snapshotter
-	EtcdConnectionConfig      *etcdutil.EtcdConnectionConfig
+	EtcdConnectionConfig      *brtypes.EtcdConnectionConfig
 	StorageProvider           string
 	Port                      uint
 	server                    *http.Server

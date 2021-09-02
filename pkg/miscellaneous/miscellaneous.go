@@ -188,7 +188,7 @@ func GetFakeKubernetesClientSet() client.Client {
 }
 
 // GetAllEtcdEndpoints returns the endPoints of all etcd-member.
-func GetAllEtcdEndpoints(ctx context.Context, client *clientv3.Client, etcdConnectionConfig *etcdutil.EtcdConnectionConfig, logger *logrus.Entry) ([]string, error) {
+func GetAllEtcdEndpoints(ctx context.Context, client *clientv3.Client, etcdConnectionConfig *brtypes.EtcdConnectionConfig, logger *logrus.Entry) ([]string, error) {
 	var etcdEndpoints []string
 
 	ctx, cancel := context.WithTimeout(ctx, etcdConnectionConfig.ConnectionTimeout.Duration)
@@ -208,7 +208,7 @@ func GetAllEtcdEndpoints(ctx context.Context, client *clientv3.Client, etcdConne
 }
 
 // IsEtcdClusterHealthy checks whether all members of etcd cluster are in healthy state or not.
-func IsEtcdClusterHealthy(ctx context.Context, client *clientv3.Client, etcdConnectionConfig *etcdutil.EtcdConnectionConfig, etcdEndpoints []string, logger *logrus.Entry) (bool, error) {
+func IsEtcdClusterHealthy(ctx context.Context, client *clientv3.Client, etcdConnectionConfig *brtypes.EtcdConnectionConfig, etcdEndpoints []string, logger *logrus.Entry) (bool, error) {
 
 	// checks the health of all etcd members.
 	for _, endPoint := range etcdEndpoints {
@@ -229,7 +229,7 @@ func IsEtcdClusterHealthy(ctx context.Context, client *clientv3.Client, etcdConn
 }
 
 // GetLeader will return the LeaderID as well as url of etcd leader.
-func GetLeader(ctx context.Context, etcdConnectionConfig *etcdutil.EtcdConnectionConfig) (uint64, []string, error) {
+func GetLeader(ctx context.Context, etcdConnectionConfig *brtypes.EtcdConnectionConfig) (uint64, []string, error) {
 	var endPoint string
 	client, err := etcdutil.GetTLSClientForEtcd(etcdConnectionConfig)
 	if err != nil {

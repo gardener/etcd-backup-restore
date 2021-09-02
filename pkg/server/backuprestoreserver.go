@@ -52,6 +52,11 @@ type BackupRestoreServer struct {
 	defragmentationSchedule cron.Schedule
 }
 
+var (
+	// runServerWithSnapshotter indicates whether to start server with or without snapshotter.
+	runServerWithSnapshotter bool = true
+)
+
 // NewBackupRestoreServer return new backup restore server.
 func NewBackupRestoreServer(logger *logrus.Logger, config *BackupRestoreComponentConfig) (*BackupRestoreServer, error) {
 	serverLogger := logger.WithField("actor", "backup-restore-server")
@@ -98,15 +103,14 @@ func (b *BackupRestoreServer) Run(ctx context.Context) error {
 
 	if b.config.SnapstoreConfig == nil || len(b.config.SnapstoreConfig.Provider) == 0 {
 		b.logger.Warnf("No snapstore storage provider configured. Will not start backup schedule.")
-		b.runServerWithoutSnapshotter(ctx, options)
-		return nil
+		runServerWithSnapshotter = false
 	}
-	return b.runServerWithSnapshotter(ctx, options)
+	return b.runServer(ctx, options)
 }
 
 // startHTTPServer creates and starts the HTTP handler
 // with status 503 (Service Unavailable)
-func (b *BackupRestoreServer) startHTTPServer(initializer initializer.Initializer, storageProvider string, etcdConfig *etcdutil.EtcdConnectionConfig, ssr *snapshotter.Snapshotter) *HTTPHandler {
+func (b *BackupRestoreServer) startHTTPServer(initializer initializer.Initializer, storageProvider string, etcdConfig *brtypes.EtcdConnectionConfig, ssr *snapshotter.Snapshotter) *HTTPHandler {
 	// Start http handler with Error state and wait till snapshotter is up
 	// and running before setting the status to OK.
 	handler := &HTTPHandler{
@@ -134,46 +138,20 @@ func (b *BackupRestoreServer) startHTTPServer(initializer initializer.Initialize
 	return handler
 }
 
-// runServerWithoutSnapshotter runs the etcd-backup-restore
-// for the case where snapshotter is not configured
-func (b *BackupRestoreServer) runServerWithoutSnapshotter(ctx context.Context, restoreOpts *brtypes.RestoreOptions) {
-	etcdInitializer := initializer.NewInitializer(restoreOpts, nil, b.logger.Logger)
-
-	// If no storage provider is given, snapshotter will be nil, in which
-	// case the status is set to OK as soon as etcd probe is successful
-	handler := b.startHTTPServer(etcdInitializer, b.config.SnapstoreConfig.Provider, b.config.EtcdConnectionConfig, nil)
-	defer handler.Stop()
-
-	// start defragmentation without trigerring full snapshot
-	// after each successful data defragmentation
-	go defragmentor.DefragDataPeriodically(ctx, b.config.EtcdConnectionConfig, b.defragmentationSchedule, nil, b.logger)
-
-	if b.config.HealthConfig.MemberLeaseRenewalEnabled {
-		go heartbeat.RenewMemberLeasePeriodically(ctx, b.config.HealthConfig, b.logger, b.config.EtcdConnectionConfig)
-	}
-
-	b.runEtcdProbeLoopWithoutSnapshotter(ctx, handler)
-}
-
-// runServerWithSnapshotter runs the etcd-backup-restore
-// for the case where snapshotter is configured correctly
-func (b *BackupRestoreServer) runServerWithSnapshotter(ctx context.Context, restoreOpts *brtypes.RestoreOptions) error {
+// runServer runs the etcd-backup-restore server according to snapstore provider configuration.
+func (b *BackupRestoreServer) runServer(ctx context.Context, restoreOpts *brtypes.RestoreOptions) error {
+	var (
+		snapstoreConfig *brtypes.SnapstoreConfig
+		ssr             *snapshotter.Snapshotter
+		ss              brtypes.SnapStore
+	)
 	ackCh := make(chan struct{})
 	ssrStopCh := make(chan struct{})
 
-	etcdInitializer := initializer.NewInitializer(restoreOpts, b.config.SnapstoreConfig, b.logger.Logger)
-
-	b.logger.Infof("Creating snapstore from provider: %s", b.config.SnapstoreConfig.Provider)
-	ss, err := snapstore.GetSnapstore(b.config.SnapstoreConfig)
-	if err != nil {
-		return fmt.Errorf("failed to create snapstore from configured storage provider: %v", err)
+	if runServerWithSnapshotter {
+		snapstoreConfig = b.config.SnapstoreConfig
 	}
-
-	b.logger.Infof("Creating snapshotter...")
-	ssr, err := snapshotter.NewSnapshotter(b.logger, b.config.SnapshotterConfig, ss, b.config.EtcdConnectionConfig, b.config.CompressionConfig, b.config.HealthConfig)
-	if err != nil {
-		return err
-	}
+	etcdInitializer := initializer.NewInitializer(restoreOpts, snapstoreConfig, b.logger.Logger)
 
 	handler := b.startHTTPServer(etcdInitializer, b.config.SnapstoreConfig.Provider, b.config.EtcdConnectionConfig, nil)
 	defer handler.Stop()
@@ -181,29 +159,45 @@ func (b *BackupRestoreServer) runServerWithSnapshotter(ctx context.Context, rest
 	leaderCallbacks := &leaderelection.LeaderCallbacks{
 		OnStartedLeading: func(leCtx context.Context) {
 			ssrStopCh = make(chan struct{})
-			// Get the new snapshotter object
-			ssr, err = snapshotter.NewSnapshotter(b.logger, b.config.SnapshotterConfig, ss, b.config.EtcdConnectionConfig, b.config.CompressionConfig, b.config.HealthConfig)
-			if err != nil {
-				b.logger.Errorf("Failed to create new Snapshotter object: %v", err)
-				return
+			var err error
+			var defragCallBack defragmentor.CallbackFunc
+			if runServerWithSnapshotter {
+				ssrStopCh = make(chan struct{})
+
+				b.logger.Infof("Creating snapstore from provider: %s", b.config.SnapstoreConfig.Provider)
+				ss, err = snapstore.GetSnapstore(b.config.SnapstoreConfig)
+				if err != nil {
+					b.logger.Errorf("Failed to create snapstore from configured storage provider: %v", err)
+					return
+				}
+
+				// Get the new snapshotter object
+				b.logger.Infof("Creating snapshotter...")
+				ssr, err = snapshotter.NewSnapshotter(b.logger, b.config.SnapshotterConfig, ss, b.config.EtcdConnectionConfig, b.config.CompressionConfig, b.config.HealthConfig)
+				if err != nil {
+					b.logger.Errorf("Failed to create new Snapshotter object: %v", err)
+					return
+				}
+
+				// set "http handler" with the latest snapshotter object
+				handler.SetSnapshotter(ssr)
+				defragCallBack = ssr.TriggerFullSnapshot
+				go handleSsrStopRequest(leCtx, handler, ssr, ackCh, ssrStopCh)
 			}
-			// set "http handler" with the latest/new snapshotter object
-			handler.SetSnapshotter(ssr)
-
 			go b.runEtcdProbeLoopWithSnapshotter(leCtx, handler, ssr, ssrStopCh, ackCh)
-
-			go handleSsrStopRequest(leCtx, handler, ssr, ackCh, ssrStopCh)
-			go defragmentor.DefragDataPeriodically(leCtx, b.config.EtcdConnectionConfig, b.defragmentationSchedule, ssr.TriggerFullSnapshot, b.logger)
+			go defragmentor.DefragDataPeriodically(leCtx, b.config.EtcdConnectionConfig, b.defragmentationSchedule, defragCallBack, b.logger)
 		},
 		OnStoppedLeading: func() {
 			// stops the running snapshotter
-			ssr.SsrStateMutex.Lock()
-			defer ssr.SsrStateMutex.Unlock()
-			if ssr.SsrState == brtypes.SnapshotterActive {
-				ssrStopCh <- emptyStruct
-				b.logger.Info("backup-restore stops leading...")
+			if runServerWithSnapshotter {
+				ssr.SsrStateMutex.Lock()
+				defer ssr.SsrStateMutex.Unlock()
+				if ssr.SsrState == brtypes.SnapshotterActive {
+					ssrStopCh <- emptyStruct
+					b.logger.Info("backup-restore stops leading...")
+				}
+				handler.SetSnapshotterToNil()
 			}
-			handler.SetSnapshotterToNil()
 		},
 	}
 
@@ -213,7 +207,9 @@ func (b *BackupRestoreServer) runServerWithSnapshotter(ctx context.Context, rest
 		return err
 	}
 
-	go handleAckState(handler, ackCh)
+	if runServerWithSnapshotter {
+		go handleAckState(handler, ackCh)
+	}
 
 	//TODO @aaronfern: Add functionality for member garbage collection
 	if b.config.HealthConfig.MemberLeaseRenewalEnabled {
@@ -246,196 +242,178 @@ func (b *BackupRestoreServer) runEtcdProbeLoopWithSnapshotter(ctx context.Contex
 			continue
 		}
 
-		if b.ownerChecker != nil {
-			// Check if the actual owner ID matches the expected one
-			// If the check fails or returns false, take a final full snapshot if needed
-			b.logger.Debugf("Checking owner before starting snapshotter...")
-			result, err := b.ownerChecker.Check(ctx)
-			if err != nil || !result {
-				handler.SetStatus(http.StatusServiceUnavailable)
+		if runServerWithSnapshotter {
+			if b.ownerChecker != nil {
+				// Check if the actual owner ID matches the expected one
+				// If the check fails or returns false, take a final full snapshot if needed
+				b.logger.Debugf("Checking owner before starting snapshotter...")
+				result, err := b.ownerChecker.Check(ctx)
+				if err != nil || !result {
+					handler.SetStatus(http.StatusServiceUnavailable)
 
-				// If the previous full snapshot doesn't exist or is not marked as final, take a final full snapshot
-				if ssr.PrevFullSnapshot == nil || !ssr.PrevFullSnapshot.IsFinal {
-					b.logger.Infof("Taking final full snapshot...")
-					var snapshot *brtypes.Snapshot
-					if snapshot, err = ssr.TakeFullSnapshotAndResetTimer(true); err != nil {
-						b.logger.Errorf("Could not take final full snapshot: %v", err)
+					// If the previous full snapshot doesn't exist or is not marked as final, take a final full snapshot
+					if ssr.PrevFullSnapshot == nil || !ssr.PrevFullSnapshot.IsFinal {
+						b.logger.Infof("Taking final full snapshot...")
+						var snapshot *brtypes.Snapshot
+						if snapshot, err = ssr.TakeFullSnapshotAndResetTimer(true); err != nil {
+							b.logger.Errorf("Could not take final full snapshot: %v", err)
+							continue
+						}
+						if b.config.HealthConfig.SnapshotLeaseRenewalEnabled {
+							leaseUpdatectx, cancel := context.WithTimeout(ctx, brtypes.LeaseUpdateTimeoutDuration)
+							defer cancel()
+							if err = heartbeat.FullSnapshotCaseLeaseUpdate(leaseUpdatectx, b.logger, snapshot, ssr.K8sClientset, b.config.HealthConfig.FullSnapshotLeaseName, b.config.HealthConfig.DeltaSnapshotLeaseName); err != nil {
+								b.logger.Warnf("Snapshot lease update failed : %v", err)
+							}
+						}
+					}
+
+					// Wait for the configured interval before making another attempt
+					b.logger.Infof("Waiting for %s...", b.config.OwnerCheckConfig.OwnerCheckInterval.Duration)
+					select {
+					case <-ctx.Done():
+						b.logger.Info("Shutting down...")
+						return
+					case <-time.After(b.config.OwnerCheckConfig.OwnerCheckInterval.Duration):
+					}
+
+					continue
+				}
+			}
+
+			// The decision to either take an initial delta snapshot or
+			// or a full snapshot directly is based on whether there has
+			// been a previous full snapshot (if not, we assume the etcd
+			// to be a fresh etcd) or it has been more than 24 hours since
+			// the last full snapshot was taken.
+			// If this is not the case, we take a delta snapshot by first
+			// collecting all the delta events since the previous snapshot
+			// and take a delta snapshot of these (there may be multiple
+			// delta snapshots based on the amount of events collected and
+			// the delta snapshot memory limit), after which a full snapshot
+			// is taken and the regular snapshot schedule comes into effect.
+
+			// TODO: write code to find out if prev full snapshot is older than it is
+			// supposed to be, according to the given cron schedule, instead of the
+			// hard-coded "24 hours" full snapshot interval
+
+			// Temporary fix for missing alternate full snapshots for Gardener shoots
+			// with hibernation schedule set: change value from 24 ot 23.5 to
+			// accommodate for slight pod spin-up delays on shoot wake-up
+			const recentFullSnapshotPeriodInHours = 23.5
+			initialDeltaSnapshotTaken = false
+			if ssr.PrevFullSnapshot != nil && !ssr.PrevFullSnapshot.IsFinal && time.Since(ssr.PrevFullSnapshot.CreatedOn).Hours() <= recentFullSnapshotPeriodInHours {
+				ssrStopped, err := ssr.CollectEventsSincePrevSnapshot(ssrStopCh)
+				if ssrStopped {
+					b.logger.Info("Snapshotter stopped.")
+					ackCh <- emptyStruct
+					handler.SetStatus(http.StatusServiceUnavailable)
+					b.logger.Info("Shutting down...")
+					return
+				}
+				if err == nil {
+					if _, err := ssr.TakeDeltaSnapshot(); err != nil {
+						b.logger.Warnf("Failed to take first delta snapshot: snapshotter failed with error: %v", err)
 						continue
 					}
+					initialDeltaSnapshotTaken = true
 					if b.config.HealthConfig.SnapshotLeaseRenewalEnabled {
 						leaseUpdatectx, cancel := context.WithTimeout(ctx, brtypes.LeaseUpdateTimeoutDuration)
 						defer cancel()
-						if err = heartbeat.FullSnapshotCaseLeaseUpdate(leaseUpdatectx, b.logger, snapshot, ssr.K8sClientset, b.config.HealthConfig.FullSnapshotLeaseName, b.config.HealthConfig.DeltaSnapshotLeaseName); err != nil {
+						ss, err := snapstore.GetSnapstore(b.config.SnapstoreConfig)
+						if err != nil {
+							b.logger.Errorf("failed to create snapstore from configured storage provider: %v", err)
+						}
+						if err = heartbeat.DeltaSnapshotCaseLeaseUpdate(leaseUpdatectx, b.logger, ssr.K8sClientset, b.config.HealthConfig.DeltaSnapshotLeaseName, ss); err != nil {
 							b.logger.Warnf("Snapshot lease update failed : %v", err)
 						}
 					}
+				} else {
+					b.logger.Warnf("Failed to collect events for first delta snapshot(s): %v", err)
 				}
-
-				// Wait for the configured interval before making another attempt
-				b.logger.Infof("Waiting for %s...", b.config.OwnerCheckConfig.OwnerCheckInterval.Duration)
-				select {
-				case <-ctx.Done():
-					b.logger.Info("Shutting down...")
-					return
-				case <-time.After(b.config.OwnerCheckConfig.OwnerCheckInterval.Duration):
-				}
-
-				continue
 			}
-		}
-
-		// The decision to either take an initial delta snapshot or
-		// or a full snapshot directly is based on whether there has
-		// been a previous full snapshot (if not, we assume the etcd
-		// to be a fresh etcd) or it has been more than 24 hours since
-		// the last full snapshot was taken.
-		// If this is not the case, we take a delta snapshot by first
-		// collecting all the delta events since the previous snapshot
-		// and take a delta snapshot of these (there may be multiple
-		// delta snapshots based on the amount of events collected and
-		// the delta snapshot memory limit), after which a full snapshot
-		// is taken and the regular snapshot schedule comes into effect.
-
-		// TODO: write code to find out if prev full snapshot is older than it is
-		// supposed to be, according to the given cron schedule, instead of the
-		// hard-coded "24 hours" full snapshot interval
-
-		// Temporary fix for missing alternate full snapshots for Gardener shoots
-		// with hibernation schedule set: change value from 24 ot 23.5 to
-		// accommodate for slight pod spin-up delays on shoot wake-up
-		const recentFullSnapshotPeriodInHours = 23.5
-		initialDeltaSnapshotTaken = false
-		if ssr.PrevFullSnapshot != nil && !ssr.PrevFullSnapshot.IsFinal && time.Since(ssr.PrevFullSnapshot.CreatedOn).Hours() <= recentFullSnapshotPeriodInHours {
-			ssrStopped, err := ssr.CollectEventsSincePrevSnapshot(ssrStopCh)
-			if ssrStopped {
-				b.logger.Info("Snapshotter stopped.")
-				ackCh <- emptyStruct
-				handler.SetStatus(http.StatusServiceUnavailable)
-				b.logger.Info("Shutting down...")
-				return
-			}
-			if err == nil {
-				if _, err := ssr.TakeDeltaSnapshot(); err != nil {
-					b.logger.Warnf("Failed to take first delta snapshot: snapshotter failed with error: %v", err)
+			if !initialDeltaSnapshotTaken {
+				// need to take a full snapshot here
+				var snapshot *brtypes.Snapshot
+				metrics.SnapshotRequired.With(prometheus.Labels{metrics.LabelKind: brtypes.SnapshotKindDelta}).Set(0)
+				metrics.SnapshotRequired.With(prometheus.Labels{metrics.LabelKind: brtypes.SnapshotKindFull}).Set(1)
+				if snapshot, err = ssr.TakeFullSnapshotAndResetTimer(false); err != nil {
+					metrics.SnapshotterOperationFailure.With(prometheus.Labels{metrics.LabelError: err.Error()}).Inc()
+					b.logger.Errorf("Failed to take substitute first full snapshot: %v", err)
 					continue
 				}
-				initialDeltaSnapshotTaken = true
 				if b.config.HealthConfig.SnapshotLeaseRenewalEnabled {
 					leaseUpdatectx, cancel := context.WithTimeout(ctx, brtypes.LeaseUpdateTimeoutDuration)
 					defer cancel()
-					ss, err := snapstore.GetSnapstore(b.config.SnapstoreConfig)
-					if err != nil {
-						b.logger.Errorf("failed to create snapstore from configured storage provider: %v", err)
-					}
-					if err = heartbeat.DeltaSnapshotCaseLeaseUpdate(leaseUpdatectx, b.logger, ssr.K8sClientset, b.config.HealthConfig.DeltaSnapshotLeaseName, ss); err != nil {
+					if err = heartbeat.FullSnapshotCaseLeaseUpdate(leaseUpdatectx, b.logger, snapshot, ssr.K8sClientset, b.config.HealthConfig.FullSnapshotLeaseName, b.config.HealthConfig.DeltaSnapshotLeaseName); err != nil {
 						b.logger.Warnf("Snapshot lease update failed : %v", err)
 					}
 				}
-			} else {
-				b.logger.Warnf("Failed to collect events for first delta snapshot(s): %v", err)
 			}
-		}
-		if !initialDeltaSnapshotTaken {
-			// need to take a full snapshot here
-			var snapshot *brtypes.Snapshot
-			metrics.SnapshotRequired.With(prometheus.Labels{metrics.LabelKind: brtypes.SnapshotKindDelta}).Set(0)
-			metrics.SnapshotRequired.With(prometheus.Labels{metrics.LabelKind: brtypes.SnapshotKindFull}).Set(1)
-			if snapshot, err = ssr.TakeFullSnapshotAndResetTimer(false); err != nil {
-				metrics.SnapshotterOperationFailure.With(prometheus.Labels{metrics.LabelError: err.Error()}).Inc()
-				b.logger.Errorf("Failed to take substitute first full snapshot: %v", err)
-				continue
+
+			// set server's healthz endpoint status to OK so that
+			// etcd is marked as ready to serve traffic
+			handler.SetStatus(http.StatusOK)
+
+			// Set snapshotter state to Active
+			ssr.SsrStateMutex.Lock()
+			ssr.SsrState = brtypes.SnapshotterActive
+			ssr.SsrStateMutex.Unlock()
+
+			// Start owner check watchdog
+			var ownerCheckWatchdog common.Watchdog
+			if b.ownerChecker != nil {
+				ownerCheckWatchdog = common.NewCheckerActionWatchdog(b.ownerChecker, common.ActionFunc(func(ctx context.Context) {
+					b.stopSnapshotter(handler)
+				}), b.config.OwnerCheckConfig.OwnerCheckInterval.Duration, clock.RealClock{}, b.logger)
+				ownerCheckWatchdog.Start(ctx)
 			}
-			if b.config.HealthConfig.SnapshotLeaseRenewalEnabled {
-				leaseUpdatectx, cancel := context.WithTimeout(ctx, brtypes.LeaseUpdateTimeoutDuration)
-				defer cancel()
-				if err = heartbeat.FullSnapshotCaseLeaseUpdate(leaseUpdatectx, b.logger, snapshot, ssr.K8sClientset, b.config.HealthConfig.FullSnapshotLeaseName, b.config.HealthConfig.DeltaSnapshotLeaseName); err != nil {
-					b.logger.Warnf("Snapshot lease update failed : %v", err)
+
+			// Start garbage collector
+			gcStopCh := make(chan struct{})
+			go ssr.RunGarbageCollector(gcStopCh)
+
+			// Start snapshotter
+			b.logger.Infof("Starting snapshotter...")
+			startWithFullSnapshot := ssr.PrevFullSnapshot == nil || ssr.PrevFullSnapshot.IsFinal || !(time.Since(ssr.PrevFullSnapshot.CreatedOn).Hours() <= recentFullSnapshotPeriodInHours)
+			if err := ssr.Run(ssrStopCh, startWithFullSnapshot); err != nil {
+				if etcdErr, ok := err.(*errors.EtcdError); ok == true {
+					metrics.SnapshotterOperationFailure.With(prometheus.Labels{metrics.LabelError: etcdErr.Error()}).Inc()
+					b.logger.Errorf("Snapshotter failed with etcd error: %v", etcdErr)
+				} else {
+					metrics.SnapshotterOperationFailure.With(prometheus.Labels{metrics.LabelError: err.Error()}).Inc()
+					b.logger.Fatalf("Snapshotter failed with error: %v", err)
 				}
 			}
-		}
+			b.logger.Infof("Snapshotter stopped.")
+			ackCh <- emptyStruct
 
-		// set server's healthz endpoint status to OK so that
-		// etcd is marked as ready to serve traffic
-		handler.SetStatus(http.StatusOK)
-
-		// Set snapshotter state to Active
-		ssr.SsrStateMutex.Lock()
-		ssr.SsrState = brtypes.SnapshotterActive
-		ssr.SsrStateMutex.Unlock()
-
-		// Start owner check watchdog
-		var ownerCheckWatchdog common.Watchdog
-		if b.ownerChecker != nil {
-			ownerCheckWatchdog = common.NewCheckerActionWatchdog(b.ownerChecker, common.ActionFunc(func(ctx context.Context) {
-				b.stopSnapshotter(handler)
-			}), b.config.OwnerCheckConfig.OwnerCheckInterval.Duration, clock.RealClock{}, b.logger)
-			ownerCheckWatchdog.Start(ctx)
-		}
-
-		// Start garbage collector
-		gcStopCh := make(chan struct{})
-		go ssr.RunGarbageCollector(gcStopCh)
-
-		// Start snapshotter
-		b.logger.Infof("Starting snapshotter...")
-		startWithFullSnapshot := ssr.PrevFullSnapshot == nil || ssr.PrevFullSnapshot.IsFinal || !(time.Since(ssr.PrevFullSnapshot.CreatedOn).Hours() <= recentFullSnapshotPeriodInHours)
-		if err := ssr.Run(ssrStopCh, startWithFullSnapshot); err != nil {
-			if etcdErr, ok := err.(*errors.EtcdError); ok == true {
-				metrics.SnapshotterOperationFailure.With(prometheus.Labels{metrics.LabelError: etcdErr.Error()}).Inc()
-				b.logger.Errorf("Snapshotter failed with etcd error: %v", etcdErr)
-			} else {
-				metrics.SnapshotterOperationFailure.With(prometheus.Labels{metrics.LabelError: err.Error()}).Inc()
-				b.logger.Fatalf("Snapshotter failed with error: %v", err)
-			}
-		}
-		b.logger.Infof("Snapshotter stopped.")
-		ackCh <- emptyStruct
-
-		handler.SetStatus(http.StatusServiceUnavailable)
-
-		// Stop garbage collector
-		close(gcStopCh)
-
-		if b.ownerChecker != nil {
-			// Stop owner check watchdog
-			ownerCheckWatchdog.Stop()
-
-			// If the owner check fails or returns false, kill the etcd process
-			// to ensure that any open connections from kube-apiserver are terminated
-			result, err := b.ownerChecker.Check(ctx)
-			if err != nil || !result {
-				if _, err := b.etcdProcessKiller.Kill(ctx); err != nil {
-					b.logger.Errorf("Could not kill etcd process: %v", err)
-				}
-			}
-		}
-	}
-}
-
-// runEtcdProbeLoopWithoutSnapshotter runs the etcd probe loop
-// for the case where snapshotter is not configured
-func (b *BackupRestoreServer) runEtcdProbeLoopWithoutSnapshotter(ctx context.Context, handler *HTTPHandler) {
-	var err error
-	for {
-		b.logger.Infof("Probing etcd...")
-		select {
-		case <-ctx.Done():
-			b.logger.Info("Shutting down...")
-			return
-		default:
-			err = b.probeEtcd(ctx)
-		}
-		if err != nil {
-			b.logger.Errorf("Failed to probe etcd: %v", err)
 			handler.SetStatus(http.StatusServiceUnavailable)
-			continue
-		}
 
-		handler.SetStatus(http.StatusOK)
-		<-ctx.Done()
-		handler.SetStatus(http.StatusServiceUnavailable)
-		b.logger.Infof("Received stop signal. Terminating !!")
-		return
+			// Stop garbage collector
+			close(gcStopCh)
+
+			if b.ownerChecker != nil {
+				// Stop owner check watchdog
+				ownerCheckWatchdog.Stop()
+
+				// If the owner check fails or returns false, kill the etcd process
+				// to ensure that any open connections from kube-apiserver are terminated
+				result, err := b.ownerChecker.Check(ctx)
+				if err != nil || !result {
+					if _, err := b.etcdProcessKiller.Kill(ctx); err != nil {
+						b.logger.Errorf("Could not kill etcd process: %v", err)
+					}
+				}
+			}
+
+		} else {
+			// for the case when snapshotter is not configured
+			handler.SetStatus(http.StatusOK)
+			<-ctx.Done()
+			handler.SetStatus(http.StatusServiceUnavailable)
+			b.logger.Infof("Received stop signal. Terminating !!")
+		}
 	}
 }
 

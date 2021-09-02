@@ -164,6 +164,9 @@ func DefragmentData(defragCtx context.Context, client client.MaintenanceCloser, 
 		return err
 	}
 
+	if len(followerEtcdEndpoints) > 0 {
+		logger.Info("Starting the defragmentation on etcd followers in a rolling manner")
+	}
 	// Perform the defragmentation on each etcd followers.
 	for _, ep := range followerEtcdEndpoints {
 		if err := func() error {
@@ -178,6 +181,7 @@ func DefragmentData(defragCtx context.Context, client client.MaintenanceCloser, 
 		}
 	}
 
+	logger.Info("Starting the defragmentation on etcd leader")
 	// Perform the defragmentation on etcd leader.
 	for _, ep := range leaderEtcdEndpoints {
 		if err := func() error {
