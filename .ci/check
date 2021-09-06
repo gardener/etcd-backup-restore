@@ -62,4 +62,4 @@ go fmt ${PACKAGES}
 golint -set_exit_status ${LINT_FOLDERS}
 
 # Execute lint checks on helm chart.
-helm lint ${HELM_CHART_PATH}
+helm lint "${HELM_CHART_PATH}"

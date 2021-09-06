@@ -57,7 +57,7 @@ if [[ -z "$LOCAL_BUILD" ]]; then
     -a \
     -mod vendor \
     -v \
-    -o ${BINARY_PATH}/linux-amd64/etcdbrctl \
+    -o "${BINARY_PATH}/linux-amd64/etcdbrctl" \
     -ldflags "-w -X ${REPOSITORY}/pkg/version.Version=${VERSION} -X ${REPOSITORY}/pkg/version.GitSHA=${GIT_SHA}" \
     main.go
 
@@ -66,7 +66,7 @@ else
   go build \
     -v \
     -mod vendor \
-    -o ${BINARY_PATH}/etcdbrctl \
+    -o "${BINARY_PATH}/etcdbrctl" \
     -ldflags "-w -X ${REPOSITORY}/pkg/version.Version=${VERSION} -X ${REPOSITORY}/pkg/version.GitSHA=${GIT_SHA}" \
     main.go
 fi
