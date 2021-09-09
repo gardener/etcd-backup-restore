@@ -17,7 +17,6 @@ package client
 import (
 	"io"
 
-	"github.com/gardener/etcd-backup-restore/pkg/etcdutil"
 	"go.etcd.io/etcd/clientv3"
 )
 
@@ -45,33 +44,4 @@ type Factory interface {
 	NewKV() (KVCloser, error)
 	NewMaintenance() (MaintenanceCloser, error)
 	NewWatcher() (clientv3.Watcher, error) // clientv3.Watcher already supports io.Closer
-}
-
-// NewFactory returns a Factory that constructs new clients using the supplied ETCD client configuration.
-func NewFactory(cfg etcdutil.EtcdConnectionConfig) Factory {
-	var f = factoryImpl(cfg)
-	return &f
-}
-
-// factoryImpl implements the Factory by constructing new client objects.
-type factoryImpl etcdutil.EtcdConnectionConfig
-
-func (f *factoryImpl) NewClient() (*clientv3.Client, error) {
-	return etcdutil.GetTLSClientForEtcd((*etcdutil.EtcdConnectionConfig)(f))
-}
-
-func (f *factoryImpl) NewCluster() (ClusterCloser, error) {
-	return f.NewClient()
-}
-
-func (f *factoryImpl) NewKV() (KVCloser, error) {
-	return f.NewClient()
-}
-
-func (f *factoryImpl) NewMaintenance() (MaintenanceCloser, error) {
-	return f.NewClient()
-}
-
-func (f *factoryImpl) NewWatcher() (clientv3.Watcher, error) {
-	return f.NewClient()
 }
