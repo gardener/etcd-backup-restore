@@ -25,6 +25,7 @@ import (
 
 	"github.com/gardener/etcd-backup-restore/pkg/compressor"
 	"github.com/gardener/etcd-backup-restore/pkg/errors"
+	"github.com/gardener/etcd-backup-restore/pkg/etcdutil/client"
 	"github.com/gardener/etcd-backup-restore/pkg/metrics"
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	"github.com/prometheus/client_golang/prometheus"
@@ -32,6 +33,35 @@ import (
 
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 )
+
+// NewFactory returns a Factory that constructs new clients using the supplied ETCD client configuration.
+func NewFactory(cfg EtcdConnectionConfig) client.Factory {
+	var f = factoryImpl(cfg)
+	return &f
+}
+
+// factoryImpl implements the client.Factory interface by constructing new client objects.
+type factoryImpl EtcdConnectionConfig
+
+func (f *factoryImpl) NewClient() (*clientv3.Client, error) {
+	return GetTLSClientForEtcd((*EtcdConnectionConfig)(f))
+}
+
+func (f *factoryImpl) NewCluster() (client.ClusterCloser, error) {
+	return f.NewClient()
+}
+
+func (f *factoryImpl) NewKV() (client.KVCloser, error) {
+	return f.NewClient()
+}
+
+func (f *factoryImpl) NewMaintenance() (client.MaintenanceCloser, error) {
+	return f.NewClient()
+}
+
+func (f *factoryImpl) NewWatcher() (clientv3.Watcher, error) {
+	return f.NewClient()
+}
 
 // GetTLSClientForEtcd creates an etcd client using the TLS config params.
 func GetTLSClientForEtcd(tlsConfig *EtcdConnectionConfig) (*clientv3.Client, error) {
