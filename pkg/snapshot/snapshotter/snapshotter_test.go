@@ -51,11 +51,13 @@ var _ = Describe("Snapshotter", func() {
 		schedule                string
 		etcdConnectionConfig    *etcdutil.EtcdConnectionConfig
 		compressionConfig       *compressor.CompressionConfig
+		healthConfig            *brtypes.HealthConfig
 		err                     error
 	)
 	BeforeEach(func() {
 		etcdConnectionConfig = etcdutil.NewEtcdConnectionConfig()
 		compressionConfig = compressor.NewCompressorConfig()
+		healthConfig = brtypes.NewHealthConfig()
 		etcdConnectionConfig.Endpoints = []string{etcd.Clients[0].Addr().String()}
 		etcdConnectionConfig.ConnectionTimeout.Duration = 5 * time.Second
 		garbageCollectionPeriod = 30 * time.Second
@@ -79,7 +81,7 @@ var _ = Describe("Snapshotter", func() {
 					MaxBackups:               1,
 				}
 
-				_, err := NewSnapshotter(logger, snapshotterConfig, store, etcdConnectionConfig, compressionConfig)
+				_, err := NewSnapshotter(logger, snapshotterConfig, store, etcdConnectionConfig, compressionConfig, healthConfig)
 				Expect(err).Should(HaveOccurred())
 			})
 		})
@@ -96,7 +98,7 @@ var _ = Describe("Snapshotter", func() {
 					MaxBackups:               1,
 				}
 
-				_, err := NewSnapshotter(logger, snapshotterConfig, store, etcdConnectionConfig, compressionConfig)
+				_, err := NewSnapshotter(logger, snapshotterConfig, store, etcdConnectionConfig, compressionConfig, healthConfig)
 				Expect(err).ShouldNot(HaveOccurred())
 			})
 		})
@@ -128,7 +130,7 @@ var _ = Describe("Snapshotter", func() {
 					MaxBackups:               maxBackups,
 				}
 
-				ssr, err := NewSnapshotter(logger, snapshotterConfig, store, etcdConnectionConfig, compressionConfig)
+				ssr, err := NewSnapshotter(logger, snapshotterConfig, store, etcdConnectionConfig, compressionConfig, healthConfig)
 				Expect(err).ShouldNot(HaveOccurred())
 
 				ctx, cancel := context.WithTimeout(testCtx, testTimeout)
@@ -163,7 +165,7 @@ var _ = Describe("Snapshotter", func() {
 						MaxBackups:               maxBackups,
 					}
 
-					ssr, err = NewSnapshotter(logger, snapshotterConfig, store, etcdConnectionConfig, compressionConfig)
+					ssr, err = NewSnapshotter(logger, snapshotterConfig, store, etcdConnectionConfig, compressionConfig, healthConfig)
 					Expect(err).ShouldNot(HaveOccurred())
 					ctx, cancel := context.WithTimeout(testCtx, testTimeout)
 					defer cancel()
@@ -217,7 +219,7 @@ var _ = Describe("Snapshotter", func() {
 							MaxBackups:               maxBackups,
 						}
 
-						ssr, err = NewSnapshotter(logger, snapshotterConfig, store, etcdConnectionConfig, compressionConfig)
+						ssr, err = NewSnapshotter(logger, snapshotterConfig, store, etcdConnectionConfig, compressionConfig, healthConfig)
 						Expect(err).ShouldNot(HaveOccurred())
 
 						ctx, cancel := context.WithTimeout(testCtx, testTimeout)
@@ -244,7 +246,7 @@ var _ = Describe("Snapshotter", func() {
 							MaxBackups:               maxBackups,
 						}
 
-						ssr, err = NewSnapshotter(logger, snapshotterConfig, store, etcdConnectionConfig, compressionConfig)
+						ssr, err = NewSnapshotter(logger, snapshotterConfig, store, etcdConnectionConfig, compressionConfig, healthConfig)
 						Expect(err).ShouldNot(HaveOccurred())
 
 						_, err = ssr.TriggerDeltaSnapshot()
@@ -272,7 +274,7 @@ var _ = Describe("Snapshotter", func() {
 								MaxBackups:               maxBackups,
 							}
 
-							ssr, err = NewSnapshotter(logger, snapshotterConfig, store, etcdConnectionConfig, compressionConfig)
+							ssr, err = NewSnapshotter(logger, snapshotterConfig, store, etcdConnectionConfig, compressionConfig, healthConfig)
 							Expect(err).ShouldNot(HaveOccurred())
 							populatorCtx, cancelPopulator := context.WithTimeout(testCtx, testTimeout)
 							defer cancelPopulator()
@@ -310,7 +312,7 @@ var _ = Describe("Snapshotter", func() {
 							// populating etcd so that snapshots will be taken
 							go utils.PopulateEtcdWithWaitGroup(populatorCtx, wg, logger, etcdConnectionConfig.Endpoints, nil)
 
-							ssr, err = NewSnapshotter(logger, snapshotterConfig, store, etcdConnectionConfig, compressionConfig)
+							ssr, err = NewSnapshotter(logger, snapshotterConfig, store, etcdConnectionConfig, compressionConfig, healthConfig)
 							Expect(err).ShouldNot(HaveOccurred())
 							ssrCtx := utils.ContextWithWaitGroup(testCtx, wg)
 							err = ssr.Run(ssrCtx.Done(), true)
@@ -362,7 +364,7 @@ var _ = Describe("Snapshotter", func() {
 					MaxBackups:               maxBackups,
 				}
 
-				ssr, err := NewSnapshotter(logger, snapshotterConfig, store, etcdConnectionConfig, compressionConfig)
+				ssr, err := NewSnapshotter(logger, snapshotterConfig, store, etcdConnectionConfig, compressionConfig, healthConfig)
 				Expect(err).ShouldNot(HaveOccurred())
 
 				gcCtx, cancel := context.WithTimeout(testCtx, testTimeout)
@@ -405,7 +407,7 @@ var _ = Describe("Snapshotter", func() {
 					MaxBackups:               maxBackups,
 				}
 
-				ssr, err := NewSnapshotter(logger, snapshotterConfig, store, etcdConnectionConfig, compressionConfig)
+				ssr, err := NewSnapshotter(logger, snapshotterConfig, store, etcdConnectionConfig, compressionConfig, healthConfig)
 				Expect(err).ShouldNot(HaveOccurred())
 
 				gcCtx, cancel := context.WithTimeout(testCtx, testTimeout)
@@ -450,7 +452,7 @@ var _ = Describe("Snapshotter", func() {
 					MaxBackups:               maxBackups,
 				}
 
-				ssr, err := NewSnapshotter(logger, snapshotterConfig, store, etcdConnectionConfig, compressionConfig)
+				ssr, err := NewSnapshotter(logger, snapshotterConfig, store, etcdConnectionConfig, compressionConfig, healthConfig)
 				Expect(err).ShouldNot(HaveOccurred())
 
 				gcCtx, cancel := context.WithTimeout(testCtx, testTimeout)
@@ -480,7 +482,7 @@ var _ = Describe("Snapshotter", func() {
 					MaxBackups:               maxBackups,
 				}
 
-				ssr, err := NewSnapshotter(logger, snapshotterConfig, store, etcdConnectionConfig, compressionConfig)
+				ssr, err := NewSnapshotter(logger, snapshotterConfig, store, etcdConnectionConfig, compressionConfig, healthConfig)
 				Expect(err).ShouldNot(HaveOccurred())
 
 				gcCtx, cancel := context.WithTimeout(testCtx, testTimeout)
@@ -549,7 +551,7 @@ var _ = Describe("Snapshotter", func() {
 					MaxBackups:               maxBackups,
 				}
 
-				ssr, err := NewSnapshotter(logger, snapshotterConfig, store, etcdConnectionConfig, compressionConfig)
+				ssr, err := NewSnapshotter(logger, snapshotterConfig, store, etcdConnectionConfig, compressionConfig, healthConfig)
 				Expect(err).ShouldNot(HaveOccurred())
 
 				gcCtx, cancel := context.WithTimeout(testCtx, testTimeout)

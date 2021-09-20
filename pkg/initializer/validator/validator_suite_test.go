@@ -105,7 +105,9 @@ func runSnapshotter(logger *logrus.Entry, deltaSnapshotPeriod time.Duration, end
 	snapshotterConfig.FullSnapshotSchedule = "0 0 1 1 *"
 	snapshotterConfig.MaxBackups = 1
 
-	ssr, err := snapshotter.NewSnapshotter(logger, snapshotterConfig, store, etcdConnectionConfig, compressionConfig)
+	healthConfig := brtypes.NewHealthConfig()
+
+	ssr, err := snapshotter.NewSnapshotter(logger, snapshotterConfig, store, etcdConnectionConfig, compressionConfig, healthConfig)
 	if err != nil {
 		return err
 	}

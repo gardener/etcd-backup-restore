@@ -26,6 +26,7 @@ import (
 	"github.com/gardener/etcd-backup-restore/pkg/defragmentor"
 	"github.com/gardener/etcd-backup-restore/pkg/errors"
 	"github.com/gardener/etcd-backup-restore/pkg/etcdutil"
+	"github.com/gardener/etcd-backup-restore/pkg/health/heartbeat"
 	"github.com/gardener/etcd-backup-restore/pkg/initializer"
 	"github.com/gardener/etcd-backup-restore/pkg/metrics"
 	"github.com/gardener/etcd-backup-restore/pkg/snapshot/snapshotter"
@@ -158,7 +159,7 @@ func (b *BackupRestoreServer) runServerWithSnapshotter(ctx context.Context, rest
 	}
 
 	b.logger.Infof("Creating snapshotter...")
-	ssr, err := snapshotter.NewSnapshotter(b.logger, b.config.SnapshotterConfig, ss, b.config.EtcdConnectionConfig, b.config.CompressionConfig)
+	ssr, err := snapshotter.NewSnapshotter(b.logger, b.config.SnapshotterConfig, ss, b.config.EtcdConnectionConfig, b.config.CompressionConfig, b.config.HealthConfig)
 	if err != nil {
 		return err
 	}
@@ -171,6 +172,11 @@ func (b *BackupRestoreServer) runServerWithSnapshotter(ctx context.Context, rest
 	go handleAckState(handler, ackCh)
 
 	go defragmentor.DefragDataPeriodically(ctx, b.config.EtcdConnectionConfig, b.defragmentationSchedule, ssr.TriggerFullSnapshot, b.logger)
+
+	//TODO @aaronfern: Call function for member lease renewal if enable flag is set. Needed for backward compatability
+	if brtypes.EnableMemberLeaseRenewal {
+		go heartbeat.RenewMemberLeasePeriodically(ctx, b.config.HealthConfig, b.logger, b.config.EtcdConnectionConfig)
+	}
 
 	b.runEtcdProbeLoopWithSnapshotter(ctx, handler, ssr, ssrStopCh, ackCh)
 	return nil

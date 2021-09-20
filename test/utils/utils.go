@@ -205,7 +205,9 @@ func RunSnapshotter(logger *logrus.Entry, snapstoreConfig brtypes.SnapstoreConfi
 		MaxBackups:               1,
 	}
 
-	ssr, err := snapshotter.NewSnapshotter(logger, snapshotterConfig, store, etcdConnectionConfig, compressionConfig)
+	healthConfig := brtypes.NewHealthConfig()
+
+	ssr, err := snapshotter.NewSnapshotter(logger, snapshotterConfig, store, etcdConnectionConfig, compressionConfig, healthConfig)
 	if err != nil {
 		return err
 	}

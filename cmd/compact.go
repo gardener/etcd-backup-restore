@@ -50,8 +50,13 @@ func NewCompactCommand(ctx context.Context) *cobra.Command {
 			if err != nil {
 				return
 			}
+			clientSet, err := CreateKubernetesClientSet(opts)
+			if err != nil {
+				logger.Fatalf("failed to create clientset, %v", err)
+				return
+			}
 
-			cp := compactor.NewCompactor(store, logrus.NewEntry(logger))
+			cp := compactor.NewCompactor(store, logrus.NewEntry(logger), clientSet)
 			compactOptions := &brtypes.CompactOptions{
 				RestoreOptions:  options,
 				CompactorConfig: opts.compactorConfig,

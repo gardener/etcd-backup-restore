@@ -28,6 +28,7 @@ import (
 	"github.com/gardener/etcd-backup-restore/pkg/compressor"
 	"github.com/gardener/etcd-backup-restore/pkg/errors"
 	"github.com/gardener/etcd-backup-restore/pkg/etcdutil"
+	"github.com/gardener/etcd-backup-restore/pkg/health/heartbeat"
 	"github.com/gardener/etcd-backup-restore/pkg/metrics"
 	"github.com/gardener/etcd-backup-restore/pkg/miscellaneous"
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
@@ -38,6 +39,7 @@ import (
 	cron "github.com/robfig/cron/v3"
 	"github.com/sirupsen/logrus"
 	"go.etcd.io/etcd/clientv3"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 var emptyStruct struct{}
@@ -72,6 +74,7 @@ type Snapshotter struct {
 	store                brtypes.SnapStore
 	config               *brtypes.SnapshotterConfig
 	compressionConfig    *compressor.CompressionConfig
+	healthConfig         *brtypes.HealthConfig
 
 	schedule           cron.Schedule
 	prevSnapshot       *brtypes.Snapshot
@@ -90,10 +93,11 @@ type Snapshotter struct {
 	SsrStateMutex      *sync.Mutex
 	SsrState           brtypes.SnapshotterState
 	lastEventRevision  int64
+	k8sClientset       client.Client
 }
 
 // NewSnapshotter returns the snapshotter object.
-func NewSnapshotter(logger *logrus.Entry, config *brtypes.SnapshotterConfig, store brtypes.SnapStore, etcdConnectionConfig *etcdutil.EtcdConnectionConfig, compressionConfig *compressor.CompressionConfig) (*Snapshotter, error) {
+func NewSnapshotter(logger *logrus.Entry, config *brtypes.SnapshotterConfig, store brtypes.SnapStore, etcdConnectionConfig *etcdutil.EtcdConnectionConfig, compressionConfig *compressor.CompressionConfig, healthConfig *brtypes.HealthConfig) (*Snapshotter, error) {
 	sdl, err := cron.ParseStandard(config.FullSnapshotSchedule)
 	if err != nil {
 		// Ideally this should be validated before.
@@ -120,12 +124,22 @@ func NewSnapshotter(logger *logrus.Entry, config *brtypes.SnapshotterConfig, sto
 
 	metrics.LatestSnapshotRevision.With(prometheus.Labels{metrics.LabelKind: prevSnapshot.Kind}).Set(float64(prevSnapshot.LastRevision))
 
+	//Attempt to create clientset only if `enable-etcd-lease-renewal` flag of healthConfig is set
+	var clientSet client.Client
+	if healthConfig.Enabled {
+		clientSet, err = miscellaneous.GetKubernetesClientSetOrError()
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	return &Snapshotter{
 		logger:               logger.WithField("actor", "snapshotter"),
 		store:                store,
 		config:               config,
 		etcdConnectionConfig: etcdConnectionConfig,
 		compressionConfig:    compressionConfig,
+		healthConfig:         healthConfig,
 
 		schedule:           sdl,
 		prevSnapshot:       prevSnapshot,
@@ -138,6 +152,7 @@ func NewSnapshotter(logger *logrus.Entry, config *brtypes.SnapshotterConfig, sto
 		fullSnapshotAckCh:  make(chan result),
 		deltaSnapshotAckCh: make(chan result),
 		cancelWatch:        func() {},
+		k8sClientset:       clientSet,
 	}, nil
 }
 
@@ -559,6 +574,13 @@ func (ssr *Snapshotter) snapshotEventHandler(stopCh <-chan struct{}) error {
 			if err != nil {
 				return err
 			}
+			if ssr.healthConfig.Enabled {
+				ctx, cancel := context.WithTimeout(context.TODO(), brtypes.LeaseUpdateTimeoutDuration)
+				if err = heartbeat.FullSnapshotCaseLeaseUpdate(ctx, ssr.logger, ssr.PrevFullSnapshot, ssr.k8sClientset, ssr.healthConfig.FullSnapshotLeaseName, ssr.healthConfig.DeltaSnapshotLeaseName); err != nil {
+					ssr.logger.Warnf("Snapshot lease update failed : %v", err)
+				}
+				cancel()
+			}
 
 		case <-ssr.deltaSnapshotReqCh:
 			s, err := ssr.takeDeltaSnapshotAndResetTimer()
@@ -570,10 +592,24 @@ func (ssr *Snapshotter) snapshotEventHandler(stopCh <-chan struct{}) error {
 			if err != nil {
 				return err
 			}
+			if ssr.healthConfig.Enabled {
+				ctx, cancel := context.WithTimeout(context.TODO(), brtypes.LeaseUpdateTimeoutDuration)
+				if err = heartbeat.DeltaSnapshotCaseLeaseUpdate(ctx, ssr.logger, ssr.k8sClientset, ssr.healthConfig.DeltaSnapshotLeaseName, ssr.store); err != nil {
+					ssr.logger.Warnf("Snapshot lease update failed : %v", err)
+				}
+				cancel()
+			}
 
 		case <-ssr.fullSnapshotTimer.C:
 			if _, err := ssr.TakeFullSnapshotAndResetTimer(false); err != nil {
 				return err
+			}
+			if ssr.healthConfig.Enabled {
+				ctx, cancel := context.WithTimeout(context.TODO(), brtypes.LeaseUpdateTimeoutDuration)
+				if err := heartbeat.FullSnapshotCaseLeaseUpdate(ctx, ssr.logger, ssr.PrevFullSnapshot, ssr.k8sClientset, ssr.healthConfig.FullSnapshotLeaseName, ssr.healthConfig.DeltaSnapshotLeaseName); err != nil {
+					ssr.logger.Warnf("Snapshot lease update failed : %v", err)
+				}
+				cancel()
 			}
 
 		case <-ssr.deltaSnapshotTimer.C:
@@ -581,14 +617,32 @@ func (ssr *Snapshotter) snapshotEventHandler(stopCh <-chan struct{}) error {
 				if _, err := ssr.takeDeltaSnapshotAndResetTimer(); err != nil {
 					return err
 				}
+				if ssr.healthConfig.Enabled {
+					ctx, cancel := context.WithTimeout(context.TODO(), brtypes.LeaseUpdateTimeoutDuration)
+					if err := heartbeat.DeltaSnapshotCaseLeaseUpdate(ctx, ssr.logger, ssr.k8sClientset, ssr.healthConfig.DeltaSnapshotLeaseName, ssr.store); err != nil {
+						ssr.logger.Warnf("Snapshot lease update failed : %v", err)
+					}
+					cancel()
+				}
 			}
 
 		case wr, ok := <-ssr.watchCh:
 			if !ok {
 				return fmt.Errorf("watch channel closed")
 			}
+			snapshots := len(ssr.PrevDeltaSnapshots)
 			if err := ssr.handleDeltaWatchEvents(wr); err != nil {
 				return err
+			}
+			if ssr.healthConfig.Enabled {
+				//Call UpdateDeltaSnapshotLease only if new delta snapshot taken
+				if snapshots < len(ssr.PrevDeltaSnapshots) {
+					ctx, cancel := context.WithTimeout(context.TODO(), brtypes.LeaseUpdateTimeoutDuration)
+					if err := heartbeat.DeltaSnapshotCaseLeaseUpdate(ctx, ssr.logger, ssr.k8sClientset, ssr.healthConfig.DeltaSnapshotLeaseName, ssr.store); err != nil {
+						ssr.logger.Warnf("Snapshot lease update failed : %v", err)
+					}
+					cancel()
+				}
 			}
 
 		case <-stopCh:

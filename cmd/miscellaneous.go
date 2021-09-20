@@ -23,6 +23,8 @@ import (
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 	ver "github.com/gardener/etcd-backup-restore/pkg/version"
 	"go.etcd.io/etcd/pkg/types"
+
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 func printVersionInfo() {
@@ -74,4 +76,14 @@ func BuildRestoreOptionsAndStore(opts *restorerOptions) (*brtypes.RestoreOptions
 		ClusterURLs:   clusterUrlsMap,
 		PeerURLs:      peerUrls,
 	}, store, nil
+}
+
+// CreateKubernetesClientSet created a kubernetes clientset only if the `enable-etcd-lease-renewal` flag is set
+func CreateKubernetesClientSet(opts *compactOptions) (client.Client, error) {
+	//Return nil if enabled flag is set to false
+	if !opts.compactorConfig.EnabledLeaseRenewal {
+		return nil, nil
+	}
+
+	return miscellaneous.GetKubernetesClientSetOrError()
 }

@@ -26,6 +26,10 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/sirupsen/logrus"
 	"go.etcd.io/etcd/embed"
+
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/config"
+	fake "sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
 
 // GetLatestFullSnapshotAndDeltaSnapList returns the latest snapshot
@@ -152,4 +156,23 @@ func StartEmbeddedEtcd(logger *logrus.Entry, ro *brtypes.RestoreOptions) (*embed
 		return nil, fmt.Errorf("server took too long to start")
 	}
 	return e, nil
+}
+
+// GetKubernetesClientSetOrError creates and returns a kubernetes clientset or an error if creation fails
+func GetKubernetesClientSetOrError() (client.Client, error) {
+	var cl client.Client
+	restConfig, err := config.GetConfig()
+	if err != nil {
+		return nil, fmt.Errorf("could not get InCluster config")
+	}
+	cl, err = client.New(restConfig, client.Options{})
+	if err != nil {
+		return nil, fmt.Errorf("could not create kubernetes clientset")
+	}
+	return cl, nil
+}
+
+// GetFakeKubernetesClientSet creates a fake client set. To be used for unit tests
+func GetFakeKubernetesClientSet() client.Client {
+	return fake.NewClientBuilder().Build()
 }

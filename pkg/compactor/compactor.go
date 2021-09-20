@@ -9,12 +9,15 @@ import (
 
 	"github.com/gardener/etcd-backup-restore/pkg/compressor"
 	"github.com/gardener/etcd-backup-restore/pkg/etcdutil"
+	"github.com/gardener/etcd-backup-restore/pkg/health/heartbeat"
 	"github.com/gardener/etcd-backup-restore/pkg/miscellaneous"
 	"github.com/gardener/etcd-backup-restore/pkg/snapshot/restorer"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 
 	"github.com/sirupsen/logrus"
 	"go.etcd.io/etcd/clientv3"
+
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 const (
@@ -34,15 +37,17 @@ const (
 
 // Compactor holds the necessary details for compacting ETCD
 type Compactor struct {
-	logger *logrus.Entry
-	store  brtypes.SnapStore
+	logger       *logrus.Entry
+	store        brtypes.SnapStore
+	k8sClientset client.Client
 }
 
 // NewCompactor creates compactor
-func NewCompactor(store brtypes.SnapStore, logger *logrus.Entry) *Compactor {
+func NewCompactor(store brtypes.SnapStore, logger *logrus.Entry, clientSet client.Client) *Compactor {
 	return &Compactor{
-		logger: logger,
-		store:  store,
+		logger:       logger,
+		store:        store,
+		k8sClientset: clientSet,
 	}
 }
 
@@ -153,6 +158,16 @@ func (cp *Compactor) Compact(opts *brtypes.CompactOptions) (*brtypes.Snapshot, e
 	snapshot, err := etcdutil.TakeAndSaveFullSnapshot(snapshotReqCtx, client, cp.store, etcdRevision, cc, suffix, isFinal, cp.logger)
 	if err != nil {
 		return nil, err
+	}
+
+	// Update snapshot lease only if lease update flag is enabled
+	if opts.EnabledLeaseRenewal {
+		// Update revisions in holder identity of full snapshot lease.
+		ctx, cancel := context.WithTimeout(ctx, brtypes.LeaseUpdateTimeoutDuration)
+		if err := heartbeat.FullSnapshotCaseLeaseUpdate(ctx, cp.logger, snapshot, cp.k8sClientset, opts.FullSnapshotLeaseName, opts.DeltaSnapshotLeaseName); err != nil {
+			cp.logger.Warnf("Snapshot lease update failed : %v", err)
+		}
+		cancel()
 	}
 
 	return snapshot, nil

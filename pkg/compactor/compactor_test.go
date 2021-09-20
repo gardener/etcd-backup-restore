@@ -67,7 +67,7 @@ var _ = Describe("Running Compactor", func() {
 			Expect(err).ShouldNot(HaveOccurred())
 			fmt.Println("The store where compaction will save snapshot is: ", store)
 
-			cptr = compactor.NewCompactor(store, logger)
+			cptr = compactor.NewCompactor(store, logger, nil)
 			restoreOpts = &brtypes.RestoreOptions{
 				Config: &brtypes.RestorationConfig{
 					InitialCluster:           restoreCluster,
@@ -89,6 +89,7 @@ var _ = Describe("Running Compactor", func() {
 				NeedDefragmentation: needDefragmentation,
 				SnapshotTimeout:     wrappers.Duration{Duration: snapshotTimeout},
 				DefragTimeout:       wrappers.Duration{Duration: defragTimeout},
+				EnabledLeaseRenewal: false,
 			}
 			compactOptions = &brtypes.CompactOptions{
 				RestoreOptions:  restoreOpts,
