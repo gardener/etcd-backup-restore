@@ -33,6 +33,7 @@ import (
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 	"github.com/gardener/etcd-backup-restore/pkg/wrappers"
+
 	"github.com/prometheus/client_golang/prometheus"
 	cron "github.com/robfig/cron/v3"
 	"github.com/sirupsen/logrus"
@@ -76,7 +77,7 @@ type Snapshotter struct {
 	prevSnapshot       *brtypes.Snapshot
 	PrevFullSnapshot   *brtypes.Snapshot
 	PrevDeltaSnapshots brtypes.SnapList
-	fullSnapshotReqCh  chan struct{}
+	fullSnapshotReqCh  chan bool
 	deltaSnapshotReqCh chan struct{}
 	fullSnapshotAckCh  chan result
 	deltaSnapshotAckCh chan result
@@ -114,7 +115,7 @@ func NewSnapshotter(logger *logrus.Entry, config *brtypes.SnapshotterConfig, sto
 		metrics.LatestSnapshotTimestamp.With(prometheus.Labels{metrics.LabelKind: brtypes.SnapshotKindDelta}).Set(float64(prevSnapshot.CreatedOn.Unix()))
 	} else {
 		// creating dummy previous snapshot since fullSnap == nil
-		prevSnapshot = snapstore.NewSnapshot(brtypes.SnapshotKindFull, 0, 0, "")
+		prevSnapshot = snapstore.NewSnapshot(brtypes.SnapshotKindFull, 0, 0, "", false)
 	}
 
 	metrics.LatestSnapshotRevision.With(prometheus.Labels{metrics.LabelKind: prevSnapshot.Kind}).Set(float64(prevSnapshot.LastRevision))
@@ -132,7 +133,7 @@ func NewSnapshotter(logger *logrus.Entry, config *brtypes.SnapshotterConfig, sto
 		PrevDeltaSnapshots: deltaSnapList,
 		SsrState:           brtypes.SnapshotterInactive,
 		SsrStateMutex:      &sync.Mutex{},
-		fullSnapshotReqCh:  make(chan struct{}),
+		fullSnapshotReqCh:  make(chan bool),
 		deltaSnapshotReqCh: make(chan struct{}),
 		fullSnapshotAckCh:  make(chan result),
 		deltaSnapshotAckCh: make(chan result),
@@ -177,7 +178,7 @@ func (ssr *Snapshotter) Run(stopCh <-chan struct{}, startWithFullSnapshot bool) 
 
 // TriggerFullSnapshot sends the events to take full snapshot. This is to
 // trigger full snapshot externally out of regular schedule.
-func (ssr *Snapshotter) TriggerFullSnapshot(ctx context.Context) (*brtypes.Snapshot, error) {
+func (ssr *Snapshotter) TriggerFullSnapshot(ctx context.Context, isFinal bool) (*brtypes.Snapshot, error) {
 	ssr.SsrStateMutex.Lock()
 	defer ssr.SsrStateMutex.Unlock()
 
@@ -185,7 +186,7 @@ func (ssr *Snapshotter) TriggerFullSnapshot(ctx context.Context) (*brtypes.Snaps
 		return nil, fmt.Errorf("snapshotter is not active")
 	}
 	ssr.logger.Info("Triggering out of schedule full snapshot...")
-	ssr.fullSnapshotReqCh <- emptyStruct
+	ssr.fullSnapshotReqCh <- isFinal
 	res := <-ssr.fullSnapshotAckCh
 	return res.Snapshot, res.Err
 }
@@ -245,9 +246,9 @@ func (ssr *Snapshotter) closeEtcdClient() {
 
 // TakeFullSnapshotAndResetTimer takes a full snapshot and resets the full snapshot
 // timer as per the schedule.
-func (ssr *Snapshotter) TakeFullSnapshotAndResetTimer() (*brtypes.Snapshot, error) {
+func (ssr *Snapshotter) TakeFullSnapshotAndResetTimer(isFinal bool) (*brtypes.Snapshot, error) {
 	ssr.logger.Infof("Taking scheduled snapshot for time: %s", time.Now().Local())
-	s, err := ssr.takeFullSnapshot()
+	s, err := ssr.takeFullSnapshot(isFinal)
 	if err != nil {
 		// As per design principle, in business critical service if backup is not working,
 		// it's better to fail the process. So, we are quiting here.
@@ -261,7 +262,7 @@ func (ssr *Snapshotter) TakeFullSnapshotAndResetTimer() (*brtypes.Snapshot, erro
 // takeFullSnapshot will store full snapshot of etcd to brtypes.
 // It basically will connect to etcd. Then ask for snapshot. And finally
 // store it to underlying snapstore on the fly.
-func (ssr *Snapshotter) takeFullSnapshot() (*brtypes.Snapshot, error) {
+func (ssr *Snapshotter) takeFullSnapshot(isFinal bool) (*brtypes.Snapshot, error) {
 	defer ssr.cleanupInMemoryEvents()
 	// close previous watch and client.
 	ssr.closeEtcdClient()
@@ -287,7 +288,7 @@ func (ssr *Snapshotter) takeFullSnapshot() (*brtypes.Snapshot, error) {
 	}
 	lastRevision := resp.Header.Revision
 
-	if ssr.prevSnapshot.Kind == brtypes.SnapshotKindFull && ssr.prevSnapshot.LastRevision == lastRevision {
+	if ssr.prevSnapshot.Kind == brtypes.SnapshotKindFull && ssr.prevSnapshot.LastRevision == lastRevision && ssr.prevSnapshot.IsFinal == isFinal {
 		ssr.logger.Infof("There are no updates since last snapshot, skipping full snapshot.")
 	} else {
 		// Note: As FullSnapshot size can be very large, so to avoid context timeout use "SnapshotTimeout" in context.WithTimeout()
@@ -300,7 +301,7 @@ func (ssr *Snapshotter) takeFullSnapshot() (*brtypes.Snapshot, error) {
 			return nil, fmt.Errorf("failed to get compressionSuffix: %v", err)
 		}
 
-		s, err := etcdutil.TakeAndSaveFullSnapshot(ctx, client, ssr.store, lastRevision, ssr.compressionConfig, compressionSuffix, ssr.logger)
+		s, err := etcdutil.TakeAndSaveFullSnapshot(ctx, client, ssr.store, lastRevision, ssr.compressionConfig, compressionSuffix, isFinal, ssr.logger)
 		if err != nil {
 			return nil, err
 		}
@@ -387,7 +388,7 @@ func (ssr *Snapshotter) TakeDeltaSnapshot() (*brtypes.Snapshot, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to get compressionSuffix: %v", err)
 	}
-	snap := snapstore.NewSnapshot(brtypes.SnapshotKindDelta, ssr.prevSnapshot.LastRevision+1, ssr.lastEventRevision, compressionSuffix)
+	snap := snapstore.NewSnapshot(brtypes.SnapshotKindDelta, ssr.prevSnapshot.LastRevision+1, ssr.lastEventRevision, compressionSuffix, false)
 
 	// compute hash
 	hash := sha256.New()
@@ -548,8 +549,8 @@ func newEvent(e *clientv3.Event) *event {
 func (ssr *Snapshotter) snapshotEventHandler(stopCh <-chan struct{}) error {
 	for {
 		select {
-		case <-ssr.fullSnapshotReqCh:
-			s, err := ssr.TakeFullSnapshotAndResetTimer()
+		case isFinal := <-ssr.fullSnapshotReqCh:
+			s, err := ssr.TakeFullSnapshotAndResetTimer(isFinal)
 			res := result{
 				Snapshot: s,
 				Err:      err,
@@ -571,7 +572,7 @@ func (ssr *Snapshotter) snapshotEventHandler(stopCh <-chan struct{}) error {
 			}
 
 		case <-ssr.fullSnapshotTimer.C:
-			if _, err := ssr.TakeFullSnapshotAndResetTimer(); err != nil {
+			if _, err := ssr.TakeFullSnapshotAndResetTimer(false); err != nil {
 				return err
 			}
 

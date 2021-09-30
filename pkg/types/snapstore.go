@@ -55,6 +55,9 @@ const (
 	// AzureBlobStorageHostName is the host name for azure blob storage service.
 	AzureBlobStorageHostName = "blob.core.windows.net"
 
+	// FinalSuffix is the suffix appended to the names of final snapshots.
+	FinalSuffix = ".final"
+
 	backupFormatVersion = "v2"
 )
 
@@ -84,11 +87,12 @@ type Snapshot struct {
 	IsChunk           bool      `json:"isChunk"`
 	Prefix            string    `json:"prefix"`            // Points to correct prefix of a snapshot in snapstore (Required for Backward Compatibility)
 	CompressionSuffix string    `json:"compressionSuffix"` // CompressionSuffix depends on compessionPolicy
+	IsFinal           bool      `json:"isFinal"`
 }
 
 // GenerateSnapshotName prepares the snapshot name from metadata
 func (s *Snapshot) GenerateSnapshotName() {
-	s.SnapName = fmt.Sprintf("%s-%08d-%08d-%d%s", s.Kind, s.StartRevision, s.LastRevision, s.CreatedOn.Unix(), s.CompressionSuffix)
+	s.SnapName = fmt.Sprintf("%s-%08d-%08d-%d%s%s", s.Kind, s.StartRevision, s.LastRevision, s.CreatedOn.Unix(), s.CompressionSuffix, s.finalSuffix())
 }
 
 // GenerateSnapshotDirectory prepares the snapshot directory name from metadata
@@ -100,6 +104,26 @@ func (s *Snapshot) GenerateSnapshotDirectory() {
 func (s *Snapshot) GetSnapshotDirectoryCreationTimeInUnix() (int64, error) {
 	tok := strings.TrimPrefix(s.SnapDir, "Backup-")
 	return strconv.ParseInt(tok, 10, 64)
+}
+
+// SetFinal sets the IsFinal field of this snapshot to the given value.
+func (s *Snapshot) SetFinal(final bool) {
+	s.IsFinal = final
+	if s.IsFinal {
+		if !strings.HasSuffix(s.SnapName, FinalSuffix) {
+			s.SnapName += FinalSuffix
+		}
+	} else {
+		s.SnapName = strings.TrimSuffix(s.SnapName, FinalSuffix)
+	}
+}
+
+// finalSuffix returns the final suffix of this snapshot, either ".final" or an empty string
+func (s *Snapshot) finalSuffix() string {
+	if s.IsFinal {
+		return FinalSuffix
+	}
+	return ""
 }
 
 // SnapList is list of snapshots.

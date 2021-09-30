@@ -12,6 +12,7 @@ import (
 	"github.com/gardener/etcd-backup-restore/pkg/miscellaneous"
 	"github.com/gardener/etcd-backup-restore/pkg/snapshot/restorer"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
+
 	"github.com/sirupsen/logrus"
 	"go.etcd.io/etcd/clientv3"
 )
@@ -146,8 +147,10 @@ func (cp *Compactor) Compact(opts *brtypes.CompactOptions) (*brtypes.Snapshot, e
 		return nil, fmt.Errorf("unable to determine if snapshot is compressed: %v", cmpctOptions.BaseSnapshot.CompressionSuffix)
 	}
 
+	isFinal := cmpctOptions.BaseSnapshot.IsFinal
+
 	cc := &compressor.CompressionConfig{Enabled: isCompressed, CompressionPolicy: compressionPolicy}
-	snapshot, err := etcdutil.TakeAndSaveFullSnapshot(snapshotReqCtx, client, cp.store, etcdRevision, cc, suffix, cp.logger)
+	snapshot, err := etcdutil.TakeAndSaveFullSnapshot(snapshotReqCtx, client, cp.store, etcdRevision, cc, suffix, isFinal, cp.logger)
 	if err != nil {
 		return nil, err
 	}
