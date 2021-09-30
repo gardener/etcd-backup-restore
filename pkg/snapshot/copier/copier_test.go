@@ -15,11 +15,13 @@
 package copier_test
 
 import (
+	"context"
 	"os"
 
 	"github.com/gardener/etcd-backup-restore/pkg/miscellaneous"
 	. "github.com/gardener/etcd-backup-restore/pkg/snapshot/copier"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
+
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	. "github.com/onsi/gomega/gstruct"
@@ -51,7 +53,7 @@ var _ = Describe("Running Copier", func() {
 		var err error
 		ss, ds, err = GetSourceAndDestinationStores(sourceSnapstoreConfig, destSnapstoreConfig)
 		Expect(err).ToNot(HaveOccurred())
-		copier = NewCopier(ss, ds, logger, -1, -1)
+		copier = NewCopier(logger, ss, ds, -1, -1, false, 0)
 	})
 	AfterEach(func() {
 		err = os.RemoveAll(targetSnapstoreDir)
@@ -60,7 +62,7 @@ var _ = Describe("Running Copier", func() {
 	It("should run the copy command succesfully", func() {
 		fullSourceStoreSnapshot, deltaSrourceStoreSnapList, err := miscellaneous.GetLatestFullSnapshotAndDeltaSnapList(ss)
 		Expect(err).NotTo(HaveOccurred())
-		Expect(copier.Run()).ToNot(HaveOccurred())
+		Expect(copier.Run(context.TODO())).ToNot(HaveOccurred())
 		fullTargetStoreSnapshot, deltaTargetStoreSnapList, err := miscellaneous.GetLatestFullSnapshotAndDeltaSnapList(ds)
 		chekIfSnapsAreTheSame(fullSourceStoreSnapshot, fullTargetStoreSnapshot)
 		Expect(len(deltaSrourceStoreSnapList)).To(Equal(len(deltaTargetStoreSnapList)))
