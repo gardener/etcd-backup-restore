@@ -61,6 +61,61 @@ func GetLatestFullSnapshotAndDeltaSnapList(store brtypes.SnapStore) (*brtypes.Sn
 	return fullSnapshot, deltaSnapList, nil
 }
 
+type backup struct {
+	FullSnapshot      *brtypes.Snapshot
+	DeltaSnapshotList brtypes.SnapList
+}
+
+// GetFilteredBackups returns sorted by date (new -> old) SnapList. It will also filter the snapshots that should be included or not using the filter function.
+// If the filter is nil it will return all snapshots. Also, maxBackups can be used to target only the last N snapshots (-1 = all).
+func GetFilteredBackups(store brtypes.SnapStore, maxBackups int, filter func(snaps brtypes.Snapshot) bool) (brtypes.SnapList, error) {
+	snapList, err := store.List()
+	if err != nil {
+		return nil, err
+	}
+	backups := getStructuredBackupList(snapList)
+	sort.Slice(backups, func(i, j int) bool {
+		return backups[i].FullSnapshot.CreatedOn.After(backups[j].FullSnapshot.CreatedOn)
+	})
+
+	list := brtypes.SnapList{}
+	count := 0
+	for _, backup := range backups {
+		if maxBackups >= 0 && count == maxBackups {
+			break
+		}
+		if filter != nil && !filter(*backup.FullSnapshot) {
+			continue
+		}
+		list = append(list, backup.FullSnapshot)
+		list = append(list, backup.DeltaSnapshotList...)
+		count++
+	}
+
+	return list, nil
+}
+
+func getStructuredBackupList(snapList brtypes.SnapList) []backup {
+	var (
+		backups    []backup
+		tempBackup = backup{}
+	)
+
+	for i := len(snapList) - 1; i >= 0; i-- {
+		if snapList[i].IsChunk {
+			continue
+		}
+		if snapList[i].Kind == brtypes.SnapshotKindFull {
+			tempBackup.FullSnapshot = snapList[i]
+			backups = append(backups, tempBackup)
+			tempBackup = backup{}
+			continue
+		}
+		tempBackup.DeltaSnapshotList = append(tempBackup.DeltaSnapshotList, snapList[i])
+	}
+	return backups
+}
+
 // StartEmbeddedEtcd starts the embedded etcd server.
 func StartEmbeddedEtcd(logger *logrus.Entry, ro *brtypes.RestoreOptions) (*embed.Etcd, error) {
 	cfg := embed.NewConfig()

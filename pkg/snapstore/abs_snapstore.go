@@ -48,12 +48,8 @@ type ABSSnapStore struct {
 }
 
 // NewABSSnapStore create new ABSSnapStore from shared configuration with specified bucket
-func NewABSSnapStore(container, prefix, tempDir string, maxParallelChunkUploads uint) (*ABSSnapStore, error) {
-	storageAccount, err := GetEnvVarOrError(absStorageAccount)
-	if err != nil {
-		return nil, err
-	}
-	storageKey, err := GetEnvVarOrError(absStorageKey)
+func NewABSSnapStore(config *brtypes.SnapstoreConfig) (*ABSSnapStore, error) {
+	storageAccount, storageKey, err := getCredentials(getEnvPrefixString(config.IsSource))
 	if err != nil {
 		return nil, err
 	}
@@ -72,8 +68,20 @@ func NewABSSnapStore(container, prefix, tempDir string, maxParallelChunkUploads 
 		return nil, fmt.Errorf("failed to parse service url: %v", err)
 	}
 	serviceURL := azblob.NewServiceURL(*u, p)
-	containerURL := serviceURL.NewContainerURL(container)
-	return GetABSSnapstoreFromClient(container, prefix, tempDir, maxParallelChunkUploads, &containerURL)
+	containerURL := serviceURL.NewContainerURL(config.Container)
+	return GetABSSnapstoreFromClient(config.Container, config.Prefix, config.TempDir, config.MaxParallelChunkUploads, &containerURL)
+}
+
+func getCredentials(prefixString string) (storageAccount string, storageKey string, err error) {
+	storageAccount, err = GetEnvVarOrError(prefixString + absStorageAccount)
+	if err != nil {
+		return "", "", err
+	}
+	storageKey, err = GetEnvVarOrError(prefixString + absStorageKey)
+	if err != nil {
+		return "", "", err
+	}
+	return
 }
 
 // GetABSSnapstoreFromClient returns a new ABS object for a given container using the supplied storageClient
@@ -201,7 +209,7 @@ func (a *ABSSnapStore) Save(snap brtypes.Snapshot, rc io.ReadCloser) error {
 		return fmt.Errorf("failed uploading chunk, id: %d, offset: %d, error: %v", snapshotErr.chunk.id, snapshotErr.chunk.offset, snapshotErr.err)
 	}
 	logrus.Info("All chunk uploaded successfully. Uploading blocklist.")
-	blobName := path.Join(a.prefix, snap.SnapDir, snap.SnapName)
+	blobName := path.Join(adaptPrefix(&snap, a.prefix), snap.SnapDir, snap.SnapName)
 	blob := a.containerURL.NewBlockBlobURL(blobName)
 	var blockList []string
 	for partNumber := int64(1); partNumber <= noOfChunks; partNumber++ {
@@ -229,7 +237,7 @@ func (a *ABSSnapStore) uploadBlock(snap *brtypes.Snapshot, file *os.File, offset
 	}
 
 	sr := io.NewSectionReader(file, offset, size)
-	blobName := path.Join(a.prefix, snap.SnapDir, snap.SnapName)
+	blobName := path.Join(adaptPrefix(snap, a.prefix), snap.SnapDir, snap.SnapName)
 	blob := a.containerURL.NewBlockBlobURL(blobName)
 	partNumber := ((offset / chunkSize) + 1)
 	blockID := base64.StdEncoding.EncodeToString([]byte(fmt.Sprintf("%010d", partNumber)))

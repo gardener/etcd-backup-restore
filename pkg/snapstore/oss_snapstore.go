@@ -66,12 +66,12 @@ type OSSSnapStore struct {
 }
 
 // NewOSSSnapStore create new OSSSnapStore from shared configuration with specified bucket
-func NewOSSSnapStore(bucket, prefix, tempDir string, maxParallelChunkUploads uint) (*OSSSnapStore, error) {
-	ao, err := authOptionsFromEnv()
+func NewOSSSnapStore(config *brtypes.SnapstoreConfig) (*OSSSnapStore, error) {
+	ao, err := authOptionsFromEnv(getEnvPrefixString(config.IsSource))
 	if err != nil {
 		return nil, err
 	}
-	return newOSSFromAuthOpt(bucket, prefix, tempDir, maxParallelChunkUploads, ao)
+	return newOSSFromAuthOpt(config.Container, config.Prefix, config.TempDir, config.MaxParallelChunkUploads, ao)
 }
 
 func newOSSFromAuthOpt(bucket, prefix, tempDir string, maxParallelChunkUploads uint, ao authOptions) (*OSSSnapStore, error) {
@@ -142,7 +142,7 @@ func (s *OSSSnapStore) Save(snap brtypes.Snapshot, rc io.ReadCloser) error {
 		return err
 	}
 
-	imur, err := s.bucket.InitiateMultipartUpload(path.Join(s.prefix, snap.SnapDir, snap.SnapName))
+	imur, err := s.bucket.InitiateMultipartUpload(path.Join(adaptPrefix(&snap, s.prefix), snap.SnapDir, snap.SnapName))
 	if err != nil {
 		return err
 	}
@@ -221,7 +221,7 @@ func (s *OSSSnapStore) uploadPart(imur oss.InitiateMultipartUploadResult, file *
 	return err
 }
 
-// List will list the snapshots from store
+// List will return sorted list with all snapshot files on store.
 func (s *OSSSnapStore) List() (brtypes.SnapList, error) {
 	prefixTokens := strings.Split(s.prefix, "/")
 	// Last element of the tokens is backup version
@@ -263,16 +263,16 @@ func (s *OSSSnapStore) Delete(snap brtypes.Snapshot) error {
 	return s.bucket.DeleteObject(path.Join(snap.Prefix, snap.SnapDir, snap.SnapName))
 }
 
-func authOptionsFromEnv() (authOptions, error) {
-	endpoint, err := GetEnvVarOrError(ossEndPoint)
+func authOptionsFromEnv(prefix string) (authOptions, error) {
+	endpoint, err := GetEnvVarOrError(prefix + ossEndPoint)
 	if err != nil {
 		return authOptions{}, err
 	}
-	accessID, err := GetEnvVarOrError(accessKeyID)
+	accessID, err := GetEnvVarOrError(prefix + accessKeyID)
 	if err != nil {
 		return authOptions{}, err
 	}
-	accessKey, err := GetEnvVarOrError(accessKeySecret)
+	accessKey, err := GetEnvVarOrError(prefix + accessKeySecret)
 	if err != nil {
 		return authOptions{}, err
 	}

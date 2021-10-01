@@ -14,6 +14,8 @@
 
 package snapstore
 
+import brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
+
 const (
 	ocsDefaultDisableSSL         bool = false
 	ocsDefaultInsecureSkipVerify bool = false
@@ -27,12 +29,12 @@ const (
 )
 
 // NewOCSSnapStore creates a new S3SnapStore from shared configuration with the specified bucket.
-func NewOCSSnapStore(bucket, prefix, tempDir string, maxParallelChunkUploads uint) (*S3SnapStore, error) {
+func NewOCSSnapStore(config *brtypes.SnapstoreConfig) (*S3SnapStore, error) {
 	ao, err := ocsAuthOptionsFromEnv()
 	if err != nil {
 		return nil, err
 	}
-	return newGenericS3FromAuthOpt(bucket, prefix, tempDir, maxParallelChunkUploads, ao)
+	return newGenericS3FromAuthOpt(config.Container, config.Prefix, config.TempDir, config.MaxParallelChunkUploads, ao)
 }
 
 // ocsAuthOptionsFromEnv gets OCS provider configuration from environment variables.
