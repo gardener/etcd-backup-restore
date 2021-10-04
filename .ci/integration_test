@@ -56,6 +56,11 @@ ETCD_DATA_DIR=
 TEST_DIR=
 TEST_RESULT=
 
+set +e
+test -d "${HOME}/.aws"
+USE_EXISTING_AWS_SECRET=$?
+set -e
+
 function setup_test_environment() {
   setup_ginkgo
   setup_etcd
@@ -71,8 +76,18 @@ function setup_ginkgo() {
 }
 
 function setup_etcd(){
-    echo "Downloading and installing etcd..."
-    export ETCD_VER=v3.3.8
+  echo "Downloading and installing etcd..."
+  export ETCD_VER=v3.3.8
+  if [[ $(uname) == 'Darwin' ]]; then
+    curl -L https://storage.googleapis.com/etcd/${ETCD_VER}/etcd-${ETCD_VER}-darwin-amd64.zip -o etcd-${ETCD_VER}-darwin-amd64.zip
+    unzip etcd-${ETCD_VER}-darwin-amd64.zip
+    chmod +x ./etcd-${ETCD_VER}-darwin-amd64/etcd
+    chmod +x ./etcd-${ETCD_VER}-darwin-amd64/etcdctl
+    mv ./etcd-${ETCD_VER}-darwin-amd64/etcdctl ${GOBIN}/etcdctl
+    mv ./etcd-${ETCD_VER}-darwin-amd64/etcd ${GOBIN}/etcd
+    rm -rf ./etcd-${ETCD_VER}-darwin-amd64
+    rm -rf etcd-${ETCD_VER}-darwin-amd64.zip
+  else
     curl -L https://storage.googleapis.com/etcd/${ETCD_VER}/etcd-${ETCD_VER}-linux-amd64.tar.gz -o etcd-${ETCD_VER}-linux-amd64.tar.gz
     tar xzvf etcd-${ETCD_VER}-linux-amd64.tar.gz
     chmod +x ./etcd-${ETCD_VER}-linux-amd64/etcd
@@ -81,7 +96,8 @@ function setup_etcd(){
     mv ./etcd-${ETCD_VER}-linux-amd64/etcd ${GOBIN}/etcd
     rm -rf ./etcd-${ETCD_VER}-linux-amd64
     rm -rf etcd-${ETCD_VER}-linux-amd64.tar.gz
-    echo "Successfully installed etcd."
+  fi
+  echo "Successfully installed etcd."
 }
 
 function setup_etcdbrctl(){
@@ -164,7 +180,9 @@ function delete_s3_bucket() {
 
 function setup-aws-infrastructure() {
   echo "Setting up AWS infrastructure..."
-  create_aws_secret
+  if [[ "${USE_EXISTING_AWS_SECRET}" == "1" ]]; then
+    create_aws_secret
+  fi
   create_s3_bucket
   echo "AWS infrastructure setup completed."
 }
@@ -172,7 +190,9 @@ function setup-aws-infrastructure() {
 function cleanup-aws-infrastructure() {
   echo "Cleaning up AWS infrastructure..."
   delete_s3_bucket
-  delete_aws_secret
+  if [[ "${USE_EXISTING_AWS_SECRET}" == "1" ]]; then
+    delete_aws_secret
+  fi
   echo "AWS infrastructure cleanup completed."
 }
 
@@ -231,6 +251,11 @@ function run_test_as_processes() {
   echo "Deleting test enviornment..."
   cleanup_test_environment
   echo "Successfully completed all tests."
+
+  if [ ${TEST_RESULT} -ne 0 ]; then
+    echo "Printing etcdbrctl.log:"
+    cat ${TEST_DIR}/etcdbrctl.log
+  fi
 }
 
 function run_test_on_cluster() {

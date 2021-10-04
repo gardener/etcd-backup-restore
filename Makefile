@@ -69,6 +69,10 @@ test:
 perf-regression-test:
 	@.ci/performance_regression_test
 
+.PHONY: integration-test
+integration-test:
+	@.ci/integration_test
+
 .PHONY: integration-test-cluster
 integration-test-cluster:
 	@.ci/integration_test cluster
