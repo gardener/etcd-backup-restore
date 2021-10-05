@@ -25,7 +25,6 @@ import (
 	"github.com/gardener/etcd-backup-restore/pkg/server"
 	"github.com/gardener/etcd-backup-restore/pkg/snapshot/snapshotter"
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
-	"github.com/gardener/etcd-backup-restore/pkg/types"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 	"github.com/gardener/etcd-backup-restore/pkg/wrappers"
 
@@ -263,8 +262,8 @@ func (c *snapshotterOptions) complete() {
 }
 
 type copierOptions struct {
-	sourceSnapStoreConfig       *types.SnapstoreConfig
-	snapstoreConfig             *types.SnapstoreConfig
+	sourceSnapStoreConfig       *brtypes.SnapstoreConfig
+	snapstoreConfig             *brtypes.SnapstoreConfig
 	maxBackups                  int
 	maxBackupAge                int
 	waitForFinalSnapshot        bool
@@ -295,6 +294,9 @@ func (c *copierOptions) validate() error {
 	}
 	if c.maxBackupAge < -1 {
 		return errors.New("parameter max-backup-age must not be less than -1")
+	}
+	if c.waitForFinalSnapshotTimeout.Duration < 0 {
+		return errors.New("parameter wait-for-final-snapshot-timeout must not be less than 0")
 	}
 	if err := c.snapstoreConfig.Validate(); err != nil {
 		return err

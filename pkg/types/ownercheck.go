@@ -15,6 +15,7 @@
 package types
 
 import (
+	"errors"
 	"time"
 
 	"github.com/gardener/etcd-backup-restore/pkg/wrappers"
@@ -60,5 +61,14 @@ func (c *OwnerCheckConfig) AddFlags(fs *flag.FlagSet) {
 
 // Validate validates the config.
 func (c *OwnerCheckConfig) Validate() error {
+	if c.OwnerCheckInterval.Duration < 0 {
+		return errors.New("parameter owner-check-interval must not be less than 0")
+	}
+	if c.OwnerCheckTimeout.Duration < 0 {
+		return errors.New("parameter owner-check-timeout must not be less than 0")
+	}
+	if c.OwnerCheckDNSCacheTTL.Duration < 0 {
+		return errors.New("parameter owner-check-dns-cache-ttl must not be less than 0")
+	}
 	return nil
 }
