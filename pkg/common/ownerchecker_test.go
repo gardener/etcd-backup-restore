@@ -56,12 +56,6 @@ var _ = Describe("OwnerChecker", func() {
 	})
 
 	Describe("#Check", func() {
-		It("should return true if the owner domain name and the owner ID are not specified", func() {
-			result, err := NewOwnerChecker("", "", timeout, resolver, logger).Check(ctx)
-			Expect(err).To(Not(HaveOccurred()))
-			Expect(result).To(BeTrue())
-		})
-
 		It("should return true if the owner domain name resolves to the specified owner ID", func() {
 			resolver.EXPECT().LookupTXT(gomock.Any(), ownerName).Return([]string{ownerID}, nil)
 

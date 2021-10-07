@@ -50,10 +50,6 @@ type ownerChecker struct {
 
 // Check returns true if the owner domain name resolves to the owner ID, false otherwise.
 func (c *ownerChecker) Check(ctx context.Context) (bool, error) {
-	if c.ownerName == "" || c.ownerID == "" {
-		return true, nil
-	}
-
 	c.logger.Debugf("Resolving owner domain name %s...", c.ownerName)
 	if c.timeout > 0 {
 		var cancel context.CancelFunc
