@@ -167,9 +167,7 @@ func (b *BackupRestoreServer) runServerWithSnapshotter(ctx context.Context, rest
 	go handleSsrStopRequest(ctx, handler, ssr, ackCh, ssrStopCh)
 	go handleAckState(handler, ackCh)
 
-	go defragmentor.DefragDataPeriodically(ctx, b.config.EtcdConnectionConfig, b.defragmentationSchedule, func(ctx context.Context) (*brtypes.Snapshot, error) {
-		return ssr.TriggerFullSnapshot(ctx, false)
-	}, b.logger)
+	go defragmentor.DefragDataPeriodically(ctx, b.config.EtcdConnectionConfig, b.defragmentationSchedule, ssr.TriggerFullSnapshot, b.logger)
 
 	b.runEtcdProbeLoopWithSnapshotter(ctx, handler, ssr, ssrStopCh, ackCh)
 	return nil

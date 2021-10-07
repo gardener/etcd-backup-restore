@@ -19,12 +19,13 @@ import (
 
 	"github.com/gardener/etcd-backup-restore/pkg/etcdutil"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
+
 	cron "github.com/robfig/cron/v3"
 	"github.com/sirupsen/logrus"
 )
 
 // CallbackFunc is type decalration for callback function for defragmentor
-type CallbackFunc func(ctx context.Context) (*brtypes.Snapshot, error)
+type CallbackFunc func(ctx context.Context, isFinal bool) (*brtypes.Snapshot, error)
 
 // defragmentorJob implement the cron.Job for etcd defragmentation.
 type defragmentorJob struct {
@@ -58,7 +59,7 @@ func (d *defragmentorJob) Run() {
 		d.logger.Warnf("Failed to defrag data with error: %v", err)
 	} else {
 		if d.callback != nil {
-			if _, err = d.callback(d.ctx); err != nil {
+			if _, err = d.callback(d.ctx, false); err != nil {
 				d.logger.Warnf("defragmentation callback failed with error: %v", err)
 			}
 		}

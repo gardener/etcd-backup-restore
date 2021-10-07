@@ -75,7 +75,7 @@ func (c *ownerChecker) Check(ctx context.Context) (bool, error) {
 	case actualOwnerID == c.ownerID:
 		return true, nil
 	default:
-		c.logger.Infof("Resolved owner domain name %s to a different owner ID %s than the expected owner ID %s", c.ownerName, actualOwnerID, c.ownerID)
+		c.logger.Infof("Resolved owner domain name %q to a different owner ID %q than the expected owner ID %q", c.ownerName, actualOwnerID, c.ownerID)
 		return false, nil
 	}
 }

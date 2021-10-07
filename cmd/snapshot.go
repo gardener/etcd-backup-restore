@@ -20,7 +20,6 @@ import (
 	"github.com/gardener/etcd-backup-restore/pkg/defragmentor"
 	"github.com/gardener/etcd-backup-restore/pkg/snapshot/snapshotter"
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
-	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 
 	cron "github.com/robfig/cron/v3"
 	"github.com/sirupsen/logrus"
@@ -61,9 +60,7 @@ storing snapshots on various cloud storage providers as well as local disk locat
 				return
 			}
 
-			go defragmentor.DefragDataPeriodically(ctx, opts.etcdConnectionConfig, defragSchedule, func(ctx context.Context) (*brtypes.Snapshot, error) {
-				return ssr.TriggerFullSnapshot(ctx, false)
-			}, logger)
+			go defragmentor.DefragDataPeriodically(ctx, opts.etcdConnectionConfig, defragSchedule, ssr.TriggerFullSnapshot, logger)
 
 			go ssr.RunGarbageCollector(ctx.Done())
 			if err := ssr.Run(ctx.Done(), true); err != nil {
