@@ -23,7 +23,7 @@ import (
 const (
 	defaultServerPort              = 8080
 	defaultDefragmentationSchedule = "0 0 */3 * *"
-	defaultEtcdPIDCommand          = "ps ax -o pid,comm | grep 'etcd$' | awk '{print $1}' | { grep -Eo '[0-9]{1,}' || true; }"
+	defaultEtcdProcessName         = "etcd"
 )
 
 // BackupRestoreComponentConfig holds the component configuration.
@@ -36,7 +36,7 @@ type BackupRestoreComponentConfig struct {
 	RestorationConfig       *brtypes.RestorationConfig     `json:"restorationConfig,omitempty"`
 	OwnerCheckConfig        *brtypes.OwnerCheckConfig      `json:"ownerCheckConfig,omitempty"`
 	DefragmentationSchedule string                         `json:"defragmentationSchedule"`
-	EtcdPIDCommand          string                         `json:"etcdPIDCommand"`
+	EtcdProcessName         string                         `json:"etcdProcessName"`
 }
 
 // latestSnapshotMetadata holds snapshot details of latest full and delta snapshots

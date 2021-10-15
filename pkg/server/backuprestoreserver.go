@@ -57,7 +57,7 @@ func NewBackupRestoreServer(logger *logrus.Logger, config *BackupRestoreComponen
 		resolver := common.NewCachingResolver(net.DefaultResolver, clock.RealClock{}, occ.OwnerCheckDNSCacheTTL.Duration)
 		ownerChecker = common.NewOwnerChecker(occ.OwnerName, occ.OwnerID, occ.OwnerCheckTimeout.Duration, resolver, serverLogger)
 	}
-	etcdProcessKiller := common.NewPIDCommandProcessKiller("etcd", config.EtcdPIDCommand, common.NewExecCommandFactory(), serverLogger)
+	etcdProcessKiller := common.NewNamedProcessKiller(config.EtcdProcessName, common.NewGopsutilProcessLister(), serverLogger)
 	defragmentationSchedule, err := cron.ParseStandard(config.DefragmentationSchedule)
 	if err != nil {
 		// Ideally this case should not occur, since this check is done at the config validaitions.
@@ -328,10 +328,8 @@ func (b *BackupRestoreServer) runEtcdProbeLoopWithSnapshotter(ctx context.Contex
 		}
 
 		// Kill the etcd process to ensure that any open connections from kube-apiserver are terminated
-		if found, err := b.etcdProcessKiller.Kill(ctx); err != nil {
+		if _, err := b.etcdProcessKiller.Kill(ctx); err != nil {
 			b.logger.Errorf("Could not kill etcd process: %v", err)
-		} else if !found {
-			b.logger.Info("etcd process not found")
 		}
 	}
 }

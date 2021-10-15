@@ -11,6 +11,6 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-//go:generate mockgen -package common -destination=mocks.go github.com/gardener/etcd-backup-restore/pkg/common Resolver,Checker,Action,Command,CommandFactory
+//go:generate mockgen -package common -destination=mocks.go github.com/gardener/etcd-backup-restore/pkg/common Resolver,Checker,Action,Command,CommandFactory,Process,ProcessLister
 
 package common

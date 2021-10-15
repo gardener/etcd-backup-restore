@@ -99,7 +99,7 @@ func startBackupRestoreServer() (*Cmd, *chan error) {
 		"--schedule=*/1 * * * *",
 		"--storage-provider=S3",
 		"--store-container=" + os.Getenv("TEST_ID"),
-		"--etcd-pid-command=echo",
+		"--etcd-process-name=foo",
 	}
 	logger.Info(etcdbrctlArgs)
 	cmdEtcdbrctl := &Cmd{

@@ -39,7 +39,7 @@ func NewBackupRestoreComponentConfig() *BackupRestoreComponentConfig {
 		RestorationConfig:       brtypes.NewRestorationConfig(),
 		OwnerCheckConfig:        brtypes.NewOwnerCheckConfig(),
 		DefragmentationSchedule: defaultDefragmentationSchedule,
-		EtcdPIDCommand:          defaultEtcdPIDCommand,
+		EtcdProcessName:         defaultEtcdProcessName,
 	}
 }
 
@@ -55,7 +55,7 @@ func (c *BackupRestoreComponentConfig) AddFlags(fs *flag.FlagSet) {
 
 	// Miscellaneous
 	fs.StringVar(&c.DefragmentationSchedule, "defragmentation-schedule", c.DefragmentationSchedule, "schedule to defragment etcd data directory")
-	fs.StringVar(&c.EtcdPIDCommand, "etcd-pid-command", c.EtcdPIDCommand, "command to determine the pid of the etcd process")
+	fs.StringVar(&c.EtcdProcessName, "etcd-process-name", c.EtcdProcessName, "name of the etcd process")
 }
 
 // Validate validates the config.
