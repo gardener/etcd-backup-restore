@@ -201,7 +201,7 @@ func (b *BackupRestoreServer) runEtcdProbeLoopWithSnapshotter(ctx context.Contex
 
 		if b.ownerChecker != nil {
 			// Check if the actual owner ID matches the expected one
-			// If the check failed or returned false, take a final full snapshot if needed
+			// If the check fails or returns false, take a final full snapshot if needed
 			b.logger.Debugf("Checking owner before starting snapshotter...")
 			result, err := b.ownerChecker.Check(ctx)
 			if err != nil || !result {
@@ -322,14 +322,18 @@ func (b *BackupRestoreServer) runEtcdProbeLoopWithSnapshotter(ctx context.Contex
 		// Stop garbage collector
 		close(gcStopCh)
 
-		// Stop owner check watchdog
-		if ownerCheckWatchdog != nil {
+		if b.ownerChecker != nil {
+			// Stop owner check watchdog
 			ownerCheckWatchdog.Stop()
-		}
 
-		// Kill the etcd process to ensure that any open connections from kube-apiserver are terminated
-		if _, err := b.etcdProcessKiller.Kill(ctx); err != nil {
-			b.logger.Errorf("Could not kill etcd process: %v", err)
+			// If the owner check fails or returns false, kill the etcd process
+			// to ensure that any open connections from kube-apiserver are terminated
+			result, err := b.ownerChecker.Check(ctx)
+			if err != nil || !result {
+				if _, err := b.etcdProcessKiller.Kill(ctx); err != nil {
+					b.logger.Errorf("Could not kill etcd process: %v", err)
+				}
+			}
 		}
 	}
 }
