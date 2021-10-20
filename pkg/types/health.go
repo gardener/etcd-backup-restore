@@ -23,8 +23,10 @@ import (
 )
 
 const (
-	// DefaultEnableEtcdLeaseRenewal is a flag where a user can choose to turn off this lease renewal feature
-	DefaultEnableEtcdLeaseRenewal = false
+	// DefaultSnapshotLeaseRenewalEnabled is a default value for enabling the snapshot lease renewal feature
+	DefaultSnapshotLeaseRenewalEnabled = false
+	// DefaultMemberLeaseRenewalEnabled is a default value for enabling the member lease renewal feature
+	DefaultMemberLeaseRenewalEnabled = false
 	// DefaultFullSnapshotLeaseName is the name for the delta snapshot lease.
 	DefaultFullSnapshotLeaseName = "full-snapshot-revisions"
 	// DefaultDeltaSnapshotLeaseName is the name for the delta snapshot lease.
@@ -35,34 +37,35 @@ const (
 	DefaultMemberGarbageCollectionPeriod = 60 * time.Second
 	// LeaseUpdateTimeoutDuration is the timeout duration for updating snapshot leases
 	LeaseUpdateTimeoutDuration = 60 * time.Second
-	// EnableMemberLeaseRenewal is a flag to allow backup sidecar to start periodic renewal of the member lease.
-	EnableMemberLeaseRenewal = false
 )
 
 // HealthConfig holds the health configuration.
 type HealthConfig struct {
-	Enabled                bool              `json:"enabled"`
-	HeartbeatDuration      wrappers.Duration `json:"heartbeatDuration,omitempty"`
-	MemberGCDuration       wrappers.Duration `json:"memberGCDuration,omitempty"`
-	FullSnapshotLeaseName  string            `json:"fullSnapshotLeaseName,omitempty"`
-	DeltaSnapshotLeaseName string            `json:"deltaSnapshotLeaseName,omitempty"`
+	SnapshotLeaseRenewalEnabled bool              `json:"snapshotLeaseRenewalEnabled,omitempty"`
+	MemberLeaseRenewalEnabled   bool              `json:"memberLeaseRenewalEnabled,omitempty"`
+	HeartbeatDuration           wrappers.Duration `json:"heartbeatDuration,omitempty"`
+	MemberGCDuration            wrappers.Duration `json:"memberGCDuration,omitempty"`
+	FullSnapshotLeaseName       string            `json:"fullSnapshotLeaseName,omitempty"`
+	DeltaSnapshotLeaseName      string            `json:"deltaSnapshotLeaseName,omitempty"`
 }
 
 // NewHealthConfig returns the health config.
 func NewHealthConfig() *HealthConfig {
 	return &HealthConfig{
-		Enabled:                DefaultEnableEtcdLeaseRenewal,
-		HeartbeatDuration:      wrappers.Duration{Duration: DefaultHeartbeatDuration},
-		MemberGCDuration:       wrappers.Duration{Duration: DefaultMemberGarbageCollectionPeriod},
-		FullSnapshotLeaseName:  DefaultFullSnapshotLeaseName,
-		DeltaSnapshotLeaseName: DefaultDeltaSnapshotLeaseName,
+		SnapshotLeaseRenewalEnabled: DefaultSnapshotLeaseRenewalEnabled,
+		MemberLeaseRenewalEnabled:   DefaultMemberLeaseRenewalEnabled,
+		HeartbeatDuration:           wrappers.Duration{Duration: DefaultHeartbeatDuration},
+		MemberGCDuration:            wrappers.Duration{Duration: DefaultMemberGarbageCollectionPeriod},
+		FullSnapshotLeaseName:       DefaultFullSnapshotLeaseName,
+		DeltaSnapshotLeaseName:      DefaultDeltaSnapshotLeaseName,
 	}
 }
 
 // AddFlags adds the flags to flagset.
 func (c *HealthConfig) AddFlags(fs *flag.FlagSet) {
 
-	fs.BoolVar(&c.Enabled, "enable-etcd-lease-renewal", c.Enabled, "Allows sidecar to renew it's lease on the cluster")
+	fs.BoolVar(&c.SnapshotLeaseRenewalEnabled, "enable-snapshot-lease-renewal", c.SnapshotLeaseRenewalEnabled, "Allows sidecar to renew the snapshot leases when snapshots are taken")
+	fs.BoolVar(&c.MemberLeaseRenewalEnabled, "enable-member-lease-renewal", c.MemberLeaseRenewalEnabled, "Allows sidecar to periodically renew the member leases when snapshots are taken")
 	fs.DurationVar(&c.HeartbeatDuration.Duration, "k8s-heartbeat-duration", c.HeartbeatDuration.Duration, "Heartbeat duration")
 	fs.DurationVar(&c.MemberGCDuration.Duration, "k8s-member-gc-duration", c.MemberGCDuration.Duration, "member lease garbage collection duration")
 	fs.StringVar(&c.FullSnapshotLeaseName, "full-snapshot-lease-name", c.FullSnapshotLeaseName, "full snapshot lease name")
@@ -79,12 +82,12 @@ func (c *HealthConfig) Validate() error {
 		return fmt.Errorf("member gc timeout should be greater than zero")
 
 	}
-	if c.Enabled {
+	if c.SnapshotLeaseRenewalEnabled {
 		if len(c.FullSnapshotLeaseName) == 0 {
-			return fmt.Errorf("FullSnapshotLeaseName can not be an empty string when enable-etcd-lease-renewal is true")
+			return fmt.Errorf("FullSnapshotLeaseName can not be an empty string when enable-snapshot-lease-renewal is true")
 		}
 		if len(c.DeltaSnapshotLeaseName) == 0 {
-			return fmt.Errorf("DeltaSnapshotLeaseName can not be an empty string when enable-etcd-lease-renewal is true")
+			return fmt.Errorf("DeltaSnapshotLeaseName can not be an empty string when enable-snapshot-lease-renewal is true")
 		}
 	}
 	return nil

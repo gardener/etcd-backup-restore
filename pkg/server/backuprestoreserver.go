@@ -173,8 +173,8 @@ func (b *BackupRestoreServer) runServerWithSnapshotter(ctx context.Context, rest
 
 	go defragmentor.DefragDataPeriodically(ctx, b.config.EtcdConnectionConfig, b.defragmentationSchedule, ssr.TriggerFullSnapshot, b.logger)
 
-	//TODO @aaronfern: Call function for member lease renewal if enable flag is set. Needed for backward compatability
-	if brtypes.EnableMemberLeaseRenewal {
+	//TODO @aaronfern: Call function for member lease renewal if enable flag is set. Needed for backward compatability and add functionality for member garbage collection
+	if b.config.HealthConfig.MemberLeaseRenewalEnabled {
 		go heartbeat.RenewMemberLeasePeriodically(ctx, b.config.HealthConfig, b.logger, b.config.EtcdConnectionConfig)
 	}
 

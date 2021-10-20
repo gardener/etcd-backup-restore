@@ -53,7 +53,7 @@ func NewCompactorConfig() *CompactorConfig {
 		DefragTimeout:          wrappers.Duration{Duration: defaultDefragTimeout},
 		FullSnapshotLeaseName:  DefaultFullSnapshotLeaseName,
 		DeltaSnapshotLeaseName: DefaultDeltaSnapshotLeaseName,
-		EnabledLeaseRenewal:    DefaultEnableEtcdLeaseRenewal,
+		EnabledLeaseRenewal:    DefaultSnapshotLeaseRenewalEnabled,
 	}
 }
 
@@ -64,7 +64,7 @@ func (c *CompactorConfig) AddFlags(fs *flag.FlagSet) {
 	fs.DurationVar(&c.DefragTimeout.Duration, "etcd-defrag-timeout", c.DefragTimeout.Duration, "timeout duration for etcd defrag call during compaction.")
 	fs.StringVar(&c.FullSnapshotLeaseName, "full-snapshot-lease-name", c.FullSnapshotLeaseName, "full snapshot lease name")
 	fs.StringVar(&c.DeltaSnapshotLeaseName, "delta-snapshot-lease-name", c.DeltaSnapshotLeaseName, "delta snapshot lease name")
-	fs.BoolVar(&c.EnabledLeaseRenewal, "enable-etcd-lease-renewal", c.EnabledLeaseRenewal, "Allows compactor to renew the full snapshot lease on the cluster")
+	fs.BoolVar(&c.EnabledLeaseRenewal, "enable-snapshot-lease-renewal", c.EnabledLeaseRenewal, "Allows compactor to renew the full snapshot lease when successfully compacted snapshot is uploaded")
 }
 
 // Validate validates the config.
@@ -78,10 +78,10 @@ func (c *CompactorConfig) Validate() error {
 	}
 	if c.EnabledLeaseRenewal {
 		if len(c.FullSnapshotLeaseName) == 0 {
-			return fmt.Errorf("FullSnapshotLeaseName can not be an empty string when enable-etcd-lease-renewal is true")
+			return fmt.Errorf("FullSnapshotLeaseName can not be an empty string when enable-snapshot-lease-renewal is true")
 		}
 		if len(c.DeltaSnapshotLeaseName) == 0 {
-			return fmt.Errorf("DeltaSnapshotLeaseName can not be an empty string when enable-etcd-lease-renewal is true")
+			return fmt.Errorf("DeltaSnapshotLeaseName can not be an empty string when enable-snapshot-lease-renewal is true")
 		}
 	}
 	return nil

@@ -124,9 +124,9 @@ func NewSnapshotter(logger *logrus.Entry, config *brtypes.SnapshotterConfig, sto
 
 	metrics.LatestSnapshotRevision.With(prometheus.Labels{metrics.LabelKind: prevSnapshot.Kind}).Set(float64(prevSnapshot.LastRevision))
 
-	//Attempt to create clientset only if `enable-etcd-lease-renewal` flag of healthConfig is set
+	//Attempt to create clientset only if `enable-snapshot-lease-renewal` flag of healthConfig is set
 	var clientSet client.Client
-	if healthConfig.Enabled {
+	if healthConfig.SnapshotLeaseRenewalEnabled {
 		clientSet, err = miscellaneous.GetKubernetesClientSetOrError()
 		if err != nil {
 			return nil, err
@@ -563,6 +563,8 @@ func newEvent(e *clientv3.Event) *event {
 
 func (ssr *Snapshotter) snapshotEventHandler(stopCh <-chan struct{}) error {
 	for {
+		leaseUpdateCtx, leaseUpdateCancel := context.WithCancel(context.TODO())
+		defer leaseUpdateCancel()
 		select {
 		case isFinal := <-ssr.fullSnapshotReqCh:
 			s, err := ssr.TakeFullSnapshotAndResetTimer(isFinal)
@@ -574,8 +576,8 @@ func (ssr *Snapshotter) snapshotEventHandler(stopCh <-chan struct{}) error {
 			if err != nil {
 				return err
 			}
-			if ssr.healthConfig.Enabled {
-				ctx, cancel := context.WithTimeout(context.TODO(), brtypes.LeaseUpdateTimeoutDuration)
+			if ssr.healthConfig.SnapshotLeaseRenewalEnabled {
+				ctx, cancel := context.WithTimeout(leaseUpdateCtx, brtypes.LeaseUpdateTimeoutDuration)
 				if err = heartbeat.FullSnapshotCaseLeaseUpdate(ctx, ssr.logger, ssr.PrevFullSnapshot, ssr.k8sClientset, ssr.healthConfig.FullSnapshotLeaseName, ssr.healthConfig.DeltaSnapshotLeaseName); err != nil {
 					ssr.logger.Warnf("Snapshot lease update failed : %v", err)
 				}
@@ -592,8 +594,8 @@ func (ssr *Snapshotter) snapshotEventHandler(stopCh <-chan struct{}) error {
 			if err != nil {
 				return err
 			}
-			if ssr.healthConfig.Enabled {
-				ctx, cancel := context.WithTimeout(context.TODO(), brtypes.LeaseUpdateTimeoutDuration)
+			if ssr.healthConfig.SnapshotLeaseRenewalEnabled {
+				ctx, cancel := context.WithTimeout(leaseUpdateCtx, brtypes.LeaseUpdateTimeoutDuration)
 				if err = heartbeat.DeltaSnapshotCaseLeaseUpdate(ctx, ssr.logger, ssr.k8sClientset, ssr.healthConfig.DeltaSnapshotLeaseName, ssr.store); err != nil {
 					ssr.logger.Warnf("Snapshot lease update failed : %v", err)
 				}
@@ -604,8 +606,8 @@ func (ssr *Snapshotter) snapshotEventHandler(stopCh <-chan struct{}) error {
 			if _, err := ssr.TakeFullSnapshotAndResetTimer(false); err != nil {
 				return err
 			}
-			if ssr.healthConfig.Enabled {
-				ctx, cancel := context.WithTimeout(context.TODO(), brtypes.LeaseUpdateTimeoutDuration)
+			if ssr.healthConfig.SnapshotLeaseRenewalEnabled {
+				ctx, cancel := context.WithTimeout(leaseUpdateCtx, brtypes.LeaseUpdateTimeoutDuration)
 				if err := heartbeat.FullSnapshotCaseLeaseUpdate(ctx, ssr.logger, ssr.PrevFullSnapshot, ssr.k8sClientset, ssr.healthConfig.FullSnapshotLeaseName, ssr.healthConfig.DeltaSnapshotLeaseName); err != nil {
 					ssr.logger.Warnf("Snapshot lease update failed : %v", err)
 				}
@@ -617,8 +619,8 @@ func (ssr *Snapshotter) snapshotEventHandler(stopCh <-chan struct{}) error {
 				if _, err := ssr.takeDeltaSnapshotAndResetTimer(); err != nil {
 					return err
 				}
-				if ssr.healthConfig.Enabled {
-					ctx, cancel := context.WithTimeout(context.TODO(), brtypes.LeaseUpdateTimeoutDuration)
+				if ssr.healthConfig.SnapshotLeaseRenewalEnabled {
+					ctx, cancel := context.WithTimeout(leaseUpdateCtx, brtypes.LeaseUpdateTimeoutDuration)
 					if err := heartbeat.DeltaSnapshotCaseLeaseUpdate(ctx, ssr.logger, ssr.k8sClientset, ssr.healthConfig.DeltaSnapshotLeaseName, ssr.store); err != nil {
 						ssr.logger.Warnf("Snapshot lease update failed : %v", err)
 					}
@@ -634,10 +636,10 @@ func (ssr *Snapshotter) snapshotEventHandler(stopCh <-chan struct{}) error {
 			if err := ssr.handleDeltaWatchEvents(wr); err != nil {
 				return err
 			}
-			if ssr.healthConfig.Enabled {
+			if ssr.healthConfig.SnapshotLeaseRenewalEnabled {
 				//Call UpdateDeltaSnapshotLease only if new delta snapshot taken
 				if snapshots < len(ssr.PrevDeltaSnapshots) {
-					ctx, cancel := context.WithTimeout(context.TODO(), brtypes.LeaseUpdateTimeoutDuration)
+					ctx, cancel := context.WithTimeout(leaseUpdateCtx, brtypes.LeaseUpdateTimeoutDuration)
 					if err := heartbeat.DeltaSnapshotCaseLeaseUpdate(ctx, ssr.logger, ssr.k8sClientset, ssr.healthConfig.DeltaSnapshotLeaseName, ssr.store); err != nil {
 						ssr.logger.Warnf("Snapshot lease update failed : %v", err)
 					}
@@ -647,6 +649,7 @@ func (ssr *Snapshotter) snapshotEventHandler(stopCh <-chan struct{}) error {
 
 		case <-stopCh:
 			ssr.cleanupInMemoryEvents()
+			leaseUpdateCancel()
 			return nil
 		}
 	}

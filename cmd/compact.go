@@ -19,10 +19,12 @@ import (
 	"strings"
 
 	"github.com/gardener/etcd-backup-restore/pkg/compactor"
+	"github.com/gardener/etcd-backup-restore/pkg/miscellaneous"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"go.etcd.io/etcd/mvcc"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 // NewCompactCommand compacts the ETCD instance
@@ -50,10 +52,13 @@ func NewCompactCommand(ctx context.Context) *cobra.Command {
 			if err != nil {
 				return
 			}
-			clientSet, err := CreateKubernetesClientSet(opts)
-			if err != nil {
-				logger.Fatalf("failed to create clientset, %v", err)
-				return
+
+			var clientSet client.Client
+			if opts.compactorConfig.EnabledLeaseRenewal {
+				clientSet, err = miscellaneous.GetKubernetesClientSetOrError()
+				if err != nil {
+					logger.Fatalf("failed to create clientset, %v", err)
+				}
 			}
 
 			cp := compactor.NewCompactor(store, logrus.NewEntry(logger), clientSet)
