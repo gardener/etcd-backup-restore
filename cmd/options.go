@@ -20,15 +20,14 @@ import (
 	"io/ioutil"
 
 	"github.com/gardener/etcd-backup-restore/pkg/compressor"
-	"github.com/gardener/etcd-backup-restore/pkg/snapshot/snapshotter"
-	"github.com/gardener/etcd-backup-restore/pkg/types"
-
 	"github.com/gardener/etcd-backup-restore/pkg/etcdutil"
 	"github.com/gardener/etcd-backup-restore/pkg/initializer/validator"
-	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
-
 	"github.com/gardener/etcd-backup-restore/pkg/server"
+	"github.com/gardener/etcd-backup-restore/pkg/snapshot/snapshotter"
+	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
+	"github.com/gardener/etcd-backup-restore/pkg/wrappers"
+
 	"github.com/ghodss/yaml"
 	"github.com/sirupsen/logrus"
 	flag "github.com/spf13/pflag"
@@ -263,10 +262,12 @@ func (c *snapshotterOptions) complete() {
 }
 
 type copierOptions struct {
-	sourceSnapStoreConfig *types.SnapstoreConfig
-	snapstoreConfig       *types.SnapstoreConfig
-	maxBackups            int
-	maxBackupAge          int
+	sourceSnapStoreConfig       *brtypes.SnapstoreConfig
+	snapstoreConfig             *brtypes.SnapstoreConfig
+	maxBackups                  int
+	maxBackupAge                int
+	waitForFinalSnapshot        bool
+	waitForFinalSnapshotTimeout wrappers.Duration
 }
 
 func newCopierOptions() *copierOptions {
@@ -281,6 +282,8 @@ func newCopierOptions() *copierOptions {
 func (c *copierOptions) addFlags(fs *flag.FlagSet) {
 	fs.IntVar(&c.maxBackups, "max-backups-to-copy", -1, "copy the specified number of backups sorted by date from newest to oldest")
 	fs.IntVar(&c.maxBackupAge, "max-backup-age", -1, "copy only the backups not older than the specified number of days")
+	fs.BoolVar(&c.waitForFinalSnapshot, "wait-for-final-snapshot", false, "wait for a final full snapshot before copying backups")
+	fs.DurationVar(&c.waitForFinalSnapshotTimeout.Duration, "wait-for-final-snapshot-timeout", 0, "timeout for waiting for a final full snapshot")
 	c.sourceSnapStoreConfig.AddSourceFlags(fs)
 	c.snapstoreConfig.AddFlags(fs)
 }
@@ -291,6 +294,9 @@ func (c *copierOptions) validate() error {
 	}
 	if c.maxBackupAge < -1 {
 		return errors.New("parameter max-backup-age must not be less than -1")
+	}
+	if c.waitForFinalSnapshotTimeout.Duration < 0 {
+		return errors.New("parameter wait-for-final-snapshot-timeout must not be less than 0")
 	}
 	if err := c.snapstoreConfig.Validate(); err != nil {
 		return err

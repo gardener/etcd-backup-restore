@@ -21,9 +21,9 @@ import (
 	"github.com/gardener/etcd-backup-restore/pkg/compressor"
 	"github.com/gardener/etcd-backup-restore/pkg/etcdutil"
 	"github.com/gardener/etcd-backup-restore/pkg/snapshot/snapshotter"
+	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 
-	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	"github.com/robfig/cron/v3"
 	flag "github.com/spf13/pflag"
 )
@@ -37,7 +37,9 @@ func NewBackupRestoreComponentConfig() *BackupRestoreComponentConfig {
 		SnapstoreConfig:         snapstore.NewSnapstoreConfig(),
 		CompressionConfig:       compressor.NewCompressorConfig(),
 		RestorationConfig:       brtypes.NewRestorationConfig(),
+		OwnerCheckConfig:        brtypes.NewOwnerCheckConfig(),
 		DefragmentationSchedule: defaultDefragmentationSchedule,
+		EtcdProcessName:         defaultEtcdProcessName,
 	}
 }
 
@@ -49,9 +51,11 @@ func (c *BackupRestoreComponentConfig) AddFlags(fs *flag.FlagSet) {
 	c.SnapstoreConfig.AddFlags(fs)
 	c.RestorationConfig.AddFlags(fs)
 	c.CompressionConfig.AddFlags(fs)
+	c.OwnerCheckConfig.AddFlags(fs)
 
 	// Miscellaneous
 	fs.StringVar(&c.DefragmentationSchedule, "defragmentation-schedule", c.DefragmentationSchedule, "schedule to defragment etcd data directory")
+	fs.StringVar(&c.EtcdProcessName, "etcd-process-name", c.EtcdProcessName, "name of the etcd process")
 }
 
 // Validate validates the config.
@@ -72,6 +76,9 @@ func (c *BackupRestoreComponentConfig) Validate() error {
 		return err
 	}
 	if err := c.CompressionConfig.Validate(); err != nil {
+		return err
+	}
+	if err := c.OwnerCheckConfig.Validate(); err != nil {
 		return err
 	}
 	if _, err := cron.ParseStandard(c.DefragmentationSchedule); err != nil {

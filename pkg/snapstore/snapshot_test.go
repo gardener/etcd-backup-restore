@@ -19,6 +19,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/gardener/etcd-backup-restore/pkg/compressor"
 	. "github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 
@@ -206,10 +207,61 @@ var _ = Describe("Snapshot", func() {
 
 	Describe("Parse Snapshot name", func() {
 		Context("when valid snapshot name provided under valid path", func() {
-			It("does not return error", func() {
+			It("correctly parses a snapshot name with neither a compression nor a final suffix", func() {
 				snapPath := "v2/Full-00000000-00030009-1518427675"
-				_, err := ParseSnapshot(snapPath)
+				s, err := ParseSnapshot(snapPath)
 				Expect(err).ShouldNot(HaveOccurred())
+				Expect(s).To(Equal(&brtypes.Snapshot{
+					Kind:          brtypes.SnapshotKindFull,
+					StartRevision: 0,
+					LastRevision:  30009,
+					CreatedOn:     time.Unix(1518427675, 0).UTC(),
+					SnapName:      "Full-00000000-00030009-1518427675",
+					Prefix:        "v2/",
+				}))
+			})
+			It("correctly parses a snapshot name with a compression suffix", func() {
+				snapPath := "v2/Full-00000000-00030009-1518427675.gz"
+				s, err := ParseSnapshot(snapPath)
+				Expect(err).ShouldNot(HaveOccurred())
+				Expect(s).To(Equal(&brtypes.Snapshot{
+					Kind:              brtypes.SnapshotKindFull,
+					StartRevision:     0,
+					LastRevision:      30009,
+					CreatedOn:         time.Unix(1518427675, 0).UTC(),
+					SnapName:          "Full-00000000-00030009-1518427675.gz",
+					Prefix:            "v2/",
+					CompressionSuffix: compressor.GzipCompressionExtension,
+				}))
+			})
+			It("correctly parses a snapshot name with a final suffix", func() {
+				snapPath := "v2/Full-00000000-00030009-1518427675.final"
+				s, err := ParseSnapshot(snapPath)
+				Expect(err).ShouldNot(HaveOccurred())
+				Expect(s).To(Equal(&brtypes.Snapshot{
+					Kind:          brtypes.SnapshotKindFull,
+					StartRevision: 0,
+					LastRevision:  30009,
+					CreatedOn:     time.Unix(1518427675, 0).UTC(),
+					SnapName:      "Full-00000000-00030009-1518427675.final",
+					Prefix:        "v2/",
+					IsFinal:       true,
+				}))
+			})
+			It("correctly parses a snapshot name with both a compression and a final suffix", func() {
+				snapPath := "v2/Full-00000000-00030009-1518427675.gz.final"
+				s, err := ParseSnapshot(snapPath)
+				Expect(err).ShouldNot(HaveOccurred())
+				Expect(s).To(Equal(&brtypes.Snapshot{
+					Kind:              brtypes.SnapshotKindFull,
+					StartRevision:     0,
+					LastRevision:      30009,
+					CreatedOn:         time.Unix(1518427675, 0).UTC(),
+					SnapName:          "Full-00000000-00030009-1518427675.gz.final",
+					Prefix:            "v2/",
+					CompressionSuffix: compressor.GzipCompressionExtension,
+					IsFinal:           true,
+				}))
 			})
 		})
 

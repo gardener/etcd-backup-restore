@@ -18,9 +18,9 @@ import (
 	"context"
 
 	"github.com/gardener/etcd-backup-restore/pkg/defragmentor"
-
 	"github.com/gardener/etcd-backup-restore/pkg/snapshot/snapshotter"
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
+
 	cron "github.com/robfig/cron/v3"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"

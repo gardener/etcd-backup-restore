@@ -21,6 +21,7 @@ import (
 
 	"github.com/gardener/etcd-backup-restore/pkg/metrics"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
+
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/sirupsen/logrus"
 )
@@ -185,7 +186,8 @@ func getSnapStreamIndexList(snapList brtypes.SnapList) []int {
 func garbageCollectChunks(store brtypes.SnapStore, snapList brtypes.SnapList, low, high int) {
 	for index := low; index < high; index++ {
 		snap := snapList[index]
-		if snap.Kind == brtypes.SnapshotKindDelta {
+		// Only delete chunk snapshots of kind Full
+		if snap.Kind != brtypes.SnapshotKindFull || !snap.IsChunk {
 			continue
 		}
 		snapPath := path.Join(snap.SnapDir, snap.SnapName)

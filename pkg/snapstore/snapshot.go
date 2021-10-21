@@ -22,17 +22,19 @@ import (
 	"time"
 
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
+
 	"github.com/sirupsen/logrus"
 )
 
 // NewSnapshot returns the snapshot object.
-func NewSnapshot(kind string, startRevision, lastRevision int64, compressionSuffix string) *brtypes.Snapshot {
+func NewSnapshot(kind string, startRevision, lastRevision int64, compressionSuffix string, isFinal bool) *brtypes.Snapshot {
 	snap := &brtypes.Snapshot{
 		Kind:              kind,
 		StartRevision:     startRevision,
 		LastRevision:      lastRevision,
 		CreatedOn:         time.Now().UTC(),
 		CompressionSuffix: compressionSuffix,
+		IsFinal:           isFinal,
 	}
 	snap.GenerateSnapshotName()
 	return snap
@@ -122,9 +124,15 @@ func ParseSnapshot(snapPath string) (*brtypes.Snapshot, error) {
 	}
 
 	//parse creation time as well as parse the Snapshot compression suffix
-	timeWithSnapSuffix := strings.Split(tokens[3], ".")
-	if len(timeWithSnapSuffix) == 2 {
-		s.CompressionSuffix = "." + timeWithSnapSuffix[1]
+	lastNameToken := strings.Split(tokens[3], "/")
+	timeWithSnapSuffix := strings.Split(lastNameToken[0], ".")
+	if len(timeWithSnapSuffix) >= 2 {
+		if "."+timeWithSnapSuffix[1] != brtypes.FinalSuffix {
+			s.CompressionSuffix = "." + timeWithSnapSuffix[1]
+		}
+		if "."+timeWithSnapSuffix[len(timeWithSnapSuffix)-1] == brtypes.FinalSuffix {
+			s.IsFinal = true
+		}
 	}
 	unixTime, err := strconv.ParseInt(timeWithSnapSuffix[0], 10, 64)
 	if err != nil {

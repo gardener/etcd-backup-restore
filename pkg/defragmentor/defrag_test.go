@@ -143,7 +143,7 @@ var _ = Describe("Defrag", func() {
 
 			defragThreadCtx, cancelDefragThread := context.WithTimeout(testCtx, time.Second*time.Duration(135))
 			defer cancelDefragThread()
-			DefragDataPeriodically(defragThreadCtx, etcdConnectionConfig, defragSchedule, func(_ context.Context) (*brtypes.Snapshot, error) {
+			DefragDataPeriodically(defragThreadCtx, etcdConnectionConfig, defragSchedule, func(_ context.Context, _ bool) (*brtypes.Snapshot, error) {
 				defragCount++
 				return nil, nil
 			}, logger)

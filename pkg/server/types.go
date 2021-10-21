@@ -23,6 +23,7 @@ import (
 const (
 	defaultServerPort              = 8080
 	defaultDefragmentationSchedule = "0 0 */3 * *"
+	defaultEtcdProcessName         = "etcd"
 )
 
 // BackupRestoreComponentConfig holds the component configuration.
@@ -33,7 +34,9 @@ type BackupRestoreComponentConfig struct {
 	SnapstoreConfig         *brtypes.SnapstoreConfig       `json:"snapstoreConfig,omitempty"`
 	CompressionConfig       *compressor.CompressionConfig  `json:"compressionConfig,omitempty"`
 	RestorationConfig       *brtypes.RestorationConfig     `json:"restorationConfig,omitempty"`
+	OwnerCheckConfig        *brtypes.OwnerCheckConfig      `json:"ownerCheckConfig,omitempty"`
 	DefragmentationSchedule string                         `json:"defragmentationSchedule"`
+	EtcdProcessName         string                         `json:"etcdProcessName"`
 }
 
 // latestSnapshotMetadata holds snapshot details of latest full and delta snapshots

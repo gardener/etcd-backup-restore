@@ -254,7 +254,17 @@ func (h *HTTPHandler) serveFullSnapshotTrigger(rw http.ResponseWriter, req *http
 		rw.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
-	s, err := h.Snapshotter.TriggerFullSnapshot(req.Context())
+	isFinal := false
+	if finalValue := req.URL.Query().Get("final"); finalValue != "" {
+		var err error
+		isFinal, err = strconv.ParseBool(finalValue)
+		if err != nil {
+			h.Logger.Warnf("Could not parse request parameter 'final' to bool: %v", err)
+			rw.WriteHeader(http.StatusBadRequest)
+			return
+		}
+	}
+	s, err := h.Snapshotter.TriggerFullSnapshot(req.Context(), isFinal)
 	if err != nil {
 		h.Logger.Warnf("Skipped triggering out-of-schedule full snapshot: %v", err)
 		rw.WriteHeader(http.StatusInternalServerError)

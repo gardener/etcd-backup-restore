@@ -17,43 +17,58 @@ package server
 import (
 	"context"
 	"fmt"
+	"net"
 	"net/http"
 	"sync/atomic"
 	"time"
 
-	"github.com/gardener/etcd-backup-restore/pkg/errors"
-	"github.com/gardener/etcd-backup-restore/pkg/metrics"
-	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
-	"github.com/prometheus/client_golang/prometheus"
-
+	"github.com/gardener/etcd-backup-restore/pkg/common"
 	"github.com/gardener/etcd-backup-restore/pkg/defragmentor"
+	"github.com/gardener/etcd-backup-restore/pkg/errors"
 	"github.com/gardener/etcd-backup-restore/pkg/etcdutil"
 	"github.com/gardener/etcd-backup-restore/pkg/initializer"
+	"github.com/gardener/etcd-backup-restore/pkg/metrics"
 	"github.com/gardener/etcd-backup-restore/pkg/snapshot/snapshotter"
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
+	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
+
+	"github.com/prometheus/client_golang/prometheus"
 	cron "github.com/robfig/cron/v3"
 	"github.com/sirupsen/logrus"
 	"go.etcd.io/etcd/pkg/types"
+	"k8s.io/apimachinery/pkg/util/clock"
 )
 
 // BackupRestoreServer holds the details for backup-restore server.
 type BackupRestoreServer struct {
-	config                  *BackupRestoreComponentConfig
 	logger                  *logrus.Entry
+	config                  *BackupRestoreComponentConfig
+	ownerChecker            common.Checker
+	etcdProcessKiller       common.ProcessKiller
 	defragmentationSchedule cron.Schedule
 }
 
 // NewBackupRestoreServer return new backup restore server.
 func NewBackupRestoreServer(logger *logrus.Logger, config *BackupRestoreComponentConfig) (*BackupRestoreServer, error) {
-	parsedDefragSchedule, err := cron.ParseStandard(config.DefragmentationSchedule)
+	serverLogger := logger.WithField("actor", "backup-restore-server")
+	occ := config.OwnerCheckConfig
+	var ownerChecker common.Checker
+	if occ.OwnerName != "" && occ.OwnerID != "" {
+		resolver := common.NewCachingResolver(net.DefaultResolver, clock.RealClock{}, occ.OwnerCheckDNSCacheTTL.Duration)
+		ownerChecker = common.NewOwnerChecker(occ.OwnerName, occ.OwnerID, occ.OwnerCheckTimeout.Duration, resolver, serverLogger)
+	}
+	etcdProcessKiller := common.NewNamedProcessKiller(config.EtcdProcessName, common.NewGopsutilProcessLister(), serverLogger)
+	defragmentationSchedule, err := cron.ParseStandard(config.DefragmentationSchedule)
 	if err != nil {
 		// Ideally this case should not occur, since this check is done at the config validaitions.
 		return nil, err
 	}
 	return &BackupRestoreServer{
-		logger:                  logger.WithField("actor", "backup-restore-server"),
+		logger:                  serverLogger,
 		config:                  config,
-		defragmentationSchedule: parsedDefragSchedule,
+		ownerChecker:            ownerChecker,
+		etcdProcessKiller:       etcdProcessKiller,
+		defragmentationSchedule: defragmentationSchedule,
 	}, nil
 }
 
@@ -184,6 +199,36 @@ func (b *BackupRestoreServer) runEtcdProbeLoopWithSnapshotter(ctx context.Contex
 			continue
 		}
 
+		if b.ownerChecker != nil {
+			// Check if the actual owner ID matches the expected one
+			// If the check fails or returns false, take a final full snapshot if needed
+			b.logger.Debugf("Checking owner before starting snapshotter...")
+			result, err := b.ownerChecker.Check(ctx)
+			if err != nil || !result {
+				handler.SetStatus(http.StatusServiceUnavailable)
+
+				// If the previous full snapshot doesn't exist or is not marked as final, take a final full snapshot
+				if ssr.PrevFullSnapshot == nil || !ssr.PrevFullSnapshot.IsFinal {
+					b.logger.Infof("Taking final full snapshot...")
+					if _, err := ssr.TakeFullSnapshotAndResetTimer(true); err != nil {
+						b.logger.Errorf("Could not take final full snapshot: %v", err)
+						continue
+					}
+				}
+
+				// Wait for the configured interval before making another attempt
+				b.logger.Infof("Waiting for %s...", b.config.OwnerCheckConfig.OwnerCheckInterval.Duration)
+				select {
+				case <-ctx.Done():
+					b.logger.Info("Shutting down...")
+					return
+				case <-time.After(b.config.OwnerCheckConfig.OwnerCheckInterval.Duration):
+				}
+
+				continue
+			}
+		}
+
 		// The decision to either take an initial delta snapshot or
 		// or a full snapshot directly is based on whether there has
 		// been a previous full snapshot (if not, we assume the etcd
@@ -205,7 +250,7 @@ func (b *BackupRestoreServer) runEtcdProbeLoopWithSnapshotter(ctx context.Contex
 		// accommodate for slight pod spin-up delays on shoot wake-up
 		const recentFullSnapshotPeriodInHours = 23.5
 		initialDeltaSnapshotTaken = false
-		if ssr.PrevFullSnapshot != nil && time.Since(ssr.PrevFullSnapshot.CreatedOn).Hours() <= recentFullSnapshotPeriodInHours {
+		if ssr.PrevFullSnapshot != nil && !ssr.PrevFullSnapshot.IsFinal && time.Since(ssr.PrevFullSnapshot.CreatedOn).Hours() <= recentFullSnapshotPeriodInHours {
 			ssrStopped, err := ssr.CollectEventsSincePrevSnapshot(ssrStopCh)
 			if ssrStopped {
 				b.logger.Info("Snapshotter stopped.")
@@ -228,7 +273,7 @@ func (b *BackupRestoreServer) runEtcdProbeLoopWithSnapshotter(ctx context.Contex
 			// need to take a full snapshot here
 			metrics.SnapshotRequired.With(prometheus.Labels{metrics.LabelKind: brtypes.SnapshotKindDelta}).Set(0)
 			metrics.SnapshotRequired.With(prometheus.Labels{metrics.LabelKind: brtypes.SnapshotKindFull}).Set(1)
-			if _, err := ssr.TakeFullSnapshotAndResetTimer(); err != nil {
+			if _, err := ssr.TakeFullSnapshotAndResetTimer(false); err != nil {
 				metrics.SnapshotterOperationFailure.With(prometheus.Labels{metrics.LabelError: err.Error()}).Inc()
 				b.logger.Errorf("Failed to take substitute first full snapshot: %v", err)
 				continue
@@ -239,13 +284,27 @@ func (b *BackupRestoreServer) runEtcdProbeLoopWithSnapshotter(ctx context.Contex
 		// etcd is marked as ready to serve traffic
 		handler.SetStatus(http.StatusOK)
 
+		// Set snapshotter state to Active
 		ssr.SsrStateMutex.Lock()
 		ssr.SsrState = brtypes.SnapshotterActive
 		ssr.SsrStateMutex.Unlock()
+
+		// Start owner check watchdog
+		var ownerCheckWatchdog common.Watchdog
+		if b.ownerChecker != nil {
+			ownerCheckWatchdog = common.NewCheckerActionWatchdog(b.ownerChecker, common.ActionFunc(func(ctx context.Context) {
+				b.stopSnapshotter(handler)
+			}), b.config.OwnerCheckConfig.OwnerCheckInterval.Duration, clock.RealClock{}, b.logger)
+			ownerCheckWatchdog.Start(ctx)
+		}
+
+		// Start garbage collector
 		gcStopCh := make(chan struct{})
 		go ssr.RunGarbageCollector(gcStopCh)
+
+		// Start snapshotter
 		b.logger.Infof("Starting snapshotter...")
-		startWithFullSnapshot := ssr.PrevFullSnapshot == nil || !(time.Since(ssr.PrevFullSnapshot.CreatedOn).Hours() <= recentFullSnapshotPeriodInHours)
+		startWithFullSnapshot := ssr.PrevFullSnapshot == nil || ssr.PrevFullSnapshot.IsFinal || !(time.Since(ssr.PrevFullSnapshot.CreatedOn).Hours() <= recentFullSnapshotPeriodInHours)
 		if err := ssr.Run(ssrStopCh, startWithFullSnapshot); err != nil {
 			if etcdErr, ok := err.(*errors.EtcdError); ok == true {
 				metrics.SnapshotterOperationFailure.With(prometheus.Labels{metrics.LabelError: etcdErr.Error()}).Inc()
@@ -257,8 +316,25 @@ func (b *BackupRestoreServer) runEtcdProbeLoopWithSnapshotter(ctx context.Contex
 		}
 		b.logger.Infof("Snapshotter stopped.")
 		ackCh <- emptyStruct
+
 		handler.SetStatus(http.StatusServiceUnavailable)
+
+		// Stop garbage collector
 		close(gcStopCh)
+
+		if b.ownerChecker != nil {
+			// Stop owner check watchdog
+			ownerCheckWatchdog.Stop()
+
+			// If the owner check fails or returns false, kill the etcd process
+			// to ensure that any open connections from kube-apiserver are terminated
+			result, err := b.ownerChecker.Check(ctx)
+			if err != nil || !result {
+				if _, err := b.etcdProcessKiller.Kill(ctx); err != nil {
+					b.logger.Errorf("Could not kill etcd process: %v", err)
+				}
+			}
+		}
 	}
 }
 
@@ -340,4 +416,13 @@ func handleSsrStopRequest(ctx context.Context, handler *HTTPHandler, ssr *snapsh
 			return
 		}
 	}
+}
+
+func (b *BackupRestoreServer) stopSnapshotter(handler *HTTPHandler) {
+	b.logger.Infof("Stopping snapshotter...")
+	atomic.StoreUint32(&handler.AckState, HandlerAckWaiting)
+	handler.Logger.Info("Changing handler state...")
+	handler.ReqCh <- emptyStruct
+	handler.Logger.Info("Waiting for acknowledgment...")
+	<-handler.AckCh
 }

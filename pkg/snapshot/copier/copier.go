@@ -15,6 +15,7 @@
 package copier
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -42,31 +43,77 @@ func GetSourceAndDestinationStores(sourceSnapStoreConfig *brtypes.SnapstoreConfi
 
 // Copier can be used to copy backups from a source to a destination store.
 type Copier struct {
-	logger          *logrus.Entry
-	sourceSnapStore brtypes.SnapStore
-	destSnapStore   brtypes.SnapStore
-	maxBackups      int
-	maxBackupAge    int
+	logger                      *logrus.Entry
+	sourceSnapStore             brtypes.SnapStore
+	destSnapStore               brtypes.SnapStore
+	maxBackups                  int
+	maxBackupAge                int
+	waitForFinalSnapshot        bool
+	waitForFinalSnapshotTimeout time.Duration
 }
 
 // NewCopier creates a new copier.
-func NewCopier(sourceSnapStore brtypes.SnapStore, destSnapStore brtypes.SnapStore, logger *logrus.Entry, maxBackups int, maxBackupAge int) *Copier {
+func NewCopier(
+	logger *logrus.Entry,
+	sourceSnapStore brtypes.SnapStore,
+	destSnapStore brtypes.SnapStore,
+	maxBackups int,
+	maxBackupAge int,
+	waitForFinalSnapshot bool,
+	waitForFinalSnapshotTimeout time.Duration,
+) *Copier {
 	return &Copier{
-		logger:          logger.WithField("actor", "copier"),
-		sourceSnapStore: sourceSnapStore,
-		destSnapStore:   destSnapStore,
-		maxBackups:      maxBackups,
-		maxBackupAge:    maxBackupAge,
+		logger:                      logger.WithField("actor", "copier"),
+		sourceSnapStore:             sourceSnapStore,
+		destSnapStore:               destSnapStore,
+		maxBackups:                  maxBackups,
+		maxBackupAge:                maxBackupAge,
+		waitForFinalSnapshot:        waitForFinalSnapshot,
+		waitForFinalSnapshotTimeout: waitForFinalSnapshotTimeout,
 	}
 }
 
 // Run executes the copy command.
-func (c *Copier) Run() error {
-	return c.CopyBackups()
+func (c *Copier) Run(ctx context.Context) error {
+	return c.CopyBackups(ctx)
 }
 
-// CopyBackups copies all backups from the source store to the destination store.
-func (c *Copier) CopyBackups() error {
+const (
+	// finalSnapshotCheckInterval is the interval between checks for a final full snapshot.
+	finalSnapshotCheckInterval = 15 * time.Second
+)
+
+// CopyBackups copies all backups from the source store to the destination store
+// when a final full snapshot is detected in the source store.
+func (c *Copier) CopyBackups(ctx context.Context) error {
+	if c.waitForFinalSnapshot {
+		c.logger.Info("Waiting for final full snapshot...")
+		if c.waitForFinalSnapshotTimeout > 0 {
+			var cancel context.CancelFunc
+			ctx, cancel = context.WithTimeout(ctx, c.waitForFinalSnapshotTimeout)
+			defer cancel()
+		}
+		if _, err := c.doWaitForFinalSnapshot(ctx, finalSnapshotCheckInterval, c.sourceSnapStore); err != nil {
+			return fmt.Errorf("could not wait for final full snapshot: %v", err)
+		}
+		if ctx.Err() != nil {
+			c.logger.Info("Timed out waiting for final full snapshot")
+		} else {
+			c.logger.Info("Final full snapshot detected")
+		}
+	}
+
+	c.logger.Info("Copying backups ...")
+	if err := c.copyBackups(); err != nil {
+		return fmt.Errorf("could not copy backups: %v", err)
+	}
+	c.logger.Info("Backups copied")
+
+	return nil
+}
+
+// copyBackups copies all backups from the source store to the destination store.
+func (c *Copier) copyBackups() error {
 	// Get source backups
 	c.logger.Info("Getting source backups...")
 	sourceSnapshot, err := c.getSnapshots()
@@ -120,9 +167,32 @@ func (c *Copier) copySnapshot(snapshot *brtypes.Snapshot) error {
 		return fmt.Errorf("could not fetch snapshot %s from source store: %v", snapshot.SnapName, err)
 	}
 
+	snapshot.SetFinal(false)
 	if err := c.destSnapStore.Save(*snapshot, rc); err != nil {
 		return fmt.Errorf("could not save snapshot %s to destination store: %v", snapshot.SnapName, err)
 	}
 
 	return nil
+}
+
+// doWaitForFinalSnapshot waits for a final full snapshot in the given store.
+func (c *Copier) doWaitForFinalSnapshot(ctx context.Context, interval time.Duration, ss brtypes.SnapStore) (*brtypes.Snapshot, error) {
+	c.logger.Debug("Starting waiting for final full snapshot")
+	defer c.logger.Debug("Stopping waiting for final full snapshot")
+
+	for {
+		fullSnapshot, _, err := miscellaneous.GetLatestFullSnapshotAndDeltaSnapList(ss)
+		if err != nil {
+			return nil, err
+		}
+		if fullSnapshot != nil && fullSnapshot.IsFinal {
+			return fullSnapshot, nil
+		}
+
+		select {
+		case <-ctx.Done():
+			return nil, nil
+		case <-time.After(interval):
+		}
+	}
 }
