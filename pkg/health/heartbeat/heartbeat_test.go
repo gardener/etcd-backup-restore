@@ -33,27 +33,29 @@ var _ = Describe("Heartbeat", func() {
 	})
 
 	Describe("creating Heartbeat", func() {
+		BeforeEach(func() {
+			os.Setenv("POD_NAME", "test_pod")
+			os.Setenv("POD_NAMESPACE", "test_namespace")
+		})
+		AfterEach(func() {
+			os.Unsetenv("POD_NAME")
+			os.Unsetenv("POD_NAMESPACE")
+		})
 		Context("With valid config", func() {
 			It("should not return error", func() {
-				healthConfig := brtypes.NewHealthConfig()
-
-				_, err := heartbeat.NewHeartbeat(healthConfig, logger, etcdConnectionConfig, miscellaneous.GetFakeKubernetesClientSet())
+				_, err := heartbeat.NewHeartbeat(logger, etcdConnectionConfig, miscellaneous.GetFakeKubernetesClientSet())
 				Expect(err).ShouldNot(HaveOccurred())
 			})
 		})
 		Context("With invalid etcdconnection config passed", func() {
 			It("should return error", func() {
-				healthConfig := brtypes.NewHealthConfig()
-
-				_, err := heartbeat.NewHeartbeat(healthConfig, logger, nil, miscellaneous.GetFakeKubernetesClientSet())
+				_, err := heartbeat.NewHeartbeat(logger, nil, miscellaneous.GetFakeKubernetesClientSet())
 				Expect(err).Should(HaveOccurred())
 			})
 		})
 		Context("With invalid clientset passed", func() {
 			It("should return error", func() {
-				healthConfig := brtypes.NewHealthConfig()
-
-				_, err := heartbeat.NewHeartbeat(healthConfig, logger, etcdConnectionConfig, nil)
+				_, err := heartbeat.NewHeartbeat(logger, etcdConnectionConfig, nil)
 				Expect(err).Should(HaveOccurred())
 			})
 		})
@@ -303,9 +305,8 @@ var _ = Describe("Heartbeat", func() {
 				os.Unsetenv("POD_NAMESPACE")
 			})
 			It("Should correctly update the member lease", func() {
-				healthConfig := brtypes.NewHealthConfig()
 				clientSet := miscellaneous.GetFakeKubernetesClientSet()
-				heartbeat, err := heartbeat.NewHeartbeat(healthConfig, logger, etcdConnectionConfig, clientSet)
+				heartbeat, err := heartbeat.NewHeartbeat(logger, etcdConnectionConfig, clientSet)
 				Expect(err).ShouldNot(HaveOccurred())
 
 				err = clientSet.Create(context.TODO(), lease)
@@ -340,8 +341,7 @@ var _ = Describe("Heartbeat", func() {
 				os.Unsetenv("POD_NAMESPACE")
 			})
 			It("Should return an error", func() {
-				healthConfig := brtypes.NewHealthConfig()
-				heartbeat, err := heartbeat.NewHeartbeat(healthConfig, logger, etcdConnectionConfig, miscellaneous.GetFakeKubernetesClientSet())
+				heartbeat, err := heartbeat.NewHeartbeat(logger, etcdConnectionConfig, miscellaneous.GetFakeKubernetesClientSet())
 				Expect(err).ShouldNot(HaveOccurred())
 
 				err = heartbeat.RenewMemberLease(context.TODO())

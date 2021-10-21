@@ -43,10 +43,12 @@ type Heartbeat struct {
 	heartbeatTimer *time.Timer
 	etcdConfig     *etcdutil.EtcdConnectionConfig
 	k8sClient      client.Client
+	podName        string
+	podNamespace   string
 }
 
 // NewHeartbeat returns the heartbeat object.
-func NewHeartbeat(hconfig *brtypes.HealthConfig, logger *logrus.Entry, etcdConfig *etcdutil.EtcdConnectionConfig, clientSet client.Client) (*Heartbeat, error) {
+func NewHeartbeat(logger *logrus.Entry, etcdConfig *etcdutil.EtcdConnectionConfig, clientSet client.Client) (*Heartbeat, error) {
 	if etcdConfig == nil {
 		return nil, &errors.EtcdError{
 			Message: "nil etcd config passed, can not create heartbeat",
@@ -57,37 +59,35 @@ func NewHeartbeat(hconfig *brtypes.HealthConfig, logger *logrus.Entry, etcdConfi
 			Message: "nil kubernetes clientset passed, can not create heartbeat",
 		}
 	}
+	memberName, err := utils.GetEnvVarOrError(podName)
+	if err != nil {
+		logger.Fatalf("POD NAME env var not present: %v", err)
+	}
+	namespace, err := utils.GetEnvVarOrError(podNamespace)
+	if err != nil {
+		logger.Fatalf("POD_NAMESPACE env var not present: %v", err)
+	}
 	return &Heartbeat{
-		logger:     logger.WithField("actor", "heartbeat"),
-		etcdConfig: etcdConfig,
-		k8sClient:  clientSet,
+		logger:       logger.WithField("actor", "heartbeat"),
+		etcdConfig:   etcdConfig,
+		k8sClient:    clientSet,
+		podName:      memberName,
+		podNamespace: namespace,
 	}, nil
 }
 
 // RenewMemberLease renews the member lease under the pod's identity.
 func (hb *Heartbeat) RenewMemberLease(ctx context.Context) error {
-	//Fetch lease associated with member
-	memberName, err := utils.GetEnvVarOrError(podName)
-	if err != nil {
-		return &errors.EtcdError{
-			Message: fmt.Sprintf("POD NAME env var not present: %v", err),
-		}
-	}
-	namespace, err := utils.GetEnvVarOrError(podNamespace)
-	if err != nil {
-		return &errors.EtcdError{
-			Message: fmt.Sprintf("POD_NAMESPACE env var not present: %v", err),
-		}
-	}
 	if hb.k8sClient == nil {
 		return &errors.EtcdError{
 			Message: "nil clientset passed",
 		}
 	}
+	//Fetch lease associated with member
 	memberLease := &v1.Lease{}
-	err = hb.k8sClient.Get(ctx, client.ObjectKey{
-		Namespace: namespace,
-		Name:      memberName,
+	err := hb.k8sClient.Get(ctx, client.ObjectKey{
+		Namespace: hb.podNamespace,
+		Name:      hb.podName,
 	}, memberLease)
 	if err != nil {
 		return &errors.EtcdError{
@@ -268,15 +268,17 @@ func DeltaSnapshotCaseLeaseUpdate(ctx context.Context, logger *logrus.Entry, k8s
 }
 
 // RenewMemberLeasePeriodically has a timer and will periodically call RenewMemberLeases to renew the member lease until stopped
-func RenewMemberLeasePeriodically(ctx context.Context, hconfig *brtypes.HealthConfig, logger *logrus.Entry, etcdConfig *etcdutil.EtcdConnectionConfig) error {
+func RenewMemberLeasePeriodically(ctx context.Context, hconfig *brtypes.HealthConfig, logger *logrus.Entry, etcdConfig *etcdutil.EtcdConnectionConfig) {
 
 	clientSet, err := miscellaneous.GetKubernetesClientSetOrError()
 	if err != nil {
-		return fmt.Errorf("failed to create clientset: %v", err)
+		logger.Errorf("failed to create clientset: %v", err)
+		return
 	}
-	hb, err := NewHeartbeat(hconfig, logger, etcdConfig, clientSet)
+	hb, err := NewHeartbeat(logger, etcdConfig, clientSet)
 	if err != nil {
-		return fmt.Errorf("failed to initialize new heartbeat: %v", err)
+		logger.Errorf("failed to initialize new heartbeat: %v", err)
+		return
 	}
 	hb.heartbeatTimer = time.NewTimer(hconfig.HeartbeatDuration.Duration)
 	defer hb.heartbeatTimer.Stop()
@@ -292,7 +294,7 @@ func RenewMemberLeasePeriodically(ctx context.Context, hconfig *brtypes.HealthCo
 			hb.heartbeatTimer.Reset(hconfig.HeartbeatDuration.Duration)
 		case <-ctx.Done():
 			hb.logger.Info("Stopped member lease renewal timer")
-			return nil
+			return
 		}
 	}
 }
