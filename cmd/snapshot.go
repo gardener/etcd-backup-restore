@@ -21,6 +21,7 @@ import (
 	"github.com/gardener/etcd-backup-restore/pkg/snapshot/snapshotter"
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 
+	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 	cron "github.com/robfig/cron/v3"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
@@ -49,7 +50,7 @@ storing snapshots on various cloud storage providers as well as local disk locat
 				logger.Fatalf("Failed to create snapstore from configured storage provider: %v", err)
 			}
 
-			ssr, err := snapshotter.NewSnapshotter(logger, opts.snapshotterConfig, ss, opts.etcdConnectionConfig, opts.compressionConfig)
+			ssr, err := snapshotter.NewSnapshotter(logger, opts.snapshotterConfig, ss, opts.etcdConnectionConfig, opts.compressionConfig, brtypes.NewHealthConfig())
 			if err != nil {
 				logger.Fatalf("Failed to create snapshotter: %v", err)
 			}

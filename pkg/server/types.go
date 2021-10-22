@@ -37,6 +37,7 @@ type BackupRestoreComponentConfig struct {
 	OwnerCheckConfig        *brtypes.OwnerCheckConfig      `json:"ownerCheckConfig,omitempty"`
 	DefragmentationSchedule string                         `json:"defragmentationSchedule"`
 	EtcdProcessName         string                         `json:"etcdProcessName"`
+	HealthConfig            *brtypes.HealthConfig          `json:"healthConfig,omitempty"`
 }
 
 // latestSnapshotMetadata holds snapshot details of latest full and delta snapshots
