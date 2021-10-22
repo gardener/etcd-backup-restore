@@ -648,8 +648,8 @@ func (ssr *Snapshotter) snapshotEventHandler(stopCh <-chan struct{}) error {
 			}
 
 		case <-stopCh:
-			ssr.cleanupInMemoryEvents()
 			leaseUpdateCancel()
+			ssr.cleanupInMemoryEvents()
 			return nil
 		}
 	}
