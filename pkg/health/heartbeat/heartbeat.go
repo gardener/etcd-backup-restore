@@ -42,14 +42,14 @@ const (
 type Heartbeat struct {
 	logger         *logrus.Entry
 	heartbeatTimer *time.Timer
-	etcdConfig     *etcdutil.EtcdConnectionConfig
+	etcdConfig     *brtypes.EtcdConnectionConfig
 	k8sClient      client.Client
 	podName        string
 	podNamespace   string
 }
 
 // NewHeartbeat returns the heartbeat object.
-func NewHeartbeat(logger *logrus.Entry, etcdConfig *etcdutil.EtcdConnectionConfig, clientSet client.Client) (*Heartbeat, error) {
+func NewHeartbeat(logger *logrus.Entry, etcdConfig *brtypes.EtcdConnectionConfig, clientSet client.Client) (*Heartbeat, error) {
 	if etcdConfig == nil {
 		return nil, &errors.EtcdError{
 			Message: "nil etcd config passed, can not create heartbeat",
@@ -96,22 +96,25 @@ func (hb *Heartbeat) RenewMemberLease(ctx context.Context) error {
 		}
 	}
 
-	//Create etcd client to get etcd ID
-	etcdClient, err := etcdutil.GetTLSClientForEtcd(hb.etcdConfig)
+	//Create etcd client maintenance to get etcd ID
+	clientFactory := etcdutil.NewFactory(*hb.etcdConfig)
+	etcdClient, err := clientFactory.NewMaintenance()
 	if err != nil {
 		return &errors.EtcdError{
-			Message: fmt.Sprintf("Failed to create etcd client: %v", err),
+			Message: fmt.Sprintf("Failed to create etcd maintenance client: %v", err),
 		}
 	}
 	defer etcdClient.Close()
+
 	response, err := etcdClient.Status(ctx, hb.etcdConfig.Endpoints[0])
 	if err != nil {
 		return &errors.EtcdError{
 			Message: fmt.Sprintf("Failed to get status of etcd endPoint [ %v ] with error: %v", hb.etcdConfig.Endpoints[0], err),
 		}
 	}
-	memberID := strconv.FormatUint(response.Header.MemberId, 16)
-	if response.Header.MemberId == response.Leader {
+
+	memberID := strconv.FormatUint(response.Header.GetMemberId(), 16)
+	if response.Header.GetMemberId() == response.Leader {
 		memberID += ":Leader"
 	} else {
 		memberID += ":Member"
@@ -278,7 +281,7 @@ func DeltaSnapshotCaseLeaseUpdate(ctx context.Context, logger *logrus.Entry, k8s
 }
 
 // RenewMemberLeasePeriodically has a timer and will periodically call RenewMemberLeases to renew the member lease until stopped
-func RenewMemberLeasePeriodically(ctx context.Context, hconfig *brtypes.HealthConfig, logger *logrus.Entry, etcdConfig *etcdutil.EtcdConnectionConfig) {
+func RenewMemberLeasePeriodically(ctx context.Context, hconfig *brtypes.HealthConfig, logger *logrus.Entry, etcdConfig *brtypes.EtcdConnectionConfig) {
 
 	clientSet, err := miscellaneous.GetKubernetesClientSetOrError()
 	if err != nil {

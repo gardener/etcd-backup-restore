@@ -68,7 +68,6 @@ storing snapshots on various cloud storage providers as well as local disk locat
 				logger.Fatalf("Snapshotter failed with error: %v", err)
 			}
 			logger.Info("Shutting down...")
-			return
 		},
 	}
 	opts.addFlags(command.Flags())

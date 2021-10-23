@@ -15,7 +15,6 @@ import (
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 
 	"github.com/sirupsen/logrus"
-	"go.etcd.io/etcd/clientv3"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -105,32 +104,42 @@ func (cp *Compactor) Compact(opts *brtypes.CompactOptions) (*brtypes.Snapshot, e
 	// Then compact ETCD
 
 	// Build Client
-	cfg := clientv3.Config{MaxCallSendMsgSize: cmpctOptions.Config.MaxCallSendMsgSize, Endpoints: ep}
-	client, err := clientv3.New(cfg)
+	clientFactory := etcdutil.NewClientFactory(cmpctOptions.NewClientFactory, brtypes.EtcdConnectionConfig{
+		MaxCallSendMsgSize: cmpctOptions.Config.MaxCallSendMsgSize,
+		Endpoints:          ep,
+		InsecureTransport:  true,
+	})
+	clientKV, err := clientFactory.NewKV()
 	if err != nil {
-		return nil, fmt.Errorf("failed to build client")
+		return nil, fmt.Errorf("failed to build etcd KV client")
 	}
-	defer client.Close()
+	defer clientKV.Close()
+
+	clientMaintenance, err := clientFactory.NewMaintenance()
+	if err != nil {
+		return nil, fmt.Errorf("failed to build etcd maintenance client")
+	}
+	defer clientMaintenance.Close()
 
 	// Build contxt
 	ctx := context.TODO()
 	revCheckCtx, cancel := context.WithTimeout(ctx, etcdDialTimeout)
-	getResponse, err := client.Get(revCheckCtx, "foo")
+	getResponse, err := clientKV.Get(revCheckCtx, "foo")
 	cancel()
 	if err != nil {
-		return nil, fmt.Errorf("failed to connect to client: %v", err)
+		return nil, fmt.Errorf("failed to connect to etcd KV client: %v", err)
 	}
 	etcdRevision := getResponse.Header.GetRevision()
 
 	// Compact
-	if _, err := client.Compact(ctx, etcdRevision); err != nil {
+	if _, err := clientKV.Compact(ctx, etcdRevision); err != nil {
 		return nil, fmt.Errorf("failed to compact: %v", err)
 	}
 
 	// Then defrag the ETCD
 	if opts.NeedDefragmentation {
 		defragCtx, defragCancel := context.WithTimeout(ctx, opts.DefragTimeout.Duration)
-		err := etcdutil.DefragmentData(defragCtx, client, ep, cp.logger)
+		err := etcdutil.DefragmentData(defragCtx, clientMaintenance, ep, cp.logger)
 		defragCancel()
 		if err != nil {
 			cp.logger.Errorf("failed to defragment: %v", err)
@@ -155,7 +164,7 @@ func (cp *Compactor) Compact(opts *brtypes.CompactOptions) (*brtypes.Snapshot, e
 	isFinal := cmpctOptions.BaseSnapshot.IsFinal
 
 	cc := &compressor.CompressionConfig{Enabled: isCompressed, CompressionPolicy: compressionPolicy}
-	snapshot, err := etcdutil.TakeAndSaveFullSnapshot(snapshotReqCtx, client, cp.store, etcdRevision, cc, suffix, isFinal, cp.logger)
+	snapshot, err := etcdutil.TakeAndSaveFullSnapshot(snapshotReqCtx, clientMaintenance, cp.store, etcdRevision, cc, suffix, isFinal, cp.logger)
 	if err != nil {
 		return nil, err
 	}

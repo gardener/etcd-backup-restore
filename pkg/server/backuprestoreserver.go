@@ -405,18 +405,19 @@ func (b *BackupRestoreServer) runEtcdProbeLoopWithoutSnapshotter(ctx context.Con
 // probeEtcd will make the snapshotter probe for etcd endpoint to be available
 // before it starts taking regular snapshots.
 func (b *BackupRestoreServer) probeEtcd(ctx context.Context) error {
-	client, err := etcdutil.GetTLSClientForEtcd(b.config.EtcdConnectionConfig)
+	clientFactory := etcdutil.NewFactory(*b.config.EtcdConnectionConfig)
+	clientKV, err := clientFactory.NewKV()
 	if err != nil {
 		return &errors.EtcdError{
-			Message: fmt.Sprintf("failed to create etcd client: %v", err),
+			Message: fmt.Sprintf("Failed to create etcd KV client: %v", err),
 		}
 	}
-	defer client.Close()
+	defer clientKV.Close()
 
 	ctx, cancel := context.WithTimeout(ctx, b.config.EtcdConnectionConfig.ConnectionTimeout.Duration)
 	defer cancel()
-	if _, err := client.Get(ctx, "foo"); err != nil {
-		b.logger.Errorf("Failed to connect to client: %v", err)
+	if _, err := clientKV.Get(ctx, "foo"); err != nil {
+		b.logger.Errorf("Failed to connect to etcd KV client: %v", err)
 		return err
 	}
 	return nil

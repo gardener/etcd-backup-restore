@@ -16,7 +16,6 @@ package server
 
 import (
 	"github.com/gardener/etcd-backup-restore/pkg/compressor"
-	"github.com/gardener/etcd-backup-restore/pkg/etcdutil"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 )
 
@@ -28,16 +27,16 @@ const (
 
 // BackupRestoreComponentConfig holds the component configuration.
 type BackupRestoreComponentConfig struct {
-	EtcdConnectionConfig    *etcdutil.EtcdConnectionConfig `json:"etcdConnectionConfig,omitempty"`
-	ServerConfig            *HTTPServerConfig              `json:"serverConfig,omitempty"`
-	SnapshotterConfig       *brtypes.SnapshotterConfig     `json:"snapshotterConfig,omitempty"`
-	SnapstoreConfig         *brtypes.SnapstoreConfig       `json:"snapstoreConfig,omitempty"`
-	CompressionConfig       *compressor.CompressionConfig  `json:"compressionConfig,omitempty"`
-	RestorationConfig       *brtypes.RestorationConfig     `json:"restorationConfig,omitempty"`
-	OwnerCheckConfig        *brtypes.OwnerCheckConfig      `json:"ownerCheckConfig,omitempty"`
-	DefragmentationSchedule string                         `json:"defragmentationSchedule"`
-	EtcdProcessName         string                         `json:"etcdProcessName"`
-	HealthConfig            *brtypes.HealthConfig          `json:"healthConfig,omitempty"`
+	EtcdConnectionConfig    *brtypes.EtcdConnectionConfig `json:"etcdConnectionConfig,omitempty"`
+	ServerConfig            *HTTPServerConfig             `json:"serverConfig,omitempty"`
+	SnapshotterConfig       *brtypes.SnapshotterConfig    `json:"snapshotterConfig,omitempty"`
+	SnapstoreConfig         *brtypes.SnapstoreConfig      `json:"snapstoreConfig,omitempty"`
+	CompressionConfig       *compressor.CompressionConfig `json:"compressionConfig,omitempty"`
+	RestorationConfig       *brtypes.RestorationConfig    `json:"restorationConfig,omitempty"`
+	OwnerCheckConfig        *brtypes.OwnerCheckConfig     `json:"ownerCheckConfig,omitempty"`
+	DefragmentationSchedule string                        `json:"defragmentationSchedule"`
+	EtcdProcessName         string                        `json:"etcdProcessName"`
+	HealthConfig            *brtypes.HealthConfig         `json:"healthConfig,omitempty"`
 }
 
 // latestSnapshotMetadata holds snapshot details of latest full and delta snapshots

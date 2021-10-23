@@ -32,13 +32,13 @@ import (
 
 var _ = Describe("Defrag", func() {
 	var (
-		etcdConnectionConfig *etcdutil.EtcdConnectionConfig
+		etcdConnectionConfig *brtypes.EtcdConnectionConfig
 		keyPrefix            = "/defrag/key-"
 		valuePrefix          = "val"
 	)
 
 	BeforeEach(func() {
-		etcdConnectionConfig = etcdutil.NewEtcdConnectionConfig()
+		etcdConnectionConfig = brtypes.NewEtcdConnectionConfig()
 		etcdConnectionConfig.Endpoints = endpoints
 		etcdConnectionConfig.ConnectionTimeout.Duration = 30 * time.Second
 		etcdConnectionConfig.SnapshotTimeout.Duration = 30 * time.Second
@@ -48,41 +48,49 @@ var _ = Describe("Defrag", func() {
 	Context("Defragmentation", func() {
 		BeforeEach(func() {
 			now := time.Now().Unix()
-			client, err := etcdutil.GetTLSClientForEtcd(etcdConnectionConfig)
+			clientFactory := etcdutil.NewFactory(*etcdConnectionConfig)
+			clientKV, err := clientFactory.NewKV()
 			Expect(err).ShouldNot(HaveOccurred())
-			defer client.Close()
+			defer clientKV.Close()
 			logger.Infof("etcdConnectionConfig %v, Endpoint %v", etcdConnectionConfig, endpoints)
 			for index := 0; index <= 1000; index++ {
 				ctx, cancel := context.WithTimeout(testCtx, etcdConnectionConfig.ConnectionTimeout.Duration)
-				client.Put(ctx, fmt.Sprintf("%s%d%d", keyPrefix, now, index), valuePrefix)
+				clientKV.Put(ctx, fmt.Sprintf("%s%d%d", keyPrefix, now, index), valuePrefix)
 				cancel()
 			}
 			for index := 0; index <= 500; index++ {
 				ctx, cancel := context.WithTimeout(testCtx, etcdConnectionConfig.ConnectionTimeout.Duration)
-				client.Delete(ctx, fmt.Sprintf("%s%d%d", keyPrefix, now, index))
+				clientKV.Delete(ctx, fmt.Sprintf("%s%d%d", keyPrefix, now, index))
 				cancel()
 			}
 		})
 
 		It("should defragment and reduce size of DB within time", func() {
-			client, err := etcdutil.GetTLSClientForEtcd(etcdConnectionConfig)
+			clientFactory := etcdutil.NewFactory(*etcdConnectionConfig)
+
+			clientMaintenance, err := clientFactory.NewMaintenance()
 			Expect(err).ShouldNot(HaveOccurred())
-			defer client.Close()
+			defer clientMaintenance.Close()
+
+			clientKV, err := clientFactory.NewKV()
+			Expect(err).ShouldNot(HaveOccurred())
+			defer clientKV.Close()
+
 			ctx, cancel := context.WithTimeout(testCtx, etcdDialTimeout)
-			oldStatus, err := client.Status(ctx, endpoints[0])
+			oldStatus, err := clientMaintenance.Status(ctx, endpoints[0])
 			cancel()
 			Expect(err).ShouldNot(HaveOccurred())
 			oldDBSize := oldStatus.DbSize
 			oldRevision := oldStatus.Header.GetRevision()
 
 			// compact the ETCD DB to let the defragmentor have full effect
-			_, err = client.Compact(testCtx, oldRevision)
+			_, err = clientKV.Compact(testCtx, oldRevision)
 			Expect(err).ShouldNot(HaveOccurred())
 			defragmentorJob := NewDefragmentorJob(testCtx, etcdConnectionConfig, logger, nil)
 			defragmentorJob.Run()
 
 			ctx, cancel = context.WithTimeout(testCtx, etcdDialTimeout)
-			newStatus, err := client.Status(ctx, endpoints[0])
+			newStatus, err := clientMaintenance.Status(ctx, endpoints[0])
 			cancel()
 			Expect(err).ShouldNot(HaveOccurred())
 
@@ -92,11 +100,14 @@ var _ = Describe("Defrag", func() {
 
 		It("should keep size of DB same in case of timeout", func() {
 			etcdConnectionConfig.DefragTimeout.Duration = time.Microsecond
-			client, err := etcdutil.GetTLSClientForEtcd(etcdConnectionConfig)
+			clientFactory := etcdutil.NewFactory(*etcdConnectionConfig)
+
+			clientMaintenance, err := clientFactory.NewMaintenance()
 			Expect(err).ShouldNot(HaveOccurred())
-			defer client.Close()
+			defer clientMaintenance.Close()
+
 			ctx, cancel := context.WithTimeout(testCtx, etcdDialTimeout)
-			oldStatus, err := client.Status(ctx, endpoints[0])
+			oldStatus, err := clientMaintenance.Status(ctx, endpoints[0])
 			cancel()
 			Expect(err).ShouldNot(HaveOccurred())
 			oldDBSize := oldStatus.DbSize
@@ -106,7 +117,7 @@ var _ = Describe("Defrag", func() {
 			defragmentorJob.Run()
 
 			ctx, cancel = context.WithTimeout(testCtx, etcdDialTimeout)
-			newStatus, err := client.Status(ctx, endpoints[0])
+			newStatus, err := clientMaintenance.Status(ctx, endpoints[0])
 			cancel()
 			Expect(err).ShouldNot(HaveOccurred())
 
@@ -131,11 +142,13 @@ var _ = Describe("Defrag", func() {
 			// Wait unitil the populator finishes with populating ETCD
 			wg.Wait()
 
-			client, err := etcdutil.GetTLSClientForEtcd(etcdConnectionConfig)
+			clientFactory := etcdutil.NewFactory(*etcdConnectionConfig)
+			clientMaintenance, err := clientFactory.NewMaintenance()
 			Expect(err).ShouldNot(HaveOccurred())
-			defer client.Close()
+			defer clientMaintenance.Close()
+
 			statusReqCtx, cancelStatusReq := context.WithTimeout(testCtx, etcdDialTimeout)
-			oldStatus, err := client.Status(statusReqCtx, endpoints[0])
+			oldStatus, err := clientMaintenance.Status(statusReqCtx, endpoints[0])
 			cancelStatusReq()
 			Expect(err).ShouldNot(HaveOccurred())
 			oldDBSize := oldStatus.DbSize
@@ -149,7 +162,7 @@ var _ = Describe("Defrag", func() {
 			}, logger)
 
 			statusReqCtx, cancelStatusReq = context.WithTimeout(testCtx, etcdDialTimeout)
-			newStatus, err := client.Status(statusReqCtx, endpoints[0])
+			newStatus, err := clientMaintenance.Status(statusReqCtx, endpoints[0])
 			cancelStatusReq()
 			Expect(err).ShouldNot(HaveOccurred())
 

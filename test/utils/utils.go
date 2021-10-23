@@ -24,7 +24,6 @@ import (
 	"time"
 
 	"github.com/gardener/etcd-backup-restore/pkg/compressor"
-	"github.com/gardener/etcd-backup-restore/pkg/etcdutil"
 	"github.com/gardener/etcd-backup-restore/pkg/snapshot/snapshotter"
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
@@ -192,7 +191,7 @@ func RunSnapshotter(logger *logrus.Entry, snapstoreConfig brtypes.SnapstoreConfi
 		return err
 	}
 
-	etcdConnectionConfig := etcdutil.NewEtcdConnectionConfig()
+	etcdConnectionConfig := brtypes.NewEtcdConnectionConfig()
 	etcdConnectionConfig.ConnectionTimeout.Duration = 10 * time.Second
 	etcdConnectionConfig.Endpoints = endpoints
 

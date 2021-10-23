@@ -70,7 +70,7 @@ func NewSnapshotterConfig() *brtypes.SnapshotterConfig {
 // Snapshotter is a struct for etcd snapshot taker
 type Snapshotter struct {
 	logger               *logrus.Entry
-	etcdConnectionConfig *etcdutil.EtcdConnectionConfig
+	etcdConnectionConfig *brtypes.EtcdConnectionConfig
 	store                brtypes.SnapStore
 	config               *brtypes.SnapshotterConfig
 	compressionConfig    *compressor.CompressionConfig
@@ -88,7 +88,7 @@ type Snapshotter struct {
 	deltaSnapshotTimer *time.Timer
 	events             []byte
 	watchCh            clientv3.WatchChan
-	etcdClient         *clientv3.Client
+	etcdWatchClient    *clientv3.Watcher
 	cancelWatch        context.CancelFunc
 	SsrStateMutex      *sync.Mutex
 	SsrState           brtypes.SnapshotterState
@@ -97,7 +97,7 @@ type Snapshotter struct {
 }
 
 // NewSnapshotter returns the snapshotter object.
-func NewSnapshotter(logger *logrus.Entry, config *brtypes.SnapshotterConfig, store brtypes.SnapStore, etcdConnectionConfig *etcdutil.EtcdConnectionConfig, compressionConfig *compressor.CompressionConfig, healthConfig *brtypes.HealthConfig) (*Snapshotter, error) {
+func NewSnapshotter(logger *logrus.Entry, config *brtypes.SnapshotterConfig, store brtypes.SnapStore, etcdConnectionConfig *brtypes.EtcdConnectionConfig, compressionConfig *compressor.CompressionConfig, healthConfig *brtypes.HealthConfig) (*Snapshotter, error) {
 	sdl, err := cron.ParseStandard(config.FullSnapshotSchedule)
 	if err != nil {
 		// Ideally this should be validated before.
@@ -251,11 +251,11 @@ func (ssr *Snapshotter) closeEtcdClient() {
 		ssr.watchCh = nil
 	}
 
-	if ssr.etcdClient != nil {
-		if err := ssr.etcdClient.Close(); err != nil {
-			ssr.logger.Warnf("Error while closing etcd client connection, %v", err)
+	if ssr.etcdWatchClient != nil {
+		if err := (*ssr.etcdWatchClient).Close(); err != nil {
+			ssr.logger.Warnf("Error while closing etcd watch client connection, %v", err)
 		}
-		ssr.etcdClient = nil
+		ssr.etcdWatchClient = nil
 	}
 }
 
@@ -282,19 +282,20 @@ func (ssr *Snapshotter) takeFullSnapshot(isFinal bool) (*brtypes.Snapshot, error
 	// close previous watch and client.
 	ssr.closeEtcdClient()
 
-	client, err := etcdutil.GetTLSClientForEtcd(ssr.etcdConnectionConfig)
+	clientFactory := etcdutil.NewFactory(*ssr.etcdConnectionConfig)
+	clientKV, err := clientFactory.NewKV()
 	if err != nil {
 		return nil, &errors.EtcdError{
-			Message: fmt.Sprintf("failed to create etcd client: %v", err),
+			Message: fmt.Sprintf("failed to create etcd KV client: %v", err),
 		}
 	}
-	defer client.Close()
+	defer clientKV.Close()
 
 	ctx, cancel := context.WithTimeout(context.TODO(), ssr.etcdConnectionConfig.ConnectionTimeout.Duration)
 	// Note: Although Get and snapshot call are not atomic, so revision number in snapshot file
 	// may be ahead of the revision found from GET call. But currently this is the only workaround available
 	// Refer: https://github.com/coreos/etcd/issues/9037
-	resp, err := client.Get(ctx, "", clientv3.WithLastRev()...)
+	resp, err := clientKV.Get(ctx, "", clientv3.WithLastRev()...)
 	cancel()
 	if err != nil {
 		return nil, &errors.EtcdError{
@@ -316,7 +317,13 @@ func (ssr *Snapshotter) takeFullSnapshot(isFinal bool) (*brtypes.Snapshot, error
 			return nil, fmt.Errorf("failed to get compressionSuffix: %v", err)
 		}
 
-		s, err := etcdutil.TakeAndSaveFullSnapshot(ctx, client, ssr.store, lastRevision, ssr.compressionConfig, compressionSuffix, isFinal, ssr.logger)
+		clientMaintenance, err := clientFactory.NewMaintenance()
+		if err != nil {
+			return nil, fmt.Errorf("failed to build etcd maintenance client")
+		}
+		defer clientMaintenance.Close()
+
+		s, err := etcdutil.TakeAndSaveFullSnapshot(ctx, clientMaintenance, ssr.store, lastRevision, ssr.compressionConfig, compressionSuffix, isFinal, ssr.logger)
 		if err != nil {
 			return nil, err
 		}
@@ -344,16 +351,16 @@ func (ssr *Snapshotter) takeFullSnapshot(isFinal bool) (*brtypes.Snapshot, error
 		return ssr.prevSnapshot, nil
 	}
 
-	ssrEtcdClient, err := etcdutil.GetTLSClientForEtcd(ssr.etcdConnectionConfig)
+	ssrEtcdWatchClient, err := clientFactory.NewWatcher()
 	if err != nil {
 		return nil, &errors.EtcdError{
-			Message: fmt.Sprintf("failed to create etcd client for snapshotter: %v", err),
+			Message: fmt.Sprintf("failed to create etcd watch client for snapshotter: %v", err),
 		}
 	}
 	watchCtx, cancelWatch := context.WithCancel(context.TODO())
 	ssr.cancelWatch = cancelWatch
-	ssr.etcdClient = ssrEtcdClient
-	ssr.watchCh = ssrEtcdClient.Watch(watchCtx, "", clientv3.WithPrefix(), clientv3.WithRev(ssr.prevSnapshot.LastRevision+1))
+	ssr.etcdWatchClient = &ssrEtcdWatchClient
+	ssr.watchCh = ssrEtcdWatchClient.Watch(watchCtx, "", clientv3.WithPrefix(), clientv3.WithRev(ssr.prevSnapshot.LastRevision+1))
 	ssr.logger.Infof("Applied watch on etcd from revision: %d", ssr.prevSnapshot.LastRevision+1)
 
 	return ssr.prevSnapshot, nil
@@ -452,16 +459,18 @@ func (ssr *Snapshotter) TakeDeltaSnapshot() (*brtypes.Snapshot, error) {
 func (ssr *Snapshotter) CollectEventsSincePrevSnapshot(stopCh <-chan struct{}) (bool, error) {
 	// close any previous watch and client.
 	ssr.closeEtcdClient()
-	client, err := etcdutil.GetTLSClientForEtcd(ssr.etcdConnectionConfig)
+
+	clientFactory := etcdutil.NewFactory(*ssr.etcdConnectionConfig)
+	clientKV, err := clientFactory.NewKV()
 	if err != nil {
 		return false, &errors.EtcdError{
-			Message: fmt.Sprintf("failed to create etcd client: %v", err),
+			Message: fmt.Sprintf("failed to create etcd KV client: %v", err),
 		}
 	}
-	defer client.Close()
+	defer clientKV.Close()
 
 	ctx, cancel := context.WithTimeout(context.TODO(), ssr.etcdConnectionConfig.ConnectionTimeout.Duration)
-	resp, err := client.Get(ctx, "", clientv3.WithLastRev()...)
+	resp, err := clientKV.Get(ctx, "", clientv3.WithLastRev()...)
 	cancel()
 	if err != nil {
 		return false, &errors.EtcdError{
@@ -479,17 +488,17 @@ func (ssr *Snapshotter) CollectEventsSincePrevSnapshot(stopCh <-chan struct{}) (
 		metrics.SnapshotRequired.With(prometheus.Labels{metrics.LabelKind: brtypes.SnapshotKindFull}).Set(1)
 	}
 
-	ssrEtcdClient, err := etcdutil.GetTLSClientForEtcd(ssr.etcdConnectionConfig)
+	ssrEtcdWatchClient, err := clientFactory.NewWatcher()
 	if err != nil {
 		return false, &errors.EtcdError{
-			Message: fmt.Sprintf("failed to create etcd client for snapshotter: %v", err),
+			Message: fmt.Sprintf("failed to create etcd watch client for snapshotter: %v", err),
 		}
 	}
 	// TODO: Use parent context. Passing parent context here directly requires some additional management of error handling.
 	watchCtx, cancelWatch := context.WithCancel(context.TODO())
 	ssr.cancelWatch = cancelWatch
-	ssr.etcdClient = ssrEtcdClient
-	ssr.watchCh = ssrEtcdClient.Watch(watchCtx, "", clientv3.WithPrefix(), clientv3.WithRev(ssr.prevSnapshot.LastRevision+1))
+	ssr.etcdWatchClient = &ssrEtcdWatchClient
+	ssr.watchCh = ssrEtcdWatchClient.Watch(watchCtx, "", clientv3.WithPrefix(), clientv3.WithRev(ssr.prevSnapshot.LastRevision+1))
 	ssr.logger.Infof("Applied watch on etcd from revision: %d", ssr.prevSnapshot.LastRevision+1)
 
 	if ssr.prevSnapshot.LastRevision == lastEtcdRevision {
