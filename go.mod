@@ -14,6 +14,7 @@ require (
 	github.com/coreos/go-systemd v0.0.0-20191104093116-d3cd4ed1dbcf // indirect
 	github.com/elazarl/goproxy v0.0.0-20191011121108-aa519ddbe484 // indirect
 	github.com/ghodss/yaml v1.0.0
+	github.com/golang-jwt/jwt v3.2.2+incompatible // indirect
 	github.com/golang/mock v1.3.1
 	github.com/gophercloud/gophercloud v0.17.0
 	github.com/gophercloud/utils v0.0.0-20200204043447-9864b6f1f12f
@@ -22,10 +23,11 @@ require (
 	github.com/mattn/go-ieproxy v0.0.0-20190805055040-f9202b1cfdeb // indirect
 	github.com/onsi/ginkgo v1.14.1
 	github.com/onsi/gomega v1.10.2
+	github.com/opencontainers/runc v1.0.0-rc95 // indirect
 	github.com/prometheus/client_golang v1.7.1
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/shirou/gopsutil/v3 v3.21.9
-	github.com/sirupsen/logrus v1.7.0
+	github.com/sirupsen/logrus v1.8.1
 	github.com/spf13/cobra v1.1.1
 	github.com/spf13/pflag v1.0.5
 	github.com/tmc/grpc-websocket-proxy v0.0.0-20200427203606-3cfed13b9966 // indirect
@@ -46,12 +48,16 @@ require (
 replace (
 	// Ref: https://github.com/Azure/go-autorest/issues/414
 	github.com/Azure/go-autorest => github.com/Azure/go-autorest v13.3.2+incompatible
+	github.com/containerd/containerd => github.com/containerd/containerd v1.4.11
 	// Etcd issue Ref: https://github.com/etcd-io/etcd/issues/12068
 	// Etcd 3.4.x vendoring issue Ref: https://github.com/etcd-io/etcd/issues/11154#issuecomment-677940701
 	github.com/coreos/etcd => go.etcd.io/etcd v0.5.0-alpha.5.0.20200824191128-ae9734ed278b // ae9734ed278b is the SHA for git tag v3.4.13
+	// RefL https://github.com/golang-jwt/jwt/blob/v3.2.1/MIGRATION_GUIDE.md https://github.com/dgrijalva/jwt-go/issues/462
+	github.com/dgrijalva/jwt-go => github.com/golang-jwt/jwt v3.2.1+incompatible
 	github.com/docker/docker => github.com/moby/moby v0.7.3-0.20190826074503-38ab9da00309
 	// Ref: https://github.com/etcd-io/etcd/issues/11992
 	github.com/golang/protobuf => github.com/golang/protobuf v1.4.0
+	github.com/opencontainers/runc => github.com/opencontainers/runc v1.0.0
 	// Ref: https://github.com/etcd-io/etcd/issues/11707
 	google.golang.org/grpc => google.golang.org/grpc v1.27.0
 	k8s.io/api => k8s.io/api v0.19.6
