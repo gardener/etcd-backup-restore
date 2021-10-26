@@ -33,6 +33,7 @@ import (
 	"github.com/gardener/etcd-backup-restore/pkg/errors"
 	"github.com/gardener/etcd-backup-restore/pkg/etcdutil"
 	"github.com/gardener/etcd-backup-restore/pkg/health/heartbeat"
+	"github.com/gardener/etcd-backup-restore/pkg/health/membergarbagecollector"
 	"github.com/gardener/etcd-backup-restore/pkg/initializer"
 	"github.com/gardener/etcd-backup-restore/pkg/snapshot/snapshotter"
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
@@ -236,7 +237,6 @@ func (b *BackupRestoreServer) runServer(ctx context.Context, restoreOpts *brtype
 		go handleAckState(handler, ackCh)
 	}
 
-	//TODO @aaronfern: Add functionality for member garbage collection
 	if b.config.HealthConfig.MemberLeaseRenewalEnabled {
 		go func() {
 			if err := heartbeat.RenewMemberLeasePeriodically(ctx, mmStopCh, b.config.HealthConfig, b.logger, b.config.EtcdConnectionConfig); err != nil {
@@ -244,6 +244,8 @@ func (b *BackupRestoreServer) runServer(ctx context.Context, restoreOpts *brtype
 			}
 		}()
 	}
+	//start etcd member garbage collector
+	go membergarbagecollector.RunMemberGarbageCollectorPeriodically(ctx, b.config.HealthConfig, b.logger, b.config.EtcdConnectionConfig)
 
 	return le.Run(ctx)
 }
