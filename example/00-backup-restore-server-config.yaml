@@ -55,3 +55,10 @@ compressionConfig:
 leaderElectionConfig:
   reelectionPeriod: "5s"
   etcdConnectionTimeout: "5s"
+
+healthConfig:
+  snapshotLeaseRenewalEnabled: false
+  memberLeaseRenewalEnabled: false
+  heartbeatDuration: "30s"
+  fullSnapshotLeaseName: "full-snapshot-revisions"
+  deltaSnapshotLeaseName: "delta-snapshot-revisions"
