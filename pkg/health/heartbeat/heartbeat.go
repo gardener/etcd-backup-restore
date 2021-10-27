@@ -29,6 +29,7 @@ import (
 	v1 "k8s.io/api/coordination/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -155,30 +156,46 @@ func UpdateFullSnapshotLease(ctx context.Context, logger *logrus.Entry, fullSnap
 		}
 	}
 
-	fullSnapLease := &v1.Lease{}
-	err = k8sClientset.Get(ctx, client.ObjectKey{
-		Namespace: namespace,
-		Name:      fullSnapshotLeaseName,
-	}, fullSnapLease)
-	if err != nil {
-		return &errors.EtcdError{
-			Message: fmt.Sprintf("Failed to fetch full snapshot lease: %v", err),
+	// Retry on conflict is necessary because multiple actors update the full snapshot lease.
+	if err := retry.RetryOnConflict(retry.DefaultBackoff, func() error {
+		fullSnapLease := &v1.Lease{}
+		if err := k8sClientset.Get(ctx, client.ObjectKey{
+			Namespace: namespace,
+			Name:      fullSnapshotLeaseName,
+		}, fullSnapLease); err != nil {
+			return &errors.EtcdError{
+				Message: fmt.Sprintf("Failed to fetch full snapshot lease: %v", err),
+			}
 		}
-	}
-	renewedLease := fullSnapLease.DeepCopy()
-	actor := strconv.FormatInt(fullSnapshot.LastRevision, 10)
-	renewedLease.Spec.HolderIdentity = &actor
-	renewedTime := time.Now()
-	renewedLease.Spec.RenewTime = &metav1.MicroTime{Time: renewedTime}
 
-	err = k8sClientset.Patch(ctx, renewedLease, client.MergeFrom(fullSnapLease))
+		// Do not update revision number if revision in existing Lease is already higher.
+		if fullSnapLease.Spec.HolderIdentity != nil {
+			rev, err := strconv.ParseInt(*fullSnapLease.Spec.HolderIdentity, 10, 64)
+			if err != nil {
+				return err
+			}
+			if rev >= fullSnapshot.LastRevision {
+				return nil
+			}
+		}
 
-	if err != nil {
+		renewedLease := fullSnapLease.DeepCopy()
+		actor := strconv.FormatInt(fullSnapshot.LastRevision, 10)
+		renewedLease.Spec.HolderIdentity = &actor
+		renewedTime := time.Now()
+		renewedLease.Spec.RenewTime = &metav1.MicroTime{Time: renewedTime}
+
+		if err := k8sClientset.Patch(ctx, renewedLease, client.MergeFromWithOptions(fullSnapLease, &client.MergeFromWithOptimisticLock{})); err != nil {
+			return err
+		}
+
+		logger.Info("Renewed full snapshot lease with revision ", actor, " at time ", renewedTime)
+		return nil
+	}); err != nil {
 		return &errors.EtcdError{
 			Message: fmt.Sprintf("Failed to update full snapshot lease: %v", err),
 		}
 	}
-	logger.Info("Renewed full snapshot lease with revision ", actor, " at time ", renewedTime)
 
 	return nil
 }
