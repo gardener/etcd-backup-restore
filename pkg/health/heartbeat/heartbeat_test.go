@@ -192,7 +192,7 @@ var _ = Describe("Heartbeat", func() {
 					Name:      brtypes.DefaultDeltaSnapshotLeaseName,
 				}, l)
 
-				Expect(l.Spec.HolderIdentity).To(PointTo(Equal("999")))
+				Expect(l.Spec.HolderIdentity).To(PointTo(Equal("2500")))
 				Expect(err).ShouldNot(HaveOccurred())
 
 				err = k8sClientset.Delete(context.TODO(), l)
@@ -242,7 +242,7 @@ var _ = Describe("Heartbeat", func() {
 				err = k8sClientset.Delete(context.TODO(), l)
 				Expect(err).ShouldNot(HaveOccurred())
 			})
-			It("Should update delta snapshot with holderIdentity 0 if no delta snapshot list is passed", func() {
+			It("Should update delta snapshot with holderIdentity of full snapshot if no delta snapshot list is passed", func() {
 				Expect(os.Getenv("POD_NAME")).Should(Equal("test_pod"))
 				Expect(os.Getenv("POD_NAMESPACE")).Should(Equal("test_namespace"))
 				fullsnap := &brtypes.Snapshot{
@@ -263,7 +263,7 @@ var _ = Describe("Heartbeat", func() {
 					Name:      brtypes.DefaultDeltaSnapshotLeaseName,
 				}, l)
 				Expect(err).ShouldNot(HaveOccurred())
-				Expect(l.Spec.HolderIdentity).To(PointTo(Equal("0")))
+				Expect(l.Spec.HolderIdentity).To(PointTo(Equal("1501")))
 
 				err = k8sClientset.Delete(context.TODO(), l)
 				Expect(err).ShouldNot(HaveOccurred())

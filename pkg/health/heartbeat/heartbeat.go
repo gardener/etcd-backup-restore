@@ -198,28 +198,31 @@ func UpdateDeltaSnapshotLease(ctx context.Context, logger *logrus.Entry, fullSna
 		}
 	}
 
+	var revisionNumber string
+	if fullSnapshot != nil {
+		revisionNumber = strconv.FormatInt(fullSnapshot.LastRevision, 10)
+	}
+	if len(prevDeltaSnapshots) > 0 {
+		deltaSnap := prevDeltaSnapshots[len(prevDeltaSnapshots)-1]
+		revisionNumber = strconv.FormatInt(deltaSnap.LastRevision, 10)
+	}
+	if revisionNumber == "" {
+		logger.Info("Skipping renewal of delta snapshot lease because no full or delta snapshot is available")
+		return nil
+	}
+
 	deltaSnapLease := &v1.Lease{}
-	err = k8sClientset.Get(ctx, client.ObjectKey{
+	if err := k8sClientset.Get(ctx, client.ObjectKey{
 		Namespace: namespace,
 		Name:      deltaSnapshotLeaseName,
-	}, deltaSnapLease)
-	if err != nil {
+	}, deltaSnapLease); err != nil {
 		return &errors.EtcdError{
 			Message: fmt.Sprintf("Failed to fetch delta snapshot lease: %v", err),
 		}
 	}
+
 	renewedLease := deltaSnapLease.DeepCopy()
-	actor := "0"
-	if len(prevDeltaSnapshots) > 0 {
-		fullSnapshotRevisions := int64(0)
-		if fullSnapshot != nil {
-			fullSnapshotRevisions = int64(fullSnapshot.LastRevision)
-		}
-		deltaSnap := prevDeltaSnapshots[len(prevDeltaSnapshots)-1]
-		deltaSnapshotRevision := deltaSnap.LastRevision - int64(fullSnapshotRevisions)
-		actor = strconv.FormatInt(deltaSnapshotRevision, 10)
-	}
-	renewedLease.Spec.HolderIdentity = &actor
+	renewedLease.Spec.HolderIdentity = &revisionNumber
 	renewedTime := time.Now()
 	renewedLease.Spec.RenewTime = &metav1.MicroTime{Time: renewedTime}
 
@@ -229,7 +232,7 @@ func UpdateDeltaSnapshotLease(ctx context.Context, logger *logrus.Entry, fullSna
 			Message: fmt.Sprintf("Failed to update delta snapshot lease: %v", err),
 		}
 	}
-	logger.Info("Renewed delta snapshot lease with revision ", actor, " at time ", renewedTime)
+	logger.Info("Renewed delta snapshot lease with revision ", revisionNumber, " at time ", renewedTime)
 
 	return nil
 }
@@ -239,11 +242,6 @@ func FullSnapshotCaseLeaseUpdate(ctx context.Context, logger *logrus.Entry, full
 	if err := UpdateFullSnapshotLease(ctx, logger, fullSnapshot, k8sClientset, fullSnapshotLeaseName); err != nil {
 		return &errors.EtcdError{
 			Message: fmt.Sprintf("Failed to update full snapshot lease: %v", err),
-		}
-	}
-	if err := UpdateDeltaSnapshotLease(ctx, logger, fullSnapshot, nil, k8sClientset, deltaSnapshotLeaseName); err != nil {
-		return &errors.EtcdError{
-			Message: fmt.Sprintf("Failed to update delta snapshot lease: %v", err),
 		}
 	}
 
