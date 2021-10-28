@@ -29,7 +29,6 @@ import (
 	"github.com/gardener/etcd-backup-restore/pkg/health/heartbeat"
 	"github.com/gardener/etcd-backup-restore/pkg/initializer"
 	"github.com/gardener/etcd-backup-restore/pkg/metrics"
-	"github.com/gardener/etcd-backup-restore/pkg/miscellaneous"
 	"github.com/gardener/etcd-backup-restore/pkg/snapshot/snapshotter"
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
@@ -229,11 +228,7 @@ func (b *BackupRestoreServer) runEtcdProbeLoopWithSnapshotter(ctx context.Contex
 					if b.config.HealthConfig.SnapshotLeaseRenewalEnabled {
 						leaseUpdatectx, cancel := context.WithTimeout(ctx, brtypes.LeaseUpdateTimeoutDuration)
 						defer cancel()
-						cs, err := miscellaneous.GetKubernetesClientSetOrError()
-						if err != nil {
-							b.logger.Errorf("failed to create clientset: %v", err)
-						}
-						if err = heartbeat.FullSnapshotCaseLeaseUpdate(leaseUpdatectx, b.logger, snapshot, cs, b.config.HealthConfig.FullSnapshotLeaseName, b.config.HealthConfig.DeltaSnapshotLeaseName); err != nil {
+						if err = heartbeat.FullSnapshotCaseLeaseUpdate(leaseUpdatectx, b.logger, snapshot, ssr.K8sClientset, b.config.HealthConfig.FullSnapshotLeaseName, b.config.HealthConfig.DeltaSnapshotLeaseName); err != nil {
 							b.logger.Warnf("Snapshot lease update failed : %v", err)
 						}
 					}
@@ -291,15 +286,11 @@ func (b *BackupRestoreServer) runEtcdProbeLoopWithSnapshotter(ctx context.Contex
 				if b.config.HealthConfig.SnapshotLeaseRenewalEnabled {
 					leaseUpdatectx, cancel := context.WithTimeout(ctx, brtypes.LeaseUpdateTimeoutDuration)
 					defer cancel()
-					cs, err := miscellaneous.GetKubernetesClientSetOrError()
-					if err != nil {
-						b.logger.Errorf("failed to create clientset: %v", err)
-					}
 					ss, err := snapstore.GetSnapstore(b.config.SnapstoreConfig)
 					if err != nil {
 						b.logger.Errorf("failed to create snapstore from configured storage provider: %v", err)
 					}
-					if err = heartbeat.DeltaSnapshotCaseLeaseUpdate(leaseUpdatectx, b.logger, cs, b.config.HealthConfig.DeltaSnapshotLeaseName, ss); err != nil {
+					if err = heartbeat.DeltaSnapshotCaseLeaseUpdate(leaseUpdatectx, b.logger, ssr.K8sClientset, b.config.HealthConfig.DeltaSnapshotLeaseName, ss); err != nil {
 						b.logger.Warnf("Snapshot lease update failed : %v", err)
 					}
 				}
@@ -320,11 +311,7 @@ func (b *BackupRestoreServer) runEtcdProbeLoopWithSnapshotter(ctx context.Contex
 			if b.config.HealthConfig.SnapshotLeaseRenewalEnabled {
 				leaseUpdatectx, cancel := context.WithTimeout(ctx, brtypes.LeaseUpdateTimeoutDuration)
 				defer cancel()
-				cs, err := miscellaneous.GetKubernetesClientSetOrError()
-				if err != nil {
-					b.logger.Errorf("failed to create clientset: %v", err)
-				}
-				if err = heartbeat.FullSnapshotCaseLeaseUpdate(leaseUpdatectx, b.logger, snapshot, cs, b.config.HealthConfig.FullSnapshotLeaseName, b.config.HealthConfig.DeltaSnapshotLeaseName); err != nil {
+				if err = heartbeat.FullSnapshotCaseLeaseUpdate(leaseUpdatectx, b.logger, snapshot, ssr.K8sClientset, b.config.HealthConfig.FullSnapshotLeaseName, b.config.HealthConfig.DeltaSnapshotLeaseName); err != nil {
 					b.logger.Warnf("Snapshot lease update failed : %v", err)
 				}
 			}
