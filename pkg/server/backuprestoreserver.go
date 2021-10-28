@@ -142,6 +142,10 @@ func (b *BackupRestoreServer) runServerWithoutSnapshotter(ctx context.Context, r
 	// after each successful data defragmentation
 	go defragmentor.DefragDataPeriodically(ctx, b.config.EtcdConnectionConfig, b.defragmentationSchedule, nil, b.logger)
 
+	if b.config.HealthConfig.MemberLeaseRenewalEnabled {
+		go heartbeat.RenewMemberLeasePeriodically(ctx, b.config.HealthConfig, b.logger, b.config.EtcdConnectionConfig)
+	}
+
 	b.runEtcdProbeLoopWithoutSnapshotter(ctx, handler)
 }
 
