@@ -221,9 +221,21 @@ func (b *BackupRestoreServer) runEtcdProbeLoopWithSnapshotter(ctx context.Contex
 				// If the previous full snapshot doesn't exist or is not marked as final, take a final full snapshot
 				if ssr.PrevFullSnapshot == nil || !ssr.PrevFullSnapshot.IsFinal {
 					b.logger.Infof("Taking final full snapshot...")
-					if _, err := ssr.TakeFullSnapshotAndResetTimer(true); err != nil {
+					var snapshot *brtypes.Snapshot
+					if snapshot, err = ssr.TakeFullSnapshotAndResetTimer(true); err != nil {
 						b.logger.Errorf("Could not take final full snapshot: %v", err)
 						continue
+					}
+					if b.config.HealthConfig.SnapshotLeaseRenewalEnabled {
+						leaseUpdatectx, cancel := context.WithTimeout(ctx, brtypes.LeaseUpdateTimeoutDuration)
+						defer cancel()
+						cs, err := miscellaneous.GetKubernetesClientSetOrError()
+						if err != nil {
+							b.logger.Errorf("failed to create clientset: %v", err)
+						}
+						if err = heartbeat.FullSnapshotCaseLeaseUpdate(leaseUpdatectx, b.logger, snapshot, cs, b.config.HealthConfig.FullSnapshotLeaseName, b.config.HealthConfig.DeltaSnapshotLeaseName); err != nil {
+							b.logger.Warnf("Snapshot lease update failed : %v", err)
+						}
 					}
 				}
 
