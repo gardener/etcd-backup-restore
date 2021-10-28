@@ -2,6 +2,7 @@ package heartbeat_test
 
 import (
 	"context"
+	"k8s.io/utils/pointer"
 	"os"
 	"time"
 
@@ -148,57 +149,7 @@ var _ = Describe("Heartbeat", func() {
 				os.Unsetenv("POD_NAME")
 				os.Unsetenv("POD_NAMESPACE")
 			})
-			It("Should correctly update holder identity of delta snapshot lease when delta snapshot list and latest full snapshot is passed", func() {
-				Expect(os.Getenv("POD_NAME")).Should(Equal("test_pod"))
-				Expect(os.Getenv("POD_NAMESPACE")).Should(Equal("test_namespace"))
-
-				fullsnap := &brtypes.Snapshot{
-					Kind:          brtypes.SnapshotKindFull,
-					CreatedOn:     time.Now(),
-					StartRevision: 0,
-					LastRevision:  1501,
-				}
-				var snapList brtypes.SnapList
-				deltasnap1 := &brtypes.Snapshot{
-					Kind:          brtypes.SnapshotKindDelta,
-					CreatedOn:     time.Now(),
-					StartRevision: 0,
-					LastRevision:  989,
-				}
-				deltasnap2 := &brtypes.Snapshot{
-					Kind:          brtypes.SnapshotKindDelta,
-					CreatedOn:     time.Now(),
-					StartRevision: 999,
-					LastRevision:  1900,
-				}
-				deltasnap3 := &brtypes.Snapshot{
-					Kind:          brtypes.SnapshotKindDelta,
-					CreatedOn:     time.Now(),
-					StartRevision: 1901,
-					LastRevision:  2500,
-				}
-				snapList = append(snapList, deltasnap1)
-				snapList = append(snapList, deltasnap2)
-				snapList = append(snapList, deltasnap3)
-				err = k8sClientset.Create(context.TODO(), lease)
-				Expect(err).ShouldNot(HaveOccurred())
-
-				err = heartbeat.UpdateDeltaSnapshotLease(context.TODO(), logger, fullsnap, snapList, k8sClientset, brtypes.DefaultDeltaSnapshotLeaseName)
-				Expect(err).ShouldNot(HaveOccurred())
-
-				l := &v1.Lease{}
-				err = k8sClientset.Get(context.TODO(), client.ObjectKey{
-					Namespace: os.Getenv("POD_NAMESPACE"),
-					Name:      brtypes.DefaultDeltaSnapshotLeaseName,
-				}, l)
-
-				Expect(l.Spec.HolderIdentity).To(PointTo(Equal("2500")))
-				Expect(err).ShouldNot(HaveOccurred())
-
-				err = k8sClientset.Delete(context.TODO(), l)
-				Expect(err).ShouldNot(HaveOccurred())
-			})
-			It("Should correctly update holder identity of delta snapshot lease when delta snapshot list is passed but no full snapshot is passed", func() {
+			It("Should correctly update holder identity of delta snapshot lease when delta snapshot list is passed", func() {
 				Expect(os.Getenv("POD_NAME")).Should(Equal("test_pod"))
 				Expect(os.Getenv("POD_NAMESPACE")).Should(Equal("test_namespace"))
 
@@ -227,7 +178,7 @@ var _ = Describe("Heartbeat", func() {
 				err = k8sClientset.Create(context.TODO(), lease)
 				Expect(err).ShouldNot(HaveOccurred())
 
-				err = heartbeat.UpdateDeltaSnapshotLease(context.TODO(), logger, nil, snapList, k8sClientset, brtypes.DefaultDeltaSnapshotLeaseName)
+				err = heartbeat.UpdateDeltaSnapshotLease(context.TODO(), logger, snapList, k8sClientset, brtypes.DefaultDeltaSnapshotLeaseName)
 				Expect(err).ShouldNot(HaveOccurred())
 
 				l := &v1.Lease{}
@@ -242,19 +193,14 @@ var _ = Describe("Heartbeat", func() {
 				err = k8sClientset.Delete(context.TODO(), l)
 				Expect(err).ShouldNot(HaveOccurred())
 			})
-			It("Should update delta snapshot with holderIdentity of full snapshot if no delta snapshot list is passed", func() {
+			FIt("Should not update delta snapshot with holderIdentity of full snapshot if no delta snapshot list is passed", func() {
 				Expect(os.Getenv("POD_NAME")).Should(Equal("test_pod"))
 				Expect(os.Getenv("POD_NAMESPACE")).Should(Equal("test_namespace"))
-				fullsnap := &brtypes.Snapshot{
-					Kind:          brtypes.SnapshotKindFull,
-					CreatedOn:     time.Now(),
-					StartRevision: 0,
-					LastRevision:  1501,
-				}
 
+				lease.Spec.HolderIdentity = pointer.StringPtr("foo")
 				err = k8sClientset.Create(context.TODO(), lease)
 
-				err = heartbeat.UpdateDeltaSnapshotLease(context.TODO(), logger, fullsnap, nil, k8sClientset, brtypes.DefaultDeltaSnapshotLeaseName)
+				err = heartbeat.UpdateDeltaSnapshotLease(context.TODO(), logger, nil, k8sClientset, brtypes.DefaultDeltaSnapshotLeaseName)
 				Expect(err).ShouldNot(HaveOccurred())
 
 				l := &v1.Lease{}
@@ -263,7 +209,7 @@ var _ = Describe("Heartbeat", func() {
 					Name:      brtypes.DefaultDeltaSnapshotLeaseName,
 				}, l)
 				Expect(err).ShouldNot(HaveOccurred())
-				Expect(l.Spec.HolderIdentity).To(PointTo(Equal("1501")))
+				Expect(l.Spec).To(Equal(lease.Spec))
 
 				err = k8sClientset.Delete(context.TODO(), l)
 				Expect(err).ShouldNot(HaveOccurred())

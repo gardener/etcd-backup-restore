@@ -201,7 +201,12 @@ func UpdateFullSnapshotLease(ctx context.Context, logger *logrus.Entry, fullSnap
 }
 
 // UpdateDeltaSnapshotLease updates the holderIdentity field of the delta snapshot lease with the total number or revisions stored in delta snapshots since the last full snapshot was taken
-func UpdateDeltaSnapshotLease(ctx context.Context, logger *logrus.Entry, fullSnapshot *brtypes.Snapshot, prevDeltaSnapshots brtypes.SnapList, k8sClientset client.Client, deltaSnapshotLeaseName string) error {
+func UpdateDeltaSnapshotLease(ctx context.Context, logger *logrus.Entry, prevDeltaSnapshots brtypes.SnapList, k8sClientset client.Client, deltaSnapshotLeaseName string) error {
+	if len(prevDeltaSnapshots) == 0 {
+		logger.Info("Skipping renewal of delta snapshot lease because no full or delta snapshot is available")
+		return nil
+	}
+
 	if k8sClientset == nil {
 		return &errors.EtcdError{
 			Message: "nil clientset passed",
@@ -215,18 +220,8 @@ func UpdateDeltaSnapshotLease(ctx context.Context, logger *logrus.Entry, fullSna
 		}
 	}
 
-	var revisionNumber string
-	if fullSnapshot != nil {
-		revisionNumber = strconv.FormatInt(fullSnapshot.LastRevision, 10)
-	}
-	if len(prevDeltaSnapshots) > 0 {
-		deltaSnap := prevDeltaSnapshots[len(prevDeltaSnapshots)-1]
-		revisionNumber = strconv.FormatInt(deltaSnap.LastRevision, 10)
-	}
-	if revisionNumber == "" {
-		logger.Info("Skipping renewal of delta snapshot lease because no full or delta snapshot is available")
-		return nil
-	}
+	deltaSnap := prevDeltaSnapshots[len(prevDeltaSnapshots)-1]
+	revisionNumber := strconv.FormatInt(deltaSnap.LastRevision, 10)
 
 	deltaSnapLease := &v1.Lease{}
 	if err := k8sClientset.Get(ctx, client.ObjectKey{
@@ -267,9 +262,9 @@ func FullSnapshotCaseLeaseUpdate(ctx context.Context, logger *logrus.Entry, full
 
 // DeltaSnapshotCaseLeaseUpdate Updates the fullsnapshot lease and the deltasnapshot lease as needed when a delta snapshot is taken
 func DeltaSnapshotCaseLeaseUpdate(ctx context.Context, logger *logrus.Entry, k8sClientset client.Client, deltaSnapshotLeaseName string, store brtypes.SnapStore) error {
-	latestFullSnapshot, latestDeltaSnapshotList, err := miscellaneous.GetLatestFullSnapshotAndDeltaSnapList(store)
+	_, latestDeltaSnapshotList, err := miscellaneous.GetLatestFullSnapshotAndDeltaSnapList(store)
 	if err == nil {
-		if err = UpdateDeltaSnapshotLease(ctx, logger, latestFullSnapshot, latestDeltaSnapshotList, k8sClientset, deltaSnapshotLeaseName); err != nil {
+		if err = UpdateDeltaSnapshotLease(ctx, logger, latestDeltaSnapshotList, k8sClientset, deltaSnapshotLeaseName); err != nil {
 			return &errors.EtcdError{
 				Message: fmt.Sprintf("Failed to update delta snapshot lease with error: %v", err),
 			}
