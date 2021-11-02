@@ -32,18 +32,18 @@ func NewLeaderElectionConfig() *Config {
 
 // AddFlags adds the flags to flagset.
 func (c *Config) AddFlags(fs *flag.FlagSet) {
-	fs.DurationVar(&c.EtcdConnectionTimeout.Duration, "etcd-connection-timeout-leader-election", c.EtcdConnectionTimeout.Duration, "timeout duration of etcd client connection during leader election.")
-	fs.DurationVar(&c.ReelectionPeriod.Duration, "reelection-period", c.ReelectionPeriod.Duration, "Period after which election will be re-triggered to check the leadership status.")
+	fs.DurationVar(&c.EtcdConnectionTimeout.Duration, "etcd-connection-timeout-leader-election", c.EtcdConnectionTimeout.Duration, "timeout duration of etcd client connection during leader election")
+	fs.DurationVar(&c.ReelectionPeriod.Duration, "reelection-period", c.ReelectionPeriod.Duration, "period after which election will be re-triggered to check the leadership status")
 }
 
 // Validate validates the Config.
 func (c *Config) Validate() error {
 	if c.ReelectionPeriod.Duration <= time.Duration(1*time.Second) {
-		return fmt.Errorf("ReelectionPeriod should be greater than 1 second")
+		return fmt.Errorf("reelectionPeriod should be greater than 1 second")
 	}
 
 	if c.EtcdConnectionTimeout.Duration <= time.Duration(1*time.Second) {
-		return fmt.Errorf("etcd connection timeout in leaderElection should be greater than 1 second")
+		return fmt.Errorf("etcd connection timeout during leader election should be greater than 1 second")
 	}
 
 	return nil

@@ -55,14 +55,14 @@ func (le *LeaderElector) Run(ctx context.Context) error {
 		case <-time.After(le.Config.ReelectionPeriod.Duration):
 			isLeader, err := le.IsLeader(ctx)
 			if err != nil {
-				le.logger.Errorf("Failed to elect the backup-restore leader: %v", err)
+				le.logger.Errorf("failed to elect the backup-restore leader: %v", err)
 
 				// set the CurrentState of backup-restore.
 				// stops the Running Snapshotter.
 				// wait for Reelection to happen.
 				le.CurrentState = StateUnknown
 				le.logger.Infof("backup-restore is in: %v", le.CurrentState)
-				if le.Callbacks.OnStoppedLeading != nil && leCtx != nil {
+				if leCtx != nil {
 					leCancel()
 					le.Callbacks.OnStoppedLeading()
 				}
@@ -93,7 +93,7 @@ func (le *LeaderElector) Run(ctx context.Context) error {
 				le.logger.Info("backup-restore lost the election")
 				le.logger.Infof("backup-restore became: %v", le.CurrentState)
 
-				if le.Callbacks.OnStoppedLeading != nil && leCtx != nil {
+				if leCtx != nil {
 					leCancel()
 					le.Callbacks.OnStoppedLeading()
 				}
@@ -114,7 +114,7 @@ func (le *LeaderElector) IsLeader(ctx context.Context) (bool, error) {
 	client, err := etcdutil.GetTLSClientForEtcd(le.EtcdConnectionConfig)
 	if err != nil {
 		return false, &errors.EtcdError{
-			Message: fmt.Sprintf("Failed to create etcd client: %v", err),
+			Message: fmt.Sprintf("failed to create etcd client: %v", err),
 		}
 	}
 	defer client.Close()
@@ -122,7 +122,7 @@ func (le *LeaderElector) IsLeader(ctx context.Context) (bool, error) {
 	if len(le.EtcdConnectionConfig.Endpoints) > 0 {
 		endPoint = le.EtcdConnectionConfig.Endpoints[0]
 	} else {
-		return false, fmt.Errorf("Etcd endpoints are not passed correctly")
+		return false, fmt.Errorf("etcd endpoints are not passed correctly")
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, le.Config.EtcdConnectionTimeout.Duration)
@@ -130,7 +130,7 @@ func (le *LeaderElector) IsLeader(ctx context.Context) (bool, error) {
 
 	response, err := client.Status(ctx, endPoint)
 	if err != nil {
-		le.logger.Errorf("Failed to get status of etcd endPoint: %v with error: %v", endPoint, err)
+		le.logger.Errorf("failed to get status of etcd endPoint: %v with error: %v", endPoint, err)
 		return false, err
 	}
 
@@ -138,7 +138,7 @@ func (le *LeaderElector) IsLeader(ctx context.Context) (bool, error) {
 		return true, nil
 	} else if response.Leader == NoLeaderState {
 		return false, &errors.EtcdError{
-			Message: fmt.Sprintf("Currently there is no Etcd Leader present may be due to etcd quorum loss or election is being held."),
+			Message: fmt.Sprintf("currently there is no etcd leader present may be due to etcd quorum loss or election is being held"),
 		}
 	}
 	return false, nil
