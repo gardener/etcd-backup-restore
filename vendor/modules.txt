@@ -452,8 +452,7 @@ github.com/opencontainers/go-digest
 # github.com/opencontainers/image-spec v1.0.1
 github.com/opencontainers/image-spec/specs-go
 github.com/opencontainers/image-spec/specs-go/v1
-# github.com/opencontainers/runc v1.0.0-rc95 => github.com/opencontainers/runc v1.0.0
-## explicit
+# github.com/opencontainers/runc v0.1.1 => github.com/opencontainers/runc v1.0.0
 github.com/opencontainers/runc/libcontainer/user
 # github.com/peterbourgon/diskv v2.0.1+incompatible
 github.com/peterbourgon/diskv
@@ -1187,13 +1186,13 @@ sigs.k8s.io/structured-merge-diff/v4/value
 # sigs.k8s.io/yaml v1.2.0
 sigs.k8s.io/yaml
 # github.com/Azure/go-autorest => github.com/Azure/go-autorest v13.3.2+incompatible
+# github.com/containerd/containerd => github.com/containerd/containerd v1.4.11
 # github.com/coreos/etcd => go.etcd.io/etcd v0.5.0-alpha.5.0.20200824191128-ae9734ed278b
 # github.com/dgrijalva/jwt-go => github.com/golang-jwt/jwt v3.2.1+incompatible
 # github.com/docker/docker => github.com/moby/moby v0.7.3-0.20190826074503-38ab9da00309
 # github.com/golang/protobuf => github.com/golang/protobuf v1.4.0
+# github.com/opencontainers/runc => github.com/opencontainers/runc v1.0.0
 # google.golang.org/grpc => google.golang.org/grpc v1.27.0
 # k8s.io/api => k8s.io/api v0.19.6
 # k8s.io/apimachinery => k8s.io/apimachinery v0.19.6
 # k8s.io/client-go => k8s.io/client-go v0.19.6
-# github.com/containerd/containerd => github.com/containerd/containerd v1.4.11
-# github.com/opencontainers/runc => github.com/opencontainers/runc v1.0.0

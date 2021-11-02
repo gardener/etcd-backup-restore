@@ -23,7 +23,6 @@ require (
 	github.com/mattn/go-ieproxy v0.0.0-20190805055040-f9202b1cfdeb // indirect
 	github.com/onsi/ginkgo v1.14.1
 	github.com/onsi/gomega v1.10.2
-	github.com/opencontainers/runc v1.0.0-rc95 // indirect
 	github.com/prometheus/client_golang v1.7.1
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/shirou/gopsutil/v3 v3.21.9
