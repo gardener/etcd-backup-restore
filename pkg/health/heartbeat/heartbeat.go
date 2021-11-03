@@ -281,7 +281,7 @@ func DeltaSnapshotCaseLeaseUpdate(ctx context.Context, logger *logrus.Entry, k8s
 }
 
 // RenewMemberLeasePeriodically has a timer and will periodically call RenewMemberLeases to renew the member lease until stopped
-func RenewMemberLeasePeriodically(ctx context.Context, hconfig *brtypes.HealthConfig, logger *logrus.Entry, etcdConfig *brtypes.EtcdConnectionConfig) {
+func RenewMemberLeasePeriodically(ctx context.Context, stopCh chan struct{}, hconfig *brtypes.HealthConfig, logger *logrus.Entry, etcdConfig *brtypes.EtcdConnectionConfig) {
 
 	clientSet, err := miscellaneous.GetKubernetesClientSetOrError()
 	if err != nil {
@@ -307,6 +307,9 @@ func RenewMemberLeasePeriodically(ctx context.Context, hconfig *brtypes.HealthCo
 			hb.heartbeatTimer.Reset(hconfig.HeartbeatDuration.Duration)
 		case <-ctx.Done():
 			hb.logger.Info("Stopped member lease renewal timer")
+			return
+		case <-stopCh:
+			hb.logger.Info("Stoping the member lease renewal")
 			return
 		}
 	}

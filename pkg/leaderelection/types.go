@@ -54,6 +54,14 @@ type LeaderCallbacks struct {
 	OnStoppedLeading func()
 }
 
+// MemberLeaseCallbacks are callbacks that are triggered to start/stop periodic member lease renewel.
+type MemberLeaseCallbacks struct {
+	// StartLeaseRenewal is called when etcd member moved from StateUnknown to either StateLeader or StateFollower.
+	StartLeaseRenewal func()
+	// OnStoppedLeading is called when etcd member moved to StateUnknown from any other State.
+	StopLeaseRenewal func()
+}
+
 // Config holds the LeaderElection config.
 type Config struct {
 	// ReelectionPeriod defines the Period after which leadership status is checked.
@@ -70,5 +78,6 @@ type LeaderElector struct {
 	EtcdConnectionConfig *brtypes.EtcdConnectionConfig
 	logger               *logrus.Entry
 	Callbacks            *LeaderCallbacks
+	LeaseCallbacks       *MemberLeaseCallbacks
 	ElectionLock         *sync.Mutex
 }

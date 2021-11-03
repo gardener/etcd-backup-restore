@@ -27,13 +27,14 @@ import (
 )
 
 // NewLeaderElector returns LeaderElector configurations.
-func NewLeaderElector(logger *logrus.Entry, etcdConnectionConfig *brtypes.EtcdConnectionConfig, leaderElectionConfig *Config, callbacks *LeaderCallbacks) (*LeaderElector, error) {
+func NewLeaderElector(logger *logrus.Entry, etcdConnectionConfig *brtypes.EtcdConnectionConfig, leaderElectionConfig *Config, callbacks *LeaderCallbacks, memberLeaseCallbacks *MemberLeaseCallbacks) (*LeaderElector, error) {
 	return &LeaderElector{
 		logger:               logger.WithField("actor", "leader-elector"),
 		EtcdConnectionConfig: etcdConnectionConfig,
 		CurrentState:         DefaultCurrentState,
 		Config:               leaderElectionConfig,
 		Callbacks:            callbacks,
+		LeaseCallbacks:       memberLeaseCallbacks,
 		ElectionLock:         &sync.Mutex{},
 	}, nil
 }
@@ -44,6 +45,7 @@ func (le *LeaderElector) Run(ctx context.Context) error {
 	le.logger.Infof("Starting leaderElection...")
 	var leCtx context.Context
 	var leCancel context.CancelFunc
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -59,7 +61,11 @@ func (le *LeaderElector) Run(ctx context.Context) error {
 
 				// set the CurrentState of backup-restore.
 				// stops the Running Snapshotter.
+				// stops the Renewal of member lease.
 				// wait for Reelection to happen.
+				if le.CurrentState != StateUnknown && le.LeaseCallbacks.StopLeaseRenewal != nil {
+					le.LeaseCallbacks.StopLeaseRenewal()
+				}
 				le.CurrentState = StateUnknown
 				le.logger.Infof("backup-restore is in: %v", le.CurrentState)
 				if leCtx != nil {
@@ -75,6 +81,10 @@ func (le *LeaderElector) Run(ctx context.Context) error {
 				// set the CurrentState of backup-restore.
 				// update the snapshotter object with latest snapshotter object.
 				// start the snapshotter.
+
+				if le.CurrentState == StateUnknown && le.LeaseCallbacks.StartLeaseRenewal != nil {
+					le.LeaseCallbacks.StartLeaseRenewal()
+				}
 				le.CurrentState = StateLeader
 				le.logger.Infof("backup-restore became: %v", le.CurrentState)
 
@@ -98,6 +108,9 @@ func (le *LeaderElector) Run(ctx context.Context) error {
 					le.Callbacks.OnStoppedLeading()
 				}
 			} else if !isLeader && le.CurrentState == StateUnknown {
+				if le.LeaseCallbacks.StartLeaseRenewal != nil {
+					le.LeaseCallbacks.StartLeaseRenewal()
+				}
 				le.CurrentState = StateFollower
 				le.logger.Infof("backup-restore changed the state from %v to %v", StateUnknown, le.CurrentState)
 			} else if !isLeader && le.CurrentState == StateFollower {

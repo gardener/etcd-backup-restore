@@ -147,6 +147,7 @@ func (b *BackupRestoreServer) runServer(ctx context.Context, restoreOpts *brtype
 	)
 	ackCh := make(chan struct{})
 	ssrStopCh := make(chan struct{})
+	mmStopCh := make(chan struct{})
 
 	if runServerWithSnapshotter {
 		snapstoreConfig = b.config.SnapstoreConfig
@@ -201,8 +202,22 @@ func (b *BackupRestoreServer) runServer(ctx context.Context, restoreOpts *brtype
 		},
 	}
 
+	memberLeaseCallbacks := &leaderelection.MemberLeaseCallbacks{
+		StartLeaseRenewal: func() {
+			mmStopCh = make(chan struct{})
+			if b.config.HealthConfig.MemberLeaseRenewalEnabled {
+				go heartbeat.RenewMemberLeasePeriodically(ctx, mmStopCh, b.config.HealthConfig, b.logger, b.config.EtcdConnectionConfig)
+			}
+		},
+		StopLeaseRenewal: func() {
+			if b.config.HealthConfig.MemberLeaseRenewalEnabled {
+				mmStopCh <- emptyStruct
+			}
+		},
+	}
+
 	b.logger.Infof("Creating leaderElector...")
-	le, err := leaderelection.NewLeaderElector(b.logger, b.config.EtcdConnectionConfig, b.config.LeaderElectionConfig, leaderCallbacks)
+	le, err := leaderelection.NewLeaderElector(b.logger, b.config.EtcdConnectionConfig, b.config.LeaderElectionConfig, leaderCallbacks, memberLeaseCallbacks)
 	if err != nil {
 		return err
 	}
@@ -213,7 +228,7 @@ func (b *BackupRestoreServer) runServer(ctx context.Context, restoreOpts *brtype
 
 	//TODO @aaronfern: Add functionality for member garbage collection
 	if b.config.HealthConfig.MemberLeaseRenewalEnabled {
-		go heartbeat.RenewMemberLeasePeriodically(ctx, b.config.HealthConfig, b.logger, b.config.EtcdConnectionConfig)
+		go heartbeat.RenewMemberLeasePeriodically(ctx, mmStopCh, b.config.HealthConfig, b.logger, b.config.EtcdConnectionConfig)
 	}
 
 	return le.Run(ctx)
