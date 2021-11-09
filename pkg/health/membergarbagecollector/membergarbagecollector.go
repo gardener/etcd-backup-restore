@@ -17,6 +17,7 @@ package membergarbagecollector
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/gardener/etcd-backup-restore/pkg/errors"
@@ -24,14 +25,18 @@ import (
 	"github.com/gardener/etcd-backup-restore/pkg/miscellaneous"
 	utils "github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
+	druidv1alpha1 "github.com/gardener/etcd-druid/api/v1alpha1"
 	"github.com/sirupsen/logrus"
 	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+
+	"k8s.io/client-go/kubernetes/scheme"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 const (
 	podNamespace = "POD_NAMESPACE"
+	podName      = "POD_NAME"
 )
 
 // MemberGarbageCollector contains information to regularly cleanup superfluous ETCD members
@@ -41,6 +46,11 @@ type MemberGarbageCollector struct {
 	etcdConfig   *brtypes.EtcdConnectionConfig
 	k8sClient    client.Client
 	podNamespace string
+	etcdName     string
+}
+
+func init() {
+	druidv1alpha1.AddToScheme(scheme.Scheme)
 }
 
 // NewMemberGarbageCollector returns the member garbage collect object
@@ -59,11 +69,17 @@ func NewMemberGarbageCollector(logger *logrus.Entry, etcdConfig *brtypes.EtcdCon
 	if err != nil {
 		logger.Fatalf("POD_NAMESPACE env var not present: %v", err)
 	}
+	podName, err := utils.GetEnvVarOrError(podName)
+	if err != nil {
+		logger.Fatalf("POD_NAME env var not present: %v", err)
+	}
+	// druidv1alpha1.AddToScheme(scheme.Scheme)
 	return &MemberGarbageCollector{
 		logger:       logger.WithField("actor", "membergc"),
 		etcdConfig:   etcdConfig,
 		k8sClient:    clientSet,
 		podNamespace: namespace,
+		etcdName:     podName[:strings.LastIndex(podName, "-")],
 	}, nil
 }
 
@@ -101,8 +117,26 @@ func RunMemberGarbageCollectorPeriodically(ctx context.Context, hconfig *brtypes
 
 // RemoveSuperfluousMembers removes a member from the etcd cluster if its corresponding pod is not present
 func (mgc *MemberGarbageCollector) RemoveSuperfluousMembers(ctx context.Context) error {
-	//TODO
-	//To be done only if memberlist size > desired cluster size
+	etcd := &druidv1alpha1.Etcd{}
+	if err := mgc.k8sClient.Get(ctx, client.ObjectKey{
+		Namespace: mgc.podNamespace,
+		Name:      mgc.etcdName,
+	}, etcd); err != nil {
+		return &errors.EtcdError{
+			Message: fmt.Sprintf("Could not fetch etcd %v with error: %v", mgc.etcdName, err),
+		}
+	}
+	// Return is no members present
+	if len(etcd.Status.Members) < 1 {
+		return &errors.EtcdError{
+			Message: "There are no members present in the etcd status. Nothing to clean",
+		}
+	}
+
+	// Return if memberlist size <= desired cluster size. Cleanup not needed
+	if len(etcd.Status.Members) <= etcd.Spec.Replicas {
+		return nil
+	}
 
 	//Create etcd client to get etcd cluster member list
 	etcdClient, err := etcdutil.GetTLSClientForEtcd(mgc.etcdConfig)
@@ -119,7 +153,6 @@ func (mgc *MemberGarbageCollector) RemoveSuperfluousMembers(ctx context.Context)
 			Message: fmt.Sprintf("Could not list etcd cluster members: %v", err),
 		}
 	}
-	//etcdMemberList := etcdMemberListResponse.Members
 	for _, x := range etcdMemberListResponse.Members {
 		memberPod := &v1.Pod{}
 		err := mgc.k8sClient.Get(ctx, client.ObjectKey{
@@ -129,7 +162,11 @@ func (mgc *MemberGarbageCollector) RemoveSuperfluousMembers(ctx context.Context)
 		if apierrors.IsNotFound(err) {
 			//Remove member from etcd cluster if corresponding pod cannot be found
 			mgc.logger.Info("Removing superfluous member ", x.ID, " : ", err)
-			etcdClient.MemberRemove(ctx, x.ID)
+			if _, err = etcdClient.MemberRemove(ctx, x.ID); err != nil {
+				return &errors.EtcdError{
+					Message: fmt.Sprintf("Error removing member %v from the cluster: %v", x.ID, err),
+				}
+			}
 		}
 	}
 	return nil

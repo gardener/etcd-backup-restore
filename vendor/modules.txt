@@ -267,6 +267,9 @@ github.com/fatih/color
 # github.com/fsnotify/fsnotify v1.4.9
 ## explicit; go 1.13
 github.com/fsnotify/fsnotify
+# github.com/gardener/etcd-druid/api v0.6.0
+## explicit
+github.com/gardener/etcd-druid/api/v1alpha1
 # github.com/ghodss/yaml v1.0.0
 ## explicit
 github.com/ghodss/yaml
