@@ -269,17 +269,11 @@ func (b *BackupRestoreServer) runEtcdProbeLoopWithSnapshotter(ctx context.Contex
 					// If the previous full snapshot doesn't exist or is not marked as final, take a final full snapshot
 					if ssr.PrevFullSnapshot == nil || !ssr.PrevFullSnapshot.IsFinal {
 						b.logger.Infof("Taking final full snapshot...")
-						var snapshot *brtypes.Snapshot
-						if snapshot, err = ssr.TakeFullSnapshotAndResetTimer(true); err != nil {
+						leaseUpdatectx, cancel := context.WithTimeout(ctx, brtypes.LeaseUpdateTimeoutDuration)
+						defer cancel()
+						if _, err = ssr.TakeFullSnapshotAndResetTimer(leaseUpdatectx, true); err != nil {
 							b.logger.Errorf("Could not take final full snapshot: %v", err)
 							continue
-						}
-						if b.config.HealthConfig.SnapshotLeaseRenewalEnabled {
-							leaseUpdatectx, cancel := context.WithTimeout(ctx, brtypes.LeaseUpdateTimeoutDuration)
-							defer cancel()
-							if err = heartbeat.FullSnapshotCaseLeaseUpdate(leaseUpdatectx, b.logger, snapshot, ssr.K8sClientset, b.config.HealthConfig.FullSnapshotLeaseName, b.config.HealthConfig.DeltaSnapshotLeaseName); err != nil {
-								b.logger.Warnf("Snapshot lease update failed : %v", err)
-							}
 						}
 					}
 
@@ -327,12 +321,13 @@ func (b *BackupRestoreServer) runEtcdProbeLoopWithSnapshotter(ctx context.Contex
 					return
 				}
 				if err == nil {
-					if _, err := ssr.TakeDeltaSnapshot(); err != nil {
+					var snap *brtypes.Snapshot
+					if snap, err = ssr.TakeDeltaSnapshot(); err != nil {
 						b.logger.Warnf("Failed to take first delta snapshot: snapshotter failed with error: %v", err)
 						continue
 					}
 					initialDeltaSnapshotTaken = true
-					if b.config.HealthConfig.SnapshotLeaseRenewalEnabled {
+					if b.config.HealthConfig.SnapshotLeaseRenewalEnabled && snap != nil {
 						leaseUpdatectx, cancel := context.WithTimeout(ctx, brtypes.LeaseUpdateTimeoutDuration)
 						defer cancel()
 						if err = heartbeat.DeltaSnapshotCaseLeaseUpdate(leaseUpdatectx, b.logger, ssr.K8sClientset, b.config.HealthConfig.DeltaSnapshotLeaseName, ss); err != nil {
@@ -346,21 +341,16 @@ func (b *BackupRestoreServer) runEtcdProbeLoopWithSnapshotter(ctx context.Contex
 
 			if !initialDeltaSnapshotTaken {
 				// need to take a full snapshot here
-				var snapshot *brtypes.Snapshot
 				metrics.SnapshotRequired.With(prometheus.Labels{metrics.LabelKind: brtypes.SnapshotKindDelta}).Set(0)
 				metrics.SnapshotRequired.With(prometheus.Labels{metrics.LabelKind: brtypes.SnapshotKindFull}).Set(1)
-				if snapshot, err = ssr.TakeFullSnapshotAndResetTimer(false); err != nil {
+				leaseUpdatectx, cancel := context.WithTimeout(ctx, brtypes.LeaseUpdateTimeoutDuration)
+				defer cancel()
+				if _, err = ssr.TakeFullSnapshotAndResetTimer(leaseUpdatectx, false); err != nil {
 					metrics.SnapshotterOperationFailure.With(prometheus.Labels{metrics.LabelError: err.Error()}).Inc()
 					b.logger.Errorf("Failed to take substitute first full snapshot: %v", err)
 					continue
 				}
-				if b.config.HealthConfig.SnapshotLeaseRenewalEnabled {
-					leaseUpdatectx, cancel := context.WithTimeout(ctx, brtypes.LeaseUpdateTimeoutDuration)
-					defer cancel()
-					if err = heartbeat.FullSnapshotCaseLeaseUpdate(leaseUpdatectx, b.logger, snapshot, ssr.K8sClientset, b.config.HealthConfig.FullSnapshotLeaseName, b.config.HealthConfig.DeltaSnapshotLeaseName); err != nil {
-						b.logger.Warnf("Snapshot lease update failed : %v", err)
-					}
-				}
+				cancel()
 			}
 
 			// set server's healthz endpoint status to OK so that
