@@ -98,7 +98,7 @@ func RunMemberGarbageCollectorPeriodically(ctx context.Context, hconfig *brtypes
 	}
 	mgc.gcTimer = time.NewTimer(hconfig.MemberGCDuration.Duration)
 	defer mgc.gcTimer.Stop()
-	mgc.logger.Info("Started etcd member garbage collection timer")
+	mgc.logger.Info("Started etcd member garbage collector")
 
 	for {
 		select {
@@ -109,7 +109,7 @@ func RunMemberGarbageCollectorPeriodically(ctx context.Context, hconfig *brtypes
 			}
 			mgc.gcTimer.Reset(hconfig.MemberGCDuration.Duration)
 		case <-ctx.Done():
-			mgc.logger.Info("Stopped etcd member garbage collection timer")
+			mgc.logger.Info("Stopped etcd member garbage collector")
 			return
 		}
 	}
@@ -117,6 +117,7 @@ func RunMemberGarbageCollectorPeriodically(ctx context.Context, hconfig *brtypes
 
 // RemoveSuperfluousMembers removes a member from the etcd cluster if its corresponding pod is not present
 func (mgc *MemberGarbageCollector) RemoveSuperfluousMembers(ctx context.Context) error {
+	mgc.logger.Warnf("IN MEMBER GC")
 	etcd := &druidv1alpha1.Etcd{}
 	if err := mgc.k8sClient.Get(ctx, client.ObjectKey{
 		Namespace: mgc.podNamespace,
@@ -126,7 +127,7 @@ func (mgc *MemberGarbageCollector) RemoveSuperfluousMembers(ctx context.Context)
 			Message: fmt.Sprintf("Could not fetch etcd %v with error: %v", mgc.etcdName, err),
 		}
 	}
-	// Return is no members present
+	// Return if no etcd member present
 	if len(etcd.Status.Members) < 1 {
 		return &errors.EtcdError{
 			Message: "There are no members present in the etcd status. Nothing to clean",
@@ -153,18 +154,25 @@ func (mgc *MemberGarbageCollector) RemoveSuperfluousMembers(ctx context.Context)
 			Message: fmt.Sprintf("Could not list etcd cluster members: %v", err),
 		}
 	}
-	for _, x := range etcdMemberListResponse.Members {
+
+	//Create a map of members in the etcd status
+	statusMembers := make(map[string]bool)
+	for _, member := range etcd.Status.Members {
+		statusMembers[member.Name] = true
+	}
+
+	for _, member := range etcdMemberListResponse.Members {
 		memberPod := &v1.Pod{}
 		err := mgc.k8sClient.Get(ctx, client.ObjectKey{
 			Namespace: mgc.podNamespace,
-			Name:      x.Name,
+			Name:      member.Name,
 		}, memberPod)
-		if apierrors.IsNotFound(err) {
-			//Remove member from etcd cluster if corresponding pod cannot be found
-			mgc.logger.Info("Removing superfluous member ", x.ID, " : ", err)
-			if _, err = etcdClient.MemberRemove(ctx, x.ID); err != nil {
+		if apierrors.IsNotFound(err) && !statusMembers[member.Name] {
+			//Remove member from etcd cluster if corresponding pod cannot be found and if member not present in etcd.Status.Members
+			mgc.logger.Info("Removing superfluous member ", member.ID)
+			if _, err = etcdClient.MemberRemove(ctx, member.ID); err != nil {
 				return &errors.EtcdError{
-					Message: fmt.Sprintf("Error removing member %v from the cluster: %v", x.ID, err),
+					Message: fmt.Sprintf("Error removing member %v from the cluster: %v", member.ID, err),
 				}
 			}
 		}
