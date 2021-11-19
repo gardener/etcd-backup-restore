@@ -34,16 +34,16 @@ import (
 )
 
 // NewFactory returns a Factory that constructs new clients using the supplied ETCD client configuration.
-func NewFactory(cfg EtcdConnectionConfig) client.Factory {
+func NewFactory(cfg brtypes.EtcdConnectionConfig) client.Factory {
 	var f = factoryImpl(cfg)
 	return &f
 }
 
 // factoryImpl implements the client.Factory interface by constructing new client objects.
-type factoryImpl EtcdConnectionConfig
+type factoryImpl brtypes.EtcdConnectionConfig
 
 func (f *factoryImpl) NewClient() (*clientv3.Client, error) {
-	return GetTLSClientForEtcd((*EtcdConnectionConfig)(f))
+	return GetTLSClientForEtcd((*brtypes.EtcdConnectionConfig)(f))
 }
 
 func (f *factoryImpl) NewCluster() (client.ClusterCloser, error) {
@@ -62,8 +62,16 @@ func (f *factoryImpl) NewWatcher() (clientv3.Watcher, error) {
 	return f.NewClient()
 }
 
+// NewClientFactory returns the Factory using the supplied EtcdConnectionConfig.
+func NewClientFactory(fn brtypes.NewClientFactoryFunc, cfg brtypes.EtcdConnectionConfig) client.Factory {
+	if fn == nil {
+		fn = NewFactory
+	}
+	return fn(cfg)
+}
+
 // GetTLSClientForEtcd creates an etcd client using the TLS config params.
-func GetTLSClientForEtcd(tlsConfig *EtcdConnectionConfig) (*clientv3.Client, error) {
+func GetTLSClientForEtcd(tlsConfig *brtypes.EtcdConnectionConfig) (*clientv3.Client, error) {
 	// set tls if any one tls option set
 	var cfgtls *transport.TLSInfo
 	tlsinfo := transport.TLSInfo{}
@@ -117,7 +125,7 @@ func GetTLSClientForEtcd(tlsConfig *EtcdConnectionConfig) (*clientv3.Client, err
 }
 
 // DefragmentData defragment the data directory of each etcd member.
-func DefragmentData(defragCtx context.Context, client *clientv3.Client, endpoints []string, logger *logrus.Entry) error {
+func DefragmentData(defragCtx context.Context, client client.MaintenanceCloser, endpoints []string, logger *logrus.Entry) error {
 	for _, ep := range endpoints {
 		var dbSizeBeforeDefrag, dbSizeAfterDefrag int64
 		logger.Infof("Defragmenting etcd member[%s]", ep)
@@ -148,7 +156,7 @@ func DefragmentData(defragCtx context.Context, client *clientv3.Client, endpoint
 }
 
 // TakeAndSaveFullSnapshot takes full snapshot and save it to store
-func TakeAndSaveFullSnapshot(ctx context.Context, client *clientv3.Client, store brtypes.SnapStore, lastRevision int64, cc *compressor.CompressionConfig, suffix string, isFinal bool, logger *logrus.Entry) (*brtypes.Snapshot, error) {
+func TakeAndSaveFullSnapshot(ctx context.Context, client client.MaintenanceCloser, store brtypes.SnapStore, lastRevision int64, cc *compressor.CompressionConfig, suffix string, isFinal bool, logger *logrus.Entry) (*brtypes.Snapshot, error) {
 	rc, err := client.Snapshot(ctx)
 	if err != nil {
 		return nil, &errors.EtcdError{

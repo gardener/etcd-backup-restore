@@ -12,14 +12,44 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package etcdutil
+package types
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/gardener/etcd-backup-restore/pkg/wrappers"
 	flag "github.com/spf13/pflag"
 )
+
+const (
+	defaultEtcdConnectionEndpoint string = "127.0.0.1:2379"
+
+	// DefaultEtcdConnectionTimeout defines default timeout duration for etcd client connection.
+	DefaultEtcdConnectionTimeout time.Duration = 30 * time.Second
+	// DefaultDefragConnectionTimeout defines default timeout duration for ETCD defrag call.
+	DefaultDefragConnectionTimeout time.Duration = 8 * time.Minute
+	// DefaultSnapshotTimeout defines default timeout duration for taking FullSnapshot.
+	DefaultSnapshotTimeout time.Duration = 8 * time.Minute
+)
+
+// EtcdConnectionConfig holds the etcd connection config.
+type EtcdConnectionConfig struct {
+	// Endpoints are the endpoints from which the backup will be take or defragmentation will be called.
+	// This need not be necessary match the entire etcd cluster.
+	Endpoints          []string          `json:"endpoints"`
+	Username           string            `json:"username,omitempty"`
+	Password           string            `json:"password,omitempty"`
+	ConnectionTimeout  wrappers.Duration `json:"connectionTimeout,omitempty"`
+	SnapshotTimeout    wrappers.Duration `json:"snapshotTimeout,omitempty"`
+	DefragTimeout      wrappers.Duration `json:"defragTimeout,omitempty"`
+	InsecureTransport  bool              `json:"insecureTransport,omitempty"`
+	InsecureSkipVerify bool              `json:"insecureSkipVerify,omitempty"`
+	CertFile           string            `json:"certFile,omitempty"`
+	KeyFile            string            `json:"keyFile,omitempty"`
+	CaFile             string            `json:"caFile,omitempty"`
+	MaxCallSendMsgSize int               `json:"maxCallSendMsgSize,omitempty"`
+}
 
 // NewEtcdConnectionConfig returns etcd connection config.
 func NewEtcdConnectionConfig() *EtcdConnectionConfig {

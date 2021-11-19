@@ -19,12 +19,13 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"hash/crc32"
 	"io"
 	"os"
 	"path/filepath"
 	"time"
 
+	"github.com/gardener/etcd-backup-restore/pkg/etcdutil"
+	"github.com/gardener/etcd-backup-restore/pkg/etcdutil/client"
 	"github.com/gardener/etcd-backup-restore/pkg/miscellaneous"
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
@@ -48,7 +49,6 @@ var (
 	validFiles = map[string]bool{
 		"db": true,
 	}
-	crcTable = crc32.MakeTable(crc32.Castagnoli)
 
 	// ErrPathRequired is returned when the path to a Bolt database is not specified.
 	ErrPathRequired = errors.New("path required")
@@ -58,13 +58,7 @@ var (
 
 	// ErrCorrupt is returned when a checking a data file finds errors.
 	ErrCorrupt = errors.New("invalid value")
-
-	logger *logrus.Logger
 )
-
-func init() {
-	logger = logrus.New()
-}
 
 func (d *DataValidator) memberDir() string { return filepath.Join(d.Config.DataDir, "member") }
 
@@ -308,12 +302,17 @@ func (d *DataValidator) checkFullRevisionConsistency(dataDir string, latestSnaps
 		e.Server.Stop()
 		e.Close()
 	}()
-	client, err := clientv3.NewFromURL(e.Clients[0].Addr().String())
+
+	clientFactory := etcdutil.NewClientFactory(nil, brtypes.EtcdConnectionConfig{
+		Endpoints:         []string{e.Clients[0].Addr().String()},
+		InsecureTransport: true,
+	})
+	clientKV, err := clientFactory.NewKV()
 	if err != nil {
-		d.Logger.Infof("unable to get the embedded etcd client: %v", err)
+		d.Logger.Infof("unable to get the embedded etcd KV client: %v", err)
 		return DataDirectoryCorrupt, err
 	}
-	defer client.Close()
+	defer clientKV.Close()
 
 	timer := time.NewTimer(embeddedEtcdPingLimitDuration)
 
@@ -323,7 +322,7 @@ waitLoop:
 		case <-timer.C:
 			break waitLoop
 		default:
-			latestSyncedEtcdRevision, _ = getLatestSyncedRevision(client)
+			latestSyncedEtcdRevision, _ = getLatestSyncedRevision(clientKV)
 			if latestSyncedEtcdRevision >= latestSnapshotRevision {
 				d.Logger.Infof("After starting embeddedEtcd backend DB file revision (%d) is greater than or equal to latest snapshot revision (%d): no data loss", latestSyncedEtcdRevision, latestSnapshotRevision)
 				break waitLoop
@@ -380,7 +379,7 @@ func getLatestEtcdRevision(path string) (int64, error) {
 }
 
 // getLatestSyncedRevision finds out the latest revision on etcd db file when embedded etcd is started to double check the latest revision of etcd db file.
-func getLatestSyncedRevision(client *clientv3.Client) (int64, error) {
+func getLatestSyncedRevision(client client.KVCloser) (int64, error) {
 	var latestSyncedRevision int64
 
 	ctx, cancel := context.WithTimeout(context.TODO(), connectionTimeout)

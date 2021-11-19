@@ -19,7 +19,6 @@ import (
 	"os"
 
 	"github.com/gardener/etcd-backup-restore/pkg/compressor"
-	"github.com/gardener/etcd-backup-restore/pkg/etcdutil"
 	"github.com/gardener/etcd-backup-restore/pkg/snapshot/snapshotter"
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
@@ -31,7 +30,7 @@ import (
 // NewBackupRestoreComponentConfig returns the backup-restore componenet config.
 func NewBackupRestoreComponentConfig() *BackupRestoreComponentConfig {
 	return &BackupRestoreComponentConfig{
-		EtcdConnectionConfig:    etcdutil.NewEtcdConnectionConfig(),
+		EtcdConnectionConfig:    brtypes.NewEtcdConnectionConfig(),
 		ServerConfig:            NewHTTPServerConfig(),
 		SnapshotterConfig:       snapshotter.NewSnapshotterConfig(),
 		SnapstoreConfig:         snapstore.NewSnapstoreConfig(),

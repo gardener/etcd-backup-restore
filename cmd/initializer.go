@@ -16,7 +16,6 @@ package cmd
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/gardener/etcd-backup-restore/pkg/initializer"
 	"github.com/gardener/etcd-backup-restore/pkg/initializer/validator"
@@ -34,7 +33,7 @@ func NewInitializeCommand(ctx context.Context) *cobra.Command {
 	initializeCmd := &cobra.Command{
 		Use:   "initialize",
 		Short: "initialize an etcd instance.",
-		Long:  fmt.Sprintf(`Initializes an etcd instance. Data directory is checked for corruption and restored in case of corruption.`),
+		Long:  `Initializes an etcd instance. Data directory is checked for corruption and restored in case of corruption.`,
 		Run: func(cmd *cobra.Command, args []string) {
 			logger := logrus.New()
 			if err := opts.validate(); err != nil {

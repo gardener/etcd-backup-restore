@@ -6,7 +6,6 @@ import (
 	"os"
 	"time"
 
-	"github.com/gardener/etcd-backup-restore/pkg/etcdutil"
 	heartbeat "github.com/gardener/etcd-backup-restore/pkg/health/heartbeat"
 	"github.com/gardener/etcd-backup-restore/pkg/miscellaneous"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
@@ -24,11 +23,11 @@ import (
 
 var _ = Describe("Heartbeat", func() {
 	var (
-		etcdConnectionConfig *etcdutil.EtcdConnectionConfig
+		etcdConnectionConfig *brtypes.EtcdConnectionConfig
 	)
 
 	BeforeEach(func() {
-		etcdConnectionConfig = etcdutil.NewEtcdConnectionConfig()
+		etcdConnectionConfig = brtypes.NewEtcdConnectionConfig()
 		etcdConnectionConfig.Endpoints = []string{etcd.Clients[0].Addr().String()}
 		etcdConnectionConfig.ConnectionTimeout.Duration = 5 * time.Second
 	})

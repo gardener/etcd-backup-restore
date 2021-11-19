@@ -26,7 +26,6 @@ import (
 	"time"
 
 	"github.com/gardener/etcd-backup-restore/pkg/compressor"
-	"github.com/gardener/etcd-backup-restore/pkg/etcdutil"
 	. "github.com/gardener/etcd-backup-restore/pkg/snapshot/snapshotter"
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
@@ -49,13 +48,13 @@ var _ = Describe("Snapshotter", func() {
 		garbageCollectionPeriod time.Duration
 		maxBackups              uint
 		schedule                string
-		etcdConnectionConfig    *etcdutil.EtcdConnectionConfig
+		etcdConnectionConfig    *brtypes.EtcdConnectionConfig
 		compressionConfig       *compressor.CompressionConfig
 		healthConfig            *brtypes.HealthConfig
 		err                     error
 	)
 	BeforeEach(func() {
-		etcdConnectionConfig = etcdutil.NewEtcdConnectionConfig()
+		etcdConnectionConfig = brtypes.NewEtcdConnectionConfig()
 		compressionConfig = compressor.NewCompressorConfig()
 		healthConfig = brtypes.NewHealthConfig()
 		etcdConnectionConfig.Endpoints = []string{etcd.Clients[0].Addr().String()}

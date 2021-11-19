@@ -20,7 +20,7 @@ import (
 	"io/ioutil"
 
 	"github.com/gardener/etcd-backup-restore/pkg/compressor"
-	"github.com/gardener/etcd-backup-restore/pkg/etcdutil"
+
 	"github.com/gardener/etcd-backup-restore/pkg/initializer/validator"
 	"github.com/gardener/etcd-backup-restore/pkg/server"
 	"github.com/gardener/etcd-backup-restore/pkg/snapshot/snapshotter"
@@ -211,7 +211,7 @@ func (c *validatorOptions) validate() error {
 }
 
 type snapshotterOptions struct {
-	etcdConnectionConfig    *etcdutil.EtcdConnectionConfig
+	etcdConnectionConfig    *brtypes.EtcdConnectionConfig
 	compressionConfig       *compressor.CompressionConfig
 	snapstoreConfig         *brtypes.SnapstoreConfig
 	snapshotterConfig       *brtypes.SnapshotterConfig
@@ -221,7 +221,7 @@ type snapshotterOptions struct {
 // newSnapshotterOptions returns the snapshotter options.
 func newSnapshotterOptions() *snapshotterOptions {
 	return &snapshotterOptions{
-		etcdConnectionConfig:    etcdutil.NewEtcdConnectionConfig(),
+		etcdConnectionConfig:    brtypes.NewEtcdConnectionConfig(),
 		snapstoreConfig:         snapstore.NewSnapstoreConfig(),
 		snapshotterConfig:       snapshotter.NewSnapshotterConfig(),
 		compressionConfig:       compressor.NewCompressorConfig(),

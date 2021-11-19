@@ -31,6 +31,8 @@ import (
 	"time"
 
 	"github.com/gardener/etcd-backup-restore/pkg/compressor"
+	"github.com/gardener/etcd-backup-restore/pkg/etcdutil"
+	"github.com/gardener/etcd-backup-restore/pkg/etcdutil/client"
 	"github.com/gardener/etcd-backup-restore/pkg/miscellaneous"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 	"github.com/sirupsen/logrus"
@@ -103,15 +105,19 @@ func (r *Restorer) Restore(ro brtypes.RestoreOptions) (*embed.Etcd, error) {
 		return e, err
 	}
 
-	cfg := clientv3.Config{MaxCallSendMsgSize: ro.Config.MaxCallSendMsgSize, Endpoints: []string{e.Clients[0].Addr().String()}}
-	client, err := clientv3.New(cfg)
+	clientFactory := etcdutil.NewClientFactory(ro.NewClientFactory, brtypes.EtcdConnectionConfig{
+		MaxCallSendMsgSize: ro.Config.MaxCallSendMsgSize,
+		Endpoints:          []string{e.Clients[0].Addr().String()},
+		InsecureTransport:  true,
+	})
+	clientKV, err := clientFactory.NewKV()
 	if err != nil {
 		return e, err
 	}
-	defer client.Close()
+	defer clientKV.Close()
 
 	r.logger.Infof("Applying delta snapshots...")
-	if err := r.applyDeltaSnapshots(client, ro); err != nil {
+	if err := r.applyDeltaSnapshots(clientKV, ro); err != nil {
 		return e, err
 	}
 
@@ -355,16 +361,16 @@ func makeWALAndSnap(logger *zap.Logger, waldir, snapdir string, cl *membership.R
 }
 
 // applyDeltaSnapshots fetches the events from delta snapshots in parallel and applies them to the embedded etcd sequentially.
-func (r *Restorer) applyDeltaSnapshots(client *clientv3.Client, ro brtypes.RestoreOptions) error {
+func (r *Restorer) applyDeltaSnapshots(clientKV client.KVCloser, ro brtypes.RestoreOptions) error {
 	snapList := ro.DeltaSnapList
 	numMaxFetchers := ro.Config.MaxFetchers
 
 	firstDeltaSnap := snapList[0]
 
-	if err := r.applyFirstDeltaSnapshot(client, *firstDeltaSnap); err != nil {
+	if err := r.applyFirstDeltaSnapshot(clientKV, *firstDeltaSnap); err != nil {
 		return err
 	}
-	if err := verifySnapshotRevision(client, snapList[0]); err != nil {
+	if err := verifySnapshotRevision(clientKV, snapList[0]); err != nil {
 		return err
 	}
 
@@ -385,7 +391,7 @@ func (r *Restorer) applyDeltaSnapshots(client *clientv3.Client, ro brtypes.Resto
 		wg              sync.WaitGroup
 	)
 
-	go r.applySnaps(client, remainingSnaps, applierInfoCh, errCh, stopCh, &wg)
+	go r.applySnaps(clientKV, remainingSnaps, applierInfoCh, errCh, stopCh, &wg)
 
 	for f := 0; f < numFetchers; f++ {
 		go r.fetchSnaps(f, fetcherInfoCh, applierInfoCh, snapLocationsCh, errCh, stopCh, &wg)
@@ -469,7 +475,7 @@ func (r *Restorer) fetchSnaps(fetcherIndex int, fetcherInfoCh <-chan brtypes.Fet
 }
 
 // applySnaps applies delta snapshot events to the embedded etcd sequentially, in the right order of snapshots, regardless of the order in which they were fetched.
-func (r *Restorer) applySnaps(client *clientv3.Client, remainingSnaps brtypes.SnapList, applierInfoCh <-chan brtypes.ApplierInfo, errCh chan<- error, stopCh <-chan bool, wg *sync.WaitGroup) {
+func (r *Restorer) applySnaps(clientKV client.KVCloser, remainingSnaps brtypes.SnapList, applierInfoCh <-chan brtypes.ApplierInfo, errCh chan<- error, stopCh <-chan bool, wg *sync.WaitGroup) {
 	defer wg.Done()
 	wg.Add(1)
 
@@ -519,7 +525,7 @@ func (r *Restorer) applySnaps(client *clientv3.Client, remainingSnaps brtypes.Sn
 						return
 					}
 
-					if err := applyEventsAndVerify(client, events, remainingSnaps[currSnapIndex]); err != nil {
+					if err := applyEventsAndVerify(clientKV, events, remainingSnaps[currSnapIndex]); err != nil {
 						errCh <- err
 						return
 					}
@@ -535,19 +541,19 @@ func (r *Restorer) applySnaps(client *clientv3.Client, remainingSnaps brtypes.Sn
 }
 
 // applyEventsAndVerify applies events from one snapshot to the embedded etcd and verifies the correctness of the sequence of snapshot applied.
-func applyEventsAndVerify(client *clientv3.Client, events []brtypes.Event, snap *brtypes.Snapshot) error {
-	if err := applyEventsToEtcd(client, events); err != nil {
+func applyEventsAndVerify(clientKV client.KVCloser, events []brtypes.Event, snap *brtypes.Snapshot) error {
+	if err := applyEventsToEtcd(clientKV, events); err != nil {
 		return fmt.Errorf("failed to apply events to etcd for delta snapshot %s : %v", snap.SnapName, err)
 	}
 
-	if err := verifySnapshotRevision(client, snap); err != nil {
+	if err := verifySnapshotRevision(clientKV, snap); err != nil {
 		return fmt.Errorf("snapshot revision verification failed for delta snapshot %s : %v", snap.SnapName, err)
 	}
 	return nil
 }
 
 // applyFirstDeltaSnapshot applies the events from first delta snapshot to etcd.
-func (r *Restorer) applyFirstDeltaSnapshot(client *clientv3.Client, snap brtypes.Snapshot) error {
+func (r *Restorer) applyFirstDeltaSnapshot(clientKV client.KVCloser, snap brtypes.Snapshot) error {
 	r.logger.Infof("Applying first delta snapshot %s", path.Join(snap.SnapDir, snap.SnapName))
 	events, err := r.getEventsFromDeltaSnapshot(snap)
 	if err != nil {
@@ -560,7 +566,7 @@ func (r *Restorer) applyFirstDeltaSnapshot(client *clientv3.Client, snap brtypes
 	// Hence, we have to additionally take care of that.
 	// Refer: https://github.com/coreos/etcd/issues/9037
 	ctx := context.TODO()
-	resp, err := client.Get(ctx, "", clientv3.WithLastRev()...)
+	resp, err := clientKV.Get(ctx, "", clientv3.WithLastRev()...)
 	if err != nil {
 		return fmt.Errorf("failed to get etcd latest revision: %v", err)
 	}
@@ -574,7 +580,7 @@ func (r *Restorer) applyFirstDeltaSnapshot(client *clientv3.Client, snap brtypes
 		}
 	}
 
-	return applyEventsToEtcd(client, events[newRevisionIndex:])
+	return applyEventsToEtcd(clientKV, events[newRevisionIndex:])
 }
 
 // getEventsFromDeltaSnapshot returns the events from delta snapshot from snap store.
@@ -665,7 +671,7 @@ func persistDeltaSnapshot(data []byte) (string, error) {
 }
 
 // applyEventsToEtcd performs operations in events sequentially.
-func applyEventsToEtcd(client *clientv3.Client, events []brtypes.Event) error {
+func applyEventsToEtcd(clientKV client.KVCloser, events []brtypes.Event) error {
 	var (
 		lastRev int64
 		ops     = []clientv3.Op{}
@@ -676,7 +682,7 @@ func applyEventsToEtcd(client *clientv3.Client, events []brtypes.Event) error {
 		ev := e.EtcdEvent
 		nextRev := ev.Kv.ModRevision
 		if lastRev != 0 && nextRev > lastRev {
-			if _, err := client.Txn(ctx).Then(ops...).Commit(); err != nil {
+			if _, err := clientKV.Txn(ctx).Then(ops...).Commit(); err != nil {
 				return err
 			}
 			ops = []clientv3.Op{}
@@ -692,15 +698,15 @@ func applyEventsToEtcd(client *clientv3.Client, events []brtypes.Event) error {
 			return fmt.Errorf("Unexpected event type")
 		}
 	}
-	_, err := client.Txn(ctx).Then(ops...).Commit()
+	_, err := clientKV.Txn(ctx).Then(ops...).Commit()
 	return err
 }
 
-func verifySnapshotRevision(client *clientv3.Client, snap *brtypes.Snapshot) error {
+func verifySnapshotRevision(clientKV client.KVCloser, snap *brtypes.Snapshot) error {
 	ctx := context.TODO()
-	getResponse, err := client.Get(ctx, "foo")
+	getResponse, err := clientKV.Get(ctx, "foo")
 	if err != nil {
-		return fmt.Errorf("failed to connect to client: %v", err)
+		return fmt.Errorf("failed to connect to etcd KV client: %v", err)
 	}
 	etcdRevision := getResponse.Header.GetRevision()
 	if snap.LastRevision != etcdRevision {

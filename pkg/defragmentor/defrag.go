@@ -30,13 +30,13 @@ type CallbackFunc func(ctx context.Context, isFinal bool) (*brtypes.Snapshot, er
 // defragmentorJob implement the cron.Job for etcd defragmentation.
 type defragmentorJob struct {
 	ctx                  context.Context
-	etcdConnectionConfig *etcdutil.EtcdConnectionConfig
+	etcdConnectionConfig *brtypes.EtcdConnectionConfig
 	logger               *logrus.Entry
 	callback             CallbackFunc
 }
 
 // NewDefragmentorJob returns the new defragmentor job.
-func NewDefragmentorJob(ctx context.Context, etcdConnectionConfig *etcdutil.EtcdConnectionConfig, logger *logrus.Entry, callback CallbackFunc) cron.Job {
+func NewDefragmentorJob(ctx context.Context, etcdConnectionConfig *brtypes.EtcdConnectionConfig, logger *logrus.Entry, callback CallbackFunc) cron.Job {
 	return &defragmentorJob{
 		ctx:                  ctx,
 		etcdConnectionConfig: etcdConnectionConfig,
@@ -46,9 +46,10 @@ func NewDefragmentorJob(ctx context.Context, etcdConnectionConfig *etcdutil.Etcd
 }
 
 func (d *defragmentorJob) Run() {
-	client, err := etcdutil.GetTLSClientForEtcd(d.etcdConnectionConfig)
+	clientFactory := etcdutil.NewFactory(*d.etcdConnectionConfig)
+	client, err := clientFactory.NewMaintenance()
 	if err != nil {
-		d.logger.Warnf("failed to create etcd client for defragmentation")
+		d.logger.Warnf("failed to create etcd maintenance client for defragmentation")
 	}
 	defer client.Close()
 
@@ -67,7 +68,7 @@ func (d *defragmentorJob) Run() {
 }
 
 // DefragDataPeriodically defragments the data directory of each etcd member.
-func DefragDataPeriodically(ctx context.Context, etcdConnectionConfig *etcdutil.EtcdConnectionConfig, defragmentationSchedule cron.Schedule, callback CallbackFunc, logger *logrus.Entry) {
+func DefragDataPeriodically(ctx context.Context, etcdConnectionConfig *brtypes.EtcdConnectionConfig, defragmentationSchedule cron.Schedule, callback CallbackFunc, logger *logrus.Entry) {
 	defragmentorJob := NewDefragmentorJob(ctx, etcdConnectionConfig, logger, callback)
 	// TODO: Sync logrus logger to cron logger
 	jobRunner := cron.New(cron.WithChain(cron.SkipIfStillRunning(cron.DefaultLogger)))
