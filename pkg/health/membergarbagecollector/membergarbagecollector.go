@@ -117,7 +117,6 @@ func RunMemberGarbageCollectorPeriodically(ctx context.Context, hconfig *brtypes
 
 // RemoveSuperfluousMembers removes a member from the etcd cluster if its corresponding pod is not present
 func (mgc *MemberGarbageCollector) RemoveSuperfluousMembers(ctx context.Context) error {
-	mgc.logger.Warnf("IN MEMBER GC")
 	etcd := &druidv1alpha1.Etcd{}
 	if err := mgc.k8sClient.Get(ctx, client.ObjectKey{
 		Namespace: mgc.podNamespace,
@@ -140,15 +139,16 @@ func (mgc *MemberGarbageCollector) RemoveSuperfluousMembers(ctx context.Context)
 	}
 
 	//Create etcd client to get etcd cluster member list
-	etcdClient, err := etcdutil.GetTLSClientForEtcd(mgc.etcdConfig)
+	clientFactory := etcdutil.NewFactory(*mgc.etcdConfig)
+	etcdCluster, err := clientFactory.NewCluster()
 	if err != nil {
 		return &errors.EtcdError{
-			Message: fmt.Sprintf("Failed to create etcd client: %v", err),
+			Message: fmt.Sprintf("Failed to create etcd cluster client: %v", err),
 		}
 	}
-	defer etcdClient.Close()
+	defer etcdCluster.Close()
 
-	etcdMemberListResponse, err := etcdClient.MemberList(ctx)
+	etcdMemberListResponse, err := etcdCluster.MemberList(ctx)
 	if err != nil {
 		return &errors.EtcdError{
 			Message: fmt.Sprintf("Could not list etcd cluster members: %v", err),
@@ -169,10 +169,10 @@ func (mgc *MemberGarbageCollector) RemoveSuperfluousMembers(ctx context.Context)
 		}, memberPod)
 		if apierrors.IsNotFound(err) && !statusMembers[member.Name] {
 			//Remove member from etcd cluster if corresponding pod cannot be found and if member not present in etcd.Status.Members
-			mgc.logger.Info("Removing superfluous member ", member.ID)
-			if _, err = etcdClient.MemberRemove(ctx, member.ID); err != nil {
+			mgc.logger.Info("Removing superfluous member ", member.Name)
+			if _, err = etcdCluster.MemberRemove(ctx, member.ID); err != nil {
 				return &errors.EtcdError{
-					Message: fmt.Sprintf("Error removing member %v from the cluster: %v", member.ID, err),
+					Message: fmt.Sprintf("Error removing member %v from the cluster: %v", member.Name, err),
 				}
 			}
 		}
