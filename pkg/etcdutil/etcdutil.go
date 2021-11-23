@@ -125,7 +125,7 @@ func GetTLSClientForEtcd(tlsConfig *brtypes.EtcdConnectionConfig) (*clientv3.Cli
 }
 
 // PerformDefragmentation defragment the data directory of each etcd member.
-func PerformDefragmentation(defragCtx context.Context, client *clientv3.Client, endpoint string, logger *logrus.Entry) error {
+func PerformDefragmentation(defragCtx context.Context, client client.MaintenanceCloser, endpoint string, logger *logrus.Entry) error {
 	var dbSizeBeforeDefrag, dbSizeAfterDefrag int64
 	logger.Infof("Defragmenting etcd member[%s]", endpoint)
 
@@ -134,12 +134,14 @@ func PerformDefragmentation(defragCtx context.Context, client *clientv3.Client, 
 	} else {
 		dbSizeBeforeDefrag = status.DbSize
 	}
+
 	start := time.Now()
 	if _, err := client.Defragment(defragCtx, endpoint); err != nil {
 		metrics.DefragmentationDurationSeconds.With(prometheus.Labels{metrics.LabelSucceeded: metrics.ValueSucceededFalse}).Observe(time.Since(start).Seconds())
 		logger.Errorf("Failed to defragment etcd member[%s] with error: %v", endpoint, err)
 		return err
 	}
+
 	metrics.DefragmentationDurationSeconds.With(prometheus.Labels{metrics.LabelSucceeded: metrics.ValueSucceededTrue}).Observe(time.Since(start).Seconds())
 	logger.Infof("Finished defragmenting etcd member[%s]", endpoint)
 	// Since below request for status races with other etcd operations. So, size returned in
@@ -155,8 +157,8 @@ func PerformDefragmentation(defragCtx context.Context, client *clientv3.Client, 
 
 // DefragmentData calls the defragmentation on each etcd followers endPoints
 // then calls the defragmentation on etcd leader endPoints.
-func DefragmentData(defragCtx context.Context, client client.MaintenanceCloser, etcdEndpoints []string, logger *logrus.Entry) error {
-	leaderEtcdEndpoints, followerEtcdEndpoints, err := GetEtcdEndPointsSorted(defragCtx, client, etcdEndpoints, logger)
+func DefragmentData(defragCtx context.Context, clientMaintenance client.MaintenanceCloser, clientCluster client.ClusterCloser, etcdEndpoints []string, logger *logrus.Entry) error {
+	leaderEtcdEndpoints, followerEtcdEndpoints, err := GetEtcdEndPointsSorted(defragCtx, clientMaintenance, clientCluster, etcdEndpoints, logger)
 	logger.Debugf("etcdEndpoints: %v", etcdEndpoints)
 	logger.Debugf("leaderEndpoints: %v", leaderEtcdEndpoints)
 	logger.Debugf("followerEtcdEndpointss: %v", followerEtcdEndpoints)
@@ -172,7 +174,7 @@ func DefragmentData(defragCtx context.Context, client client.MaintenanceCloser, 
 		if err := func() error {
 			ctx, cancel := context.WithTimeout(defragCtx, DefaultDefragConnectionTimeout)
 			defer cancel()
-			if err := PerformDefragmentation(ctx, client, ep, logger); err != nil {
+			if err := PerformDefragmentation(ctx, clientMaintenance, ep, logger); err != nil {
 				return err
 			}
 			return nil
@@ -187,7 +189,7 @@ func DefragmentData(defragCtx context.Context, client client.MaintenanceCloser, 
 		if err := func() error {
 			ctx, cancel := context.WithTimeout(defragCtx, DefaultDefragConnectionTimeout)
 			defer cancel()
-			if err := PerformDefragmentation(ctx, client, ep, logger); err != nil {
+			if err := PerformDefragmentation(ctx, clientMaintenance, ep, logger); err != nil {
 				return err
 			}
 			return nil
@@ -199,7 +201,7 @@ func DefragmentData(defragCtx context.Context, client client.MaintenanceCloser, 
 }
 
 // GetEtcdEndPointsSorted returns the etcd leaderEndpoints and etcd followerEndpoints.
-func GetEtcdEndPointsSorted(ctx context.Context, client *clientv3.Client, etcdEndpoints []string, logger *logrus.Entry) ([]string, []string, error) {
+func GetEtcdEndPointsSorted(ctx context.Context, clientMaintenance client.MaintenanceCloser, clientCluster client.ClusterCloser, etcdEndpoints []string, logger *logrus.Entry) ([]string, []string, error) {
 	var leaderEtcdEndpoints []string
 	var followerEtcdEndpoints []string
 	var endPoint string
@@ -207,9 +209,9 @@ func GetEtcdEndPointsSorted(ctx context.Context, client *clientv3.Client, etcdEn
 	ctx, cancel := context.WithTimeout(ctx, DefaultDefragConnectionTimeout)
 	defer cancel()
 
-	membersInfo, err := client.MemberList(ctx)
+	membersInfo, err := clientCluster.MemberList(ctx)
 	if err != nil {
-		logger.Errorf("Failed to get memberList of etcd with error: %v", err)
+		logger.Errorf("failed to get memberList of etcd with error: %v", err)
 		return nil, nil, err
 	}
 
@@ -223,13 +225,13 @@ func GetEtcdEndPointsSorted(ctx context.Context, client *clientv3.Client, etcdEn
 		endPoint = etcdEndpoints[0]
 	} else {
 		return nil, nil, &errors.EtcdError{
-			Message: fmt.Sprintf("Etcd endpoints are not passed correctly"),
+			Message: fmt.Sprintf("etcd endpoints are not passed correctly"),
 		}
 	}
 
-	response, err := client.Status(ctx, endPoint)
+	response, err := clientMaintenance.Status(ctx, endPoint)
 	if err != nil {
-		logger.Errorf("Failed to get status of etcd endPoint: %v with error: %v", endPoint, err)
+		logger.Errorf("failed to get status of etcd endPoint: %v with error: %v", endPoint, err)
 		return nil, nil, err
 	}
 

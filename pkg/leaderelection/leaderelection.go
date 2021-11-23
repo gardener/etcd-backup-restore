@@ -61,7 +61,7 @@ func (le *LeaderElector) Run(ctx context.Context) error {
 
 				// set the CurrentState of backup-restore.
 				// stops the Running Snapshotter.
-				// stops the Renewal of member lease.
+				// stops the Renewal of member lease(if running).
 				// wait for Reelection to happen.
 				if le.CurrentState != StateUnknown && le.LeaseCallbacks.StopLeaseRenewal != nil {
 					le.LeaseCallbacks.StopLeaseRenewal()
@@ -124,10 +124,12 @@ func (le *LeaderElector) Run(ctx context.Context) error {
 func (le *LeaderElector) IsLeader(ctx context.Context) (bool, error) {
 	le.logger.Info("checking the leadershipStatus...")
 	var endPoint string
-	client, err := etcdutil.GetTLSClientForEtcd(le.EtcdConnectionConfig)
+
+	factory := etcdutil.NewFactory(*le.EtcdConnectionConfig)
+	client, err := factory.NewMaintenance()
 	if err != nil {
 		return false, &errors.EtcdError{
-			Message: fmt.Sprintf("failed to create etcd client: %v", err),
+			Message: fmt.Sprintf("failed to create etcd maintenance client: %v", err),
 		}
 	}
 	defer client.Close()

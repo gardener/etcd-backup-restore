@@ -163,8 +163,6 @@ func (b *BackupRestoreServer) runServer(ctx context.Context, restoreOpts *brtype
 			var err error
 			var defragCallBack defragmentor.CallbackFunc
 			if runServerWithSnapshotter {
-				ssrStopCh = make(chan struct{})
-
 				b.logger.Infof("Creating snapstore from provider: %s", b.config.SnapstoreConfig.Provider)
 				ss, err = snapstore.GetSnapstore(b.config.SnapstoreConfig)
 				if err != nil {
@@ -185,7 +183,7 @@ func (b *BackupRestoreServer) runServer(ctx context.Context, restoreOpts *brtype
 				defragCallBack = ssr.TriggerFullSnapshot
 				go handleSsrStopRequest(leCtx, handler, ssr, ackCh, ssrStopCh)
 			}
-			go b.runEtcdProbeLoopWithSnapshotter(leCtx, handler, ssr, ssrStopCh, ackCh)
+			go b.runEtcdProbeLoopWithSnapshotter(leCtx, handler, ssr, ss, ssrStopCh, ackCh)
 			go defragmentor.DefragDataPeriodically(leCtx, b.config.EtcdConnectionConfig, b.defragmentationSchedule, defragCallBack, b.logger)
 		},
 		OnStoppedLeading: func() {
@@ -235,8 +233,8 @@ func (b *BackupRestoreServer) runServer(ctx context.Context, restoreOpts *brtype
 }
 
 // runEtcdProbeLoopWithSnapshotter runs the etcd probe loop
-// for the case when current backup-restore becomes leader backup-restore.
-func (b *BackupRestoreServer) runEtcdProbeLoopWithSnapshotter(ctx context.Context, handler *HTTPHandler, ssr *snapshotter.Snapshotter, ssrStopCh chan struct{}, ackCh chan struct{}) {
+// for the case when backup-restore becomes leading sidecar.
+func (b *BackupRestoreServer) runEtcdProbeLoopWithSnapshotter(ctx context.Context, handler *HTTPHandler, ssr *snapshotter.Snapshotter, ss brtypes.SnapStore, ssrStopCh chan struct{}, ackCh chan struct{}) {
 	var (
 		err                       error
 		initialDeltaSnapshotTaken bool
@@ -335,10 +333,6 @@ func (b *BackupRestoreServer) runEtcdProbeLoopWithSnapshotter(ctx context.Contex
 					if b.config.HealthConfig.SnapshotLeaseRenewalEnabled {
 						leaseUpdatectx, cancel := context.WithTimeout(ctx, brtypes.LeaseUpdateTimeoutDuration)
 						defer cancel()
-						ss, err := snapstore.GetSnapstore(b.config.SnapstoreConfig)
-						if err != nil {
-							b.logger.Errorf("failed to create snapstore from configured storage provider: %v", err)
-						}
 						if err = heartbeat.DeltaSnapshotCaseLeaseUpdate(leaseUpdatectx, b.logger, ssr.K8sClientset, b.config.HealthConfig.DeltaSnapshotLeaseName, ss); err != nil {
 							b.logger.Warnf("Snapshot lease update failed : %v", err)
 						}
@@ -347,6 +341,7 @@ func (b *BackupRestoreServer) runEtcdProbeLoopWithSnapshotter(ctx context.Contex
 					b.logger.Warnf("Failed to collect events for first delta snapshot(s): %v", err)
 				}
 			}
+
 			if !initialDeltaSnapshotTaken {
 				// need to take a full snapshot here
 				var snapshot *brtypes.Snapshot

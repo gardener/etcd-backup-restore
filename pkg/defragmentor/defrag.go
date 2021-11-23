@@ -49,9 +49,16 @@ func NewDefragmentorJob(ctx context.Context, etcdConnectionConfig *brtypes.EtcdC
 
 func (d *defragmentorJob) Run() {
 	clientFactory := etcdutil.NewFactory(*d.etcdConnectionConfig)
-	client, err := clientFactory.NewMaintenance()
+
+	clientMaintenance, err := clientFactory.NewMaintenance()
 	if err != nil {
-		d.logger.Warnf("failed to create etcd maintenance client for defragmentation")
+		d.logger.Warnf("failed to create etcd maintenance client")
+	}
+	defer clientMaintenance.Close()
+
+	client, err := clientFactory.NewCluster()
+	if err != nil {
+		d.logger.Warnf("failed to create etcd cluster client")
 	}
 	defer client.Close()
 
@@ -65,21 +72,23 @@ waitLoop:
 			return
 		case <-ticker.C:
 			etcdEndpoints, err := miscellaneous.GetAllEtcdEndpoints(d.ctx, client, d.etcdConnectionConfig, d.logger)
+			if err != nil {
+				d.logger.Errorf("failed to get endpoints of all members of etcd cluster: %v", err)
+				continue
+			}
 			d.logger.Infof("All etcd members endPoints: %v", etcdEndpoints)
+
+			isClusterHealthy, err := miscellaneous.IsEtcdClusterHealthy(d.ctx, clientMaintenance, d.etcdConnectionConfig, etcdEndpoints, d.logger)
 			if err != nil {
-				d.logger.Errorf("Failed to get endpoints of all members of etcd cluster: %v", err)
+				d.logger.Errorf("failed to defrag as all members of etcd cluster are not healthy: %v", err)
 				continue
 			}
-			isClusterHealthy, err := miscellaneous.IsEtcdClusterHealthy(d.ctx, client, d.etcdConnectionConfig, etcdEndpoints, d.logger)
-			if err != nil {
-				d.logger.Errorf("Failed to defrag as all members of etcd cluster are not healthy: %v", err)
-				continue
-			}
+
 			if isClusterHealthy {
 				d.logger.Infof("Starting the defragmentation as all members of etcd cluster are in healthy state")
-				err = etcdutil.DefragmentData(d.ctx, client, etcdEndpoints, d.logger)
+				err = etcdutil.DefragmentData(d.ctx, clientMaintenance, client, etcdEndpoints, d.logger)
 				if err != nil {
-					d.logger.Warnf("Failed to defrag data with error: %v", err)
+					d.logger.Warnf("failed to defrag data with error: %v", err)
 				} else {
 					if d.callback != nil {
 						if _, err = d.callback(d.ctx, false); err != nil {

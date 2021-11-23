@@ -25,11 +25,11 @@ import (
 
 	"github.com/gardener/etcd-backup-restore/pkg/errors"
 	"github.com/gardener/etcd-backup-restore/pkg/etcdutil"
+	etcdClient "github.com/gardener/etcd-backup-restore/pkg/etcdutil/client"
 	"github.com/gardener/etcd-backup-restore/pkg/metrics"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/sirupsen/logrus"
-	"go.etcd.io/etcd/clientv3"
 	"go.etcd.io/etcd/embed"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -188,7 +188,7 @@ func GetFakeKubernetesClientSet() client.Client {
 }
 
 // GetAllEtcdEndpoints returns the endPoints of all etcd-member.
-func GetAllEtcdEndpoints(ctx context.Context, client *clientv3.Client, etcdConnectionConfig *brtypes.EtcdConnectionConfig, logger *logrus.Entry) ([]string, error) {
+func GetAllEtcdEndpoints(ctx context.Context, client etcdClient.ClusterCloser, etcdConnectionConfig *brtypes.EtcdConnectionConfig, logger *logrus.Entry) ([]string, error) {
 	var etcdEndpoints []string
 
 	ctx, cancel := context.WithTimeout(ctx, etcdConnectionConfig.ConnectionTimeout.Duration)
@@ -196,7 +196,7 @@ func GetAllEtcdEndpoints(ctx context.Context, client *clientv3.Client, etcdConne
 
 	membersInfo, err := client.MemberList(ctx)
 	if err != nil {
-		logger.Errorf("Failed to get memberList of etcd with error: %v", err)
+		logger.Errorf("failed to get memberList of etcd with error: %v", err)
 		return nil, err
 	}
 
@@ -208,7 +208,7 @@ func GetAllEtcdEndpoints(ctx context.Context, client *clientv3.Client, etcdConne
 }
 
 // IsEtcdClusterHealthy checks whether all members of etcd cluster are in healthy state or not.
-func IsEtcdClusterHealthy(ctx context.Context, client *clientv3.Client, etcdConnectionConfig *brtypes.EtcdConnectionConfig, etcdEndpoints []string, logger *logrus.Entry) (bool, error) {
+func IsEtcdClusterHealthy(ctx context.Context, client etcdClient.MaintenanceCloser, etcdConnectionConfig *brtypes.EtcdConnectionConfig, etcdEndpoints []string, logger *logrus.Entry) (bool, error) {
 
 	// checks the health of all etcd members.
 	for _, endPoint := range etcdEndpoints {
@@ -216,7 +216,7 @@ func IsEtcdClusterHealthy(ctx context.Context, client *clientv3.Client, etcdConn
 			ctx, cancel := context.WithTimeout(ctx, etcdConnectionConfig.ConnectionTimeout.Duration)
 			defer cancel()
 			if _, err := client.Status(ctx, endPoint); err != nil {
-				logger.Errorf("Failed to get status of etcd endPoint: %v with error: %v", endPoint, err)
+				logger.Errorf("failed to get status of etcd endPoint: %v with error: %v", endPoint, err)
 				return err
 			}
 			return nil
@@ -231,10 +231,20 @@ func IsEtcdClusterHealthy(ctx context.Context, client *clientv3.Client, etcdConn
 // GetLeader will return the LeaderID as well as url of etcd leader.
 func GetLeader(ctx context.Context, etcdConnectionConfig *brtypes.EtcdConnectionConfig) (uint64, []string, error) {
 	var endPoint string
-	client, err := etcdutil.GetTLSClientForEtcd(etcdConnectionConfig)
+
+	factory := etcdutil.NewFactory(*etcdConnectionConfig)
+	clientMaintenance, err := factory.NewMaintenance()
 	if err != nil {
 		return NoLeaderState, nil, &errors.EtcdError{
-			Message: fmt.Sprintf("Failed to create etcd client: %v", err),
+			Message: fmt.Sprintf("failed to create etcd maintenance client: %v", err),
+		}
+	}
+	defer clientMaintenance.Close()
+
+	client, err := factory.NewCluster()
+	if err != nil {
+		return NoLeaderState, nil, &errors.EtcdError{
+			Message: fmt.Sprintf("failed to create etcd cluster client: %v", err),
 		}
 	}
 	defer client.Close()
@@ -245,17 +255,17 @@ func GetLeader(ctx context.Context, etcdConnectionConfig *brtypes.EtcdConnection
 	if len(etcdConnectionConfig.Endpoints) > 0 {
 		endPoint = etcdConnectionConfig.Endpoints[0]
 	} else {
-		return NoLeaderState, nil, fmt.Errorf("Etcd endpoints are not passed correctly")
+		return NoLeaderState, nil, fmt.Errorf("etcd endpoints are not passed correctly")
 	}
 
-	response, err := client.Status(ctx, endPoint)
+	response, err := clientMaintenance.Status(ctx, endPoint)
 	if err != nil {
 		return NoLeaderState, nil, err
 	}
 
 	if response.Leader == NoLeaderState {
 		return NoLeaderState, nil, &errors.EtcdError{
-			Message: fmt.Sprintf("Currently there is no Etcd Leader present may be due to etcd quorum loss."),
+			Message: fmt.Sprintf("currently there is no Etcd Leader present may be due to etcd quorum loss."),
 		}
 	}
 
@@ -275,7 +285,7 @@ func GetLeader(ctx context.Context, etcdConnectionConfig *brtypes.EtcdConnection
 // GetBackupLeaderEndPoint takes etcd leader endpoint and portNo. of backup-restore and returns the backupLeader endpoint.
 func GetBackupLeaderEndPoint(endPoints []string, port uint) (string, error) {
 	if len(endPoints) == 0 {
-		return "", fmt.Errorf("Etcd endpoints are not passed correctly")
+		return "", fmt.Errorf("etcd endpoints are not passed correctly")
 	}
 
 	url, err := url.Parse(endPoints[0])
