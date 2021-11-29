@@ -269,9 +269,7 @@ func (b *BackupRestoreServer) runEtcdProbeLoopWithSnapshotter(ctx context.Contex
 					// If the previous full snapshot doesn't exist or is not marked as final, take a final full snapshot
 					if ssr.PrevFullSnapshot == nil || !ssr.PrevFullSnapshot.IsFinal {
 						b.logger.Infof("Taking final full snapshot...")
-						leaseUpdatectx, cancel := context.WithTimeout(ctx, brtypes.LeaseUpdateTimeoutDuration)
-						defer cancel()
-						if _, err = ssr.TakeFullSnapshotAndResetTimer(leaseUpdatectx, true); err != nil {
+						if _, err = ssr.TakeFullSnapshotAndResetTimer(ctx, true); err != nil {
 							b.logger.Errorf("Could not take final full snapshot: %v", err)
 							continue
 						}
@@ -312,7 +310,7 @@ func (b *BackupRestoreServer) runEtcdProbeLoopWithSnapshotter(ctx context.Contex
 			const recentFullSnapshotPeriodInHours = 23.5
 			initialDeltaSnapshotTaken = false
 			if ssr.PrevFullSnapshot != nil && !ssr.PrevFullSnapshot.IsFinal && time.Since(ssr.PrevFullSnapshot.CreatedOn).Hours() <= recentFullSnapshotPeriodInHours {
-				ssrStopped, err := ssr.CollectEventsSincePrevSnapshot(ssrStopCh)
+				ssrStopped, err := ssr.CollectEventsSincePrevSnapshot(ctx)
 				if ssrStopped {
 					b.logger.Info("Snapshotter stopped.")
 					ackCh <- emptyStruct
@@ -343,14 +341,11 @@ func (b *BackupRestoreServer) runEtcdProbeLoopWithSnapshotter(ctx context.Contex
 				// need to take a full snapshot here
 				metrics.SnapshotRequired.With(prometheus.Labels{metrics.LabelKind: brtypes.SnapshotKindDelta}).Set(0)
 				metrics.SnapshotRequired.With(prometheus.Labels{metrics.LabelKind: brtypes.SnapshotKindFull}).Set(1)
-				leaseUpdatectx, cancel := context.WithTimeout(ctx, brtypes.LeaseUpdateTimeoutDuration)
-				defer cancel()
-				if _, err = ssr.TakeFullSnapshotAndResetTimer(leaseUpdatectx, false); err != nil {
+				if _, err = ssr.TakeFullSnapshotAndResetTimer(ctx, false); err != nil {
 					metrics.SnapshotterOperationFailure.With(prometheus.Labels{metrics.LabelError: err.Error()}).Inc()
 					b.logger.Errorf("Failed to take substitute first full snapshot: %v", err)
 					continue
 				}
-				cancel()
 			}
 
 			// set server's healthz endpoint status to OK so that

@@ -161,6 +161,7 @@ func NewSnapshotter(logger *logrus.Entry, config *brtypes.SnapshotterConfig, sto
 // taking the first full snapshot.
 func (ssr *Snapshotter) Run(stopCh <-chan struct{}, startWithFullSnapshot bool) error {
 	defer ssr.stop()
+	ctx := CtxFromStopChannel(stopCh)
 	if startWithFullSnapshot {
 		ssr.fullSnapshotTimer = time.NewTimer(0)
 	} else {
@@ -169,7 +170,7 @@ func (ssr *Snapshotter) Run(stopCh <-chan struct{}, startWithFullSnapshot bool) 
 		// to take the first delta snapshot(s) initially and then set
 		// the full snapshot schedule
 		if ssr.watchCh == nil {
-			ssrStopped, err := ssr.CollectEventsSincePrevSnapshot(stopCh)
+			ssrStopped, err := ssr.CollectEventsSincePrevSnapshot(ctx)
 			if ssrStopped {
 				return nil
 			}
@@ -260,8 +261,8 @@ func (ssr *Snapshotter) closeEtcdClient() {
 }
 
 // TakeFullSnapshotAndResetTimer takes a full snapshot and resets the full snapshot
-// timer as per the schedule.
-func (ssr *Snapshotter) TakeFullSnapshotAndResetTimer(leaseUpdateCtx context.Context, isFinal bool) (*brtypes.Snapshot, error) {
+// timer as per the schedule. Additionally, it updates the full snapshot lease if enabled.
+func (ssr *Snapshotter) TakeFullSnapshotAndResetTimer(ctx context.Context, isFinal bool) (*brtypes.Snapshot, error) {
 	ssr.logger.Infof("Taking scheduled snapshot for time: %s", time.Now().Local())
 	s, err := ssr.takeFullSnapshot(isFinal)
 	if err != nil {
@@ -273,11 +274,11 @@ func (ssr *Snapshotter) TakeFullSnapshotAndResetTimer(leaseUpdateCtx context.Con
 
 	//Update Full snapshot lease
 	if ssr.healthConfig.SnapshotLeaseRenewalEnabled {
-		ctx, cancel := context.WithTimeout(leaseUpdateCtx, brtypes.LeaseUpdateTimeoutDuration)
-		if err = heartbeat.FullSnapshotCaseLeaseUpdate(ctx, ssr.logger, s, ssr.K8sClientset, ssr.healthConfig.FullSnapshotLeaseName, ssr.healthConfig.DeltaSnapshotLeaseName); err != nil {
+		leaseUpdateCtx, cancel := context.WithTimeout(ctx, brtypes.LeaseUpdateTimeoutDuration)
+		defer cancel()
+		if err = heartbeat.FullSnapshotCaseLeaseUpdate(leaseUpdateCtx, ssr.logger, s, ssr.K8sClientset, ssr.healthConfig.FullSnapshotLeaseName, ssr.healthConfig.DeltaSnapshotLeaseName); err != nil {
 			ssr.logger.Warnf("Snapshot lease update failed : %v", err)
 		}
-		cancel()
 	}
 
 	return s, ssr.resetFullSnapshotTimer()
@@ -380,7 +381,7 @@ func (ssr *Snapshotter) cleanupInMemoryEvents() {
 	ssr.lastEventRevision = -1
 }
 
-func (ssr *Snapshotter) takeDeltaSnapshotAndResetTimer(leaseUpdateCtx context.Context) (*brtypes.Snapshot, error) {
+func (ssr *Snapshotter) takeDeltaSnapshotAndResetTimer(ctx context.Context) (*brtypes.Snapshot, error) {
 	s, err := ssr.TakeDeltaSnapshot()
 	if err != nil {
 		// As per design principle, in business critical service if backup is not working,
@@ -400,11 +401,11 @@ func (ssr *Snapshotter) takeDeltaSnapshotAndResetTimer(leaseUpdateCtx context.Co
 
 	//Update delta snapshot lease
 	if ssr.healthConfig.SnapshotLeaseRenewalEnabled && s != nil {
-		ctx, cancel := context.WithTimeout(leaseUpdateCtx, brtypes.LeaseUpdateTimeoutDuration)
-		if err = heartbeat.DeltaSnapshotCaseLeaseUpdate(ctx, ssr.logger, ssr.K8sClientset, ssr.healthConfig.DeltaSnapshotLeaseName, ssr.store); err != nil {
+		leaseUpdateCtx, cancel := context.WithTimeout(ctx, brtypes.LeaseUpdateTimeoutDuration)
+		defer cancel()
+		if err = heartbeat.DeltaSnapshotCaseLeaseUpdate(leaseUpdateCtx, ssr.logger, ssr.K8sClientset, ssr.healthConfig.DeltaSnapshotLeaseName, ssr.store); err != nil {
 			ssr.logger.Warnf("Snapshot lease update failed : %v", err)
 		}
-		cancel()
 	}
 
 	return s, nil
@@ -475,7 +476,7 @@ func (ssr *Snapshotter) TakeDeltaSnapshot() (*brtypes.Snapshot, error) {
 }
 
 // CollectEventsSincePrevSnapshot takes the first delta snapshot on etcd startup.
-func (ssr *Snapshotter) CollectEventsSincePrevSnapshot(stopCh <-chan struct{}) (bool, error) {
+func (ssr *Snapshotter) CollectEventsSincePrevSnapshot(ctxt context.Context) (bool, error) {
 	// close any previous watch and client.
 	ssr.closeEtcdClient()
 
@@ -532,14 +533,12 @@ func (ssr *Snapshotter) CollectEventsSincePrevSnapshot(stopCh <-chan struct{}) (
 	metrics.SnapshotRequired.With(prometheus.Labels{metrics.LabelKind: brtypes.SnapshotKindFull}).Set(1)
 
 	for {
-		leaseUpdateCtx, leaseUpdateCancel := context.WithCancel(context.TODO())
-		defer leaseUpdateCancel()
 		select {
 		case wr, ok := <-ssr.watchCh:
 			if !ok {
 				return false, fmt.Errorf("watch channel closed")
 			}
-			if err := ssr.handleDeltaWatchEvents(leaseUpdateCtx, wr); err != nil {
+			if err := ssr.handleDeltaWatchEvents(ctxt, wr); err != nil {
 				return false, err
 			}
 
@@ -547,15 +546,14 @@ func (ssr *Snapshotter) CollectEventsSincePrevSnapshot(stopCh <-chan struct{}) (
 			if lastWatchRevision >= lastEtcdRevision {
 				return false, nil
 			}
-		case <-stopCh:
-			leaseUpdateCancel()
+		case <-ctxt.Done():
 			ssr.cleanupInMemoryEvents()
 			return true, nil
 		}
 	}
 }
 
-func (ssr *Snapshotter) handleDeltaWatchEvents(leaseUpdateCtx context.Context, wr clientv3.WatchResponse) error {
+func (ssr *Snapshotter) handleDeltaWatchEvents(ctx context.Context, wr clientv3.WatchResponse) error {
 	if err := wr.Err(); err != nil {
 		return err
 	}
@@ -579,7 +577,7 @@ func (ssr *Snapshotter) handleDeltaWatchEvents(leaseUpdateCtx context.Context, w
 	ssr.logger.Debugf("Added events till revision: %d", ssr.lastEventRevision)
 	if len(ssr.events) >= int(ssr.config.DeltaSnapshotMemoryLimit) {
 		ssr.logger.Infof("Delta events memory crossed the memory limit: %d Bytes", len(ssr.events))
-		_, err := ssr.takeDeltaSnapshotAndResetTimer(leaseUpdateCtx)
+		_, err := ssr.takeDeltaSnapshotAndResetTimer(ctx)
 		return err
 	}
 	return nil
@@ -666,4 +664,15 @@ func (ssr *Snapshotter) resetFullSnapshotTimer() error {
 	ssr.logger.Infof("Will take next full snapshot at time: %s", effective)
 
 	return nil
+}
+
+// CtxFromStopChannel creates a new context from a given stop channel.
+func CtxFromStopChannel(stopCh <-chan struct{}) context.Context {
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		defer cancel()
+		<-stopCh
+	}()
+
+	return ctx
 }
