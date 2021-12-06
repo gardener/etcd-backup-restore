@@ -84,6 +84,10 @@ func (hb *Heartbeat) RenewMemberLease(ctx context.Context) error {
 			Message: "nil clientset passed",
 		}
 	}
+
+	ctx, cancel := context.WithTimeout(ctx, hb.etcdConfig.ConnectionTimeout.Duration)
+	defer cancel()
+
 	//Fetch lease associated with member
 	memberLease := &v1.Lease{}
 	err := hb.k8sClient.Get(ctx, client.ObjectKey{
