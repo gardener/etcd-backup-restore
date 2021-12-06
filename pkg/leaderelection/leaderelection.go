@@ -27,15 +27,16 @@ import (
 )
 
 // NewLeaderElector returns LeaderElector configurations.
-func NewLeaderElector(logger *logrus.Entry, etcdConnectionConfig *brtypes.EtcdConnectionConfig, leaderElectionConfig *Config, callbacks *LeaderCallbacks, memberLeaseCallbacks *MemberLeaseCallbacks) (*LeaderElector, error) {
+func NewLeaderElector(logger *logrus.Entry, etcdConnectionConfig *brtypes.EtcdConnectionConfig, leaderElectionConfig *Config, callbacks *LeaderCallbacks, memberLeaseCallbacks *MemberLeaseCallbacks, checkLeadershipFunc IsLeaderCallbackFunc) (*LeaderElector, error) {
 	return &LeaderElector{
-		logger:               logger.WithField("actor", "leader-elector"),
-		EtcdConnectionConfig: etcdConnectionConfig,
-		CurrentState:         DefaultCurrentState,
-		Config:               leaderElectionConfig,
-		Callbacks:            callbacks,
-		LeaseCallbacks:       memberLeaseCallbacks,
-		ElectionLock:         &sync.Mutex{},
+		logger:                logger.WithField("actor", "leader-elector"),
+		EtcdConnectionConfig:  etcdConnectionConfig,
+		CurrentState:          DefaultCurrentState,
+		Config:                leaderElectionConfig,
+		Callbacks:             callbacks,
+		LeaseCallbacks:        memberLeaseCallbacks,
+		CheckLeadershipStatus: checkLeadershipFunc,
+		ElectionLock:          &sync.Mutex{},
 	}, nil
 }
 
@@ -55,7 +56,7 @@ func (le *LeaderElector) Run(ctx context.Context) error {
 			}
 			return nil
 		case <-time.After(le.Config.ReelectionPeriod.Duration):
-			isLeader, err := le.IsLeader(ctx)
+			isLeader, err := le.CheckLeadershipStatus(ctx, le.EtcdConnectionConfig, le.Config.EtcdConnectionTimeout.Duration, le.logger)
 			if err != nil {
 				le.logger.Errorf("failed to elect the backup-restore leader: %v", err)
 
@@ -66,12 +67,12 @@ func (le *LeaderElector) Run(ctx context.Context) error {
 				if le.CurrentState != StateUnknown && le.LeaseCallbacks.StopLeaseRenewal != nil {
 					le.LeaseCallbacks.StopLeaseRenewal()
 				}
-				le.CurrentState = StateUnknown
-				le.logger.Infof("backup-restore is in: %v", le.CurrentState)
-				if leCtx != nil {
+				if le.CurrentState == StateLeader && leCtx != nil {
 					leCancel()
 					le.Callbacks.OnStoppedLeading()
 				}
+				le.CurrentState = StateUnknown
+				le.logger.Infof("backup-restore is in: %v", le.CurrentState)
 				le.logger.Info("waiting for Re-election...")
 				continue
 			}
@@ -120,12 +121,12 @@ func (le *LeaderElector) Run(ctx context.Context) error {
 	}
 }
 
-// IsLeader checks whether the current backup-restore is leader or not.
-func (le *LeaderElector) IsLeader(ctx context.Context) (bool, error) {
-	le.logger.Info("checking the leadershipStatus...")
+// IsLeader checks whether the current backup-restore is leader or not and returns a boolean.
+func IsLeader(ctx context.Context, etcdConnectionConfig *brtypes.EtcdConnectionConfig, etcdConnectionTimeout time.Duration, logger *logrus.Entry) (bool, error) {
+	logger.Info("checking the leadershipStatus...")
 	var endPoint string
 
-	factory := etcdutil.NewFactory(*le.EtcdConnectionConfig)
+	factory := etcdutil.NewFactory(*etcdConnectionConfig)
 	client, err := factory.NewMaintenance()
 	if err != nil {
 		return false, &errors.EtcdError{
@@ -134,18 +135,18 @@ func (le *LeaderElector) IsLeader(ctx context.Context) (bool, error) {
 	}
 	defer client.Close()
 
-	if len(le.EtcdConnectionConfig.Endpoints) > 0 {
-		endPoint = le.EtcdConnectionConfig.Endpoints[0]
+	if len(etcdConnectionConfig.Endpoints) > 0 {
+		endPoint = etcdConnectionConfig.Endpoints[0]
 	} else {
 		return false, fmt.Errorf("etcd endpoints are not passed correctly")
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, le.Config.EtcdConnectionTimeout.Duration)
+	ctx, cancel := context.WithTimeout(ctx, etcdConnectionTimeout)
 	defer cancel()
 
 	response, err := client.Status(ctx, endPoint)
 	if err != nil {
-		le.logger.Errorf("failed to get status of etcd endPoint: %v with error: %v", endPoint, err)
+		logger.Errorf("failed to get status of etcd endPoint: %v with error: %v", endPoint, err)
 		return false, err
 	}
 

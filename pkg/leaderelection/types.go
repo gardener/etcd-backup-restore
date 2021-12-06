@@ -62,6 +62,9 @@ type MemberLeaseCallbacks struct {
 	StopLeaseRenewal func()
 }
 
+// IsLeaderCallbackFunc is type declaration for callback function to Check LeadershipStatus.
+type IsLeaderCallbackFunc func(context.Context, *brtypes.EtcdConnectionConfig, time.Duration, *logrus.Entry) (bool, error)
+
 // Config holds the LeaderElection config.
 type Config struct {
 	// ReelectionPeriod defines the Period after which leadership status is checked.
@@ -73,11 +76,12 @@ type Config struct {
 // LeaderElector holds the all configuration necessary to elect backup-restore Leader.
 type LeaderElector struct {
 	// CurrentState defines currentState of backup-restore for LeaderElection.
-	CurrentState         string
-	Config               *Config
-	EtcdConnectionConfig *brtypes.EtcdConnectionConfig
-	logger               *logrus.Entry
-	Callbacks            *LeaderCallbacks
-	LeaseCallbacks       *MemberLeaseCallbacks
-	ElectionLock         *sync.Mutex
+	CurrentState          string
+	Config                *Config
+	EtcdConnectionConfig  *brtypes.EtcdConnectionConfig
+	logger                *logrus.Entry
+	Callbacks             *LeaderCallbacks
+	LeaseCallbacks        *MemberLeaseCallbacks
+	CheckLeadershipStatus IsLeaderCallbackFunc
+	ElectionLock          *sync.Mutex
 }

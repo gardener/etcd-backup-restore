@@ -214,8 +214,10 @@ func (b *BackupRestoreServer) runServer(ctx context.Context, restoreOpts *brtype
 		},
 	}
 
+	checkLeadershipFunc := leaderelection.IsLeader
+
 	b.logger.Infof("Creating leaderElector...")
-	le, err := leaderelection.NewLeaderElector(b.logger, b.config.EtcdConnectionConfig, b.config.LeaderElectionConfig, leaderCallbacks, memberLeaseCallbacks)
+	le, err := leaderelection.NewLeaderElector(b.logger, b.config.EtcdConnectionConfig, b.config.LeaderElectionConfig, leaderCallbacks, memberLeaseCallbacks, checkLeadershipFunc)
 	if err != nil {
 		return err
 	}

@@ -15,6 +15,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -26,6 +27,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/gardener/etcd-backup-restore/pkg/etcdutil"
 	"github.com/gardener/etcd-backup-restore/pkg/initializer"
 	"github.com/gardener/etcd-backup-restore/pkg/initializer/validator"
 	"github.com/gardener/etcd-backup-restore/pkg/miscellaneous"
@@ -391,7 +393,33 @@ func (h *HTTPHandler) delegateReqToLeader(rw http.ResponseWriter, req *http.Requ
 	// Get the ReverseProxy object
 	// Delegate the http request to BackupLeader using the reverse proxy.
 
-	_, etcdLeaderEndPoint, err := miscellaneous.GetLeader(req.Context(), h.EtcdConnectionConfig)
+	factory := etcdutil.NewFactory(*h.EtcdConnectionConfig)
+	clientMaintenance, err := factory.NewMaintenance()
+	if err != nil {
+		h.Logger.Warnf("failed to create etcd maintenance client:  %v", err)
+		rw.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	defer clientMaintenance.Close()
+
+	client, err := factory.NewCluster()
+	if err != nil {
+		h.Logger.Warnf("failed to create etcd cluster client:  %v", err)
+		rw.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	defer client.Close()
+
+	ctx, cancel := context.WithTimeout(req.Context(), h.EtcdConnectionConfig.ConnectionTimeout.Duration)
+	defer cancel()
+
+	if len(h.EtcdConnectionConfig.Endpoints) == 0 {
+		h.Logger.Warnf("etcd endpoints are not passed correctly")
+		rw.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	_, etcdLeaderEndPoint, err := miscellaneous.GetLeader(ctx, clientMaintenance, client, h.EtcdConnectionConfig.Endpoints[0])
 	if err != nil {
 		h.Logger.Warnf("Unable to get the etcd leader endpoint: %v", err)
 		rw.WriteHeader(http.StatusMethodNotAllowed)

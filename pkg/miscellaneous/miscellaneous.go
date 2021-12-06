@@ -24,7 +24,6 @@ import (
 	"time"
 
 	"github.com/gardener/etcd-backup-restore/pkg/errors"
-	"github.com/gardener/etcd-backup-restore/pkg/etcdutil"
 	etcdClient "github.com/gardener/etcd-backup-restore/pkg/etcdutil/client"
 	"github.com/gardener/etcd-backup-restore/pkg/metrics"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
@@ -229,36 +228,12 @@ func IsEtcdClusterHealthy(ctx context.Context, client etcdClient.MaintenanceClos
 }
 
 // GetLeader will return the LeaderID as well as url of etcd leader.
-func GetLeader(ctx context.Context, etcdConnectionConfig *brtypes.EtcdConnectionConfig) (uint64, []string, error) {
-	var endPoint string
-
-	factory := etcdutil.NewFactory(*etcdConnectionConfig)
-	clientMaintenance, err := factory.NewMaintenance()
-	if err != nil {
-		return NoLeaderState, nil, &errors.EtcdError{
-			Message: fmt.Sprintf("failed to create etcd maintenance client: %v", err),
-		}
-	}
-	defer clientMaintenance.Close()
-
-	client, err := factory.NewCluster()
-	if err != nil {
-		return NoLeaderState, nil, &errors.EtcdError{
-			Message: fmt.Sprintf("failed to create etcd cluster client: %v", err),
-		}
-	}
-	defer client.Close()
-
-	ctx, cancel := context.WithTimeout(ctx, etcdConnectionConfig.ConnectionTimeout.Duration)
-	defer cancel()
-
-	if len(etcdConnectionConfig.Endpoints) > 0 {
-		endPoint = etcdConnectionConfig.Endpoints[0]
-	} else {
-		return NoLeaderState, nil, fmt.Errorf("etcd endpoints are not passed correctly")
+func GetLeader(ctx context.Context, clientMaintenance etcdClient.MaintenanceCloser, client etcdClient.ClusterCloser, endpoint string) (uint64, []string, error) {
+	if len(endpoint) == 0 {
+		return NoLeaderState, nil, fmt.Errorf("etcd endpoint are not passed correctly")
 	}
 
-	response, err := clientMaintenance.Status(ctx, endPoint)
+	response, err := clientMaintenance.Status(ctx, endpoint)
 	if err != nil {
 		return NoLeaderState, nil, err
 	}
