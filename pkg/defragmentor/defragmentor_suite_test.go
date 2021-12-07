@@ -33,6 +33,7 @@ const (
 	etcdDir            = outputDir + "/default.etcd"
 	etcdDialTimeout    = time.Second * 30
 	embeddedEtcdPortNo = "9089"
+	mockTimeout        = time.Second * 5
 )
 
 var (

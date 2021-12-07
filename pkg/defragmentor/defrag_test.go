@@ -21,13 +21,17 @@ import (
 	"time"
 
 	"github.com/gardener/etcd-backup-restore/pkg/etcdutil"
+	mockfactory "github.com/gardener/etcd-backup-restore/pkg/mock/etcdutil/client"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 	"github.com/gardener/etcd-backup-restore/test/utils"
+	"github.com/golang/mock/gomock"
+	cron "github.com/robfig/cron/v3"
+	"go.etcd.io/etcd/clientv3"
+	"go.etcd.io/etcd/etcdserver/etcdserverpb"
 
 	. "github.com/gardener/etcd-backup-restore/pkg/defragmentor"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
-	cron "github.com/robfig/cron/v3"
 )
 
 var _ = Describe("Defrag", func() {
@@ -35,6 +39,11 @@ var _ = Describe("Defrag", func() {
 		etcdConnectionConfig *brtypes.EtcdConnectionConfig
 		keyPrefix            = "/defrag/key-"
 		valuePrefix          = "val"
+
+		ctrl    *gomock.Controller
+		factory *mockfactory.MockFactory
+		cm      *mockfactory.MockMaintenanceCloser
+		cl      *mockfactory.MockClusterCloser
 	)
 
 	BeforeEach(func() {
@@ -43,6 +52,165 @@ var _ = Describe("Defrag", func() {
 		etcdConnectionConfig.ConnectionTimeout.Duration = 30 * time.Second
 		etcdConnectionConfig.SnapshotTimeout.Duration = 30 * time.Second
 		etcdConnectionConfig.DefragTimeout.Duration = 30 * time.Second
+
+		ctrl = gomock.NewController(GinkgoT())
+		factory = mockfactory.NewMockFactory(ctrl)
+		cm = mockfactory.NewMockMaintenanceCloser(ctrl)
+		cl = mockfactory.NewMockClusterCloser(ctrl)
+	})
+
+	Describe("With Etcd cluster", func() {
+		var (
+			dummyID              = uint64(1111)
+			dummyClientEndpoints = []string{"http://127.0.0.1:2379", "http://127.0.0.1:9090"}
+		)
+		BeforeEach(func() {
+			factory.EXPECT().NewMaintenance().Return(cm, nil)
+			factory.EXPECT().NewCluster().Return(cl, nil)
+		})
+
+		Context("MemberList API call fails", func() {
+			It("should return error", func() {
+				clientMaintenance, err := factory.NewMaintenance()
+				Expect(err).ShouldNot(HaveOccurred())
+
+				client, err := factory.NewCluster()
+				Expect(err).ShouldNot(HaveOccurred())
+
+				cl.EXPECT().MemberList(gomock.Any()).Return(nil, fmt.Errorf("failed to connect with the dummy etcd")).AnyTimes()
+
+				leaderEtcdEndpoints, followerEtcdEndpoints, err := etcdutil.GetEtcdEndPointsSorted(testCtx, clientMaintenance, client, dummyClientEndpoints, logger)
+				Expect(err).Should(HaveOccurred())
+				Expect(leaderEtcdEndpoints).Should(BeNil())
+				Expect(followerEtcdEndpoints).Should(BeNil())
+
+				err = etcdutil.DefragmentData(testCtx, clientMaintenance, client, dummyClientEndpoints, logger)
+				Expect(err).Should(HaveOccurred())
+			})
+		})
+
+		Context("MemberList API call succeeds and Status API call fails", func() {
+			It("should return error", func() {
+				clientMaintenance, err := factory.NewMaintenance()
+				Expect(err).ShouldNot(HaveOccurred())
+
+				client, err := factory.NewCluster()
+				Expect(err).ShouldNot(HaveOccurred())
+
+				cl.EXPECT().MemberList(gomock.Any()).DoAndReturn(func(_ context.Context) (*clientv3.MemberListResponse, error) {
+					response := new(clientv3.MemberListResponse)
+					dummyMember1 := &etcdserverpb.Member{
+						ID:         dummyID,
+						ClientURLs: []string{dummyClientEndpoints[0]},
+					}
+					dummyMember2 := &etcdserverpb.Member{
+						ID:         dummyID + 1,
+						ClientURLs: []string{dummyClientEndpoints[1]},
+					}
+					response.Members = []*etcdserverpb.Member{dummyMember1, dummyMember2}
+					return response, nil
+				}).AnyTimes()
+
+				cm.EXPECT().Status(gomock.Any(), gomock.Any()).Return(nil, fmt.Errorf("failed to connect to the dummy etcd")).AnyTimes()
+
+				leaderEtcdEndpoints, followerEtcdEndpoints, err := etcdutil.GetEtcdEndPointsSorted(testCtx, clientMaintenance, client, dummyClientEndpoints, logger)
+				Expect(err).Should(HaveOccurred())
+				Expect(leaderEtcdEndpoints).Should(BeNil())
+				Expect(followerEtcdEndpoints).Should(BeNil())
+
+				err = etcdutil.DefragmentData(testCtx, clientMaintenance, client, dummyClientEndpoints, logger)
+				Expect(err).Should(HaveOccurred())
+			})
+		})
+
+		Context("Only Defragment API call fails", func() {
+			It("should return error and fail to perform defragmentation", func() {
+				clientMaintenance, err := factory.NewMaintenance()
+				Expect(err).ShouldNot(HaveOccurred())
+
+				client, err := factory.NewCluster()
+				Expect(err).ShouldNot(HaveOccurred())
+
+				cl.EXPECT().MemberList(gomock.Any()).DoAndReturn(func(_ context.Context) (*clientv3.MemberListResponse, error) {
+					response := new(clientv3.MemberListResponse)
+					// dummy etcd cluster leader
+					dummyMember1 := &etcdserverpb.Member{
+						ID:         dummyID,
+						ClientURLs: []string{dummyClientEndpoints[0]},
+					}
+					// dummy etcd cluster follower
+					dummyMember2 := &etcdserverpb.Member{
+						ID:         dummyID + 1,
+						ClientURLs: []string{dummyClientEndpoints[1]},
+					}
+					response.Members = []*etcdserverpb.Member{dummyMember1, dummyMember2}
+					return response, nil
+				}).AnyTimes()
+
+				cm.EXPECT().Status(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, _ string) (*clientv3.StatusResponse, error) {
+					response := new(clientv3.StatusResponse)
+					response.Leader = dummyID
+					return response, nil
+				}).Times(2)
+
+				cm.EXPECT().Status(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, _ string) (*clientv3.StatusResponse, error) {
+					response := new(clientv3.StatusResponse)
+					response.DbSize = 1
+					return response, nil
+				}).Times(1)
+
+				cm.EXPECT().Defragment(gomock.Any(), gomock.Any()).Return(nil, fmt.Errorf("failed to defrag the etcd")).AnyTimes()
+
+				leaderEtcdEndpoints, followerEtcdEndpoints, err := etcdutil.GetEtcdEndPointsSorted(testCtx, clientMaintenance, client, dummyClientEndpoints, logger)
+				Expect(err).ShouldNot(HaveOccurred())
+				Expect(leaderEtcdEndpoints).Should(Equal([]string{dummyClientEndpoints[0]}))
+				Expect(followerEtcdEndpoints).Should(Equal([]string{dummyClientEndpoints[1]}))
+
+				err = etcdutil.DefragmentData(testCtx, clientMaintenance, client, dummyClientEndpoints, logger)
+				Expect(err).Should(HaveOccurred())
+			})
+		})
+
+		Context("All etcd client API call succeeds", func() {
+			It("should able to perform the defragmentation on etcd follower as well as on etcd leader", func() {
+				clientMaintenance, err := factory.NewMaintenance()
+				Expect(err).ShouldNot(HaveOccurred())
+
+				client, err := factory.NewCluster()
+				Expect(err).ShouldNot(HaveOccurred())
+
+				cl.EXPECT().MemberList(gomock.Any()).DoAndReturn(func(_ context.Context) (*clientv3.MemberListResponse, error) {
+					response := new(clientv3.MemberListResponse)
+					// etcd cluster leader
+					dummyMember1 := &etcdserverpb.Member{
+						ID:         dummyID,
+						ClientURLs: []string{dummyClientEndpoints[0]},
+					}
+					// etcd cluster follower
+					dummyMember2 := &etcdserverpb.Member{
+						ID:         dummyID + 1,
+						ClientURLs: []string{dummyClientEndpoints[1]},
+					}
+					response.Members = []*etcdserverpb.Member{dummyMember1, dummyMember2}
+					return response, nil
+				}).AnyTimes()
+
+				cm.EXPECT().Status(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, _ string) (*clientv3.StatusResponse, error) {
+					response := new(clientv3.StatusResponse)
+					response.Leader = dummyID
+					response.DbSize = 10
+					return response, nil
+				}).AnyTimes()
+
+				cm.EXPECT().Defragment(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, _ string) (*clientv3.DefragmentResponse, error) {
+					response := new(clientv3.DefragmentResponse)
+					return response, nil
+				}).AnyTimes()
+
+				err = etcdutil.DefragmentData(testCtx, clientMaintenance, client, dummyClientEndpoints, logger)
+				Expect(err).ShouldNot(HaveOccurred())
+			})
+		})
 	})
 
 	Context("Defragmentation", func() {
