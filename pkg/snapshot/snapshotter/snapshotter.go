@@ -571,9 +571,9 @@ func newEvent(e *clientv3.Event) *event {
 }
 
 func (ssr *Snapshotter) snapshotEventHandler(stopCh <-chan struct{}) error {
+	leaseUpdateCtx, leaseUpdateCancel := context.WithCancel(context.TODO())
+	defer leaseUpdateCancel()
 	for {
-		leaseUpdateCtx, leaseUpdateCancel := context.WithCancel(context.TODO())
-		defer leaseUpdateCancel()
 		select {
 		case isFinal := <-ssr.fullSnapshotReqCh:
 			s, err := ssr.TakeFullSnapshotAndResetTimer(isFinal)
