@@ -19,7 +19,6 @@ import (
 	"os"
 
 	"github.com/gardener/etcd-backup-restore/pkg/compressor"
-	"github.com/gardener/etcd-backup-restore/pkg/leaderelection"
 	"github.com/gardener/etcd-backup-restore/pkg/snapshot/snapshotter"
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
@@ -41,7 +40,7 @@ func NewBackupRestoreComponentConfig() *BackupRestoreComponentConfig {
 		DefragmentationSchedule: defaultDefragmentationSchedule,
 		EtcdProcessName:         defaultEtcdProcessName,
 		HealthConfig:            brtypes.NewHealthConfig(),
-		LeaderElectionConfig:    leaderelection.NewLeaderElectionConfig(),
+		LeaderElectionConfig:    brtypes.NewLeaderElectionConfig(),
 	}
 }
 

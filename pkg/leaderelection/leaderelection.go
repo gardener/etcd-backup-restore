@@ -17,7 +17,6 @@ package leaderelection
 import (
 	"context"
 	"fmt"
-	"sync"
 	"time"
 
 	"github.com/gardener/etcd-backup-restore/pkg/errors"
@@ -26,8 +25,37 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+const (
+	// StateFollower defines currentState of backup-restore as "Follower".
+	StateFollower = "Follower"
+	// StateCandidate defines currentState of backup-restore as "Candidate".
+	StateCandidate = "Candidate"
+	// StateLeader defines currentState of backup-restore as "Leader".
+	StateLeader = "Leader"
+	// StateUnknown defines currentState of backup-restore as "UnknownState".
+	StateUnknown = "UnknownState"
+
+	// DefaultCurrentState defines default currentState of backup-restore as "Follower".
+	DefaultCurrentState = StateFollower
+
+	// NoLeaderState defines the state when etcd returns LeaderID as 0.
+	NoLeaderState uint64 = 0
+)
+
+// LeaderElector holds the all configuration necessary to elect backup-restore Leader.
+type LeaderElector struct {
+	// CurrentState defines currentState of backup-restore for LeaderElection.
+	CurrentState          string
+	Config                *brtypes.Config
+	EtcdConnectionConfig  *brtypes.EtcdConnectionConfig
+	logger                *logrus.Entry
+	Callbacks             *brtypes.LeaderCallbacks
+	LeaseCallbacks        *brtypes.MemberLeaseCallbacks
+	CheckLeadershipStatus brtypes.IsLeaderCallbackFunc
+}
+
 // NewLeaderElector returns LeaderElector configurations.
-func NewLeaderElector(logger *logrus.Entry, etcdConnectionConfig *brtypes.EtcdConnectionConfig, leaderElectionConfig *Config, callbacks *LeaderCallbacks, memberLeaseCallbacks *MemberLeaseCallbacks, checkLeadershipFunc IsLeaderCallbackFunc) (*LeaderElector, error) {
+func NewLeaderElector(logger *logrus.Entry, etcdConnectionConfig *brtypes.EtcdConnectionConfig, leaderElectionConfig *brtypes.Config, callbacks *brtypes.LeaderCallbacks, memberLeaseCallbacks *brtypes.MemberLeaseCallbacks, checkLeadershipFunc brtypes.IsLeaderCallbackFunc) (*LeaderElector, error) {
 	return &LeaderElector{
 		logger:                logger.WithField("actor", "leader-elector"),
 		EtcdConnectionConfig:  etcdConnectionConfig,
@@ -36,7 +64,6 @@ func NewLeaderElector(logger *logrus.Entry, etcdConnectionConfig *brtypes.EtcdCo
 		Callbacks:             callbacks,
 		LeaseCallbacks:        memberLeaseCallbacks,
 		CheckLeadershipStatus: checkLeadershipFunc,
-		ElectionLock:          &sync.Mutex{},
 	}, nil
 }
 
@@ -121,7 +148,7 @@ func (le *LeaderElector) Run(ctx context.Context) error {
 	}
 }
 
-// IsLeader checks whether the current backup-restore is leader or not and returns a boolean.
+// IsLeader checks whether the current instance of backup-restore is leader or not.
 func IsLeader(ctx context.Context, etcdConnectionConfig *brtypes.EtcdConnectionConfig, etcdConnectionTimeout time.Duration, logger *logrus.Entry) (bool, error) {
 	logger.Info("checking the leadershipStatus...")
 	var endPoint string

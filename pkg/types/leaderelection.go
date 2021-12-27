@@ -1,4 +1,4 @@
-// Copyright (c) 2021 SAP SE or an SAP affiliate company. All rights reserved. This file is licensed under the Apache Software License, v. 2 except as noted otherwise in the LICENSE file.
+// Copyright (c) 2022 SAP SE or an SAP affiliate company. All rights reserved. This file is licensed under the Apache Software License, v. 2 except as noted otherwise in the LICENSE file.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,38 +12,23 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package leaderelection
+package types
 
 import (
 	"context"
-	"sync"
+	"fmt"
 	"time"
 
-	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 	"github.com/gardener/etcd-backup-restore/pkg/wrappers"
 	"github.com/sirupsen/logrus"
+	flag "github.com/spf13/pflag"
 )
 
 const (
-	// StateFollower defines currentState of backup-restore as "Follower".
-	StateFollower = "Follower"
-	// StateCandidate defines currentState of backup-restore as "Candidate".
-	StateCandidate = "Candidate"
-	// StateLeader defines currentState of backup-restore as "Leader".
-	StateLeader = "Leader"
-	// StateUnknown defines currentState of backup-restore as "UnknownState".
-	StateUnknown = "UnknownState"
-
-	// DefaultCurrentState defines default currentState of backup-restore as "Follower".
-	DefaultCurrentState = StateFollower
-
-	// NoLeaderState defines the state when etcd returns LeaderID as 0.
-	NoLeaderState uint64 = 0
-
 	// DefaultReelectionPeriod defines default time period for Reelection.
 	DefaultReelectionPeriod = 5 * time.Second
-	// DefaultEtcdConnectionTimeout defines default ConnectionTimeout for etcd client.
-	DefaultEtcdConnectionTimeout = 5 * time.Second
+	// DefaultEtcdConnecTimeout defines default ConnectionTimeout for etcd client.
+	DefaultEtcdConnecTimeout = 5 * time.Second
 )
 
 // LeaderCallbacks are callbacks that are triggered to start/stop the snapshottter when leader's currentState changes.
@@ -63,7 +48,7 @@ type MemberLeaseCallbacks struct {
 }
 
 // IsLeaderCallbackFunc is type declaration for callback function to Check LeadershipStatus.
-type IsLeaderCallbackFunc func(context.Context, *brtypes.EtcdConnectionConfig, time.Duration, *logrus.Entry) (bool, error)
+type IsLeaderCallbackFunc func(context.Context, *EtcdConnectionConfig, time.Duration, *logrus.Entry) (bool, error)
 
 // Config holds the LeaderElection config.
 type Config struct {
@@ -73,15 +58,29 @@ type Config struct {
 	EtcdConnectionTimeout wrappers.Duration `json:"etcdConnectionTimeout,omitempty"`
 }
 
-// LeaderElector holds the all configuration necessary to elect backup-restore Leader.
-type LeaderElector struct {
-	// CurrentState defines currentState of backup-restore for LeaderElection.
-	CurrentState          string
-	Config                *Config
-	EtcdConnectionConfig  *brtypes.EtcdConnectionConfig
-	logger                *logrus.Entry
-	Callbacks             *LeaderCallbacks
-	LeaseCallbacks        *MemberLeaseCallbacks
-	CheckLeadershipStatus IsLeaderCallbackFunc
-	ElectionLock          *sync.Mutex
+// NewLeaderElectionConfig returns the Config.
+func NewLeaderElectionConfig() *Config {
+	return &Config{
+		ReelectionPeriod:      wrappers.Duration{Duration: DefaultReelectionPeriod},
+		EtcdConnectionTimeout: wrappers.Duration{Duration: DefaultEtcdConnecTimeout},
+	}
+}
+
+// AddFlags adds the flags to flagset.
+func (c *Config) AddFlags(fs *flag.FlagSet) {
+	fs.DurationVar(&c.EtcdConnectionTimeout.Duration, "etcd-connection-timeout-leader-election", c.EtcdConnectionTimeout.Duration, "timeout duration of etcd client connection during leader election")
+	fs.DurationVar(&c.ReelectionPeriod.Duration, "reelection-period", c.ReelectionPeriod.Duration, "period after which election will be re-triggered to check the leadership status")
+}
+
+// Validate validates the Config.
+func (c *Config) Validate() error {
+	if c.ReelectionPeriod.Duration <= time.Duration(1*time.Second) {
+		return fmt.Errorf("reelectionPeriod should be greater than 1 second")
+	}
+
+	if c.EtcdConnectionTimeout.Duration <= time.Duration(1*time.Second) {
+		return fmt.Errorf("etcd connection timeout during leader election should be greater than 1 second")
+	}
+
+	return nil
 }

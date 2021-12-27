@@ -29,7 +29,7 @@ import (
 var _ = Describe("Etcd Cluster", func() {
 	var (
 		le                    *LeaderElector
-		config                *Config
+		config                *brtypes.Config
 		etcdConnectionConfig  *brtypes.EtcdConnectionConfig
 		startLeaseRenewal     int
 		stopLeaseRenewal      int
@@ -40,7 +40,7 @@ var _ = Describe("Etcd Cluster", func() {
 	BeforeEach(func() {
 		etcdConnectionConfig = brtypes.NewEtcdConnectionConfig()
 
-		leaderCallbacks := &LeaderCallbacks{
+		leaderCallbacks := &brtypes.LeaderCallbacks{
 			OnStartedLeading: func(ctx context.Context) {
 				logger.Printf("starting snapshotter...")
 				startSnapshotterCount++
@@ -51,7 +51,7 @@ var _ = Describe("Etcd Cluster", func() {
 			},
 		}
 
-		memberLeaseCallbacks := &MemberLeaseCallbacks{
+		memberLeaseCallbacks := &brtypes.MemberLeaseCallbacks{
 			StartLeaseRenewal: func() {
 				logger.Printf("started lease Renewal...")
 				startLeaseRenewal++
@@ -62,7 +62,7 @@ var _ = Describe("Etcd Cluster", func() {
 			},
 		}
 
-		config = NewLeaderElectionConfig()
+		config = brtypes.NewLeaderElectionConfig()
 		config.ReelectionPeriod = reelectionPeriod
 		config.EtcdConnectionTimeout = etcdConnectionTimeout
 		le, _ = NewLeaderElector(logger, etcdConnectionConfig, config, leaderCallbacks, memberLeaseCallbacks, nil)

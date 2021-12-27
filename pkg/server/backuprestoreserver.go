@@ -157,7 +157,7 @@ func (b *BackupRestoreServer) runServer(ctx context.Context, restoreOpts *brtype
 	handler := b.startHTTPServer(etcdInitializer, b.config.SnapstoreConfig.Provider, b.config.EtcdConnectionConfig, nil)
 	defer handler.Stop()
 
-	leaderCallbacks := &leaderelection.LeaderCallbacks{
+	leaderCallbacks := &brtypes.LeaderCallbacks{
 		OnStartedLeading: func(leCtx context.Context) {
 			ssrStopCh = make(chan struct{})
 			var err error
@@ -200,7 +200,7 @@ func (b *BackupRestoreServer) runServer(ctx context.Context, restoreOpts *brtype
 		},
 	}
 
-	memberLeaseCallbacks := &leaderelection.MemberLeaseCallbacks{
+	memberLeaseCallbacks := &brtypes.MemberLeaseCallbacks{
 		StartLeaseRenewal: func() {
 			mmStopCh = make(chan struct{})
 			if b.config.HealthConfig.MemberLeaseRenewalEnabled {
