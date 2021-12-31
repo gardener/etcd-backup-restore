@@ -154,6 +154,7 @@ func (b *BackupRestoreServer) runServer(ctx context.Context, restoreOpts *brtype
 	ackCh := make(chan struct{})
 	ssrStopCh := make(chan struct{})
 	mmStopCh := make(chan struct{})
+	memGCStopCh := make(chan struct{})
 
 	if runServerWithSnapshotter {
 		snapstoreConfig = b.config.SnapstoreConfig
@@ -166,6 +167,7 @@ func (b *BackupRestoreServer) runServer(ctx context.Context, restoreOpts *brtype
 	leaderCallbacks := &brtypes.LeaderCallbacks{
 		OnStartedLeading: func(leCtx context.Context) {
 			ssrStopCh = make(chan struct{})
+			memGCStopCh = make(chan struct{})
 			var err error
 			var defragCallBack defragmentor.CallbackFunc
 			if runServerWithSnapshotter {
@@ -189,6 +191,10 @@ func (b *BackupRestoreServer) runServer(ctx context.Context, restoreOpts *brtype
 			}
 			go b.runEtcdProbeLoopWithSnapshotter(leCtx, handler, ssr, ss, ssrStopCh, ackCh)
 			go defragmentor.DefragDataPeriodically(leCtx, b.config.EtcdConnectionConfig, b.defragmentationSchedule, defragCallBack, b.logger)
+			//start etcd member garbage collector
+			if b.config.HealthConfig.MemberGCEnabled {
+				go membergarbagecollector.RunMemberGarbageCollectorPeriodically(ctx, memGCStopCh, b.config.HealthConfig, b.logger, b.config.EtcdConnectionConfig)
+			}
 		},
 		OnStoppedLeading: func() {
 			// stops the running snapshotter
@@ -203,6 +209,10 @@ func (b *BackupRestoreServer) runServer(ctx context.Context, restoreOpts *brtype
 
 				// TODO @ishan16696: For Multi-node etcd HTTP status need to be set to `StatusServiceUnavailable` only when backup-restore is in "StateUnknown".
 				handler.SetStatus(http.StatusServiceUnavailable)
+			}
+			// stop etcd member garbage collector
+			if b.config.HealthConfig.MemberGCEnabled {
+				memGCStopCh <- emptyStruct
 			}
 		},
 	}
@@ -245,7 +255,7 @@ func (b *BackupRestoreServer) runServer(ctx context.Context, restoreOpts *brtype
 		}()
 	}
 	//start etcd member garbage collector
-	go membergarbagecollector.RunMemberGarbageCollectorPeriodically(ctx, b.config.HealthConfig, b.logger, b.config.EtcdConnectionConfig)
+	go membergarbagecollector.RunMemberGarbageCollectorPeriodically(ctx, memGCStopCh, b.config.HealthConfig, b.logger, b.config.EtcdConnectionConfig)
 
 	return le.Run(ctx)
 }

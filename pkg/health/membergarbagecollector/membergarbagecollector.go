@@ -82,8 +82,7 @@ func NewMemberGarbageCollector(logger *logrus.Entry /*etcdConfig *brtypes.EtcdCo
 }
 
 // RunMemberGarbageCollectorPeriodically periodically calls the member garbage collector
-func RunMemberGarbageCollectorPeriodically(ctx context.Context, hconfig *brtypes.HealthConfig, logger *logrus.Entry, etcdConfig *brtypes.EtcdConnectionConfig) {
-
+func RunMemberGarbageCollectorPeriodically(ctx context.Context, stopCh chan struct{}, hconfig *brtypes.HealthConfig, logger *logrus.Entry, etcdConfig *brtypes.EtcdConnectionConfig) {
 	clientSet, err := miscellaneous.GetKubernetesClientSetOrError()
 	if err != nil {
 		logger.Errorf("failed to create kubernetes clientset: %v", err)
@@ -114,8 +113,11 @@ func RunMemberGarbageCollectorPeriodically(ctx context.Context, hconfig *brtypes
 			}
 			mgc.gcTimer.Reset(hconfig.MemberGCDuration.Duration)
 		case <-ctx.Done():
-			mgc.logger.Info("Stopped etcd member garbage collector")
+			mgc.logger.Info("Stopping etcd member garbage collector")
 			etcdCluster.Close()
+			return
+		case <-stopCh:
+			mgc.logger.Info("Stopping etcd member garbage collector")
 			return
 		}
 	}
