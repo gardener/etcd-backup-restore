@@ -15,17 +15,24 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"net/http"
+	"net/http/httputil"
 	"net/http/pprof"
+	"net/url"
 	"strconv"
 	"sync"
 	"sync/atomic"
 
+	"github.com/gardener/etcd-backup-restore/pkg/etcdutil"
 	"github.com/gardener/etcd-backup-restore/pkg/initializer"
 	"github.com/gardener/etcd-backup-restore/pkg/initializer/validator"
+	"github.com/gardener/etcd-backup-restore/pkg/miscellaneous"
 	"github.com/gardener/etcd-backup-restore/pkg/snapshot/snapshotter"
+	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/sirupsen/logrus"
 )
@@ -61,6 +68,8 @@ const (
 type HTTPHandler struct {
 	Initializer               initializer.Initializer
 	Snapshotter               *snapshotter.Snapshotter
+	EtcdConnectionConfig      *brtypes.EtcdConnectionConfig
+	StorageProvider           string
 	Port                      uint
 	server                    *http.Server
 	Logger                    *logrus.Entry
@@ -75,6 +84,12 @@ type HTTPHandler struct {
 	EnableTLS                 bool
 	ServerTLSCertFile         string
 	ServerTLSKeyFile          string
+	HTTPHandlerMutex          *sync.Mutex
+}
+
+// healthCheck contains the HealthStatus of backup restore.
+type healthCheck struct {
+	HealthStatus bool `json:"health"`
 }
 
 // GetStatus returns the current status in the HTTPHandler
@@ -88,6 +103,20 @@ func (h *HTTPHandler) SetStatus(status int) {
 		h.Logger.Infof("Setting status to : %d", status)
 	}
 	h.status = status
+}
+
+// SetSnapshotterToNil sets the current HTTPHandler.Snapshotter to Nil in the HTTPHandler.
+func (h *HTTPHandler) SetSnapshotterToNil() {
+	h.HTTPHandlerMutex.Lock()
+	defer h.HTTPHandlerMutex.Unlock()
+	h.Snapshotter = nil
+}
+
+// SetSnapshotter sets the current HTTPHandler.Snapshotter in the HTTPHandler.
+func (h *HTTPHandler) SetSnapshotter(ssr *snapshotter.Snapshotter) {
+	h.HTTPHandlerMutex.Lock()
+	defer h.HTTPHandlerMutex.Unlock()
+	h.Snapshotter = ssr
 }
 
 // RegisterHandler registers the handler for different requests
@@ -166,7 +195,20 @@ func (h *HTTPHandler) Stop() error {
 func (h *HTTPHandler) serveHealthz(rw http.ResponseWriter, req *http.Request) {
 	h.checkAndSetSecurityHeaders(rw)
 	rw.WriteHeader(h.GetStatus())
-	rw.Write([]byte(fmt.Sprintf("{\"health\":%v}", h.GetStatus() == http.StatusOK)))
+	healthCheck := &healthCheck{
+		HealthStatus: func() bool {
+			if h.GetStatus() == http.StatusOK {
+				return true
+			}
+			return false
+		}(),
+	}
+	json, err := json.Marshal(healthCheck)
+	if err != nil {
+		h.Logger.Errorf("Unable to marshal health status to json: %v", err)
+		return
+	}
+	rw.Write([]byte(json))
 }
 
 // serveInitialize starts initialization for the configured Initializer
@@ -250,6 +292,11 @@ func (h *HTTPHandler) serveInitializationStatus(rw http.ResponseWriter, req *htt
 func (h *HTTPHandler) serveFullSnapshotTrigger(rw http.ResponseWriter, req *http.Request) {
 	h.checkAndSetSecurityHeaders(rw)
 	if h.Snapshotter == nil {
+		if len(h.StorageProvider) > 0 {
+			h.Logger.Info("Fowarding the request to take out-of-schedule full snapshot to backup-restore leader")
+			h.delegateReqToLeader(rw, req)
+			return
+		}
 		h.Logger.Warnf("Ignoring out-of-schedule full snapshot request as snapshotter is not configured")
 		rw.WriteHeader(http.StatusMethodNotAllowed)
 		return
@@ -271,6 +318,11 @@ func (h *HTTPHandler) serveFullSnapshotTrigger(rw http.ResponseWriter, req *http
 		return
 	}
 	json, err := json.Marshal(s)
+	if err != nil {
+		h.Logger.Warnf("Unable to marshal out-of-schedule full snapshot to json: %v", err)
+		rw.WriteHeader(http.StatusInternalServerError)
+		return
+	}
 	rw.WriteHeader(http.StatusOK)
 	rw.Write(json)
 }
@@ -280,6 +332,11 @@ func (h *HTTPHandler) serveFullSnapshotTrigger(rw http.ResponseWriter, req *http
 func (h *HTTPHandler) serveDeltaSnapshotTrigger(rw http.ResponseWriter, req *http.Request) {
 	h.checkAndSetSecurityHeaders(rw)
 	if h.Snapshotter == nil {
+		if len(h.StorageProvider) > 0 {
+			h.Logger.Info("Fowarding the request to take out-of-schedule delta snapshot to backup-restore leader")
+			h.delegateReqToLeader(rw, req)
+			return
+		}
 		h.Logger.Warnf("Ignoring out-of-schedule delta snapshot request as snapshotter is not configured")
 		rw.WriteHeader(http.StatusMethodNotAllowed)
 		return
@@ -304,6 +361,11 @@ func (h *HTTPHandler) serveDeltaSnapshotTrigger(rw http.ResponseWriter, req *htt
 func (h *HTTPHandler) serveLatestSnapshotMetadata(rw http.ResponseWriter, req *http.Request) {
 	h.checkAndSetSecurityHeaders(rw)
 	if h.Snapshotter == nil {
+		if len(h.StorageProvider) > 0 {
+			h.Logger.Info("Fowarding the request of latest snapshot metadata to backup-restore leader")
+			h.delegateReqToLeader(rw, req)
+			return
+		}
 		h.Logger.Warnf("Ignoring latest snapshot metadata request as snapshotter is not configured")
 		rw.WriteHeader(http.StatusMethodNotAllowed)
 		return
@@ -323,4 +385,96 @@ func (h *HTTPHandler) serveLatestSnapshotMetadata(rw http.ResponseWriter, req *h
 	rw.WriteHeader(http.StatusOK)
 	rw.Write(json)
 	return
+}
+
+// delegateReqToLeader forwards the incoming http/https request to BackupLeader.
+func (h *HTTPHandler) delegateReqToLeader(rw http.ResponseWriter, req *http.Request) {
+	// Get the BackupLeader URL
+	// Get the ReverseProxy object
+	// Delegate the http request to BackupLeader using the reverse proxy.
+
+	factory := etcdutil.NewFactory(*h.EtcdConnectionConfig)
+	clientMaintenance, err := factory.NewMaintenance()
+	if err != nil {
+		h.Logger.Warnf("failed to create etcd maintenance client:  %v", err)
+		rw.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	defer clientMaintenance.Close()
+
+	client, err := factory.NewCluster()
+	if err != nil {
+		h.Logger.Warnf("failed to create etcd cluster client:  %v", err)
+		rw.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	defer client.Close()
+
+	ctx, cancel := context.WithTimeout(req.Context(), h.EtcdConnectionConfig.ConnectionTimeout.Duration)
+	defer cancel()
+
+	if len(h.EtcdConnectionConfig.Endpoints) == 0 {
+		h.Logger.Warnf("etcd endpoints are not passed correctly")
+		rw.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	_, etcdLeaderEndPoint, err := miscellaneous.GetLeader(ctx, clientMaintenance, client, h.EtcdConnectionConfig.Endpoints[0])
+	if err != nil {
+		h.Logger.Warnf("Unable to get the etcd leader endpoint: %v", err)
+		rw.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	backupLeaderEndPoint, err := miscellaneous.GetBackupLeaderEndPoint(etcdLeaderEndPoint, h.Port)
+	if err != nil {
+		h.Logger.Warnf("Unable to get the backup leader endpoint: %v", err)
+		rw.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	backupLeaderURL, err := url.Parse(backupLeaderEndPoint)
+	if err != nil {
+		h.Logger.Warnf("Unable to parse backup leader endpoint: %v", err)
+		rw.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	isHealthy, err := IsBackupRestoreHealthy(backupLeaderEndPoint + "/healthz")
+	if err != nil {
+		h.Logger.Warnf("Unable to check backup leader health: %v", err)
+		rw.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	// when backup-leader is not in a healthy state.
+	if !isHealthy {
+		h.Logger.Warnf("backup leader is not healthy: %v", err)
+		rw.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	revProxyHandler := httputil.NewSingleHostReverseProxy(backupLeaderURL)
+	revProxyHandler.ServeHTTP(rw, req)
+	return
+}
+
+// IsBackupRestoreHealthy checks the whether the backup-restore of given backup-restore URL healthy or not.
+func IsBackupRestoreHealthy(backupRestoreURL string) (bool, error) {
+	var health healthCheck
+
+	response, err := http.Get(backupRestoreURL)
+	if err != nil {
+		return false, err
+	}
+	defer response.Body.Close()
+
+	responseData, err := ioutil.ReadAll(response.Body)
+	if err != nil {
+		return false, err
+	}
+
+	if err := json.Unmarshal(responseData, &health); err != nil {
+		return false, err
+	}
+	return health.HealthStatus, nil
 }

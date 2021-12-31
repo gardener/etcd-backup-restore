@@ -138,8 +138,14 @@ func (cp *Compactor) Compact(opts *brtypes.CompactOptions) (*brtypes.Snapshot, e
 
 	// Then defrag the ETCD
 	if opts.NeedDefragmentation {
+		client, err := clientFactory.NewCluster()
+		if err != nil {
+			return nil, fmt.Errorf("failed to build etcd cluster client")
+		}
+		defer client.Close()
+
 		defragCtx, defragCancel := context.WithTimeout(ctx, opts.DefragTimeout.Duration)
-		err := etcdutil.DefragmentData(defragCtx, clientMaintenance, ep, cp.logger)
+		err = etcdutil.DefragmentData(defragCtx, clientMaintenance, client, ep, cp.logger)
 		defragCancel()
 		if err != nil {
 			cp.logger.Errorf("failed to defragment: %v", err)

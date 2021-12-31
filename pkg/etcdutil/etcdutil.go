@@ -124,35 +124,126 @@ func GetTLSClientForEtcd(tlsConfig *brtypes.EtcdConnectionConfig) (*clientv3.Cli
 	return clientv3.New(*cfg)
 }
 
-// DefragmentData defragment the data directory of each etcd member.
-func DefragmentData(defragCtx context.Context, client client.MaintenanceCloser, endpoints []string, logger *logrus.Entry) error {
-	for _, ep := range endpoints {
-		var dbSizeBeforeDefrag, dbSizeAfterDefrag int64
-		logger.Infof("Defragmenting etcd member[%s]", ep)
+// PerformDefragmentation defragment the data directory of each etcd member.
+func PerformDefragmentation(defragCtx context.Context, client client.MaintenanceCloser, endpoint string, logger *logrus.Entry) error {
+	var dbSizeBeforeDefrag, dbSizeAfterDefrag int64
+	logger.Infof("Defragmenting etcd member[%s]", endpoint)
 
-		if status, err := client.Status(defragCtx, ep); err != nil {
-			logger.Warnf("Failed to get status of etcd member[%s] with error: %v", ep, err)
-		} else {
-			dbSizeBeforeDefrag = status.DbSize
-		}
-		start := time.Now()
-		if _, err := client.Defragment(defragCtx, ep); err != nil {
-			metrics.DefragmentationDurationSeconds.With(prometheus.Labels{metrics.LabelSucceeded: metrics.ValueSucceededFalse}).Observe(time.Since(start).Seconds())
-			logger.Errorf("Failed to defragment etcd member[%s] with error: %v", ep, err)
+	if status, err := client.Status(defragCtx, endpoint); err != nil {
+		logger.Warnf("Failed to get status of etcd member[%s] with error: %v", endpoint, err)
+	} else {
+		dbSizeBeforeDefrag = status.DbSize
+	}
+
+	start := time.Now()
+	if _, err := client.Defragment(defragCtx, endpoint); err != nil {
+		metrics.DefragmentationDurationSeconds.With(prometheus.Labels{metrics.LabelSucceeded: metrics.ValueSucceededFalse}).Observe(time.Since(start).Seconds())
+		logger.Errorf("Failed to defragment etcd member[%s] with error: %v", endpoint, err)
+		return err
+	}
+
+	metrics.DefragmentationDurationSeconds.With(prometheus.Labels{metrics.LabelSucceeded: metrics.ValueSucceededTrue}).Observe(time.Since(start).Seconds())
+	logger.Infof("Finished defragmenting etcd member[%s]", endpoint)
+	// Since below request for status races with other etcd operations. So, size returned in
+	// status might vary from the precise size just after defragmentation.
+	if status, err := client.Status(defragCtx, endpoint); err != nil {
+		logger.Warnf("Failed to get status of etcd member[%s] with error: %v", endpoint, err)
+	} else {
+		dbSizeAfterDefrag = status.DbSize
+		logger.Infof("Probable DB size change for etcd member [%s]:  %dB -> %dB after defragmentation", endpoint, dbSizeBeforeDefrag, dbSizeAfterDefrag)
+	}
+	return nil
+}
+
+// DefragmentData calls the defragmentation on each etcd followers endPoints
+// then calls the defragmentation on etcd leader endPoints.
+func DefragmentData(defragCtx context.Context, clientMaintenance client.MaintenanceCloser, clientCluster client.ClusterCloser, etcdEndpoints []string, logger *logrus.Entry) error {
+	leaderEtcdEndpoints, followerEtcdEndpoints, err := GetEtcdEndPointsSorted(defragCtx, clientMaintenance, clientCluster, etcdEndpoints, logger)
+	logger.Debugf("etcdEndpoints: %v", etcdEndpoints)
+	logger.Debugf("leaderEndpoints: %v", leaderEtcdEndpoints)
+	logger.Debugf("followerEtcdEndpointss: %v", followerEtcdEndpoints)
+	if err != nil {
+		return err
+	}
+
+	if len(followerEtcdEndpoints) > 0 {
+		logger.Info("Starting the defragmentation on etcd followers in a rolling manner")
+	}
+	// Perform the defragmentation on each etcd followers.
+	for _, ep := range followerEtcdEndpoints {
+		if err := func() error {
+			ctx, cancel := context.WithTimeout(defragCtx, DefaultDefragConnectionTimeout)
+			defer cancel()
+			if err := PerformDefragmentation(ctx, clientMaintenance, ep, logger); err != nil {
+				return err
+			}
+			return nil
+		}(); err != nil {
 			return err
 		}
-		metrics.DefragmentationDurationSeconds.With(prometheus.Labels{metrics.LabelSucceeded: metrics.ValueSucceededTrue}).Observe(time.Since(start).Seconds())
-		logger.Infof("Finished defragmenting etcd member[%s]", ep)
-		// Since below request for status races with other etcd operations. So, size returned in
-		// status might vary from the precise size just after defragmentation.
-		if status, err := client.Status(defragCtx, ep); err != nil {
-			logger.Warnf("Failed to get status of etcd member[%s] with error: %v", ep, err)
-		} else {
-			dbSizeAfterDefrag = status.DbSize
-			logger.Infof("Probable DB size change for etcd member [%s]:  %dB -> %dB after defragmentation", ep, dbSizeBeforeDefrag, dbSizeAfterDefrag)
+	}
+
+	logger.Info("Starting the defragmentation on etcd leader")
+	// Perform the defragmentation on etcd leader.
+	for _, ep := range leaderEtcdEndpoints {
+		if err := func() error {
+			ctx, cancel := context.WithTimeout(defragCtx, DefaultDefragConnectionTimeout)
+			defer cancel()
+			if err := PerformDefragmentation(ctx, clientMaintenance, ep, logger); err != nil {
+				return err
+			}
+			return nil
+		}(); err != nil {
+			return err
 		}
 	}
 	return nil
+}
+
+// GetEtcdEndPointsSorted returns the etcd leaderEndpoints and etcd followerEndpoints.
+func GetEtcdEndPointsSorted(ctx context.Context, clientMaintenance client.MaintenanceCloser, clientCluster client.ClusterCloser, etcdEndpoints []string, logger *logrus.Entry) ([]string, []string, error) {
+	var leaderEtcdEndpoints []string
+	var followerEtcdEndpoints []string
+	var endPoint string
+
+	ctx, cancel := context.WithTimeout(ctx, DefaultDefragConnectionTimeout)
+	defer cancel()
+
+	membersInfo, err := clientCluster.MemberList(ctx)
+	if err != nil {
+		logger.Errorf("failed to get memberList of etcd with error: %v", err)
+		return nil, nil, err
+	}
+
+	// to handle the single node etcd case (particularly: single node embedded etcd case)
+	if len(membersInfo.Members) == 1 {
+		leaderEtcdEndpoints = append(leaderEtcdEndpoints, etcdEndpoints...)
+		return leaderEtcdEndpoints, nil, nil
+	}
+
+	if len(etcdEndpoints) > 0 {
+		endPoint = etcdEndpoints[0]
+	} else {
+		return nil, nil, &errors.EtcdError{
+			Message: fmt.Sprintf("etcd endpoints are not passed correctly"),
+		}
+	}
+
+	response, err := clientMaintenance.Status(ctx, endPoint)
+	if err != nil {
+		logger.Errorf("failed to get status of etcd endPoint: %v with error: %v", endPoint, err)
+		return nil, nil, err
+	}
+
+	for _, member := range membersInfo.Members {
+		if member.GetID() == response.Leader {
+			leaderEtcdEndpoints = append(leaderEtcdEndpoints, member.GetClientURLs()...)
+		} else {
+			followerEtcdEndpoints = append(followerEtcdEndpoints, member.GetClientURLs()...)
+		}
+	}
+
+	return leaderEtcdEndpoints, followerEtcdEndpoints, nil
 }
 
 // TakeAndSaveFullSnapshot takes full snapshot and save it to store

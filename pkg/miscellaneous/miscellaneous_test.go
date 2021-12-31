@@ -15,19 +15,23 @@
 package miscellaneous
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"reflect"
 	"time"
 
-	"github.com/gardener/etcd-backup-restore/pkg/types"
+	mockfactory "github.com/gardener/etcd-backup-restore/pkg/mock/etcdutil/client"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
+	"github.com/golang/mock/gomock"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
+	"go.etcd.io/etcd/clientv3"
+	"go.etcd.io/etcd/etcdserver/etcdserverpb"
 )
 
 var (
-	snapList types.SnapList
+	snapList brtypes.SnapList
 	ds       DummyStore
 )
 
@@ -35,57 +39,273 @@ const (
 	generatedSnaps = 20
 )
 
-var _ = Describe("Filtering snapshots", func() {
+var _ = Describe("Miscellaneous Tests", func() {
+	var (
+		etcdConnectionConfig *brtypes.EtcdConnectionConfig
+		ctrl                 *gomock.Controller
+		factory              *mockfactory.MockFactory
+		cm                   *mockfactory.MockMaintenanceCloser
+		cl                   *mockfactory.MockClusterCloser
+	)
+
 	BeforeEach(func() {
-		snapList = generateSnapshotList(generatedSnaps)
-		ds = NewDummyStore(snapList)
+		etcdConnectionConfig = brtypes.NewEtcdConnectionConfig()
+		etcdConnectionConfig.Endpoints = []string{"http://127.0.0.1:2379"}
+		etcdConnectionConfig.ConnectionTimeout.Duration = 30 * time.Second
+		etcdConnectionConfig.SnapshotTimeout.Duration = 30 * time.Second
+		etcdConnectionConfig.DefragTimeout.Duration = 30 * time.Second
+
+		ctrl = gomock.NewController(GinkgoT())
+		factory = mockfactory.NewMockFactory(ctrl)
+		cm = mockfactory.NewMockMaintenanceCloser(ctrl)
+		cl = mockfactory.NewMockClusterCloser(ctrl)
+	})
+
+	Describe("Filtering snapshots", func() {
+		BeforeEach(func() {
+			snapList = generateSnapshotList(generatedSnaps)
+			ds = NewDummyStore(snapList)
+		})
+		It("should return the whole snaplist", func() {
+			snaps, err := GetFilteredBackups(&ds, -1, nil)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(len(snaps)).To(Equal(len(snapList)))
+		})
+		It("should get the last 3 snapshots and its deltas", func() {
+			n := 3
+			snaps, err := GetFilteredBackups(&ds, n, nil)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(len(snaps)).To(Equal(n * 2))
+			expectedSnapID := 0
+			for i := 0; i < n; i++ {
+				if reflect.DeepEqual(snaps[i].Kind, brtypes.SnapshotKindFull) {
+					Expect(snaps[i].SnapName).To(Equal(fmt.Sprintf("%s-%d", brtypes.SnapshotKindFull, expectedSnapID)))
+					Expect(snaps[i+1].SnapName).To(Equal(fmt.Sprintf("%s-%d", brtypes.SnapshotKindDelta, expectedSnapID)))
+					expectedSnapID++
+				}
+			}
+		})
+		It("should get the last backups created in the past 5 days", func() {
+			n := 5
+			backups, err := GetFilteredBackups(&ds, n, func(snap brtypes.Snapshot) bool {
+				return snap.CreatedOn.After(time.Now().UTC().AddDate(0, 0, -n))
+			})
+			Expect(err).ToNot(HaveOccurred())
+			Expect(len(backups)).To(Equal(n * 2))
+			for i := 0; i < n; i++ {
+				if reflect.DeepEqual(backups[i].Kind, brtypes.SnapshotKindFull) {
+					backups[i].CreatedOn.After(time.Now().UTC().AddDate(0, 0, -n))
+				}
+			}
+		})
+	})
+
+	Describe("Etcd Cluster", func() {
+		var (
+			dummyID              = uint64(1111)
+			dummyClientEndpoints = []string{"http://127.0.0.1:2379", "http://127.0.0.1:9090"}
+		)
+		BeforeEach(func() {
+			factory.EXPECT().NewMaintenance().Return(cm, nil)
+			factory.EXPECT().NewCluster().Return(cl, nil)
+		})
+
+		Context("MemberList API call succeeds", func() {
+			It("should return the endpoints of all etcd cluster members", func() {
+				client, err := factory.NewCluster()
+				Expect(err).ShouldNot(HaveOccurred())
+
+				cl.EXPECT().MemberList(gomock.Any()).DoAndReturn(func(_ context.Context) (*clientv3.MemberListResponse, error) {
+					response := new(clientv3.MemberListResponse)
+					// two dummy etcd cluster members:
+					dummyMember1 := &etcdserverpb.Member{
+						ID:         dummyID,
+						ClientURLs: []string{dummyClientEndpoints[0]},
+					}
+					dummyMember2 := &etcdserverpb.Member{
+						ID:         dummyID + 1,
+						ClientURLs: []string{dummyClientEndpoints[1]},
+					}
+					response.Members = []*etcdserverpb.Member{dummyMember1, dummyMember2}
+					return response, nil
+				})
+
+				etcdEndpoints, err := GetAllEtcdEndpoints(testCtx, client, etcdConnectionConfig, logger)
+				Expect(err).ShouldNot(HaveOccurred())
+				Expect(etcdEndpoints).To(Equal(dummyClientEndpoints))
+			})
+		})
+
+		Context("MemberList API call fails", func() {
+			It("should return error", func() {
+				client, err := factory.NewCluster()
+				Expect(err).ShouldNot(HaveOccurred())
+
+				cl.EXPECT().MemberList(gomock.Any()).Return(nil, fmt.Errorf("unable to connect to the dummy etcd"))
+
+				etcdEndpoints, err := GetAllEtcdEndpoints(testCtx, client, etcdConnectionConfig, logger)
+				Expect(err).Should(HaveOccurred())
+				Expect(etcdEndpoints).Should(BeNil())
+			})
+		})
+
+		Context("Status API call succeeds", func() {
+			It("should return boolean indicating etcd cluster is healthy", func() {
+				clientMaintenance, err := factory.NewMaintenance()
+				Expect(err).ShouldNot(HaveOccurred())
+
+				cm.EXPECT().Status(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, _ string) (*clientv3.StatusResponse, error) {
+					response := new(clientv3.StatusResponse)
+					return response, nil
+				}).AnyTimes()
+
+				isHealthy, err := IsEtcdClusterHealthy(testCtx, clientMaintenance, etcdConnectionConfig, dummyClientEndpoints, logger)
+				Expect(err).ShouldNot(HaveOccurred())
+				Expect(isHealthy).To(BeTrue())
+			})
+		})
+
+		Context("Status API call fails", func() {
+			It("should return error", func() {
+				clientMaintenance, err := factory.NewMaintenance()
+				Expect(err).ShouldNot(HaveOccurred())
+
+				client, err := factory.NewCluster()
+				Expect(err).ShouldNot(HaveOccurred())
+
+				cm.EXPECT().Status(gomock.Any(), gomock.Any()).Return(nil, fmt.Errorf("unable to connect to the dummy etcd")).AnyTimes()
+
+				isHealthy, err := IsEtcdClusterHealthy(testCtx, clientMaintenance, etcdConnectionConfig, dummyClientEndpoints, logger)
+				Expect(err).Should(HaveOccurred())
+				Expect(isHealthy).To(BeFalse())
+
+				leaderID, endpoint, err := GetLeader(testCtx, clientMaintenance, client, dummyClientEndpoints[0])
+				Expect(err).Should(HaveOccurred())
+				Expect(leaderID).Should(Equal(NoLeaderState))
+				Expect(endpoint).Should(BeNil())
+			})
+		})
+
+		Context("Have No Quorum or No etcd Leader present", func() {
+			It("should return error", func() {
+				clientMaintenance, err := factory.NewMaintenance()
+				Expect(err).ShouldNot(HaveOccurred())
+
+				client, err := factory.NewCluster()
+				Expect(err).ShouldNot(HaveOccurred())
+
+				cm.EXPECT().Status(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, _ string) (*clientv3.StatusResponse, error) {
+					response := new(clientv3.StatusResponse)
+					response.Leader = NoLeaderState
+					return response, nil
+				})
+
+				leaderID, endpoint, err := GetLeader(testCtx, clientMaintenance, client, dummyClientEndpoints[0])
+				Expect(err).Should(HaveOccurred())
+				Expect(leaderID).Should(Equal(NoLeaderState))
+				Expect(endpoint).Should(BeNil())
+			})
+		})
+
+		Context("Both Status and MemberList API call suceeds", func() {
+			It("should return etcd cluster's LeaderID and its endpoints", func() {
+				clientMaintenance, err := factory.NewMaintenance()
+				Expect(err).ShouldNot(HaveOccurred())
+
+				client, err := factory.NewCluster()
+				Expect(err).ShouldNot(HaveOccurred())
+
+				cm.EXPECT().Status(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, _ string) (*clientv3.StatusResponse, error) {
+					response := new(clientv3.StatusResponse)
+					// setting the etcd leaderID
+					response.Leader = dummyID
+					return response, nil
+				})
+
+				cl.EXPECT().MemberList(gomock.Any()).DoAndReturn(func(_ context.Context) (*clientv3.MemberListResponse, error) {
+					response := new(clientv3.MemberListResponse)
+					// etcd Leader
+					dummyMember1 := &etcdserverpb.Member{
+						ID:         dummyID,
+						ClientURLs: []string{dummyClientEndpoints[0]},
+					}
+					// etcd Follower
+					dummyMember2 := &etcdserverpb.Member{
+						ID:         dummyID + 1,
+						ClientURLs: []string{dummyClientEndpoints[1]},
+					}
+					response.Members = []*etcdserverpb.Member{dummyMember1, dummyMember2}
+					return response, nil
+				})
+
+				leaderID, endpoint, err := GetLeader(testCtx, clientMaintenance, client, dummyClientEndpoints[0])
+				Expect(err).ShouldNot(HaveOccurred())
+				Expect(leaderID).Should(Equal(dummyID))
+				Expect(endpoint).Should(Equal([]string{dummyClientEndpoints[0]}))
+			})
+		})
+
+		Context("Status API call succeeds and MemberList API call fails", func() {
+			It("should return error and etcd cluster's LeaderID", func() {
+				clientMaintenance, err := factory.NewMaintenance()
+				Expect(err).ShouldNot(HaveOccurred())
+
+				client, err := factory.NewCluster()
+				Expect(err).ShouldNot(HaveOccurred())
+
+				cm.EXPECT().Status(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, _ string) (*clientv3.StatusResponse, error) {
+					response := new(clientv3.StatusResponse)
+					// setting the etcd leaderID
+					response.Leader = dummyID
+					return response, nil
+				})
+
+				cl.EXPECT().MemberList(gomock.Any()).Return(nil, fmt.Errorf("unable to connect to the dummy etcd"))
+
+				leaderID, endpoint, err := GetLeader(testCtx, clientMaintenance, client, dummyClientEndpoints[0])
+				Expect(err).Should(HaveOccurred())
+				Expect(leaderID).Should(Equal(dummyID))
+				Expect(endpoint).Should(BeNil())
+			})
+		})
 
 	})
-	It("should return the whole snaplist", func() {
-		snaps, err := GetFilteredBackups(&ds, -1, nil)
-		Expect(err).ToNot(HaveOccurred())
-		Expect(len(snaps)).To(Equal(len(snapList)))
-	})
-	It("should get the last 3 snapshots and its deltas", func() {
-		n := 3
-		snaps, err := GetFilteredBackups(&ds, n, nil)
-		Expect(err).ToNot(HaveOccurred())
-		Expect(len(snaps)).To(Equal(n * 2))
-		expectedSnapID := 0
-		for i := 0; i < n; i++ {
-			if reflect.DeepEqual(snaps[i].Kind, types.SnapshotKindFull) {
-				Expect(snaps[i].SnapName).To(Equal(fmt.Sprintf("%s-%d", types.SnapshotKindFull, expectedSnapID)))
-				Expect(snaps[i+1].SnapName).To(Equal(fmt.Sprintf("%s-%d", types.SnapshotKindDelta, expectedSnapID)))
-				expectedSnapID++
-			}
-		}
-	})
-	It("should get the last backups created in the past 5 days", func() {
-		n := 5
-		backups, err := GetFilteredBackups(&ds, n, func(snap types.Snapshot) bool {
-			return snap.CreatedOn.After(time.Now().UTC().AddDate(0, 0, -n))
+
+	Describe("BackupLeaderEndpoint", func() {
+		var (
+			portNo    = uint(8080)
+			endpoints = []string{"http://127.0.0.1:2379"}
+		)
+
+		Context("Empty Etcd endpoint passed", func() {
+			It("should return error", func() {
+				_, err := GetBackupLeaderEndPoint([]string{}, portNo)
+				Expect(err).Should(HaveOccurred())
+			})
 		})
-		Expect(err).ToNot(HaveOccurred())
-		Expect(len(backups)).To(Equal(n * 2))
-		for i := 0; i < n; i++ {
-			if reflect.DeepEqual(backups[i].Kind, types.SnapshotKindFull) {
-				backups[i].CreatedOn.After(time.Now().UTC().AddDate(0, 0, -n))
-			}
-		}
+
+		Context("Correct Etcd endpoint passed", func() {
+			It("should return backupLeaderEndPoint", func() {
+				backupLeaderEndPoint, err := GetBackupLeaderEndPoint(endpoints, portNo)
+				Expect(err).ShouldNot(HaveOccurred())
+				Expect(backupLeaderEndPoint).To(Equal("http://127.0.0.1:8080"))
+			})
+		})
 	})
+
 })
 
-func generateSnapshotList(n int) types.SnapList {
-	snapList := types.SnapList{}
+func generateSnapshotList(n int) brtypes.SnapList {
+	snapList := brtypes.SnapList{}
 	for i := 0; i < n; i++ {
-		fullSnap := &types.Snapshot{
-			SnapName:  fmt.Sprintf("%s-%d", types.SnapshotKindFull, i),
-			Kind:      types.SnapshotKindFull,
+		fullSnap := &brtypes.Snapshot{
+			SnapName:  fmt.Sprintf("%s-%d", brtypes.SnapshotKindFull, i),
+			Kind:      brtypes.SnapshotKindFull,
 			CreatedOn: time.Now().UTC().AddDate(0, 0, -i),
 		}
-		deltaSnap := &types.Snapshot{
-			SnapName:  fmt.Sprintf("%s-%d", types.SnapshotKindDelta, i),
-			Kind:      types.SnapshotKindDelta,
+		deltaSnap := &brtypes.Snapshot{
+			SnapName:  fmt.Sprintf("%s-%d", brtypes.SnapshotKindDelta, i),
+			Kind:      brtypes.SnapshotKindDelta,
 			CreatedOn: time.Now().UTC().AddDate(0, 0, -i),
 		}
 		snapList = append(snapList, fullSnap, deltaSnap)
@@ -94,14 +314,14 @@ func generateSnapshotList(n int) types.SnapList {
 }
 
 type DummyStore struct {
-	SnapList types.SnapList
+	SnapList brtypes.SnapList
 }
 
-func NewDummyStore(snapList types.SnapList) DummyStore {
+func NewDummyStore(snapList brtypes.SnapList) DummyStore {
 	return DummyStore{SnapList: snapList}
 }
 
-func (ds *DummyStore) List() (types.SnapList, error) {
+func (ds *DummyStore) List() (brtypes.SnapList, error) {
 	return ds.SnapList, nil
 }
 

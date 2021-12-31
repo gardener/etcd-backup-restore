@@ -15,10 +15,17 @@
 package miscellaneous
 
 import (
+	"context"
 	"testing"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
+	"github.com/sirupsen/logrus"
+)
+
+var (
+	testCtx = context.TODO()
+	logger  = logrus.New().WithField("suite", "miscellaneous")
 )
 
 func TestRestorer(t *testing.T) {

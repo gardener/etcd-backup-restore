@@ -73,6 +73,7 @@ var _ = Describe("Running Restorer", func() {
 		embeddedEtcdQuotaBytes  int64  = 8 * 1024 * 1024 * 1024
 		autoCompactionMode      string = "periodic"
 		autoCompactionRetention string = "0"
+		embeddedEtcdPortNo      string = "9089"
 	)
 
 	BeforeEach(func() {
@@ -251,7 +252,7 @@ var _ = Describe("Running Restorer", func() {
 
 		BeforeEach(func() {
 			deltaSnapshotPeriod = time.Second
-			etcd, err = utils.StartEmbeddedEtcd(testCtx, etcdDir, logger)
+			etcd, err = utils.StartEmbeddedEtcd(testCtx, etcdDir, logger, embeddedEtcdPortNo)
 			Expect(err).ShouldNot(HaveOccurred())
 			endpoints = []string{etcd.Clients[0].Addr().String()}
 
@@ -703,6 +704,7 @@ var _ = Describe("Running Restorer when both v1 and v2 directory structures are 
 		embeddedEtcdQuotaBytes  int64  = 8 * 1024 * 1024 * 1024
 		autoCompactionMode      string = "periodic"
 		autoCompactionRetention string = "0"
+		embeddedEtcdPortNo      string = "9089"
 	)
 
 	var (
@@ -713,7 +715,7 @@ var _ = Describe("Running Restorer when both v1 and v2 directory structures are 
 		compactDir = outputDir + "/compaction-test"
 		emDir = compactDir + "/default.etcd"
 		cmpctStoreDir = compactDir + "/snapshotter.bkp"
-		etcd, err = utils.StartEmbeddedEtcd(testCtx, emDir, logger)
+		etcd, err = utils.StartEmbeddedEtcd(testCtx, emDir, logger, embeddedEtcdPortNo)
 		Expect(err).ShouldNot(HaveOccurred())
 		ep = []string{etcd.Clients[0].Addr().String()}
 

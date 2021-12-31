@@ -29,9 +29,11 @@ import (
 )
 
 const (
-	outputDir       = "../../test/output"
-	etcdDir         = outputDir + "/default.etcd"
-	etcdDialTimeout = time.Second * 30
+	outputDir          = "../../test/output"
+	etcdDir            = outputDir + "/default.etcd"
+	etcdDialTimeout    = time.Second * 30
+	embeddedEtcdPortNo = "9089"
+	mockTimeout        = time.Second * 5
 )
 
 var (
@@ -52,7 +54,7 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 	err = os.RemoveAll(outputDir)
 	Expect(err).ShouldNot(HaveOccurred())
 
-	etcd, err = utils.StartEmbeddedEtcd(testCtx, etcdDir, logger)
+	etcd, err = utils.StartEmbeddedEtcd(testCtx, etcdDir, logger, embeddedEtcdPortNo)
 	Expect(err).ShouldNot(HaveOccurred())
 	endpoints = []string{etcd.Clients[0].Addr().String()}
 	logger.Infof("endpoints: %s", endpoints)

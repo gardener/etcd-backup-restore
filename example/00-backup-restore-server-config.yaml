@@ -51,3 +51,14 @@ defragmentationSchedule: "0 0 */3 * *"
 compressionConfig:
    enabled: true
    policy: "gzip"
+
+leaderElectionConfig:
+  reelectionPeriod: "5s"
+  etcdConnectionTimeout: "5s"
+
+healthConfig:
+  snapshotLeaseRenewalEnabled: false
+  memberLeaseRenewalEnabled: false
+  heartbeatDuration: "30s"
+  fullSnapshotLeaseName: "full-snapshot-revisions"
+  deltaSnapshotLeaseName: "delta-snapshot-revisions"

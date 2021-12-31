@@ -23,9 +23,10 @@ import (
 )
 
 const (
-	outputDir    = "../../../test/output"
-	etcdDir      = outputDir + "/default.etcd"
-	snapstoreDir = outputDir + "/snapshotter.bkp"
+	outputDir          = "../../../test/output"
+	etcdDir            = outputDir + "/default.etcd"
+	snapstoreDir       = outputDir + "/snapshotter.bkp"
+	embeddedEtcdPortNo = "9089"
 )
 
 var (
@@ -57,7 +58,7 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 	err = os.RemoveAll(outputDir)
 	Expect(err).ShouldNot(HaveOccurred())
 
-	etcd, err = utils.StartEmbeddedEtcd(testCtx, etcdDir, logger)
+	etcd, err = utils.StartEmbeddedEtcd(testCtx, etcdDir, logger, embeddedEtcdPortNo)
 	Expect(err).ShouldNot(HaveOccurred())
 	defer func() {
 		etcd.Server.Stop()

@@ -15,12 +15,16 @@
 package miscellaneous
 
 import (
+	"context"
 	"fmt"
+	"net"
 	"net/url"
 	"path/filepath"
 	"sort"
 	"time"
 
+	"github.com/gardener/etcd-backup-restore/pkg/errors"
+	etcdClient "github.com/gardener/etcd-backup-restore/pkg/etcdutil/client"
 	"github.com/gardener/etcd-backup-restore/pkg/metrics"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 	"github.com/prometheus/client_golang/prometheus"
@@ -30,6 +34,11 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
 	fake "sigs.k8s.io/controller-runtime/pkg/client/fake"
+)
+
+const (
+	// NoLeaderState defines the state when etcd returns LeaderID as 0.
+	NoLeaderState uint64 = 0
 )
 
 // GetLatestFullSnapshotAndDeltaSnapList returns the latest snapshot
@@ -175,4 +184,95 @@ func GetKubernetesClientSetOrError() (client.Client, error) {
 // GetFakeKubernetesClientSet creates a fake client set. To be used for unit tests
 func GetFakeKubernetesClientSet() client.Client {
 	return fake.NewClientBuilder().Build()
+}
+
+// GetAllEtcdEndpoints returns the endPoints of all etcd-member.
+func GetAllEtcdEndpoints(ctx context.Context, client etcdClient.ClusterCloser, etcdConnectionConfig *brtypes.EtcdConnectionConfig, logger *logrus.Entry) ([]string, error) {
+	var etcdEndpoints []string
+
+	ctx, cancel := context.WithTimeout(ctx, etcdConnectionConfig.ConnectionTimeout.Duration)
+	defer cancel()
+
+	membersInfo, err := client.MemberList(ctx)
+	if err != nil {
+		logger.Errorf("failed to get memberList of etcd with error: %v", err)
+		return nil, err
+	}
+
+	for _, member := range membersInfo.Members {
+		etcdEndpoints = append(etcdEndpoints, member.GetClientURLs()...)
+	}
+
+	return etcdEndpoints, nil
+}
+
+// IsEtcdClusterHealthy checks whether all members of etcd cluster are in healthy state or not.
+func IsEtcdClusterHealthy(ctx context.Context, client etcdClient.MaintenanceCloser, etcdConnectionConfig *brtypes.EtcdConnectionConfig, etcdEndpoints []string, logger *logrus.Entry) (bool, error) {
+
+	// checks the health of all etcd members.
+	for _, endPoint := range etcdEndpoints {
+		if err := func() error {
+			ctx, cancel := context.WithTimeout(ctx, etcdConnectionConfig.ConnectionTimeout.Duration)
+			defer cancel()
+			if _, err := client.Status(ctx, endPoint); err != nil {
+				logger.Errorf("failed to get status of etcd endPoint: %v with error: %v", endPoint, err)
+				return err
+			}
+			return nil
+		}(); err != nil {
+			return false, err
+		}
+	}
+
+	return true, nil
+}
+
+// GetLeader will return the LeaderID as well as url of etcd leader.
+func GetLeader(ctx context.Context, clientMaintenance etcdClient.MaintenanceCloser, client etcdClient.ClusterCloser, endpoint string) (uint64, []string, error) {
+	if len(endpoint) == 0 {
+		return NoLeaderState, nil, fmt.Errorf("etcd endpoint are not passed correctly")
+	}
+
+	response, err := clientMaintenance.Status(ctx, endpoint)
+	if err != nil {
+		return NoLeaderState, nil, err
+	}
+
+	if response.Leader == NoLeaderState {
+		return NoLeaderState, nil, &errors.EtcdError{
+			Message: fmt.Sprintf("currently there is no Etcd Leader present may be due to etcd quorum loss."),
+		}
+	}
+
+	membersInfo, err := client.MemberList(ctx)
+	if err != nil {
+		return response.Leader, nil, err
+	}
+
+	for _, member := range membersInfo.Members {
+		if response.Leader == member.GetID() {
+			return response.Leader, member.GetClientURLs(), nil
+		}
+	}
+	return response.Leader, nil, nil
+}
+
+// GetBackupLeaderEndPoint takes etcd leader endpoint and portNo. of backup-restore and returns the backupLeader endpoint.
+func GetBackupLeaderEndPoint(endPoints []string, port uint) (string, error) {
+	if len(endPoints) == 0 {
+		return "", fmt.Errorf("etcd endpoints are not passed correctly")
+	}
+
+	url, err := url.Parse(endPoints[0])
+	if err != nil {
+		return "", err
+	}
+
+	host, _, err := net.SplitHostPort(url.Host)
+	if err != nil {
+		return "", err
+	}
+
+	backupLeaderEndPoint := fmt.Sprintf("%s://%s:%s", url.Scheme, host, fmt.Sprintf("%d", port))
+	return backupLeaderEndPoint, nil
 }

@@ -40,6 +40,7 @@ func NewBackupRestoreComponentConfig() *BackupRestoreComponentConfig {
 		DefragmentationSchedule: defaultDefragmentationSchedule,
 		EtcdProcessName:         defaultEtcdProcessName,
 		HealthConfig:            brtypes.NewHealthConfig(),
+		LeaderElectionConfig:    brtypes.NewLeaderElectionConfig(),
 	}
 }
 
@@ -53,6 +54,7 @@ func (c *BackupRestoreComponentConfig) AddFlags(fs *flag.FlagSet) {
 	c.CompressionConfig.AddFlags(fs)
 	c.OwnerCheckConfig.AddFlags(fs)
 	c.HealthConfig.AddFlags(fs)
+	c.LeaderElectionConfig.AddFlags(fs)
 
 	// Miscellaneous
 	fs.StringVar(&c.DefragmentationSchedule, "defragmentation-schedule", c.DefragmentationSchedule, "schedule to defragment etcd data directory")
@@ -86,6 +88,9 @@ func (c *BackupRestoreComponentConfig) Validate() error {
 		return err
 	}
 	if _, err := cron.ParseStandard(c.DefragmentationSchedule); err != nil {
+		return err
+	}
+	if err := c.LeaderElectionConfig.Validate(); err != nil {
 		return err
 	}
 	return nil
