@@ -36,7 +36,7 @@ REPOSITORY=${VCS}/${ORGANIZATION}/${PROJECT}
 cd "${SOURCE_PATH}"
 
 # Install Ginkgo (test framework) to be able to execute the tests.
-GO111MODULE=off go get github.com/onsi/ginkgo/ginkgo
+go install github.com/onsi/ginkgo/ginkgo@v1.14.1
 
 ###############################################################################
 
