@@ -27,6 +27,7 @@ import (
 	"github.com/gardener/etcd-backup-restore/pkg/leaderelection"
 	"github.com/gardener/etcd-backup-restore/pkg/metrics"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
+	"github.com/gardener/etcd-backup-restore/pkg/wrappers"
 
 	"github.com/gardener/etcd-backup-restore/pkg/defragmentor"
 	"github.com/gardener/etcd-backup-restore/pkg/errors"
@@ -50,6 +51,7 @@ type BackupRestoreServer struct {
 	ownerChecker            common.Checker
 	etcdProcessKiller       common.ProcessKiller
 	defragmentationSchedule cron.Schedule
+	backoff                 *brtypes.ExponentialBackoff
 }
 
 var (
@@ -72,12 +74,15 @@ func NewBackupRestoreServer(logger *logrus.Logger, config *BackupRestoreComponen
 		// Ideally this case should not occur, since this check is done at the config validaitions.
 		return nil, err
 	}
+	backoffExponentialConfig := brtypes.NewExponentialBackOff()
+
 	return &BackupRestoreServer{
 		logger:                  serverLogger,
 		config:                  config,
 		ownerChecker:            ownerChecker,
 		etcdProcessKiller:       etcdProcessKiller,
 		defragmentationSchedule: defragmentationSchedule,
+		backoff:                 backoffExponentialConfig,
 	}, nil
 }
 
@@ -196,6 +201,9 @@ func (b *BackupRestoreServer) runServer(ctx context.Context, restoreOpts *brtype
 					b.logger.Info("backup-restore stops leading...")
 				}
 				handler.SetSnapshotterToNil()
+
+				// To do: For Multi-node etcd HTTP status need to be set to `StatusServiceUnavailable` only when backup-restore is in "StateUnknown".
+				handler.SetStatus(http.StatusServiceUnavailable)
 			}
 		},
 	}
@@ -256,6 +264,20 @@ func (b *BackupRestoreServer) runEtcdProbeLoopWithSnapshotter(ctx context.Contex
 			handler.SetStatus(http.StatusServiceUnavailable)
 			continue
 		}
+
+		if b.backoff.Start {
+			b.getNextBackoffTime()
+			b.logger.Info("Backoff time: ", b.backoff.CurrentBackoffTime.Duration)
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(b.backoff.CurrentBackoffTime.Duration):
+			}
+		}
+
+		// set server's healthz endpoint status to OK so that
+		// etcd is marked as ready to serve traffic
+		handler.SetStatus(http.StatusOK)
 
 		if runServerWithSnapshotter {
 			if b.ownerChecker != nil {
@@ -322,7 +344,6 @@ func (b *BackupRestoreServer) runEtcdProbeLoopWithSnapshotter(ctx context.Contex
 				if ssrStopped {
 					b.logger.Info("Snapshotter stopped.")
 					ackCh <- emptyStruct
-					handler.SetStatus(http.StatusServiceUnavailable)
 					b.logger.Info("Shutting down...")
 					return
 				}
@@ -338,6 +359,9 @@ func (b *BackupRestoreServer) runEtcdProbeLoopWithSnapshotter(ctx context.Contex
 						if err = heartbeat.DeltaSnapshotCaseLeaseUpdate(leaseUpdatectx, b.logger, ssr.K8sClientset, b.config.HealthConfig.DeltaSnapshotLeaseName, ss); err != nil {
 							b.logger.Warnf("Snapshot lease update failed : %v", err)
 						}
+					}
+					if b.backoff.Start {
+						b.resetBackoffExponential()
 					}
 				} else {
 					b.logger.Warnf("Failed to collect events for first delta snapshot(s): %v", err)
@@ -361,11 +385,10 @@ func (b *BackupRestoreServer) runEtcdProbeLoopWithSnapshotter(ctx context.Contex
 						b.logger.Warnf("Snapshot lease update failed : %v", err)
 					}
 				}
+				if b.backoff.Start {
+					b.resetBackoffExponential()
+				}
 			}
-
-			// set server's healthz endpoint status to OK so that
-			// etcd is marked as ready to serve traffic
-			handler.SetStatus(http.StatusOK)
 
 			// Set snapshotter state to Active
 			ssr.SsrStateMutex.Lock()
@@ -383,24 +406,26 @@ func (b *BackupRestoreServer) runEtcdProbeLoopWithSnapshotter(ctx context.Contex
 
 			// Start garbage collector
 			gcStopCh := make(chan struct{})
+			b.logger.Info("Starting the garbage collector...")
 			go ssr.RunGarbageCollector(gcStopCh)
 
 			// Start snapshotter
 			b.logger.Infof("Starting snapshotter...")
 			startWithFullSnapshot := ssr.PrevFullSnapshot == nil || ssr.PrevFullSnapshot.IsFinal || !(time.Since(ssr.PrevFullSnapshot.CreatedOn).Hours() <= recentFullSnapshotPeriodInHours)
 			if err := ssr.Run(ssrStopCh, startWithFullSnapshot); err != nil {
-				if etcdErr, ok := err.(*errors.EtcdError); ok == true {
+				if etcdErr, ok := err.(*errors.EtcdError); ok {
 					metrics.SnapshotterOperationFailure.With(prometheus.Labels{metrics.LabelError: etcdErr.Error()}).Inc()
 					b.logger.Errorf("Snapshotter failed with etcd error: %v", etcdErr)
 				} else {
 					metrics.SnapshotterOperationFailure.With(prometheus.Labels{metrics.LabelError: err.Error()}).Inc()
-					b.logger.Fatalf("Snapshotter failed with error: %v", err)
+					b.logger.Errorf("Snapshotter failed with error: %v", err)
 				}
+				// snapshotter failed
+				// start the backoff exponential mechanism.
+				b.backoff.Start = true
 			}
 			b.logger.Infof("Snapshotter stopped.")
 			ackCh <- emptyStruct
-
-			handler.SetStatus(http.StatusServiceUnavailable)
 
 			// Stop garbage collector
 			close(gcStopCh)
@@ -421,7 +446,6 @@ func (b *BackupRestoreServer) runEtcdProbeLoopWithSnapshotter(ctx context.Contex
 
 		} else {
 			// for the case when snapshotter is not configured
-			handler.SetStatus(http.StatusOK)
 			<-ctx.Done()
 			handler.SetStatus(http.StatusServiceUnavailable)
 			b.logger.Infof("Received stop signal. Terminating !!")
@@ -490,4 +514,24 @@ func (b *BackupRestoreServer) stopSnapshotter(handler *HTTPHandler) {
 	handler.ReqCh <- emptyStruct
 	handler.Logger.Info("Waiting for acknowledgment...")
 	<-handler.AckCh
+}
+
+func (b *BackupRestoreServer) getNextBackoffTime() {
+	if b.backoff.Attempt > b.backoff.ThresholdAttempt {
+		b.backoff.CurrentBackoffTime = b.backoff.ThresholdTime
+		return
+	}
+	b.backoff.Attempt++
+	b.backoff.CurrentBackoffTime = wrappers.Duration{Duration: time.Duration(b.backoff.Multiplier) * b.backoff.CurrentBackoffTime.Duration}
+}
+
+func (b *BackupRestoreServer) resetBackoffExponential() {
+	// set backoff start to false
+	b.backoff.Start = false
+
+	// reset the backoff-exponential time with default.
+	b.backoff.CurrentBackoffTime.Duration = brtypes.DefaultMinimunBackoff
+
+	// reset the backoff-exponential attempt with 0.
+	b.backoff.Attempt = 0
 }
