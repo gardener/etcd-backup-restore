@@ -142,7 +142,7 @@ func (hb *Heartbeat) RenewMemberLease(ctx context.Context) error {
 	return nil
 }
 
-// UpdateFullSnapshotLease updates the holderIdentity field of the full snapshot lease with the last revision in the latest full snapshot
+// UpdateFullSnapshotLease renews the full snapshot lease and updates the holderIdentity field with the last revision in the latest full snapshot
 func UpdateFullSnapshotLease(ctx context.Context, logger *logrus.Entry, fullSnapshot *brtypes.Snapshot, k8sClientset client.Client, fullSnapshotLeaseName string) error {
 	if k8sClientset == nil {
 		return &errors.EtcdError{
@@ -214,7 +214,7 @@ func UpdateFullSnapshotLease(ctx context.Context, logger *logrus.Entry, fullSnap
 	return nil
 }
 
-// UpdateDeltaSnapshotLease updates the holderIdentity field of the delta snapshot lease with the total number or revisions stored in delta snapshots since the last full snapshot was taken
+// UpdateDeltaSnapshotLease renews delta snapshot lease and updates the holderIdentity field with the total number or revisions stored in delta snapshots since the last full snapshot was taken
 func UpdateDeltaSnapshotLease(ctx context.Context, logger *logrus.Entry, prevDeltaSnapshots brtypes.SnapList, k8sClientset client.Client, deltaSnapshotLeaseName string) error {
 	if k8sClientset == nil {
 		return &errors.EtcdError{

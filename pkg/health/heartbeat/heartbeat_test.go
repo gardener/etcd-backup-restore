@@ -2,9 +2,10 @@ package heartbeat_test
 
 import (
 	"context"
-	"k8s.io/utils/pointer"
 	"os"
 	"time"
+
+	//"k8s.io/utils/pointer"
 
 	heartbeat "github.com/gardener/etcd-backup-restore/pkg/health/heartbeat"
 	"github.com/gardener/etcd-backup-restore/pkg/miscellaneous"
@@ -148,7 +149,7 @@ var _ = Describe("Heartbeat", func() {
 				os.Unsetenv("POD_NAME")
 				os.Unsetenv("POD_NAMESPACE")
 			})
-			It("Should correctly update holder identity of delta snapshot lease when delta snapshot list is passed", func() {
+			It("Should renew and correctly update holder identity of delta snapshot lease when delta snapshot list is passed", func() {
 				Expect(os.Getenv("POD_NAME")).Should(Equal("test_pod"))
 				Expect(os.Getenv("POD_NAMESPACE")).Should(Equal("test_namespace"))
 
@@ -187,16 +188,16 @@ var _ = Describe("Heartbeat", func() {
 				}, l)
 
 				Expect(l.Spec.HolderIdentity).To(PointTo(Equal("2500")))
+				Expect(l.Spec.RenewTime).ToNot(BeNil())
 				Expect(err).ShouldNot(HaveOccurred())
 
 				err = k8sClientset.Delete(context.TODO(), l)
 				Expect(err).ShouldNot(HaveOccurred())
 			})
-			FIt("Should not update delta snapshot with holderIdentity of full snapshot if no delta snapshot list is passed", func() {
+			It("Should only renew delta snapshot if no delta snapshot list is passed", func() {
 				Expect(os.Getenv("POD_NAME")).Should(Equal("test_pod"))
 				Expect(os.Getenv("POD_NAMESPACE")).Should(Equal("test_namespace"))
 
-				lease.Spec.HolderIdentity = pointer.StringPtr("foo")
 				err = k8sClientset.Create(context.TODO(), lease)
 
 				err = heartbeat.UpdateDeltaSnapshotLease(context.TODO(), logger, nil, k8sClientset, brtypes.DefaultDeltaSnapshotLeaseName)
@@ -208,7 +209,9 @@ var _ = Describe("Heartbeat", func() {
 					Name:      brtypes.DefaultDeltaSnapshotLeaseName,
 				}, l)
 				Expect(err).ShouldNot(HaveOccurred())
-				Expect(l.Spec).To(Equal(lease.Spec))
+
+				Expect(l.Spec.RenewTime).ToNot(BeNil())
+				Expect(l.Spec.HolderIdentity).To(BeNil())
 
 				err = k8sClientset.Delete(context.TODO(), l)
 				Expect(err).ShouldNot(HaveOccurred())
