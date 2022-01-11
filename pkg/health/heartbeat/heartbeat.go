@@ -260,6 +260,10 @@ func UpdateDeltaSnapshotLease(ctx context.Context, logger *logrus.Entry, prevDel
 			renewedLease.Spec.HolderIdentity = &actor
 			logString += " with revision " + actor
 		}
+	} else if len(prevDeltaSnapshots) == 0 && deltaSnapLease.Spec.HolderIdentity == nil {
+		// Special case: Set revision number to 0 if no delta snaps taken at all
+		actor := strconv.FormatInt(0, 10)
+		renewedLease.Spec.HolderIdentity = &actor
 	}
 
 	err = k8sClientset.Patch(ctx, renewedLease, client.MergeFrom(deltaSnapLease))

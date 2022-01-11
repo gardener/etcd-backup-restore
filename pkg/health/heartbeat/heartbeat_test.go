@@ -194,7 +194,7 @@ var _ = Describe("Heartbeat", func() {
 				err = k8sClientset.Delete(context.TODO(), l)
 				Expect(err).ShouldNot(HaveOccurred())
 			})
-			It("Should only renew delta snapshot if no delta snapshot list is passed", func() {
+			It("Should renew delta snapshot and set holderid to 0 if no delta snapshot list is passed", func() {
 				Expect(os.Getenv("POD_NAME")).Should(Equal("test_pod"))
 				Expect(os.Getenv("POD_NAMESPACE")).Should(Equal("test_namespace"))
 
@@ -211,7 +211,34 @@ var _ = Describe("Heartbeat", func() {
 				Expect(err).ShouldNot(HaveOccurred())
 
 				Expect(l.Spec.RenewTime).ToNot(BeNil())
-				Expect(l.Spec.HolderIdentity).To(BeNil())
+				//Expect(l.Spec.HolderIdentity).To(BeNil())
+				Expect(l.Spec.HolderIdentity).To(PointTo(Equal("0")))
+
+				err = k8sClientset.Delete(context.TODO(), l)
+				Expect(err).ShouldNot(HaveOccurred())
+			})
+			It("Should only renew delta snapshot if no delta snapshot list is passed when holderidentity is already set", func() {
+				Expect(os.Getenv("POD_NAME")).Should(Equal("test_pod"))
+				Expect(os.Getenv("POD_NAMESPACE")).Should(Equal("test_namespace"))
+
+				actor := "123"
+				newLease := lease
+				newLease.Spec.HolderIdentity = &actor
+
+				err = k8sClientset.Create(context.TODO(), newLease)
+
+				err = heartbeat.UpdateDeltaSnapshotLease(context.TODO(), logger, nil, k8sClientset, brtypes.DefaultDeltaSnapshotLeaseName)
+				Expect(err).ShouldNot(HaveOccurred())
+
+				l := &v1.Lease{}
+				err = k8sClientset.Get(context.TODO(), client.ObjectKey{
+					Namespace: os.Getenv("POD_NAMESPACE"),
+					Name:      brtypes.DefaultDeltaSnapshotLeaseName,
+				}, l)
+				Expect(err).ShouldNot(HaveOccurred())
+
+				Expect(l.Spec.RenewTime).ToNot(BeNil())
+				Expect(l.Spec.HolderIdentity).To(PointTo(Equal("123")))
 
 				err = k8sClientset.Delete(context.TODO(), l)
 				Expect(err).ShouldNot(HaveOccurred())
