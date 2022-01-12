@@ -5,8 +5,6 @@ import (
 	"os"
 	"time"
 
-	//"k8s.io/utils/pointer"
-
 	heartbeat "github.com/gardener/etcd-backup-restore/pkg/health/heartbeat"
 	"github.com/gardener/etcd-backup-restore/pkg/miscellaneous"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
