@@ -192,7 +192,7 @@ func UpdateFullSnapshotLease(ctx context.Context, logger *logrus.Entry, fullSnap
 		renewedLease := fullSnapLease.DeepCopy()
 		renewedTime := time.Now()
 		renewedLease.Spec.RenewTime = &metav1.MicroTime{Time: renewedTime}
-		// Update revisions in deltaSnapLease.Spec.HolderIdentity only when its value is less than latest deltaSnap.LastRevision
+		// Update revisions in fullSnapLease.Spec.HolderIdentity only when its value is less than latest fullSnap.LastRevision
 		if fullSnapLease.Spec.HolderIdentity == nil || rev < fullSnapshot.LastRevision {
 			actor := strconv.FormatInt(fullSnapshot.LastRevision, 10)
 			renewedLease.Spec.HolderIdentity = &actor
@@ -260,7 +260,7 @@ func UpdateDeltaSnapshotLease(ctx context.Context, logger *logrus.Entry, prevDel
 			renewedLease.Spec.HolderIdentity = &actor
 			logString += " with revision " + actor
 		}
-	} else if len(prevDeltaSnapshots) == 0 && deltaSnapLease.Spec.HolderIdentity == nil {
+	} else if deltaSnapLease.Spec.HolderIdentity == nil {
 		// Special case: Set revisions in deltaSnapLease.Spec.HolderIdentity to 0 if no delta snaps taken at all
 		actor := strconv.FormatInt(0, 10)
 		renewedLease.Spec.HolderIdentity = &actor
