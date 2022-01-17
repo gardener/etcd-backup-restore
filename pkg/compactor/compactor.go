@@ -144,9 +144,7 @@ func (cp *Compactor) Compact(opts *brtypes.CompactOptions) (*brtypes.Snapshot, e
 		}
 		defer client.Close()
 
-		defragCtx, defragCancel := context.WithTimeout(ctx, opts.DefragTimeout.Duration)
-		err = etcdutil.DefragmentData(defragCtx, clientMaintenance, client, ep, cp.logger)
-		defragCancel()
+		err = etcdutil.DefragmentData(ctx, clientMaintenance, client, ep, opts.DefragTimeout.Duration, cp.logger)
 		if err != nil {
 			cp.logger.Errorf("failed to defragment: %v", err)
 		}

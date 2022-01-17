@@ -31,6 +31,9 @@ const (
 	DefaultDefragConnectionTimeout time.Duration = 8 * time.Minute
 	// DefaultSnapshotTimeout defines default timeout duration for taking FullSnapshot.
 	DefaultSnapshotTimeout time.Duration = 8 * time.Minute
+
+	// DefragRetryPeriod used for ETCD defrag retry.
+	DefragRetryPeriod time.Duration = 1 * time.Minute
 )
 
 // EtcdConnectionConfig holds the etcd connection config.

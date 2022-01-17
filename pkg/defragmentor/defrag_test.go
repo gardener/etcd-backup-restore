@@ -84,7 +84,7 @@ var _ = Describe("Defrag", func() {
 				Expect(leaderEtcdEndpoints).Should(BeNil())
 				Expect(followerEtcdEndpoints).Should(BeNil())
 
-				err = etcdutil.DefragmentData(testCtx, clientMaintenance, client, dummyClientEndpoints, logger)
+				err = etcdutil.DefragmentData(testCtx, clientMaintenance, client, dummyClientEndpoints, mockTimeout, logger)
 				Expect(err).Should(HaveOccurred())
 			})
 		})
@@ -118,7 +118,7 @@ var _ = Describe("Defrag", func() {
 				Expect(leaderEtcdEndpoints).Should(BeNil())
 				Expect(followerEtcdEndpoints).Should(BeNil())
 
-				err = etcdutil.DefragmentData(testCtx, clientMaintenance, client, dummyClientEndpoints, logger)
+				err = etcdutil.DefragmentData(testCtx, clientMaintenance, client, dummyClientEndpoints, mockTimeout, logger)
 				Expect(err).Should(HaveOccurred())
 			})
 		})
@@ -166,7 +166,7 @@ var _ = Describe("Defrag", func() {
 				Expect(leaderEtcdEndpoints).Should(Equal([]string{dummyClientEndpoints[0]}))
 				Expect(followerEtcdEndpoints).Should(Equal([]string{dummyClientEndpoints[1]}))
 
-				err = etcdutil.DefragmentData(testCtx, clientMaintenance, client, dummyClientEndpoints, logger)
+				err = etcdutil.DefragmentData(testCtx, clientMaintenance, client, dummyClientEndpoints, mockTimeout, logger)
 				Expect(err).Should(HaveOccurred())
 			})
 		})
@@ -207,7 +207,7 @@ var _ = Describe("Defrag", func() {
 					return response, nil
 				}).AnyTimes()
 
-				err = etcdutil.DefragmentData(testCtx, clientMaintenance, client, dummyClientEndpoints, logger)
+				err = etcdutil.DefragmentData(testCtx, clientMaintenance, client, dummyClientEndpoints, mockTimeout, logger)
 				Expect(err).ShouldNot(HaveOccurred())
 			})
 		})
