@@ -51,7 +51,7 @@ type BackupRestoreServer struct {
 	ownerChecker            common.Checker
 	etcdProcessKiller       common.ProcessKiller
 	defragmentationSchedule cron.Schedule
-	backoff                 *brtypes.ExponentialBackoff
+	backoffConfig           *brtypes.ExponentialBackoffConfig
 }
 
 var (
@@ -74,7 +74,7 @@ func NewBackupRestoreServer(logger *logrus.Logger, config *BackupRestoreComponen
 		// Ideally this case should not occur, since this check is done at the config validaitions.
 		return nil, err
 	}
-	backoffExponentialConfig := brtypes.NewExponentialBackOff()
+	backoffExponentialConfig := brtypes.NewExponentialBackOffConfig()
 
 	return &BackupRestoreServer{
 		logger:                  serverLogger,
@@ -82,7 +82,7 @@ func NewBackupRestoreServer(logger *logrus.Logger, config *BackupRestoreComponen
 		ownerChecker:            ownerChecker,
 		etcdProcessKiller:       etcdProcessKiller,
 		defragmentationSchedule: defragmentationSchedule,
-		backoff:                 backoffExponentialConfig,
+		backoffConfig:           backoffExponentialConfig,
 	}, nil
 }
 
@@ -265,13 +265,13 @@ func (b *BackupRestoreServer) runEtcdProbeLoopWithSnapshotter(ctx context.Contex
 			continue
 		}
 
-		if b.backoff.Start {
+		if b.backoffConfig.Start {
 			b.getNextBackoffTime()
-			b.logger.Info("Backoff time: ", b.backoff.CurrentBackoffTime.Duration)
+			b.logger.Info("Backoff time: ", b.backoffConfig.CurrentBackoffTime.Duration)
 			select {
 			case <-ctx.Done():
 				return
-			case <-time.After(b.backoff.CurrentBackoffTime.Duration):
+			case <-time.After(b.backoffConfig.CurrentBackoffTime.Duration):
 			}
 		}
 
@@ -360,7 +360,7 @@ func (b *BackupRestoreServer) runEtcdProbeLoopWithSnapshotter(ctx context.Contex
 							b.logger.Warnf("Snapshot lease update failed : %v", err)
 						}
 					}
-					if b.backoff.Start {
+					if b.backoffConfig.Start {
 						b.resetBackoffExponential()
 					}
 				} else {
@@ -385,7 +385,7 @@ func (b *BackupRestoreServer) runEtcdProbeLoopWithSnapshotter(ctx context.Contex
 						b.logger.Warnf("Snapshot lease update failed : %v", err)
 					}
 				}
-				if b.backoff.Start {
+				if b.backoffConfig.Start {
 					b.resetBackoffExponential()
 				}
 			}
@@ -422,7 +422,7 @@ func (b *BackupRestoreServer) runEtcdProbeLoopWithSnapshotter(ctx context.Contex
 				}
 				// snapshotter failed
 				// start the backoff exponential mechanism.
-				b.backoff.Start = true
+				b.backoffConfig.Start = true
 			}
 			b.logger.Infof("Snapshotter stopped.")
 			ackCh <- emptyStruct
@@ -517,21 +517,21 @@ func (b *BackupRestoreServer) stopSnapshotter(handler *HTTPHandler) {
 }
 
 func (b *BackupRestoreServer) getNextBackoffTime() {
-	if b.backoff.Attempt > b.backoff.ThresholdAttempt {
-		b.backoff.CurrentBackoffTime = b.backoff.ThresholdTime
+	if b.backoffConfig.Attempt > b.backoffConfig.ThresholdAttempt {
+		b.backoffConfig.CurrentBackoffTime = b.backoffConfig.ThresholdTime
 		return
 	}
-	b.backoff.Attempt++
-	b.backoff.CurrentBackoffTime = wrappers.Duration{Duration: time.Duration(b.backoff.Multiplier) * b.backoff.CurrentBackoffTime.Duration}
+	b.backoffConfig.Attempt++
+	b.backoffConfig.CurrentBackoffTime = wrappers.Duration{Duration: time.Duration(b.backoffConfig.Multiplier) * b.backoffConfig.CurrentBackoffTime.Duration}
 }
 
 func (b *BackupRestoreServer) resetBackoffExponential() {
 	// set backoff start to false
-	b.backoff.Start = false
+	b.backoffConfig.Start = false
 
 	// reset the backoff-exponential time with default.
-	b.backoff.CurrentBackoffTime.Duration = brtypes.DefaultMinimunBackoff
+	b.backoffConfig.CurrentBackoffTime.Duration = brtypes.DefaultMinimunBackoff
 
 	// reset the backoff-exponential attempt with 0.
-	b.backoff.Attempt = 0
+	b.backoffConfig.Attempt = 0
 }

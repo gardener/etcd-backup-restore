@@ -31,8 +31,8 @@ const (
 	DefaultMinimunBackoff time.Duration = 1 * time.Second
 )
 
-// ExponentialBackoff holds the configuration for the Backoff mechanism.
-type ExponentialBackoff struct {
+// ExponentialBackoffConfig holds the configuration for the ExponentialBackoff mechanism.
+type ExponentialBackoffConfig struct {
 	Start              bool              `json:"start,omitempty"`
 	Multiplier         int               `json:"multiplier,omitempty"`
 	Attempt            uint64            `json:"attempt,omitempty"`
@@ -41,9 +41,9 @@ type ExponentialBackoff struct {
 	CurrentBackoffTime wrappers.Duration `json:"currentBackoff,omitempty"`
 }
 
-// NewExponentialBackOff creates and returns new ExponentialBackoff.
-func NewExponentialBackOff() *ExponentialBackoff {
-	return &ExponentialBackoff{
+// NewExponentialBackOffConfig creates and returns new ExponentialBackoff.
+func NewExponentialBackOffConfig() *ExponentialBackoffConfig {
+	return &ExponentialBackoffConfig{
 		Start:              false,
 		Multiplier:         defaultBackoffMultiplier,
 		ThresholdAttempt:   defaultThresholdAttempt,
