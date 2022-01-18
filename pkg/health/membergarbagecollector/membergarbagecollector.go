@@ -59,10 +59,10 @@ func init() {
 }
 
 // NewMemberGarbageCollector returns the member garbage collect object
-func NewMemberGarbageCollector(logger *logrus.Entry /*etcdConfig *brtypes.EtcdConnectionConfig,*/, clientSet client.Client) (*MemberGarbageCollector, error) {
+func NewMemberGarbageCollector(logger *logrus.Entry, clientSet client.Client) (*MemberGarbageCollector, error) {
 	if clientSet == nil {
 		return nil, &errors.EtcdError{
-			Message: "nil kubernetes clientset passed, can not create heartbeat",
+			Message: "nil kubernetes clientset passed, can not create etcd member garbage collector",
 		}
 	}
 	namespace, err := utils.GetEnvVarOrError(podNamespace)
@@ -82,7 +82,7 @@ func NewMemberGarbageCollector(logger *logrus.Entry /*etcdConfig *brtypes.EtcdCo
 }
 
 // RunMemberGarbageCollectorPeriodically periodically calls the member garbage collector
-func RunMemberGarbageCollectorPeriodically(ctx context.Context, stopCh chan struct{}, hconfig *brtypes.HealthConfig, logger *logrus.Entry, etcdConfig *brtypes.EtcdConnectionConfig) {
+func RunMemberGarbageCollectorPeriodically(ctx context.Context, hconfig *brtypes.HealthConfig, logger *logrus.Entry, etcdConfig *brtypes.EtcdConnectionConfig) {
 	clientSet, err := miscellaneous.GetKubernetesClientSetOrError()
 	if err != nil {
 		logger.Errorf("failed to create kubernetes clientset: %v", err)
@@ -90,7 +90,7 @@ func RunMemberGarbageCollectorPeriodically(ctx context.Context, stopCh chan stru
 	}
 	mgc, err := NewMemberGarbageCollector(logger, clientSet)
 	if err != nil {
-		logger.Errorf("failed to initialize new heartbeat: %v", err)
+		logger.Errorf("failed to initialize new etcd member garbage collector: %v", err)
 		return
 	}
 	mgc.gcTimer = time.NewTimer(hconfig.MemberGCDuration.Duration)
@@ -116,9 +116,6 @@ func RunMemberGarbageCollectorPeriodically(ctx context.Context, stopCh chan stru
 			mgc.logger.Info("Stopping etcd member garbage collector")
 			etcdCluster.Close()
 			return
-		case <-stopCh:
-			mgc.logger.Info("Stopping etcd member garbage collector")
-			return
 		}
 	}
 }
@@ -139,11 +136,6 @@ func (mgc *MemberGarbageCollector) RemoveSuperfluousMembers(ctx context.Context,
 		return &errors.EtcdError{
 			Message: "There are no members present in the etcd status. Nothing to clean",
 		}
-	}
-
-	// Return if memberlist size <= desired cluster size. Cleanup not needed
-	if len(etcd.Status.Members) <= etcd.Spec.Replicas {
-		return nil
 	}
 
 	etcdMemberListResponse, err := etcdCluster.MemberList(ctx)

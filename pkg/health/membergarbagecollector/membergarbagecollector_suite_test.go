@@ -1,6 +1,7 @@
 package membergarbagecollector_test
 
 import (
+	"io"
 	"os"
 	"testing"
 
@@ -25,6 +26,7 @@ func TestMembergarbagecollector(t *testing.T) {
 }
 
 var _ = SynchronizedBeforeSuite(func() []byte {
+	logger.Logger.Out = io.Discard
 	err = os.RemoveAll(outputDir)
 	Expect(err).ShouldNot(HaveOccurred())
 
