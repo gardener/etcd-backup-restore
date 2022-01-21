@@ -190,7 +190,7 @@ func (b *BackupRestoreServer) runServer(ctx context.Context, restoreOpts *brtype
 			go b.runEtcdProbeLoopWithSnapshotter(leCtx, handler, ssr, ss, ssrStopCh, ackCh)
 			go defragmentor.DefragDataPeriodically(leCtx, b.config.EtcdConnectionConfig, b.defragmentationSchedule, defragCallBack, b.logger)
 			//start etcd member garbage collector
-			if b.config.HealthConfig.MemberGCEnabled {
+			if b.config.HealthConfig.EtcdMemberGCEnabled {
 				go membergarbagecollector.RunMemberGarbageCollectorPeriodically(leCtx, b.config.HealthConfig, b.logger, b.config.EtcdConnectionConfig)
 			}
 		},

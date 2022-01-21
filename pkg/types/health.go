@@ -27,8 +27,8 @@ const (
 	DefaultSnapshotLeaseRenewalEnabled = false
 	// DefaultMemberLeaseRenewalEnabled is a default value for enabling the member lease renewal feature
 	DefaultMemberLeaseRenewalEnabled = false
-	// DefaultMemberGCEnabled is a default value for enabling the etcd member garbage collection feature
-	DefaultMemberGCEnabled = false
+	// DefaultEtcdMemberGCEnabled is a default value for enabling the etcd member garbage collection feature
+	DefaultEtcdMemberGCEnabled = false
 	// DefaultFullSnapshotLeaseName is the name for the delta snapshot lease.
 	DefaultFullSnapshotLeaseName = "full-snapshot-revisions"
 	// DefaultDeltaSnapshotLeaseName is the name for the delta snapshot lease.
@@ -45,7 +45,7 @@ const (
 type HealthConfig struct {
 	SnapshotLeaseRenewalEnabled bool              `json:"snapshotLeaseRenewalEnabled,omitempty"`
 	MemberLeaseRenewalEnabled   bool              `json:"memberLeaseRenewalEnabled,omitempty"`
-	MemberGCEnabled             bool              `json:"memberGCEnabled,omitempty"`
+	EtcdMemberGCEnabled         bool              `json:"etcdMemberGCEnabled,omitempty"`
 	HeartbeatDuration           wrappers.Duration `json:"heartbeatDuration,omitempty"`
 	MemberGCDuration            wrappers.Duration `json:"memberGCDuration,omitempty"`
 	FullSnapshotLeaseName       string            `json:"fullSnapshotLeaseName,omitempty"`
@@ -57,7 +57,7 @@ func NewHealthConfig() *HealthConfig {
 	return &HealthConfig{
 		SnapshotLeaseRenewalEnabled: DefaultSnapshotLeaseRenewalEnabled,
 		MemberLeaseRenewalEnabled:   DefaultMemberLeaseRenewalEnabled,
-		MemberGCEnabled:             DefaultMemberGCEnabled,
+		EtcdMemberGCEnabled:         DefaultEtcdMemberGCEnabled,
 		HeartbeatDuration:           wrappers.Duration{Duration: DefaultHeartbeatDuration},
 		MemberGCDuration:            wrappers.Duration{Duration: DefaultMemberGarbageCollectionPeriod},
 		FullSnapshotLeaseName:       DefaultFullSnapshotLeaseName,
@@ -70,7 +70,7 @@ func (c *HealthConfig) AddFlags(fs *flag.FlagSet) {
 
 	fs.BoolVar(&c.SnapshotLeaseRenewalEnabled, "enable-snapshot-lease-renewal", c.SnapshotLeaseRenewalEnabled, "Allows sidecar to renew the snapshot leases when snapshots are taken")
 	fs.BoolVar(&c.MemberLeaseRenewalEnabled, "enable-member-lease-renewal", c.MemberLeaseRenewalEnabled, "Allows sidecar to periodically renew the member leases")
-	fs.BoolVar(&c.MemberGCEnabled, "enable-etcd-member-gc", c.MemberGCEnabled, "Allows leading sidecar to remove any superfluous etcd members from the cluster")
+	fs.BoolVar(&c.EtcdMemberGCEnabled, "enable-etcd-member-gc", c.EtcdMemberGCEnabled, "Allows leading sidecar to remove any superfluous etcd members from the cluster")
 	fs.DurationVar(&c.HeartbeatDuration.Duration, "k8s-heartbeat-duration", c.HeartbeatDuration.Duration, "Heartbeat duration")
 	fs.DurationVar(&c.MemberGCDuration.Duration, "k8s-member-gc-duration", c.MemberGCDuration.Duration, "Etcd member garbage collection duration")
 	fs.StringVar(&c.FullSnapshotLeaseName, "full-snapshot-lease-name", c.FullSnapshotLeaseName, "full snapshot lease name")

@@ -40,7 +40,7 @@ const (
 	podName      = "POD_NAME"
 )
 
-// MGCChecker is an interface used to unit test functions in this package
+// MGCChecker garbage collects the members from the etcd cluster if its corresponding pod is not present. (Used for unit tests only)
 type MGCChecker interface {
 	RemoveSuperfluousMembers(ctx context.Context) error
 }
@@ -74,7 +74,7 @@ func NewMemberGarbageCollector(logger *logrus.Entry, clientSet client.Client) (*
 		logger.Fatalf("POD_NAME env var not present: %v", err)
 	}
 	return &MemberGarbageCollector{
-		logger:       logger.WithField("actor", "membergc"),
+		logger:       logger.WithField("actor", "etcd-membergc"),
 		k8sClient:    clientSet,
 		podNamespace: namespace,
 		etcdName:     podName[:strings.LastIndex(podName, "-")], //TODO Evaluate if this will always be sufficient
@@ -97,14 +97,15 @@ func RunMemberGarbageCollectorPeriodically(ctx context.Context, hconfig *brtypes
 	defer mgc.gcTimer.Stop()
 	mgc.logger.Info("Started etcd member garbage collector")
 
+	//Create etcd client to get etcd cluster member list
+	clientFactory := etcdutil.NewFactory(*etcdConfig)
+	etcdCluster, err := clientFactory.NewCluster()
+	if err != nil {
+		mgc.logger.Errorf("Failed to create etcd cluster client: %v", err)
+	}
+	defer etcdCluster.Close()
+
 	for {
-		//Create etcd client to get etcd cluster member list
-		clientFactory := etcdutil.NewFactory(*etcdConfig)
-		etcdCluster, err := clientFactory.NewCluster()
-		if err != nil {
-			mgc.logger.Errorf("Failed to create etcd cluster client: %v", err)
-		}
-		defer etcdCluster.Close()
 		select {
 		case <-mgc.gcTimer.C:
 			err := mgc.RemoveSuperfluousMembers(ctx, etcdCluster)
@@ -114,7 +115,6 @@ func RunMemberGarbageCollectorPeriodically(ctx context.Context, hconfig *brtypes
 			mgc.gcTimer.Reset(hconfig.MemberGCDuration.Duration)
 		case <-ctx.Done():
 			mgc.logger.Info("Stopping etcd member garbage collector")
-			etcdCluster.Close()
 			return
 		}
 	}
