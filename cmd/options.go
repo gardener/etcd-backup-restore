@@ -211,21 +211,23 @@ func (c *validatorOptions) validate() error {
 }
 
 type snapshotterOptions struct {
-	etcdConnectionConfig    *brtypes.EtcdConnectionConfig
-	compressionConfig       *compressor.CompressionConfig
-	snapstoreConfig         *brtypes.SnapstoreConfig
-	snapshotterConfig       *brtypes.SnapshotterConfig
-	defragmentationSchedule string
+	etcdConnectionConfig     *brtypes.EtcdConnectionConfig
+	compressionConfig        *compressor.CompressionConfig
+	snapstoreConfig          *brtypes.SnapstoreConfig
+	snapshotterConfig        *brtypes.SnapshotterConfig
+	defragmentationSchedule  string
+	exponentialBackoffConfig *brtypes.ExponentialBackoffConfig
 }
 
 // newSnapshotterOptions returns the snapshotter options.
 func newSnapshotterOptions() *snapshotterOptions {
 	return &snapshotterOptions{
-		etcdConnectionConfig:    brtypes.NewEtcdConnectionConfig(),
-		snapstoreConfig:         snapstore.NewSnapstoreConfig(),
-		snapshotterConfig:       snapshotter.NewSnapshotterConfig(),
-		compressionConfig:       compressor.NewCompressorConfig(),
-		defragmentationSchedule: "0 0 */3 * *",
+		etcdConnectionConfig:     brtypes.NewEtcdConnectionConfig(),
+		snapstoreConfig:          snapstore.NewSnapstoreConfig(),
+		snapshotterConfig:        snapshotter.NewSnapshotterConfig(),
+		compressionConfig:        compressor.NewCompressorConfig(),
+		exponentialBackoffConfig: brtypes.NewExponentialBackOffConfig(),
+		defragmentationSchedule:  "0 0 */3 * *",
 	}
 }
 
@@ -235,6 +237,7 @@ func (c *snapshotterOptions) addFlags(fs *flag.FlagSet) {
 	c.snapstoreConfig.AddFlags(fs)
 	c.snapshotterConfig.AddFlags(fs)
 	c.compressionConfig.AddFlags(fs)
+	c.exponentialBackoffConfig.AddFlags(fs)
 
 	// Miscellaneous
 	fs.StringVar(&c.defragmentationSchedule, "defragmentation-schedule", c.defragmentationSchedule, "schedule to defragment etcd data directory")
@@ -251,6 +254,10 @@ func (c *snapshotterOptions) validate() error {
 	}
 
 	if err := c.compressionConfig.Validate(); err != nil {
+		return err
+	}
+
+	if err := c.exponentialBackoffConfig.Validate(); err != nil {
 		return err
 	}
 	return c.etcdConnectionConfig.Validate()

@@ -23,11 +23,11 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/gardener/etcd-backup-restore/pkg/backoff"
 	"github.com/gardener/etcd-backup-restore/pkg/common"
 	"github.com/gardener/etcd-backup-restore/pkg/leaderelection"
 	"github.com/gardener/etcd-backup-restore/pkg/metrics"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
-	"github.com/gardener/etcd-backup-restore/pkg/wrappers"
 
 	"github.com/gardener/etcd-backup-restore/pkg/defragmentor"
 	"github.com/gardener/etcd-backup-restore/pkg/errors"
@@ -51,7 +51,7 @@ type BackupRestoreServer struct {
 	ownerChecker            common.Checker
 	etcdProcessKiller       common.ProcessKiller
 	defragmentationSchedule cron.Schedule
-	backoffConfig           *brtypes.ExponentialBackoffConfig
+	backoffConfig           *backoff.ExponentialBackoff
 }
 
 var (
@@ -74,7 +74,7 @@ func NewBackupRestoreServer(logger *logrus.Logger, config *BackupRestoreComponen
 		// Ideally this case should not occur, since this check is done at the config validaitions.
 		return nil, err
 	}
-	backoffExponentialConfig := brtypes.NewExponentialBackOffConfig()
+	exponentialBackoffConfig := backoff.NewExponentialBackOffConfig(config.ExponentialBackoffConfig.AttemptLimit, config.ExponentialBackoffConfig.Multiplier, config.ExponentialBackoffConfig.ThresholdTime.Duration)
 
 	return &BackupRestoreServer{
 		logger:                  serverLogger,
@@ -82,7 +82,7 @@ func NewBackupRestoreServer(logger *logrus.Logger, config *BackupRestoreComponen
 		ownerChecker:            ownerChecker,
 		etcdProcessKiller:       etcdProcessKiller,
 		defragmentationSchedule: defragmentationSchedule,
-		backoffConfig:           backoffExponentialConfig,
+		backoffConfig:           exponentialBackoffConfig,
 	}, nil
 }
 
@@ -202,7 +202,7 @@ func (b *BackupRestoreServer) runServer(ctx context.Context, restoreOpts *brtype
 				}
 				handler.SetSnapshotterToNil()
 
-				// To do: For Multi-node etcd HTTP status need to be set to `StatusServiceUnavailable` only when backup-restore is in "StateUnknown".
+				// TODO @ishan16696: For Multi-node etcd HTTP status need to be set to `StatusServiceUnavailable` only when backup-restore is in "StateUnknown".
 				handler.SetStatus(http.StatusServiceUnavailable)
 			}
 		},
@@ -266,12 +266,12 @@ func (b *BackupRestoreServer) runEtcdProbeLoopWithSnapshotter(ctx context.Contex
 		}
 
 		if b.backoffConfig.Start {
-			b.getNextBackoffTime()
-			b.logger.Info("Backoff time: ", b.backoffConfig.CurrentBackoffTime.Duration)
+			backoffTime := b.backoffConfig.GetNextBackoffTime()
+			b.logger.Info("Backoff time: ", backoffTime)
 			select {
 			case <-ctx.Done():
 				return
-			case <-time.After(b.backoffConfig.CurrentBackoffTime.Duration):
+			case <-time.After(backoffTime):
 			}
 		}
 
@@ -361,7 +361,7 @@ func (b *BackupRestoreServer) runEtcdProbeLoopWithSnapshotter(ctx context.Contex
 						}
 					}
 					if b.backoffConfig.Start {
-						b.resetBackoffExponential()
+						b.backoffConfig.ResetExponentialBackoff()
 					}
 				} else {
 					b.logger.Warnf("Failed to collect events for first delta snapshot(s): %v", err)
@@ -386,7 +386,7 @@ func (b *BackupRestoreServer) runEtcdProbeLoopWithSnapshotter(ctx context.Contex
 					}
 				}
 				if b.backoffConfig.Start {
-					b.resetBackoffExponential()
+					b.backoffConfig.ResetExponentialBackoff()
 				}
 			}
 
@@ -514,24 +514,4 @@ func (b *BackupRestoreServer) stopSnapshotter(handler *HTTPHandler) {
 	handler.ReqCh <- emptyStruct
 	handler.Logger.Info("Waiting for acknowledgment...")
 	<-handler.AckCh
-}
-
-func (b *BackupRestoreServer) getNextBackoffTime() {
-	if b.backoffConfig.Attempt > b.backoffConfig.ThresholdAttempt {
-		b.backoffConfig.CurrentBackoffTime = b.backoffConfig.ThresholdTime
-		return
-	}
-	b.backoffConfig.Attempt++
-	b.backoffConfig.CurrentBackoffTime = wrappers.Duration{Duration: time.Duration(b.backoffConfig.Multiplier) * b.backoffConfig.CurrentBackoffTime.Duration}
-}
-
-func (b *BackupRestoreServer) resetBackoffExponential() {
-	// set backoff start to false
-	b.backoffConfig.Start = false
-
-	// reset the backoff-exponential time with default.
-	b.backoffConfig.CurrentBackoffTime.Duration = brtypes.DefaultMinimunBackoff
-
-	// reset the backoff-exponential attempt with 0.
-	b.backoffConfig.Attempt = 0
 }
