@@ -2,7 +2,6 @@ package membergarbagecollector_test
 
 import (
 	"io"
-	"os"
 	"testing"
 
 	. "github.com/onsi/ginkgo"
@@ -12,12 +11,6 @@ import (
 
 var (
 	logger = logrus.New().WithField("suite", "snapshotter")
-	err    error
-)
-
-const (
-	outputDir = "../../../test/output"
-	etcdDir   = outputDir + "/default.etcd"
 )
 
 func TestMembergarbagecollector(t *testing.T) {
@@ -27,13 +20,5 @@ func TestMembergarbagecollector(t *testing.T) {
 
 var _ = SynchronizedBeforeSuite(func() []byte {
 	logger.Logger.Out = io.Discard
-	err = os.RemoveAll(outputDir)
-	Expect(err).ShouldNot(HaveOccurred())
-
-	Expect(err).ShouldNot(HaveOccurred())
-	var data []byte
-	return data
+	return nil
 }, func(data []byte) {})
-
-var _ = SynchronizedAfterSuite(func() {}, func() {
-})
