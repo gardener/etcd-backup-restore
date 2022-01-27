@@ -4,10 +4,12 @@ import (
 	"context"
 	"os"
 	"strconv"
+	"time"
 
 	mgc "github.com/gardener/etcd-backup-restore/pkg/health/membergarbagecollector"
 	"github.com/gardener/etcd-backup-restore/pkg/miscellaneous"
 	mocketcdutil "github.com/gardener/etcd-backup-restore/pkg/mock/etcdutil/client"
+	"github.com/gardener/etcd-backup-restore/pkg/wrappers"
 	"go.etcd.io/etcd/clientv3"
 	"go.etcd.io/etcd/etcdserver/etcdserverpb"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -23,7 +25,8 @@ import (
 
 var _ = Describe("Membergarbagecollector", func() {
 	var (
-		ctrl *gomock.Controller
+		ctrl                  *gomock.Controller
+		etcdConnectionTimeout = wrappers.Duration{Duration: 30 * time.Second}
 	)
 
 	Describe("Creating MemberGarbageCollector", func() {
@@ -37,12 +40,12 @@ var _ = Describe("Membergarbagecollector", func() {
 		})
 
 		It("should not return error with valid configuration", func() {
-			_, err := mgc.NewMemberGarbageCollector(logger, miscellaneous.GetFakeKubernetesClientSet())
+			_, err := mgc.NewMemberGarbageCollector(logger, miscellaneous.GetFakeKubernetesClientSet(), etcdConnectionTimeout)
 			Expect(err).ShouldNot(HaveOccurred())
 		})
 
 		It("should return error when invalid clientset is passed", func() {
-			_, err := mgc.NewMemberGarbageCollector(logger, nil)
+			_, err := mgc.NewMemberGarbageCollector(logger, nil, etcdConnectionTimeout)
 			Expect(err).Should(HaveOccurred())
 		})
 	})
@@ -85,7 +88,7 @@ var _ = Describe("Membergarbagecollector", func() {
 				etcdutilchecker.EXPECT().MemberList(gomock.Any()).Return(getMemberListResponse(3), nil).Times(1)
 				etcdutilchecker.EXPECT().MemberRemove(gomock.Any(), gomock.Any()).Return(nil, nil).Times(0)
 
-				membergc, err := mgc.NewMemberGarbageCollector(logger, k8sClientset)
+				membergc, err := mgc.NewMemberGarbageCollector(logger, k8sClientset, etcdConnectionTimeout)
 				Expect(err).To(BeNil())
 				err = membergc.RemoveSuperfluousMembers(context.TODO(), etcdutilchecker)
 				Expect(err).To(BeNil())
@@ -103,7 +106,7 @@ var _ = Describe("Membergarbagecollector", func() {
 				etcdutilchecker.EXPECT().MemberList(gomock.Any()).Return(getMemberListResponse(2), nil).Times(1)
 				etcdutilchecker.EXPECT().MemberRemove(gomock.Any(), gomock.Any()).Return(nil, nil).Times(0)
 
-				membergc, err := mgc.NewMemberGarbageCollector(logger, k8sClientset)
+				membergc, err := mgc.NewMemberGarbageCollector(logger, k8sClientset, etcdConnectionTimeout)
 				Expect(err).To(BeNil())
 				err = membergc.RemoveSuperfluousMembers(context.TODO(), etcdutilchecker)
 				Expect(err).To(BeNil())
@@ -133,7 +136,7 @@ var _ = Describe("Membergarbagecollector", func() {
 				etcdutilchecker.EXPECT().MemberList(gomock.Any()).Return(getMemberListResponse(3), nil).Times(1)
 				etcdutilchecker.EXPECT().MemberRemove(gomock.Any(), gomock.Any()).Return(nil, nil).Times(0)
 
-				membergc, err := mgc.NewMemberGarbageCollector(logger, k8sClientset)
+				membergc, err := mgc.NewMemberGarbageCollector(logger, k8sClientset, etcdConnectionTimeout)
 				Expect(err).To(BeNil())
 				err = membergc.RemoveSuperfluousMembers(context.TODO(), etcdutilchecker)
 				Expect(err).To(BeNil())
@@ -151,7 +154,7 @@ var _ = Describe("Membergarbagecollector", func() {
 				etcdutilchecker.EXPECT().MemberList(gomock.Any()).Return(getMemberListResponse(3), nil).Times(1)
 				etcdutilchecker.EXPECT().MemberRemove(gomock.Any(), gomock.Any()).Return(nil, nil).Times(1)
 
-				membergc, err := mgc.NewMemberGarbageCollector(logger, k8sClientset)
+				membergc, err := mgc.NewMemberGarbageCollector(logger, k8sClientset, etcdConnectionTimeout)
 				Expect(err).To(BeNil())
 				err = membergc.RemoveSuperfluousMembers(context.TODO(), etcdutilchecker)
 				Expect(err).To(BeNil())

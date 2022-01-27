@@ -25,6 +25,7 @@ import (
 	"github.com/gardener/etcd-backup-restore/pkg/miscellaneous"
 	utils "github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
+	"github.com/gardener/etcd-backup-restore/pkg/wrappers"
 	druidv1alpha1 "github.com/gardener/etcd-druid/api/v1alpha1"
 	"github.com/sirupsen/logrus"
 	v1 "k8s.io/api/core/v1"
@@ -47,11 +48,12 @@ type MGCChecker interface {
 
 // MemberGarbageCollector contains information to regularly cleanup superfluous ETCD members
 type MemberGarbageCollector struct {
-	logger       *logrus.Entry
-	gcTimer      *time.Timer
-	k8sClient    client.Client
-	podNamespace string
-	etcdName     string
+	logger                *logrus.Entry
+	gcTimer               *time.Timer
+	k8sClient             client.Client
+	podNamespace          string
+	etcdName              string
+	etcdConnectionTimeout wrappers.Duration
 }
 
 func init() {
@@ -59,7 +61,7 @@ func init() {
 }
 
 // NewMemberGarbageCollector returns the member garbage collect object
-func NewMemberGarbageCollector(logger *logrus.Entry, clientSet client.Client) (*MemberGarbageCollector, error) {
+func NewMemberGarbageCollector(logger *logrus.Entry, clientSet client.Client, etcdTimeout wrappers.Duration) (*MemberGarbageCollector, error) {
 	if clientSet == nil {
 		return nil, &errors.EtcdError{
 			Message: "nil kubernetes clientset passed, can not create etcd member garbage collector",
@@ -74,10 +76,11 @@ func NewMemberGarbageCollector(logger *logrus.Entry, clientSet client.Client) (*
 		logger.Fatalf("POD_NAME env var not present: %v", err)
 	}
 	return &MemberGarbageCollector{
-		logger:       logger.WithField("actor", "etcd-membergc"),
-		k8sClient:    clientSet,
-		podNamespace: namespace,
-		etcdName:     podName[:strings.LastIndex(podName, "-")], //TODO Evaluate if this will always be sufficient
+		logger:                logger.WithField("actor", "etcd-membergc"),
+		k8sClient:             clientSet,
+		podNamespace:          namespace,
+		etcdName:              podName[:strings.LastIndex(podName, "-")],
+		etcdConnectionTimeout: etcdTimeout,
 	}, nil
 }
 
@@ -88,7 +91,7 @@ func RunMemberGarbageCollectorPeriodically(ctx context.Context, hconfig *brtypes
 		logger.Errorf("failed to create kubernetes clientset: %v", err)
 		return
 	}
-	mgc, err := NewMemberGarbageCollector(logger, clientSet)
+	mgc, err := NewMemberGarbageCollector(logger, clientSet, etcdConfig.ConnectionTimeout)
 	if err != nil {
 		logger.Errorf("failed to initialize new etcd member garbage collector: %v", err)
 		return
@@ -138,7 +141,9 @@ func (mgc *MemberGarbageCollector) RemoveSuperfluousMembers(ctx context.Context,
 		}
 	}
 
-	etcdMemberListResponse, err := etcdCluster.MemberList(ctx)
+	listCtx, listCtxCancel := context.WithTimeout(ctx, mgc.etcdConnectionTimeout.Duration)
+	defer listCtxCancel()
+	etcdMemberListResponse, err := etcdCluster.MemberList(listCtx)
 	if err != nil {
 		return &errors.EtcdError{
 			Message: fmt.Sprintf("Could not list etcd cluster members: %v", err),
@@ -159,7 +164,9 @@ func (mgc *MemberGarbageCollector) RemoveSuperfluousMembers(ctx context.Context,
 		}, memberPod)
 		if apierrors.IsNotFound(err) && !statusMembers[member.Name] {
 			//Remove member from etcd cluster if corresponding pod cannot be found and if member not present in etcd.Status.Members
-			if _, err = etcdCluster.MemberRemove(ctx, member.ID); err != nil {
+			removeCtx, removeCtxCancel := context.WithTimeout(ctx, mgc.etcdConnectionTimeout.Duration)
+			defer removeCtxCancel()
+			if _, err = etcdCluster.MemberRemove(removeCtx, member.ID); err != nil {
 				return &errors.EtcdError{
 					Message: fmt.Sprintf("Error removing member %v from the cluster: %v", member.Name, err),
 				}
