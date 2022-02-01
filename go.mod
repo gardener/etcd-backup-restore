@@ -3,8 +3,8 @@ module github.com/gardener/etcd-backup-restore
 go 1.14
 
 require (
-	cloud.google.com/go v0.51.0
-	cloud.google.com/go/storage v1.0.0
+	cloud.google.com/go/iam v0.1.1
+	cloud.google.com/go/storage v1.10.0
 	github.com/Azure/azure-pipeline-go v0.2.2
 	github.com/Azure/azure-storage-blob-go v0.8.0
 	github.com/MakeNowJust/heredoc v1.0.0 // indirect
@@ -14,7 +14,7 @@ require (
 	github.com/coreos/go-systemd v0.0.0-20191104093116-d3cd4ed1dbcf // indirect
 	github.com/elazarl/goproxy v0.0.0-20191011121108-aa519ddbe484 // indirect
 	github.com/ghodss/yaml v1.0.0
-	github.com/golang/mock v1.3.1
+	github.com/golang/mock v1.6.0
 	github.com/gophercloud/gophercloud v0.17.0
 	github.com/gophercloud/utils v0.0.0-20200204043447-9864b6f1f12f
 	github.com/grpc-ecosystem/go-grpc-middleware v1.1.0 // indirect
@@ -33,7 +33,7 @@ require (
 	go.etcd.io/etcd v0.5.0-alpha.5.0.20200910180754-dd1b699fc489
 	go.uber.org/atomic v1.6.0
 	go.uber.org/zap v1.15.0
-	google.golang.org/api v0.15.0
+	google.golang.org/api v0.66.0
 	helm.sh/helm/v3 v3.4.0 //v3.2.4
 	k8s.io/api v0.20.2
 	k8s.io/apimachinery v0.20.2
