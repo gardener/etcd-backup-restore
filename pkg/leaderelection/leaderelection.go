@@ -150,7 +150,7 @@ func (le *LeaderElector) Run(ctx context.Context) error {
 
 // IsLeader checks whether the current instance of backup-restore is leader or not.
 func IsLeader(ctx context.Context, etcdConnectionConfig *brtypes.EtcdConnectionConfig, etcdConnectionTimeout time.Duration, logger *logrus.Entry) (bool, error) {
-	logger.Info("checking the leadershipStatus...")
+	logger.Debug("checking the leadershipStatus...")
 	var endPoint string
 
 	factory := etcdutil.NewFactory(*etcdConnectionConfig)
