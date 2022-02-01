@@ -31,8 +31,8 @@ require (
 	github.com/tmc/grpc-websocket-proxy v0.0.0-20200427203606-3cfed13b9966 // indirect
 	go.etcd.io/bbolt v1.3.5
 	go.etcd.io/etcd v0.5.0-alpha.5.0.20200910180754-dd1b699fc489
-	go.uber.org/atomic v1.6.0
-	go.uber.org/zap v1.15.0
+	go.uber.org/atomic v1.7.0
+	go.uber.org/zap v1.20.0
 	google.golang.org/api v0.15.0
 	helm.sh/helm/v3 v3.4.0 //v3.2.4
 	k8s.io/api v0.20.2
