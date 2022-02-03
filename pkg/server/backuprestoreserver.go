@@ -163,7 +163,7 @@ func (b *BackupRestoreServer) runServerWithSnapshotter(ctx context.Context, rest
 	}
 
 	b.logger.Infof("Creating snapshotter...")
-	ssr, err := snapshotter.NewSnapshotter(b.logger, b.config.SnapshotterConfig, ss, b.config.EtcdConnectionConfig, b.config.CompressionConfig, b.config.HealthConfig)
+	ssr, err := snapshotter.NewSnapshotter(b.logger, b.config.SnapshotterConfig, ss, b.config.EtcdConnectionConfig, b.config.CompressionConfig, b.config.HealthConfig, b.config.SnapstoreConfig)
 	if err != nil {
 		return err
 	}

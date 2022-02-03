@@ -89,7 +89,8 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 
 // runSnapshotter creates a snapshotter object and runs it for a duration specified by 'snapshotterDurationSeconds'
 func runSnapshotter(logger *logrus.Entry, deltaSnapshotPeriod time.Duration, endpoints []string, stopCh <-chan struct{}) error {
-	store, err := snapstore.GetSnapstore(&brtypes.SnapstoreConfig{Container: snapstoreDir, Provider: "Local"})
+	snapStoreConfig := &brtypes.SnapstoreConfig{Container: snapstoreDir, Provider: "Local"}
+	store, err := snapstore.GetSnapstore(snapStoreConfig)
 	if err != nil {
 		return err
 	}
@@ -107,7 +108,7 @@ func runSnapshotter(logger *logrus.Entry, deltaSnapshotPeriod time.Duration, end
 
 	healthConfig := brtypes.NewHealthConfig()
 
-	ssr, err := snapshotter.NewSnapshotter(logger, snapshotterConfig, store, etcdConnectionConfig, compressionConfig, healthConfig)
+	ssr, err := snapshotter.NewSnapshotter(logger, snapshotterConfig, store, etcdConnectionConfig, compressionConfig, healthConfig, snapStoreConfig)
 	if err != nil {
 		return err
 	}
