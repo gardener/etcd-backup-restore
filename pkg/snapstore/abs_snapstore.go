@@ -38,7 +38,7 @@ const (
 	absStorageAccount     = "STORAGE_ACCOUNT"
 	absStorageKey         = "STORAGE_KEY"
 	absCredentialFile     = "AZURE_APPLICATION_CREDENTIALS"
-	absCredentialJSONFile = "AZURE_APPLICATION_CREDENTIALS_Json"
+	absCredentialJSONFile = "AZURE_APPLICATION_CREDENTIALS_JSON"
 )
 
 // ABSSnapStore is an ABS backed snapstore.

@@ -46,7 +46,7 @@ const (
 	awsAcessKeyID               = "AWS_ACCESS_KEY_ID"
 	awsRegion                   = "AWS_REGION"
 	awsCredentialFile           = "AWS_APPLICATION_CREDENTIALS"
-	awsCredentialJSONFile       = "AWS_APPLICATION_CREDENTIALS_Json"
+	awsCredentialJSONFile       = "AWS_APPLICATION_CREDENTIALS_JSON"
 )
 
 // S3SnapStore is snapstore with AWS S3 object store as backend
@@ -60,7 +60,7 @@ type S3SnapStore struct {
 	tempDir                 string
 }
 
-type credentialsFile struct {
+type awsCredentials struct {
 	AccessKeyID     string `json:"accessKeyID"`
 	Region          string `json:"region"`
 	SecretAccessKey string `json:"secretAccessKey"`
@@ -100,7 +100,7 @@ func getSessionOptions(prefixString string) (session.Options, error) {
 
 	if _, isSet := os.LookupEnv(awsCredentialJSONFile); isSet {
 		if filename := os.Getenv(awsCredentialJSONFile); filename != "" {
-			creds, err := readCredentialsJSONFile(filename, prefixString)
+			creds, err := readAWSCredentialsJSONFile(filename, prefixString)
 			if err != nil {
 				return session.Options{}, fmt.Errorf("error getting credentials using %v file", filename)
 			}
@@ -110,9 +110,9 @@ func getSessionOptions(prefixString string) (session.Options, error) {
 
 	if _, isSet := os.LookupEnv(awsCredentialFile); isSet {
 		if filename := os.Getenv(awsCredentialFile); filename != "" {
-			creds, err := readCredentialsFile(filename, prefixString)
+			creds, err := readAWSCredentialsFile(filename, prefixString)
 			if err != nil {
-				return session.Options{}, fmt.Errorf("error getting credentials using %v file", filename)
+				return session.Options{}, fmt.Errorf("error getting credentials from %v filepath", filename)
 			}
 			return creds, nil
 		}
@@ -125,7 +125,7 @@ func getSessionOptions(prefixString string) (session.Options, error) {
 	}, nil
 }
 
-func readCredentialsJSONFile(filename string, prefixString string) (session.Options, error) {
+func readAWSCredentialsJSONFile(filename string, prefixString string) (session.Options, error) {
 	jsonData, err := ioutil.ReadFile(filename)
 	if err != nil {
 		return session.Options{}, err
@@ -137,7 +137,7 @@ func readCredentialsJSONFile(filename string, prefixString string) (session.Opti
 
 // credentialsFromJSON obtains AWS credentials from a JSON value.
 func credentialsFromJSON(jsonData []byte, prefixString string) (session.Options, error) {
-	awsConfig := &credentialsFile{}
+	awsConfig := &awsCredentials{}
 	if err := json.Unmarshal(jsonData, awsConfig); err != nil {
 		return session.Options{}, err
 	}
@@ -150,8 +150,8 @@ func credentialsFromJSON(jsonData []byte, prefixString string) (session.Options,
 	}, nil
 }
 
-func readCredentialsFile(filename string, prefixString string) (session.Options, error) {
-	awsConfig := &credentialsFile{}
+func readAWSCredentialsFile(filename string, prefixString string) (session.Options, error) {
+	awsConfig := &awsCredentials{}
 
 	files, err := ioutil.ReadDir(filename)
 	if err != nil {
