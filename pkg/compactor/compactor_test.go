@@ -117,7 +117,7 @@ var _ = Describe("Running Compactor", func() {
 				restoreOpts.DeltaSnapList = deltaSnapList
 
 				// Take the compacted full snapshot with defragmnetation allowed
-				_, err = cptr.Compact(compactOptions)
+				_, err = cptr.Compact(testCtx, compactOptions)
 				Expect(err).ShouldNot(HaveOccurred())
 
 				// Check if the compacted full snapshot is really present
@@ -142,7 +142,7 @@ var _ = Describe("Running Compactor", func() {
 				restoreOpts.DeltaSnapList = deltaSnapList
 
 				// Take the compacted full snapshot with defragmnetation allowed
-				_, err = cptr.Compact(compactOptions)
+				_, err = cptr.Compact(testCtx, compactOptions)
 				Expect(err).ShouldNot(HaveOccurred())
 
 				compactedSnapshot, deltaSnapList, err = miscellaneous.GetLatestFullSnapshotAndDeltaSnapList(store)
@@ -192,7 +192,7 @@ var _ = Describe("Running Compactor", func() {
 
 				// Take the compacted full snapshot with defragmnetation not allowed
 				compactOptions.NeedDefragmentation = false
-				_, err = cptr.Compact(compactOptions)
+				_, err = cptr.Compact(testCtx, compactOptions)
 				Expect(err).ShouldNot(HaveOccurred())
 
 				// Check if the compacted full snapshot is really present
@@ -218,7 +218,7 @@ var _ = Describe("Running Compactor", func() {
 
 				// Take the compacted full snapshot with defragmnetation not allowed
 				compactOptions.NeedDefragmentation = false
-				_, err = cptr.Compact(compactOptions)
+				_, err = cptr.Compact(testCtx, compactOptions)
 				Expect(err).ShouldNot(HaveOccurred())
 
 				// Check if the compacted full snapshot is really present
@@ -261,7 +261,7 @@ var _ = Describe("Running Compactor", func() {
 				restoreOpts.DeltaSnapList = deltaSnapList
 
 				// Try capturing the compacted full snapshot
-				_, err = cptr.Compact(compactOptions)
+				_, err = cptr.Compact(testCtx, compactOptions)
 				Expect(err).Should(HaveOccurred())
 			})
 		})
