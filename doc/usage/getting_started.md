@@ -16,7 +16,8 @@ The procedure to provide credentials to access the cloud provider object store v
 * For `AWS S3`: 
    1. The secret file should be provided and it's file path should be made available as environment variables: `AWS_APPLICATION_CREDENTIALS` or `AWS_APPLICATION_CREDENTIALS_JSON`.
    2. `AWS_REGION`, `AWS_SECRET_ACCESS_KEY` and `AWS_ACCESS_KEY_ID` should be made available as environment variables.
-
+   3. For `S3-compatible providers` such as MinIO, `AWS_ENDPOINT` and `AWS_FORCE_PATH_STYLE` can be made available as environment variables to
+   configure the S3 client to communicate to a non-AWS provider.
 
 * For  `Google Cloud Storage`: 
    1. The service account json file should be provided in the `~/.gcp` as a `service-account-file.json` file.
