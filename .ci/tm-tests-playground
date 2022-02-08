@@ -64,19 +64,12 @@ fi
 
 if [[ $TM_LANDSCAPE == "internal" ]]; then
     TM_CONFIG_NAME=testmachinery-internal
-    S3_ENDPOINT="storage.googleapis.com"
 fi
 if [[ $TM_LANDSCAPE == "external" ]]; then
     TM_CONFIG_NAME=testmachinery
-    S3_ENDPOINT="storage.googleapis.com"
 fi
 if [[ $TM_LANDSCAPE == "staging" ]]; then
     TM_CONFIG_NAME=testmachinery-staging
-    S3_ENDPOINT="storage.googleapis.com"
-fi
-if [[ $TM_LANDSCAPE == "it" ]]; then
-    TM_CONFIG_NAME=testmachinery-it
-    S3_ENDPOINT="minio.ingress.tm-it.core.shoot.canary.k8s-hana.ondemand.com"
 fi
 
 echo "Testmachinery config name: ${TM_CONFIG_NAME}"
@@ -92,8 +85,13 @@ fetch_aws_secret
 export SOURCE_PATH="$(readlink -f "$(dirname ${0})/..")"
 mkdir -p /tm
 TM_CLUSTER=/tm/kubeconfig
+cli.py config attribute --cfg-type kubernetes --cfg-name $TM_CONFIG_NAME --key kubeconfig > $TM_CLUSTER
+
+LANDSCAPE_REPO_PATH="$(readlink -f "${LANDSCAPE_REPO_PATH}")"
+TESTRUNNER_GARDEN_CLUSTER="$LANDSCAPE_REPO_PATH/export/serviceaccounts/virtual-garden-kubeconfig-testrunner.yaml"
+
 ACTIVE_GARDEN_CLUSTER=/tm/gardener.kubeconfig
-cli.py config attribute --cfg-type kubernetes --cfg-name garden-dev-virtual --key kubeconfig > $ACTIVE_GARDEN_CLUSTER
+kubectl --kubeconfig=$TESTRUNNER_GARDEN_CLUSTER config view --flatten -o json | jq '.users[].user = {"tokenFile": "/var/run/secrets/gardener/serviceaccount/dev-token"}' > $ACTIVE_GARDEN_CLUSTER
 
 if [[ $TESTRUN_CHART != "" ]]; then
     TESTRUN_CHART_PATH="$SOURCE_PATH/testmachinery/testruns/$TESTRUN_CHART"
@@ -102,9 +100,6 @@ if [[ $FLAVOR_TESTRUN_CHART != "" ]]; then
     FLAVOR_TESTRUN_CHART_PATH="$SOURCE_PATH/testmachinery/testruns/$FLAVOR_TESTRUN_CHART"
 fi
 
-mkdir -p /tm
-cli.py config attribute --cfg-type kubernetes --cfg-name $TM_CONFIG_NAME --key kubeconfig > $TM_CLUSTER
-
 export KUBECONFIG=$TM_CLUSTER
 kubectl cluster-info
 
@@ -112,13 +107,13 @@ kubectl cluster-info
 /testrunner run \
     --gardener-kubeconfig-path=$ACTIVE_GARDEN_CLUSTER \
     --tm-kubeconfig-path=$TM_CLUSTER \
+    --testrunner-kubeconfig-path=$TESTRUNNER_GARDEN_CLUSTER \
     --timeout=21600 \
     --interval=60 \
     --es-config-name=sap_internal \
     --landscape=$LANDSCAPE \
-    --s3-endpoint=$S3_ENDPOINT \
-    --s3-ssl=true \
     --shoot-name="tm-" \
+    --namespace="testruns-on-dev" \
     --testruns-chart-path=$TESTRUN_CHART_PATH \
     --flavored-testruns-chart-path=$FLAVOR_TESTRUN_CHART_PATH \
     --flavor-config=$SOURCE_PATH/testmachinery/flavors/$FLAVOR_CONFIG \
