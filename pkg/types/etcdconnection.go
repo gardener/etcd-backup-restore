@@ -32,7 +32,7 @@ const (
 	// DefaultSnapshotTimeout defines default timeout duration for taking FullSnapshot.
 	DefaultSnapshotTimeout time.Duration = 8 * time.Minute
 
-	// DefragRetryPeriod used for ETCD defrag retry.
+	// DefragRetryPeriod is used as the duration after which a defragmentation is retried.
 	DefragRetryPeriod time.Duration = 1 * time.Minute
 )
 

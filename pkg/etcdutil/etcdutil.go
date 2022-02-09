@@ -206,7 +206,7 @@ func GetEtcdEndPointsSorted(ctx context.Context, clientMaintenance client.Mainte
 	var followerEtcdEndpoints []string
 	var endPoint string
 
-	ctx, cancel := context.WithTimeout(ctx, brtypes.DefaultDefragConnectionTimeout)
+	ctx, cancel := context.WithTimeout(ctx, brtypes.DefaultEtcdConnectionTimeout)
 	defer cancel()
 
 	membersInfo, err := clientCluster.MemberList(ctx)
