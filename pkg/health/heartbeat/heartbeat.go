@@ -142,7 +142,7 @@ func (hb *Heartbeat) RenewMemberLease(ctx context.Context) error {
 	return nil
 }
 
-// UpdateFullSnapshotLease updates the holderIdentity field of the full snapshot lease with the last revision in the latest full snapshot
+// UpdateFullSnapshotLease renews the full snapshot lease and updates the holderIdentity field with the last revision in the latest full snapshot
 func UpdateFullSnapshotLease(ctx context.Context, logger *logrus.Entry, fullSnapshot *brtypes.Snapshot, k8sClientset client.Client, fullSnapshotLeaseName string) error {
 	if k8sClientset == nil {
 		return &errors.EtcdError{
@@ -175,28 +175,35 @@ func UpdateFullSnapshotLease(ctx context.Context, logger *logrus.Entry, fullSnap
 			}
 		}
 
-		// Do not update revision number if revision in existing Lease is already higher.
+		var rev int64
+		logString := "Renewed full snapshot lease"
+
+		// Do not renew lease if revision in existing Lease is already higher.
 		if fullSnapLease.Spec.HolderIdentity != nil {
-			rev, err := strconv.ParseInt(*fullSnapLease.Spec.HolderIdentity, 10, 64)
+			rev, err = strconv.ParseInt(*fullSnapLease.Spec.HolderIdentity, 10, 64)
 			if err != nil {
 				return err
 			}
-			if rev >= fullSnapshot.LastRevision {
+			if rev > fullSnapshot.LastRevision {
 				return nil
 			}
 		}
 
 		renewedLease := fullSnapLease.DeepCopy()
-		actor := strconv.FormatInt(fullSnapshot.LastRevision, 10)
-		renewedLease.Spec.HolderIdentity = &actor
 		renewedTime := time.Now()
 		renewedLease.Spec.RenewTime = &metav1.MicroTime{Time: renewedTime}
+		// Update revisions in fullSnapLease.Spec.HolderIdentity only when its value is less than latest fullSnap.LastRevision
+		if fullSnapLease.Spec.HolderIdentity == nil || rev < fullSnapshot.LastRevision {
+			actor := strconv.FormatInt(fullSnapshot.LastRevision, 10)
+			renewedLease.Spec.HolderIdentity = &actor
+			logString += " with revision " + actor
+		}
 
 		if err := k8sClientset.Patch(ctx, renewedLease, client.MergeFromWithOptions(fullSnapLease, &client.MergeFromWithOptimisticLock{})); err != nil {
 			return err
 		}
 
-		logger.Info("Renewed full snapshot lease with revision ", actor, " at time ", renewedTime)
+		logger.Info(logString, " at time ", renewedTime)
 		return nil
 	}); err != nil {
 		return &errors.EtcdError{
@@ -207,13 +214,8 @@ func UpdateFullSnapshotLease(ctx context.Context, logger *logrus.Entry, fullSnap
 	return nil
 }
 
-// UpdateDeltaSnapshotLease updates the holderIdentity field of the delta snapshot lease with the total number or revisions stored in delta snapshots since the last full snapshot was taken
+// UpdateDeltaSnapshotLease renews delta snapshot lease and updates the holderIdentity field with the total number or revisions stored in delta snapshots since the last full snapshot was taken
 func UpdateDeltaSnapshotLease(ctx context.Context, logger *logrus.Entry, prevDeltaSnapshots brtypes.SnapList, k8sClientset client.Client, deltaSnapshotLeaseName string) error {
-	if len(prevDeltaSnapshots) == 0 {
-		logger.Info("Skipping renewal of delta snapshot lease because no full or delta snapshot is available")
-		return nil
-	}
-
 	if k8sClientset == nil {
 		return &errors.EtcdError{
 			Message: "nil clientset passed",
@@ -227,8 +229,7 @@ func UpdateDeltaSnapshotLease(ctx context.Context, logger *logrus.Entry, prevDel
 		}
 	}
 
-	deltaSnap := prevDeltaSnapshots[len(prevDeltaSnapshots)-1]
-	revisionNumber := strconv.FormatInt(deltaSnap.LastRevision, 10)
+	logString := "Renewed delta snapshot lease"
 
 	deltaSnapLease := &v1.Lease{}
 	if err := k8sClientset.Get(ctx, client.ObjectKey{
@@ -241,9 +242,29 @@ func UpdateDeltaSnapshotLease(ctx context.Context, logger *logrus.Entry, prevDel
 	}
 
 	renewedLease := deltaSnapLease.DeepCopy()
-	renewedLease.Spec.HolderIdentity = &revisionNumber
 	renewedTime := time.Now()
 	renewedLease.Spec.RenewTime = &metav1.MicroTime{Time: renewedTime}
+
+	// Update revisions in deltaSnapLease.Spec.HolderIdentity only when its value is less than latest deltaSnap.LastRevision
+	if len(prevDeltaSnapshots) > 0 {
+		deltaSnap := prevDeltaSnapshots[len(prevDeltaSnapshots)-1]
+		var deltaRev int64
+		if deltaSnapLease.Spec.HolderIdentity != nil {
+			deltaRev, err = strconv.ParseInt(*deltaSnapLease.Spec.HolderIdentity, 10, 64)
+			if err != nil {
+				return err
+			}
+		}
+		if deltaSnapLease.Spec.HolderIdentity == nil || deltaRev < deltaSnap.LastRevision {
+			actor := strconv.FormatInt(deltaSnap.LastRevision, 10)
+			renewedLease.Spec.HolderIdentity = &actor
+			logString += " with revision " + actor
+		}
+	} else if deltaSnapLease.Spec.HolderIdentity == nil {
+		// Special case: Set revisions in deltaSnapLease.Spec.HolderIdentity to 0 if no delta snaps taken at all
+		actor := strconv.FormatInt(0, 10)
+		renewedLease.Spec.HolderIdentity = &actor
+	}
 
 	err = k8sClientset.Patch(ctx, renewedLease, client.MergeFrom(deltaSnapLease))
 	if err != nil {
@@ -251,7 +272,7 @@ func UpdateDeltaSnapshotLease(ctx context.Context, logger *logrus.Entry, prevDel
 			Message: fmt.Sprintf("Failed to update delta snapshot lease: %v", err),
 		}
 	}
-	logger.Info("Renewed delta snapshot lease with revision ", revisionNumber, " at time ", renewedTime)
+	logger.Info(logString, " at time ", renewedTime)
 
 	return nil
 }
