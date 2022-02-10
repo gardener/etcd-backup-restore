@@ -16,6 +16,7 @@ package snapstore
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -40,11 +41,20 @@ import (
 
 const (
 	// Total number of chunks to be uploaded must be one less than maximum limit allowed.
-	s3NoOfChunk        int64 = 9999
-	awsSecretAccessKey       = "AWS_SECRET_ACCESS_KEY"
-	awsAcessKeyID            = "AWS_ACCESS_KEY_ID"
-	awsRegion                = "AWS_REGION"
+	s3NoOfChunk           int64 = 9999
+	awsSecretAccessKey          = "AWS_SECRET_ACCESS_KEY"
+	awsAcessKeyID               = "AWS_ACCESS_KEY_ID"
+	awsRegion                   = "AWS_REGION"
+	awsCredentialFile           = "AWS_APPLICATION_CREDENTIALS"
+	awsCredentialJSONFile       = "AWS_APPLICATION_CREDENTIALS_JSON"
 )
+
+type awsCredentials struct {
+	AccessKeyID     string `json:"accessKeyID"`
+	Region          string `json:"region"`
+	SecretAccessKey string `json:"secretAccessKey"`
+	BucketName      string `json:"bucketName"`
+}
 
 // S3SnapStore is snapstore with AWS S3 object store as backend
 type S3SnapStore struct {
@@ -59,7 +69,11 @@ type S3SnapStore struct {
 
 // NewS3SnapStore create new S3SnapStore from shared configuration with specified bucket
 func NewS3SnapStore(config *brtypes.SnapstoreConfig) (*S3SnapStore, error) {
-	return newS3FromSessionOpt(config.Container, config.Prefix, config.TempDir, config.MaxParallelChunkUploads, getSessionOptions(getEnvPrefixString(config.IsSource)))
+	credentials, err := getSessionOptions(getEnvPrefixString(config.IsSource))
+	if err != nil {
+		return nil, err
+	}
+	return newS3FromSessionOpt(config.Container, config.Prefix, config.TempDir, config.MaxParallelChunkUploads, credentials)
 }
 
 // newS3FromSessionOpt will create the new S3 snapstore object from S3 session options
@@ -72,20 +86,105 @@ func newS3FromSessionOpt(bucket, prefix, tempDir string, maxParallelChunkUploads
 	return NewS3FromClient(bucket, prefix, tempDir, maxParallelChunkUploads, cli), nil
 }
 
-func getSessionOptions(prefixString string) session.Options {
+func getSessionOptions(prefixString string) (session.Options, error) {
+	fmt.Println("1..")
+	// TODO: passing credentials through environment variable will be deprecated by "backup-restore v0.18.0"
 	if _, isSet := os.LookupEnv(prefixString + awsAcessKeyID); isSet {
 		return session.Options{
 			Config: aws.Config{
 				Credentials: credentials.NewStaticCredentials(os.Getenv(prefixString+awsAcessKeyID), os.Getenv(prefixString+awsSecretAccessKey), ""),
 				Region:      pointer.StringPtr(os.Getenv(awsRegion)),
 			},
+		}, nil
+	}
+
+	if _, isSet := os.LookupEnv(awsCredentialJSONFile); isSet {
+		if filename := os.Getenv(awsCredentialJSONFile); filename != "" {
+			creds, err := readAWSCredentialsJSONFile(filename, prefixString)
+			if err != nil {
+				return session.Options{}, fmt.Errorf("error getting credentials using %v file", filename)
+			}
+			return creds, nil
 		}
 	}
+
+	if _, isSet := os.LookupEnv(awsCredentialFile); isSet {
+		if dir := os.Getenv(awsCredentialFile); dir != "" {
+			creds, err := readAWSCredentialFiles(dir, prefixString)
+			if err != nil {
+				return session.Options{}, fmt.Errorf("error getting credentials from %v directory", dir)
+			}
+			return creds, nil
+		}
+	}
+
 	return session.Options{
 		// Setting this is equal to the AWS_SDK_LOAD_CONFIG environment variable was set.
 		// We want to save the work to set AWS_SDK_LOAD_CONFIG=1 outside.
 		SharedConfigState: session.SharedConfigEnable,
+	}, nil
+}
+
+func readAWSCredentialsJSONFile(filename string, prefixString string) (session.Options, error) {
+	jsonData, err := ioutil.ReadFile(filename)
+	if err != nil {
+		return session.Options{}, err
 	}
+
+	return credentialsFromJSON(jsonData, prefixString)
+}
+
+// credentialsFromJSON obtains AWS credentials from a JSON value.
+func credentialsFromJSON(jsonData []byte, prefixString string) (session.Options, error) {
+	awsConfig := &awsCredentials{}
+	if err := json.Unmarshal(jsonData, awsConfig); err != nil {
+		return session.Options{}, err
+	}
+
+	return session.Options{
+		Config: aws.Config{
+			Credentials: credentials.NewStaticCredentials(prefixString+awsConfig.AccessKeyID, prefixString+awsConfig.SecretAccessKey, ""),
+			Region:      pointer.StringPtr(awsConfig.Region),
+		},
+	}, nil
+}
+
+func readAWSCredentialFiles(dirname string, prefixString string) (session.Options, error) {
+	awsConfig := &awsCredentials{}
+
+	files, err := ioutil.ReadDir(dirname)
+	if err != nil {
+		return session.Options{}, err
+	}
+
+	for _, file := range files {
+		if file.Name() == "accessKeyID" {
+			data, err := ioutil.ReadFile(dirname + "/accessKeyID")
+			if err != nil {
+				return session.Options{}, err
+			}
+			awsConfig.AccessKeyID = string(data)
+		} else if file.Name() == "region" {
+			data, err := ioutil.ReadFile(dirname + "/region")
+			if err != nil {
+				return session.Options{}, err
+			}
+			awsConfig.Region = string(data)
+		} else if file.Name() == "secretAccessKey" {
+			data, err := ioutil.ReadFile(dirname + "/secretAccessKey")
+			if err != nil {
+				return session.Options{}, err
+			}
+			awsConfig.SecretAccessKey = string(data)
+		}
+	}
+
+	return session.Options{
+		Config: aws.Config{
+			Credentials: credentials.NewStaticCredentials(prefixString+awsConfig.AccessKeyID, prefixString+awsConfig.SecretAccessKey, ""),
+			Region:      pointer.StringPtr(awsConfig.Region),
+		},
+	}, nil
 }
 
 // NewS3FromClient will create the new S3 snapstore object from S3 client
