@@ -51,7 +51,7 @@ func NewCompactor(store brtypes.SnapStore, logger *logrus.Entry, clientSet clien
 }
 
 // Compact is mainly responsible for applying snapshots (full + delta), compacting, drefragmenting, taking the snapshot and saving it sequentially.
-func (cp *Compactor) Compact(opts *brtypes.CompactOptions) (*brtypes.Snapshot, error) {
+func (cp *Compactor) Compact(ctx context.Context, opts *brtypes.CompactOptions) (*brtypes.Snapshot, error) {
 	cp.logger.Info("Start compacting")
 
 	// Deepcopy restoration options ro to avoid any mutation of the passing object
@@ -121,8 +121,6 @@ func (cp *Compactor) Compact(opts *brtypes.CompactOptions) (*brtypes.Snapshot, e
 	}
 	defer clientMaintenance.Close()
 
-	// Build contxt
-	ctx := context.TODO()
 	revCheckCtx, cancel := context.WithTimeout(ctx, etcdDialTimeout)
 	getResponse, err := clientKV.Get(revCheckCtx, "foo")
 	cancel()
@@ -144,9 +142,7 @@ func (cp *Compactor) Compact(opts *brtypes.CompactOptions) (*brtypes.Snapshot, e
 		}
 		defer client.Close()
 
-		defragCtx, defragCancel := context.WithTimeout(ctx, opts.DefragTimeout.Duration)
-		err = etcdutil.DefragmentData(defragCtx, clientMaintenance, client, ep, cp.logger)
-		defragCancel()
+		err = etcdutil.DefragmentData(ctx, clientMaintenance, client, ep, opts.DefragTimeout.Duration, cp.logger)
 		if err != nil {
 			cp.logger.Errorf("failed to defragment: %v", err)
 		}

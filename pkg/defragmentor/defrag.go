@@ -62,7 +62,7 @@ func (d *defragmentorJob) Run() {
 	}
 	defer client.Close()
 
-	ticker := time.NewTicker(etcdutil.DefragRetryPeriod)
+	ticker := time.NewTicker(brtypes.DefragRetryPeriod)
 	defer ticker.Stop()
 
 waitLoop:
@@ -86,7 +86,7 @@ waitLoop:
 
 			if isClusterHealthy {
 				d.logger.Infof("Starting the defragmentation as all members of etcd cluster are in healthy state")
-				err = etcdutil.DefragmentData(d.ctx, clientMaintenance, client, etcdEndpoints, d.logger)
+				err = etcdutil.DefragmentData(d.ctx, clientMaintenance, client, etcdEndpoints, d.etcdConnectionConfig.DefragTimeout.Duration, d.logger)
 				if err != nil {
 					d.logger.Warnf("failed to defrag data with error: %v", err)
 				} else {

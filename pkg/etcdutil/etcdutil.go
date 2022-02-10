@@ -157,7 +157,7 @@ func PerformDefragmentation(defragCtx context.Context, client client.Maintenance
 
 // DefragmentData calls the defragmentation on each etcd followers endPoints
 // then calls the defragmentation on etcd leader endPoints.
-func DefragmentData(defragCtx context.Context, clientMaintenance client.MaintenanceCloser, clientCluster client.ClusterCloser, etcdEndpoints []string, logger *logrus.Entry) error {
+func DefragmentData(defragCtx context.Context, clientMaintenance client.MaintenanceCloser, clientCluster client.ClusterCloser, etcdEndpoints []string, defragTimeout time.Duration, logger *logrus.Entry) error {
 	leaderEtcdEndpoints, followerEtcdEndpoints, err := GetEtcdEndPointsSorted(defragCtx, clientMaintenance, clientCluster, etcdEndpoints, logger)
 	logger.Debugf("etcdEndpoints: %v", etcdEndpoints)
 	logger.Debugf("leaderEndpoints: %v", leaderEtcdEndpoints)
@@ -172,7 +172,7 @@ func DefragmentData(defragCtx context.Context, clientMaintenance client.Maintena
 	// Perform the defragmentation on each etcd followers.
 	for _, ep := range followerEtcdEndpoints {
 		if err := func() error {
-			ctx, cancel := context.WithTimeout(defragCtx, DefaultDefragConnectionTimeout)
+			ctx, cancel := context.WithTimeout(defragCtx, defragTimeout)
 			defer cancel()
 			if err := PerformDefragmentation(ctx, clientMaintenance, ep, logger); err != nil {
 				return err
@@ -187,7 +187,7 @@ func DefragmentData(defragCtx context.Context, clientMaintenance client.Maintena
 	// Perform the defragmentation on etcd leader.
 	for _, ep := range leaderEtcdEndpoints {
 		if err := func() error {
-			ctx, cancel := context.WithTimeout(defragCtx, DefaultDefragConnectionTimeout)
+			ctx, cancel := context.WithTimeout(defragCtx, defragTimeout)
 			defer cancel()
 			if err := PerformDefragmentation(ctx, clientMaintenance, ep, logger); err != nil {
 				return err
@@ -206,7 +206,7 @@ func GetEtcdEndPointsSorted(ctx context.Context, clientMaintenance client.Mainte
 	var followerEtcdEndpoints []string
 	var endPoint string
 
-	ctx, cancel := context.WithTimeout(ctx, DefaultDefragConnectionTimeout)
+	ctx, cancel := context.WithTimeout(ctx, brtypes.DefaultEtcdConnectionTimeout)
 	defer cancel()
 
 	membersInfo, err := clientCluster.MemberList(ctx)
