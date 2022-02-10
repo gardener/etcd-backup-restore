@@ -17,6 +17,7 @@ package snapstore
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -34,8 +35,10 @@ import (
 )
 
 const (
-	absStorageAccount = "STORAGE_ACCOUNT"
-	absStorageKey     = "STORAGE_KEY"
+	absStorageAccount     = "STORAGE_ACCOUNT"
+	absStorageKey         = "STORAGE_KEY"
+	absCredentialFile     = "AZURE_APPLICATION_CREDENTIALS"
+	absCredentialJSONFile = "AZURE_APPLICATION_CREDENTIALS_JSON"
 )
 
 // ABSSnapStore is an ABS backed snapstore.
@@ -45,6 +48,12 @@ type ABSSnapStore struct {
 	// maxParallelChunkUploads hold the maximum number of parallel chunk uploads allowed.
 	maxParallelChunkUploads uint
 	tempDir                 string
+}
+
+type absCredentials struct {
+	BucketName     string `json:"bucketName"`
+	SecretKey      string `json:"storageKey"`
+	StorageAccount string `json:"storageAccount"`
 }
 
 // NewABSSnapStore create new ABSSnapStore from shared configuration with specified bucket
@@ -72,16 +81,88 @@ func NewABSSnapStore(config *brtypes.SnapstoreConfig) (*ABSSnapStore, error) {
 	return GetABSSnapstoreFromClient(config.Container, config.Prefix, config.TempDir, config.MaxParallelChunkUploads, &containerURL)
 }
 
-func getCredentials(prefixString string) (storageAccount string, storageKey string, err error) {
-	storageAccount, err = GetEnvVarOrError(prefixString + absStorageAccount)
-	if err != nil {
-		return "", "", err
+func getCredentials(prefixString string) (string, string, error) {
+
+	// TODO: passing credentials through environment variable will be deprecated by "backup-restore v0.18.0"
+	if _, isSet := os.LookupEnv(prefixString + absStorageAccount); isSet {
+		storageAccount, err := GetEnvVarOrError(prefixString + absStorageAccount)
+		if err != nil {
+			return "", "", err
+		}
+		storageKey, err := GetEnvVarOrError(prefixString + absStorageKey)
+		if err != nil {
+			return "", "", err
+		}
+		return storageAccount, storageKey, nil
 	}
-	storageKey, err = GetEnvVarOrError(prefixString + absStorageKey)
-	if err != nil {
-		return "", "", err
+
+	if _, isSet := os.LookupEnv(absCredentialJSONFile); isSet {
+		if filename := os.Getenv(absCredentialJSONFile); filename != "" {
+			credentials, err := readABSCredentialsJSON(filename, prefixString)
+			if err != nil {
+				return "", "", fmt.Errorf("error getting credentials using %v file", filename)
+			}
+			return credentials.StorageAccount, credentials.SecretKey, nil
+		}
 	}
-	return
+
+	if _, isSet := os.LookupEnv(absCredentialFile); isSet {
+		if dir := os.Getenv(absCredentialFile); dir != "" {
+			credentials, err := absReadCredentialFiles(dir, prefixString)
+			if err != nil {
+				return "", "", fmt.Errorf("error getting credentials from %v dir", dir)
+			}
+			return credentials.StorageAccount, credentials.SecretKey, nil
+		}
+	}
+
+	return "", "", fmt.Errorf("unable to get credentials")
+}
+
+func readABSCredentialsJSON(filename string, prefixString string) (*absCredentials, error) {
+	jsonData, err := ioutil.ReadFile(filename)
+	if err != nil {
+		return nil, err
+	}
+
+	return absCredentialsFromJSON(jsonData, prefixString)
+}
+
+// absCredentialsFromJSON obtains ABS credentials from a JSON value.
+func absCredentialsFromJSON(jsonData []byte, prefixString string) (*absCredentials, error) {
+	absConfig := &absCredentials{}
+	if err := json.Unmarshal(jsonData, absConfig); err != nil {
+		return nil, err
+	}
+
+	return absConfig, nil
+}
+
+func absReadCredentialFiles(dirname string, prefixString string) (*absCredentials, error) {
+	absConfig := &absCredentials{}
+
+	files, err := ioutil.ReadDir(dirname)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, file := range files {
+		if file.Name() == "storageAccount" {
+			data, err := ioutil.ReadFile(dirname + "/storageAccount")
+			if err != nil {
+				return nil, err
+			}
+			absConfig.StorageAccount = string(data)
+		} else if file.Name() == "storageKey" {
+			data, err := ioutil.ReadFile(dirname + "/storageKey")
+			if err != nil {
+				return nil, err
+			}
+			absConfig.SecretKey = string(data)
+		}
+	}
+
+	return absConfig, nil
 }
 
 // GetABSSnapstoreFromClient returns a new ABS object for a given container using the supplied storageClient
