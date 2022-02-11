@@ -12,6 +12,7 @@ import (
 	"github.com/gardener/etcd-backup-restore/pkg/health/heartbeat"
 	"github.com/gardener/etcd-backup-restore/pkg/miscellaneous"
 	"github.com/gardener/etcd-backup-restore/pkg/snapshot/restorer"
+	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 
 	"github.com/sirupsen/logrus"
@@ -36,17 +37,19 @@ const (
 
 // Compactor holds the necessary details for compacting ETCD
 type Compactor struct {
-	logger       *logrus.Entry
-	store        brtypes.SnapStore
-	k8sClientset client.Client
+	logger          *logrus.Entry
+	store           brtypes.SnapStore
+	k8sClientset    client.Client
+	snapstoreConfig *brtypes.SnapstoreConfig
 }
 
 // NewCompactor creates compactor
-func NewCompactor(store brtypes.SnapStore, logger *logrus.Entry, clientSet client.Client) *Compactor {
+func NewCompactor(store brtypes.SnapStore, storeConfig *brtypes.SnapstoreConfig, logger *logrus.Entry, clientSet client.Client) *Compactor {
 	return &Compactor{
-		logger:       logger,
-		store:        store,
-		k8sClientset: clientSet,
+		logger:          logger,
+		store:           store,
+		k8sClientset:    clientSet,
+		snapstoreConfig: storeConfig,
 	}
 }
 
@@ -77,6 +80,14 @@ func (cp *Compactor) Compact(ctx context.Context, opts *brtypes.CompactOptions) 
 	defer os.RemoveAll(cmpctDir)
 
 	cmpctOptions.Config.RestoreDataDir = cmpctDir
+
+	// Update the snapstore object before taking any action on object storage bucket.
+	// Refer: https://github.com/gardener/etcd-backup-restore/issues/422
+	cp.store, err = snapstore.GetSnapstore(cp.snapstoreConfig)
+	if err != nil {
+		cp.logger.Errorf("unable to update snapstore object: %v", err)
+		return nil, err
+	}
 
 	// Then restore from the snapshots
 	r := restorer.NewRestorer(cp.store, cp.logger)

@@ -27,7 +27,7 @@ var _ = Describe("Running Compactor", func() {
 		restorePeerURLs []string
 		clusterUrlsMap  types.URLsMap
 		peerUrls        types.URLs
-		// deltaSnapshotPeriod time.Duration
+		snapstoreConfig *brtypes.SnapstoreConfig
 	)
 	const (
 		restoreName            string = "default"
@@ -45,7 +45,6 @@ var _ = Describe("Running Compactor", func() {
 	)
 
 	BeforeEach(func() {
-		//wg = &sync.WaitGroup{}
 		restorePeerURLs = []string{"http://localhost:2380"}
 		clusterUrlsMap, err = types.NewURLsMap(restoreCluster)
 		Expect(err).ShouldNot(HaveOccurred())
@@ -62,12 +61,12 @@ var _ = Describe("Running Compactor", func() {
 
 		BeforeEach(func() {
 			dir = fmt.Sprintf("%s/etcd/snapshotter.bkp", testSuitDir)
-
-			store, err = snapstore.GetSnapstore(&brtypes.SnapstoreConfig{Container: dir, Provider: "Local"})
+			snapstoreConfig = &brtypes.SnapstoreConfig{Container: dir, Provider: "Local"}
+			store, err = snapstore.GetSnapstore(snapstoreConfig)
 			Expect(err).ShouldNot(HaveOccurred())
 			fmt.Println("The store where compaction will save snapshot is: ", store)
 
-			cptr = compactor.NewCompactor(store, logger, nil)
+			cptr = compactor.NewCompactor(store, snapstoreConfig, logger, nil)
 			restoreOpts = &brtypes.RestoreOptions{
 				Config: &brtypes.RestorationConfig{
 					InitialCluster:           restoreCluster,
