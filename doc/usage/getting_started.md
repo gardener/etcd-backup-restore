@@ -4,23 +4,37 @@ Currently we don't publish the binary build with the release, but it is pretty s
 
 ## Usage
 
-You can follow the `help` flag on `etcdbrctl` command and its sub-commands to know the usage details. Some of the common use cases are mentioned below. Although examples below use AWS S3 as storage provider, etcd-backup-restore supports AWS, GCS, Azure, Openstack swift and Alicloud OSS object store. It also supports local disk as storage provider for development purposes, but it is not recommended to use this in a production environment.
+You can follow the `help` flag on `etcdbrctl` command and its sub-commands to know the usage details. Some of the common use cases are mentioned below. Although examples below use `AWS S3` as storage provider, etcd-backup-restore supports AWS, GCS, Azure, Openstack swift and Alicloud OSS object store. It also supports local disk as storage provider for development purposes, but it is not recommended to use this in a production environment.
 
 ### Cloud Provider Credentials
 
-The procedure to provide credentials to access the cloud provider object store varies for different providers.
+The procedure to provide credentials to access the cloud provider object store varies for different providers, there are various ways to pass credentials([described below](https://github.com/gardener/etcd-backup-restore/blob/6b119df1f07c32350c40eabce70dd061fbebe78c/doc/usage/getting_started.md#various-ways-to-pass-credentials)), you can choose either ways but we recommend you to pass credentials through a file.
 
-* For `AWS S3`, the `credentials` file has to be provided in the `~/.aws` directory.
 
-* For `GCP Containers`, the service account json file should be provided in the `~/.gcp` as a `service-account-file.json` file.
+### Various ways to pass Credentials:
 
-* For `Azure Blob storage`, `STORAGE_ACCOUNT` and `STORAGE_KEY` should be made available as environment variables.
+* For `AWS S3`: 
+   1. The secret file should be provided and it's file path should be made available as environment variables: `AWS_APPLICATION_CREDENTIALS` or `AWS_APPLICATION_CREDENTIALS_JSON`.
+   2. `AWS_REGION`, `AWS_SECRET_ACCESS_KEY` and `AWS_ACCESS_KEY_ID` should be made available as environment variables.
 
-* For `Openstack Swift`, `OS_USERNAME`, `OS_PASSWORD`, `OS_AUTH_URL`, `OS_TENANT_ID` and `OS_DOMAIN_ID` or `OS_CLOUD` should be made available as environment variables. An optional `OS_REGION_NAME` can be use.
 
-* For `Alicloud OSS`, `ALICLOUD_ENDPOINT`, `ALICLOUD_ACCESS_KEY_ID`, `ALICLOUD_ACCESS_KEY_SECRET` should be made available as environment variables.
+* For  `Google Cloud Storage`: 
+   1. The service account json file should be provided in the `~/.gcp` as a `service-account-file.json` file.
 
-* For `Dell EMC ECS`, `ECS_ENDPOINT`, `ECS_ACCESS_KEY_ID`, `ECS_SECRET_ACCESS_KEY` should be made available as environment variables. For development purposes, the environment variables `ECS_DISABLE_SSL` and `ECS_INSECURE_SKIP_VERIFY` can also be set to "true" or "false".
+* For `Azure Blob storage`:
+   1. The secret file should be provided and it's file path should be made available as environment variables: `AZURE_APPLICATION_CREDENTIALS` or `AZURE_APPLICATION_CREDENTIALS_JSON`.
+   2. `STORAGE_ACCOUNT` and `STORAGE_KEY` should be made available as environment variables.
+
+* For `Openstack Swift`:
+  1. The secret file should be provided and file path should be made available as environment variables: `OPENSTACK_APPLICATION_CREDENTIALS` or `OPENSTACK_APPLICATION_CREDENTIALS_JSON`.
+  2. `OS_USERNAME`, `OS_PASSWORD`, `OS_AUTH_URL`, `OS_TENANT_ID` and `OS_DOMAIN_ID` or `OS_CLOUD` should be made available as environment variables. An optional `OS_REGION_NAME` can be use.
+
+* For `Alicloud OSS`:
+  1. The secret file should be provided and file path should be made available as environment variables: `ALICLOUD_APPLICATION_CREDENTIALS` or `ALICLOUD_APPLICATION_CREDENTIALS_JSON`.
+  1. `ALICLOUD_ENDPOINT`, `ALICLOUD_ACCESS_KEY_ID`, `ALICLOUD_ACCESS_KEY_SECRET` should be made available as environment variables.
+
+* For `Dell EMC ECS`:
+  1. `ECS_ENDPOINT`, `ECS_ACCESS_KEY_ID`, `ECS_SECRET_ACCESS_KEY` should be made available as environment variables. For development purposes, the environment variables `ECS_DISABLE_SSL` and `ECS_INSECURE_SKIP_VERIFY` can also be set to "true" or "false".
 
 ### Taking scheduled snapshot
 
