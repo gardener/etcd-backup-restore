@@ -7,17 +7,28 @@ require (
 	cloud.google.com/go/storage v1.0.0
 	github.com/Azure/azure-pipeline-go v0.2.2
 	github.com/Azure/azure-storage-blob-go v0.8.0
+	github.com/Azure/go-autorest/autorest v0.10.1 // indirect
+	github.com/MakeNowJust/heredoc v1.0.0 // indirect
 	github.com/aliyun/aliyun-oss-go-sdk v2.1.8+incompatible
 	github.com/aws/aws-sdk-go v1.32.6
+	github.com/baiyubin/aliyun-sts-go-sdk v0.0.0-20180326062324-cfa1a18b161f // indirect
 	github.com/coreos/go-systemd v0.0.0-20191104093116-d3cd4ed1dbcf // indirect
-	github.com/gardener/etcd-druid v0.7.3
+	github.com/elazarl/goproxy v0.0.0-20191011121108-aa519ddbe484 // indirect
+	github.com/emicklei/go-restful v2.9.6+incompatible // indirect
 	github.com/ghodss/yaml v1.0.0
 	github.com/golang-jwt/jwt v3.2.2+incompatible // indirect
 	github.com/golang/mock v1.5.0
 	github.com/gophercloud/gophercloud v0.17.0
 	github.com/gophercloud/utils v0.0.0-20200204043447-9864b6f1f12f
+	github.com/gregjones/httpcache v0.0.0-20181110185634-c63ab54fda8f // indirect
 	github.com/grpc-ecosystem/go-grpc-middleware v1.1.0 // indirect
+	github.com/grpc-ecosystem/grpc-gateway v1.11.3 // indirect
+	github.com/huandu/xstrings v1.3.2 // indirect
+	github.com/mattn/go-colorable v0.1.2 // indirect
 	github.com/mattn/go-ieproxy v0.0.0-20190805055040-f9202b1cfdeb // indirect
+	github.com/mattn/go-isatty v0.0.12 // indirect
+	github.com/mattn/go-runewidth v0.0.7 // indirect
+	github.com/mitchellh/reflectwalk v1.0.1 // indirect
 	github.com/onsi/ginkgo v1.14.2
 	github.com/onsi/gomega v1.10.5
 	github.com/prometheus/client_golang v1.7.1
@@ -30,9 +41,12 @@ require (
 	go.etcd.io/etcd v0.5.0-alpha.5.0.20200910180754-dd1b699fc489
 	go.uber.org/atomic v1.6.0
 	go.uber.org/zap v1.15.0
+	golang.org/x/lint v0.0.0-20201208152925-83fdc39ff7b5 // indirect
 	google.golang.org/api v0.15.0
+	google.golang.org/grpc v1.28.1 // indirect
 	helm.sh/helm/v3 v3.4.0 //v3.2.4
 	k8s.io/api v0.20.6
+	k8s.io/apiextensions-apiserver v0.20.6 // indirect
 	k8s.io/apimachinery v0.20.6
 	k8s.io/client-go v11.0.1-0.20190409021438-1a26190bd76a+incompatible
 	k8s.io/utils v0.0.0-20210111153108-fddb29f9d009

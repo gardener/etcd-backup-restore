@@ -18,9 +18,11 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 
-	druidv1alpha1 "github.com/gardener/etcd-druid/api/v1alpha1"
+	appsv1 "k8s.io/api/apps/v1"
+	coordv1 "k8s.io/api/coordination/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/utils/pointer"
 )
 
 var _ = Describe("Membergarbagecollector", func() {
@@ -57,7 +59,7 @@ var _ = Describe("Membergarbagecollector", func() {
 		BeforeEach(func() {
 			ctrl = gomock.NewController(GinkgoT())
 			k8sClientset = miscellaneous.GetFakeKubernetesClientSet()
-			os.Setenv("POD_NAME", "test-pod")
+			os.Setenv("POD_NAME", "test-etcd-pod")
 			os.Setenv("POD_NAMESPACE", "test-namespace")
 		})
 		AfterEach(func() {
@@ -69,19 +71,22 @@ var _ = Describe("Membergarbagecollector", func() {
 		Context("With three member pods present", func() {
 			BeforeEach(func() {
 				//Create three pods
-				k8sClientset.Create(context.TODO(), getPodWithName("etcd-0"))
-				k8sClientset.Create(context.TODO(), getPodWithName("etcd-1"))
-				k8sClientset.Create(context.TODO(), getPodWithName("etcd-2"))
+				k8sClientset.Create(context.TODO(), getPodWithName("test-etcd-0"))
+				k8sClientset.Create(context.TODO(), getPodWithName("test-etcd-1"))
+				k8sClientset.Create(context.TODO(), getPodWithName("test-etcd-2"))
 			})
 			AfterEach(func() {
-				k8sClientset.Delete(context.TODO(), getPodWithName("etcd-0"))
-				k8sClientset.Delete(context.TODO(), getPodWithName("etcd-1"))
-				k8sClientset.Delete(context.TODO(), getPodWithName("etcd-2"))
+				k8sClientset.Delete(context.TODO(), getPodWithName("test-etcd-0"))
+				k8sClientset.Delete(context.TODO(), getPodWithName("test-etcd-1"))
+				k8sClientset.Delete(context.TODO(), getPodWithName("test-etcd-2"))
 			})
 
-			It("Should not remove any members if all members present in etcd.status.members", func() {
+			It("Should not remove any members if equal members in statefulset and etcd cluster", func() {
 				//Create etcd object
-				k8sClientset.Create(context.TODO(), getEtcdObjectWithMembers(3))
+				//k8sClientset.Create(context.TODO(), getEtcdObjectWithMembers(3))
+
+				//Create sts object
+				k8sClientset.Create(context.TODO(), getStsWithName("test-etcd", 3))
 
 				//Create mocks
 				etcdutilchecker := mocketcdutil.NewMockClusterCloser(ctrl)
@@ -94,12 +99,16 @@ var _ = Describe("Membergarbagecollector", func() {
 				Expect(err).To(BeNil())
 
 				//Cleanup
-				k8sClientset.Delete(context.TODO(), getEtcdObjectWithMembers(3))
+				//k8sClientset.Delete(context.TODO(), getEtcdObjectWithMembers(3))
+				k8sClientset.Delete(context.TODO(), getStsWithName("test-etcd", 3))
 			})
 
-			It("Should not remove any member missing from etcd.status.members", func() {
+			It("Should not remove any member missing from replicas but with its pod present", func() {
 				//Create etcd object
-				k8sClientset.Create(context.TODO(), getEtcdObjectWithMembers(2))
+				//k8sClientset.Create(context.TODO(), getEtcdObjectWithMembers(2))
+
+				//Create sts object
+				k8sClientset.Create(context.TODO(), getStsWithName("test-etcd", 2))
 
 				//Create mocks
 				etcdutilchecker := mocketcdutil.NewMockClusterCloser(ctrl)
@@ -112,24 +121,31 @@ var _ = Describe("Membergarbagecollector", func() {
 				Expect(err).To(BeNil())
 
 				//Cleanup
-				k8sClientset.Delete(context.TODO(), getEtcdObjectWithMembers(2))
+				//k8sClientset.Delete(context.TODO(), getEtcdObjectWithMembers(2))
+				k8sClientset.Delete(context.TODO(), getStsWithName("test-etcd", 2))
 			})
 		})
 
 		Context("With two member pods present", func() {
 			BeforeEach(func() {
-				//Create three pods
-				k8sClientset.Create(context.TODO(), getPodWithName("etcd-0"))
-				k8sClientset.Create(context.TODO(), getPodWithName("etcd-1"))
+				//Create two pods
+				k8sClientset.Create(context.TODO(), getPodWithName("test-etcd-0"))
+				k8sClientset.Create(context.TODO(), getPodWithName("test-etcd-1"))
 			})
 			AfterEach(func() {
-				k8sClientset.Delete(context.TODO(), getPodWithName("etcd-0"))
-				k8sClientset.Delete(context.TODO(), getPodWithName("etcd-1"))
+				k8sClientset.Delete(context.TODO(), getPodWithName("test-etcd-0"))
+				k8sClientset.Delete(context.TODO(), getPodWithName("test-etcd-1"))
 			})
 
-			It("Should not remove the member with the missing pod if it has an entry in etcd.status.members", func() {
+			It("Should not remove the member with the missing pod if it has a lease present", func() {
 				//Create etcd object
-				k8sClientset.Create(context.TODO(), getEtcdObjectWithMembers(3))
+				//k8sClientset.Create(context.TODO(), getEtcdObjectWithMembers(3))
+
+				//Create sts object
+				k8sClientset.Create(context.TODO(), getStsWithName("test-etcd", 3))
+
+				//Create lease
+				k8sClientset.Create(context.TODO(), getLeaseWithName("test-etcd-2"))
 
 				//Create mocks
 				etcdutilchecker := mocketcdutil.NewMockClusterCloser(ctrl)
@@ -142,12 +158,17 @@ var _ = Describe("Membergarbagecollector", func() {
 				Expect(err).To(BeNil())
 
 				//Cleanup
-				k8sClientset.Delete(context.TODO(), getEtcdObjectWithMembers(3))
+				//k8sClientset.Delete(context.TODO(), getEtcdObjectWithMembers(3))
+				k8sClientset.Delete(context.TODO(), getStsWithName("test-etcd", 3))
+				k8sClientset.Delete(context.TODO(), getLeaseWithName("test-etcd-2"))
 			})
 
-			It("Should remove the member with the missing pod if it has no entry in etcd.status.members", func() {
+			It("Should remove the member with the missing pod if it has no lease present", func() {
 				//Create etcd object
-				k8sClientset.Create(context.TODO(), getEtcdObjectWithMembers(2))
+				//k8sClientset.Create(context.TODO(), getEtcdObjectWithMembers(2))
+
+				//Create sts object
+				k8sClientset.Create(context.TODO(), getStsWithName("test-etcd", 2))
 
 				//Create mocks
 				etcdutilchecker := mocketcdutil.NewMockClusterCloser(ctrl)
@@ -160,31 +181,32 @@ var _ = Describe("Membergarbagecollector", func() {
 				Expect(err).To(BeNil())
 
 				//Cleanup
-				k8sClientset.Delete(context.TODO(), getEtcdObjectWithMembers(2))
+				//k8sClientset.Delete(context.TODO(), getEtcdObjectWithMembers(2))
+				k8sClientset.Delete(context.TODO(), getStsWithName("test-etcd", 2))
 			})
 		})
 	})
 })
 
-func getEtcdObjectWithMembers(members int) *druidv1alpha1.Etcd {
-	etcd := &druidv1alpha1.Etcd{
-		TypeMeta: metav1.TypeMeta{
-			Kind:       "Etcd",
-			APIVersion: "druid.gardener.cloud/v1alpha1",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test",
-			Namespace: os.Getenv("POD_NAMESPACE"),
-		},
-	}
+// func getEtcdObjectWithMembers(members int) *druidv1alpha1.Etcd {
+// 	etcd := &druidv1alpha1.Etcd{
+// 		TypeMeta: metav1.TypeMeta{
+// 			Kind:       "Etcd",
+// 			APIVersion: "druid.gardener.cloud/v1alpha1",
+// 		},
+// 		ObjectMeta: metav1.ObjectMeta{
+// 			Name:      "test-etcd",
+// 			Namespace: os.Getenv("POD_NAMESPACE"),
+// 		},
+// 	}
 
-	for members > 0 {
-		members--
-		etcd.Status.Members = append(etcd.Status.Members, druidv1alpha1.EtcdMemberStatus{Name: "etcd-" + strconv.Itoa(members)})
-	}
+// 	for members > 0 {
+// 		members--
+// 		etcd.Status.Members = append(etcd.Status.Members, druidv1alpha1.EtcdMemberStatus{Name: "test-etcd-" + strconv.Itoa(members)})
+// 	}
 
-	return etcd
-}
+// 	return etcd
+// }
 
 func getMemberListResponse(members int) *clientv3.MemberListResponse {
 	response := &clientv3.MemberListResponse{
@@ -197,7 +219,7 @@ func getMemberListResponse(members int) *clientv3.MemberListResponse {
 
 	for members > 0 {
 		members--
-		response.Members = append(response.Members, &etcdserverpb.Member{Name: "etcd-" + strconv.Itoa(members), ID: uint64(members)})
+		response.Members = append(response.Members, &etcdserverpb.Member{Name: "test-etcd-" + strconv.Itoa(members), ID: uint64(members)})
 	}
 
 	return response
@@ -212,6 +234,38 @@ func getPodWithName(name string) *corev1.Pod {
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: os.Getenv("POD_NAMESPACE"),
+		},
+	}
+}
+
+func getLeaseWithName(name string) *coordv1.Lease {
+	return &coordv1.Lease{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "Lease",
+			APIVersion: "coordination.k8s.io/v1",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: os.Getenv("POD_NAMESPACE"),
+		},
+	}
+}
+
+func getStsWithName(name string, replicas int32) *appsv1.StatefulSet {
+	return &appsv1.StatefulSet{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "StatefulSet",
+			APIVersion: "apps/v1",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: os.Getenv("POD_NAMESPACE"),
+		},
+		Spec: appsv1.StatefulSetSpec{
+			Replicas: pointer.Int32Ptr(replicas),
+		},
+		Status: appsv1.StatefulSetStatus{
+			Replicas: replicas,
 		},
 	}
 }
