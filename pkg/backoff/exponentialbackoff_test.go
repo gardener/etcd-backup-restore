@@ -22,7 +22,7 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-var _ = Describe("OwnerChecker", func() {
+var _ = Describe("#Backoff", func() {
 	var (
 		exponentialBackoff *backoff.ExponentialBackoff
 		attemptLimit       uint = 3
@@ -34,7 +34,7 @@ var _ = Describe("OwnerChecker", func() {
 		exponentialBackoff = backoff.NewExponentialBackOffConfig(attemptLimit, multiplier, thresholdTime)
 	})
 
-	Describe("#Backoff", func() {
+	Context("when currentAttempt < attemptLimit", func() {
 		It("should return current NextBackoffTime", func() {
 			retryTime := 2 * time.Second
 			backoffTime := exponentialBackoff.GetNextBackoffTime()
@@ -44,8 +44,10 @@ var _ = Describe("OwnerChecker", func() {
 			Expect(backoffTime).Should(Equal(2 * retryTime))
 
 		})
+	})
 
-		It("should return threshold time when currentAttempt > attemptLimit", func() {
+	Context("when currentAttempt > attemptLimit", func() {
+		It("should return threshold time ", func() {
 			attempt := 0
 			for attempt < 4 {
 				exponentialBackoff.GetNextBackoffTime()
