@@ -20,6 +20,7 @@ import (
 	"os"
 	"os/signal"
 	"runtime"
+	"syscall"
 
 	"github.com/gardener/etcd-backup-restore/cmd"
 )
@@ -45,10 +46,9 @@ func main() {
 func setupSignalHandler() context.Context {
 	close(onlyOneSignalHandler) // panics when called twice
 
-	var shutdownSignals = []os.Signal{os.Interrupt}
 	ctx, cancel := context.WithCancel(context.Background())
 	c := make(chan os.Signal, 2)
-	signal.Notify(c, shutdownSignals...)
+	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
 	go func() {
 		<-c
 		cancel()
