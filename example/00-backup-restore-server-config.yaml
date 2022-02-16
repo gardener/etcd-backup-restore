@@ -62,3 +62,8 @@ healthConfig:
   heartbeatDuration: "30s"
   fullSnapshotLeaseName: "full-snapshot-revisions"
   deltaSnapshotLeaseName: "delta-snapshot-revisions"
+
+exponentialBackoffConfig:
+  multiplier: 2
+  attemptLimit: 6
+  thresholdTime: 128s

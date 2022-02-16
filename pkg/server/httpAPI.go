@@ -225,6 +225,7 @@ func (h *HTTPHandler) serveInitialize(rw http.ResponseWriter, req *http.Request)
 
 			// This is needed to stop the currently running snapshotter.
 			if h.Snapshotter != nil {
+				h.SetStatus(http.StatusServiceUnavailable)
 				atomic.StoreUint32(&h.AckState, HandlerAckWaiting)
 				h.Logger.Info("Changed handler state.")
 				h.ReqCh <- emptyStruct
