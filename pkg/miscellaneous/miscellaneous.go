@@ -172,11 +172,11 @@ func GetKubernetesClientSetOrError() (client.Client, error) {
 	var cl client.Client
 	restConfig, err := config.GetConfig()
 	if err != nil {
-		return nil, fmt.Errorf("could not get InCluster config")
+		return nil, err
 	}
 	cl, err = client.New(restConfig, client.Options{})
 	if err != nil {
-		return nil, fmt.Errorf("could not create kubernetes clientset")
+		return nil, err
 	}
 	return cl, nil
 }
