@@ -8,7 +8,7 @@ You can follow the `help` flag on `etcdbrctl` command and its sub-commands to kn
 
 ### Cloud Provider Credentials
 
-The procedure to provide credentials to access the cloud provider object store varies for different providers, there are various ways to pass credentials([described below](https://github.com/gardener/etcd-backup-restore/blob/6b119df1f07c32350c40eabce70dd061fbebe78c/doc/usage/getting_started.md#various-ways-to-pass-credentials)), you can choose either ways but we recommend you to pass credentials through a file.
+The procedure to provide credentials to access the cloud provider object store varies for different providers, there are various ways to pass credentials([described below](#various-ways-to-pass-credentials)), you can choose either ways but we recommend you to pass credentials through a file.
 
 
 ### Various ways to pass Credentials:
