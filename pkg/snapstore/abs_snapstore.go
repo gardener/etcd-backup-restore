@@ -96,8 +96,8 @@ func getCredentials(prefixString string) (string, string, error) {
 		return storageAccount, storageKey, nil
 	}
 
-	if _, isSet := os.LookupEnv(absCredentialJSONFile); isSet {
-		if filename := os.Getenv(absCredentialJSONFile); filename != "" {
+	if _, isSet := os.LookupEnv(prefixString + absCredentialJSONFile); isSet {
+		if filename := os.Getenv(prefixString + absCredentialJSONFile); filename != "" {
 			credentials, err := readABSCredentialsJSON(filename)
 			if err != nil {
 				return "", "", fmt.Errorf("error getting credentials using %v file", filename)
@@ -106,8 +106,8 @@ func getCredentials(prefixString string) (string, string, error) {
 		}
 	}
 
-	if _, isSet := os.LookupEnv(absCredentialFile); isSet {
-		if dir := os.Getenv(absCredentialFile); dir != "" {
+	if _, isSet := os.LookupEnv(prefixString + absCredentialFile); isSet {
+		if dir := os.Getenv(prefixString + absCredentialFile); dir != "" {
 			credentials, err := readABSCredentialFiles(dir)
 			if err != nil {
 				return "", "", fmt.Errorf("error getting credentials from %v dir", dir)

@@ -98,8 +98,8 @@ func getSessionOptions(prefixString string) (session.Options, error) {
 		}, nil
 	}
 
-	if _, isSet := os.LookupEnv(awsCredentialJSONFile); isSet {
-		if filename := os.Getenv(awsCredentialJSONFile); filename != "" {
+	if _, isSet := os.LookupEnv(prefixString + awsCredentialJSONFile); isSet {
+		if filename := os.Getenv(prefixString + awsCredentialJSONFile); filename != "" {
 			creds, err := readAWSCredentialsJSONFile(filename)
 			if err != nil {
 				return session.Options{}, fmt.Errorf("error getting credentials using %v file", filename)
@@ -108,9 +108,9 @@ func getSessionOptions(prefixString string) (session.Options, error) {
 		}
 	}
 
-	if _, isSet := os.LookupEnv(awsCredentialFile); isSet {
-		if dir := os.Getenv(awsCredentialFile); dir != "" {
-			creds, err := readAWSCredentialFiles(dir, prefixString)
+	if _, isSet := os.LookupEnv(prefixString + awsCredentialFile); isSet {
+		if dir := os.Getenv(prefixString + awsCredentialFile); dir != "" {
+			creds, err := readAWSCredentialFiles(dir)
 			if err != nil {
 				return session.Options{}, fmt.Errorf("error getting credentials from %v directory", dir)
 			}
@@ -152,7 +152,7 @@ func credentialsFromJSON(filename string) (*awsCredentials, error) {
 	return awsConfig, nil
 }
 
-func readAWSCredentialFiles(dirname string, prefixString string) (session.Options, error) {
+func readAWSCredentialFiles(dirname string) (session.Options, error) {
 	awsConfig, err := readAWSCredentialFromDir(dirname)
 	if err != nil {
 		return session.Options{}, err
@@ -160,7 +160,7 @@ func readAWSCredentialFiles(dirname string, prefixString string) (session.Option
 
 	return session.Options{
 		Config: aws.Config{
-			Credentials: credentials.NewStaticCredentials(prefixString+awsConfig.AccessKeyID, prefixString+awsConfig.SecretAccessKey, ""),
+			Credentials: credentials.NewStaticCredentials(awsConfig.AccessKeyID, awsConfig.SecretAccessKey, ""),
 			Region:      pointer.StringPtr(awsConfig.Region),
 		},
 	}, nil

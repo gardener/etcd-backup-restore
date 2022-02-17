@@ -171,6 +171,7 @@ func adaptPrefix(snap *brtypes.Snapshot, snapstorePrefix string) string {
 	return snapstorePrefix
 }
 
+// GetSnapstoreSecretHash returns the hash of object store secrets hash
 func GetSnapstoreSecretHash(config *brtypes.SnapstoreConfig) (string, error) {
 	switch config.Provider {
 	case brtypes.SnapstoreProviderLocal:

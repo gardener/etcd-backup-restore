@@ -274,8 +274,8 @@ func getAuthOptions(prefix string) (*authOptions, error) {
 		return authOptionsFromEnv(prefix)
 	}
 
-	if _, isSet := os.LookupEnv(aliCredentialJSONFile); isSet {
-		if filename := os.Getenv(aliCredentialJSONFile); filename != "" {
+	if _, isSet := os.LookupEnv(prefix + aliCredentialJSONFile); isSet {
+		if filename := os.Getenv(prefix + aliCredentialJSONFile); filename != "" {
 			ao, err := readALICredentialsJSON(filename)
 			if err != nil {
 				return nil, fmt.Errorf("error getting credentials using %v file", filename)
@@ -284,8 +284,8 @@ func getAuthOptions(prefix string) (*authOptions, error) {
 		}
 	}
 
-	if _, isSet := os.LookupEnv(aliCredentialFile); isSet {
-		if dir := os.Getenv(aliCredentialFile); dir != "" {
+	if _, isSet := os.LookupEnv(prefix + aliCredentialFile); isSet {
+		if dir := os.Getenv(prefix + aliCredentialFile); dir != "" {
 			ao, err := readALICredentialFiles(dir)
 			if err != nil {
 				return nil, fmt.Errorf("error getting credentials from %v directory", dir)
