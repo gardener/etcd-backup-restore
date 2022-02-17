@@ -131,7 +131,6 @@ func (mgc *MemberGarbageCollector) RemoveSuperfluousMembers(ctx context.Context,
 		}
 	}
 	stsSpecReplicas := *sts.Spec.Replicas
-	stsStatusReplicas := sts.Status.Replicas
 
 	listCtx, listCtxCancel := context.WithTimeout(ctx, mgc.etcdConnectionTimeout.Duration)
 	defer listCtxCancel()
@@ -142,7 +141,7 @@ func (mgc *MemberGarbageCollector) RemoveSuperfluousMembers(ctx context.Context,
 		}
 	}
 
-	if stsSpecReplicas >= stsStatusReplicas && stsSpecReplicas >= int32(len(etcdMemberListResponse.Members)) {
+	if sts.Generation != sts.Status.ObservedGeneration && stsSpecReplicas != sts.Status.UpdatedReplicas && stsSpecReplicas >= int32(len(etcdMemberListResponse.Members)) {
 		//Return if number of replicas in sts and etcd cluster match or cluster is in scale up scenario
 		return nil
 	}
