@@ -131,19 +131,40 @@ func getClientOpts(isSource bool) (*clientconfig.ClientOpts, error) {
 }
 
 func readSwiftCredentialsJSON(filename string) (*clientconfig.ClientOpts, error) {
+	cred, err := swiftCredentialsFromJSON(filename)
+	if err != nil {
+		return &clientconfig.ClientOpts{}, err
+	}
+
+	os.Setenv("OS_TENANT_NAME", cred.TenantName)
+	return &clientconfig.ClientOpts{
+		AuthInfo: &clientconfig.AuthInfo{
+			AuthURL:    cred.AuthURL,
+			DomainName: cred.DomainName,
+			Password:   cred.Password,
+			Username:   cred.Username,
+		},
+		RegionName: cred.Region,
+	}, nil
+}
+
+// swiftCredentialsFromJSON obtains Swift credentials from a JSON value.
+func swiftCredentialsFromJSON(filename string) (*swiftCredentials, error) {
+	cred := &swiftCredentials{}
 	jsonData, err := ioutil.ReadFile(filename)
 	if err != nil {
 		return nil, err
 	}
 
-	return swiftCredentialsFromJSON(jsonData)
-
+	if err := json.Unmarshal(jsonData, cred); err != nil {
+		return nil, err
+	}
+	return cred, nil
 }
 
-// swiftCredentialsFromJSON obtains Swift credentials from a JSON value.
-func swiftCredentialsFromJSON(jsonData []byte) (*clientconfig.ClientOpts, error) {
-	cred := &swiftCredentials{}
-	if err := json.Unmarshal(jsonData, cred); err != nil {
+func readSwiftCredentialFiles(dirname string) (*clientconfig.ClientOpts, error) {
+	cred, err := readSwiftCredentialDir(dirname)
+	if err != nil {
 		return nil, err
 	}
 
@@ -159,9 +180,8 @@ func swiftCredentialsFromJSON(jsonData []byte) (*clientconfig.ClientOpts, error)
 	}, nil
 }
 
-func readSwiftCredentialFiles(dirname string) (*clientconfig.ClientOpts, error) {
+func readSwiftCredentialDir(dirname string) (*swiftCredentials, error) {
 	cred := &swiftCredentials{}
-
 	files, err := ioutil.ReadDir(dirname)
 	if err != nil {
 		return nil, err
@@ -206,17 +226,7 @@ func readSwiftCredentialFiles(dirname string) (*clientconfig.ClientOpts, error) 
 			cred.Username = string(data)
 		}
 	}
-
-	os.Setenv("OS_TENANT_NAME", cred.TenantName)
-	return &clientconfig.ClientOpts{
-		AuthInfo: &clientconfig.AuthInfo{
-			AuthURL:    cred.AuthURL,
-			DomainName: cred.DomainName,
-			Password:   cred.Password,
-			Username:   cred.Username,
-		},
-		RegionName: cred.Region,
-	}, nil
+	return cred, nil
 }
 
 // NewSwiftSnapstoreFromClient will create the new Swift snapstore object from Swift client
@@ -396,4 +406,34 @@ func (s *SwiftSnapStore) List() (brtypes.SnapList, error) {
 func (s *SwiftSnapStore) Delete(snap brtypes.Snapshot) error {
 	result := objects.Delete(s.client, s.bucket, path.Join(snap.Prefix, snap.SnapDir, snap.SnapName), nil)
 	return result.Err
+}
+
+// SwiftSnapStoreHash calculate and returns the hash of openstack swift snapstore secret.
+func SwiftSnapStoreHash(config *brtypes.SnapstoreConfig) (string, error) {
+	if _, isSet := os.LookupEnv(swiftCredentialFile); isSet {
+		if dir := os.Getenv(swiftCredentialFile); dir != "" {
+			swiftConfig, err := readSwiftCredentialDir(dir)
+			if err != nil {
+				return "", fmt.Errorf("error getting credentials from %v directory", dir)
+			}
+			return getSwiftHash(swiftConfig), nil
+		}
+	}
+
+	if _, isSet := os.LookupEnv(swiftCredentialJSONFile); isSet {
+		if filename := os.Getenv(swiftCredentialJSONFile); filename != "" {
+			swiftConfig, err := swiftCredentialsFromJSON(filename)
+			if err != nil {
+				return "", fmt.Errorf("error getting credentials using %v file", filename)
+			}
+			return getSwiftHash(swiftConfig), nil
+		}
+	}
+
+	return "", nil
+}
+
+func getSwiftHash(config *swiftCredentials) string {
+	data := fmt.Sprintf("%s%s%s%s%s", config.AuthURL, config.TenantName, config.Username, config.DomainName, config.Password)
+	return getHash(data)
 }

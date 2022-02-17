@@ -276,7 +276,7 @@ func getAuthOptions(prefix string) (*authOptions, error) {
 
 	if _, isSet := os.LookupEnv(aliCredentialJSONFile); isSet {
 		if filename := os.Getenv(aliCredentialJSONFile); filename != "" {
-			ao, err := readALICredentialsJSON(filename, prefix)
+			ao, err := readALICredentialsJSON(filename)
 			if err != nil {
 				return nil, fmt.Errorf("error getting credentials using %v file", filename)
 			}
@@ -286,7 +286,7 @@ func getAuthOptions(prefix string) (*authOptions, error) {
 
 	if _, isSet := os.LookupEnv(aliCredentialFile); isSet {
 		if dir := os.Getenv(aliCredentialFile); dir != "" {
-			ao, err := readALICredentialFiles(dir, prefix)
+			ao, err := readALICredentialFiles(dir)
 			if err != nil {
 				return nil, fmt.Errorf("error getting credentials from %v directory", dir)
 			}
@@ -297,17 +297,17 @@ func getAuthOptions(prefix string) (*authOptions, error) {
 	return nil, fmt.Errorf("unable to get credentials")
 }
 
-func readALICredentialsJSON(filename string, prefix string) (*authOptions, error) {
+func readALICredentialsJSON(filename string) (*authOptions, error) {
 	jsonData, err := ioutil.ReadFile(filename)
 	if err != nil {
 		return nil, err
 	}
 
-	return aliCredentialsFromJSON(jsonData, prefix)
+	return aliCredentialsFromJSON(jsonData)
 }
 
 // aliCredentialsFromJSON obtains AliCloud OSS credentials from a JSON value.
-func aliCredentialsFromJSON(jsonData []byte, prefix string) (*authOptions, error) {
+func aliCredentialsFromJSON(jsonData []byte) (*authOptions, error) {
 	aliConfig := &authOptions{}
 	if err := json.Unmarshal(jsonData, aliConfig); err != nil {
 		return nil, err
@@ -316,7 +316,7 @@ func aliCredentialsFromJSON(jsonData []byte, prefix string) (*authOptions, error
 	return aliConfig, nil
 }
 
-func readALICredentialFiles(dirname string, prefix string) (*authOptions, error) {
+func readALICredentialFiles(dirname string) (*authOptions, error) {
 	aliConfig := &authOptions{}
 
 	files, err := ioutil.ReadDir(dirname)
@@ -368,4 +368,33 @@ func authOptionsFromEnv(prefix string) (*authOptions, error) {
 		AccessID:  accessID,
 		AccessKey: accessKey,
 	}, nil
+}
+
+// OSSSnapStoreHash calculate and returns the hash of aliCloud OSS snapstore secret.
+func OSSSnapStoreHash(config *brtypes.SnapstoreConfig) (string, error) {
+	if _, isSet := os.LookupEnv(aliCredentialFile); isSet {
+		if dir := os.Getenv(aliCredentialFile); dir != "" {
+			aliConfig, err := readALICredentialFiles(dir)
+			if err != nil {
+				return "", fmt.Errorf("error getting credentials from %v directory", dir)
+			}
+			return getOSSHash(aliConfig), nil
+		}
+	}
+
+	if _, isSet := os.LookupEnv(aliCredentialJSONFile); isSet {
+		if filename := os.Getenv(aliCredentialJSONFile); filename != "" {
+			aliConfig, err := readALICredentialsJSON(filename)
+			if err != nil {
+				return "", fmt.Errorf("error getting credentials using %v file", filename)
+			}
+			return getOSSHash(aliConfig), nil
+		}
+	}
+	return "", nil
+}
+
+func getOSSHash(config *authOptions) string {
+	data := fmt.Sprintf("%s%s%s", config.AccessID, config.AccessKey, config.Endpoint)
+	return getHash(data)
 }

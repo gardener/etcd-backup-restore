@@ -87,7 +87,7 @@ func newS3FromSessionOpt(bucket, prefix, tempDir string, maxParallelChunkUploads
 }
 
 func getSessionOptions(prefixString string) (session.Options, error) {
-	fmt.Println("1..")
+
 	// TODO: passing credentials through environment variable will be deprecated by "backup-restore v0.18.0"
 	if _, isSet := os.LookupEnv(prefixString + awsAcessKeyID); isSet {
 		return session.Options{
@@ -100,7 +100,7 @@ func getSessionOptions(prefixString string) (session.Options, error) {
 
 	if _, isSet := os.LookupEnv(awsCredentialJSONFile); isSet {
 		if filename := os.Getenv(awsCredentialJSONFile); filename != "" {
-			creds, err := readAWSCredentialsJSONFile(filename, prefixString)
+			creds, err := readAWSCredentialsJSONFile(filename)
 			if err != nil {
 				return session.Options{}, fmt.Errorf("error getting credentials using %v file", filename)
 			}
@@ -125,19 +125,36 @@ func getSessionOptions(prefixString string) (session.Options, error) {
 	}, nil
 }
 
-func readAWSCredentialsJSONFile(filename string, prefixString string) (session.Options, error) {
-	jsonData, err := ioutil.ReadFile(filename)
+func readAWSCredentialsJSONFile(filename string) (session.Options, error) {
+	awsConfig, err := credentialsFromJSON(filename)
 	if err != nil {
 		return session.Options{}, err
 	}
 
-	return credentialsFromJSON(jsonData, prefixString)
+	return session.Options{
+		Config: aws.Config{
+			Credentials: credentials.NewStaticCredentials(awsConfig.AccessKeyID, awsConfig.SecretAccessKey, ""),
+			Region:      pointer.StringPtr(awsConfig.Region),
+		},
+	}, nil
 }
 
 // credentialsFromJSON obtains AWS credentials from a JSON value.
-func credentialsFromJSON(jsonData []byte, prefixString string) (session.Options, error) {
+func credentialsFromJSON(filename string) (*awsCredentials, error) {
+	jsonData, err := ioutil.ReadFile(filename)
+	if err != nil {
+		return nil, err
+	}
 	awsConfig := &awsCredentials{}
 	if err := json.Unmarshal(jsonData, awsConfig); err != nil {
+		return nil, err
+	}
+	return awsConfig, nil
+}
+
+func readAWSCredentialFiles(dirname string, prefixString string) (session.Options, error) {
+	awsConfig, err := readAWSCredentialFromDir(dirname)
+	if err != nil {
 		return session.Options{}, err
 	}
 
@@ -149,42 +166,37 @@ func credentialsFromJSON(jsonData []byte, prefixString string) (session.Options,
 	}, nil
 }
 
-func readAWSCredentialFiles(dirname string, prefixString string) (session.Options, error) {
+func readAWSCredentialFromDir(dirname string) (*awsCredentials, error) {
 	awsConfig := &awsCredentials{}
 
 	files, err := ioutil.ReadDir(dirname)
 	if err != nil {
-		return session.Options{}, err
+		return nil, err
 	}
 
 	for _, file := range files {
 		if file.Name() == "accessKeyID" {
 			data, err := ioutil.ReadFile(dirname + "/accessKeyID")
 			if err != nil {
-				return session.Options{}, err
+				return nil, err
 			}
 			awsConfig.AccessKeyID = string(data)
 		} else if file.Name() == "region" {
 			data, err := ioutil.ReadFile(dirname + "/region")
 			if err != nil {
-				return session.Options{}, err
+				return nil, err
 			}
 			awsConfig.Region = string(data)
 		} else if file.Name() == "secretAccessKey" {
 			data, err := ioutil.ReadFile(dirname + "/secretAccessKey")
 			if err != nil {
-				return session.Options{}, err
+				return nil, err
 			}
 			awsConfig.SecretAccessKey = string(data)
 		}
 	}
 
-	return session.Options{
-		Config: aws.Config{
-			Credentials: credentials.NewStaticCredentials(prefixString+awsConfig.AccessKeyID, prefixString+awsConfig.SecretAccessKey, ""),
-			Region:      pointer.StringPtr(awsConfig.Region),
-		},
-	}, nil
+	return awsConfig, nil
 }
 
 // NewS3FromClient will create the new S3 snapstore object from S3 client
@@ -409,4 +421,34 @@ func (s *S3SnapStore) Delete(snap brtypes.Snapshot) error {
 		Key:    aws.String(path.Join(snap.Prefix, snap.SnapDir, snap.SnapName)),
 	})
 	return err
+}
+
+// S3SnapStoreHash calculate and returns the hash of aws S3 snapstore secret.
+func S3SnapStoreHash(config *brtypes.SnapstoreConfig) (string, error) {
+	if _, isSet := os.LookupEnv(awsCredentialFile); isSet {
+		if dir := os.Getenv(awsCredentialFile); dir != "" {
+			awsConfig, err := readAWSCredentialFromDir(dir)
+			if err != nil {
+				return "", fmt.Errorf("error getting credentials from %v directory", dir)
+			}
+			return getS3Hash(awsConfig), nil
+		}
+	}
+
+	if _, isSet := os.LookupEnv(awsCredentialJSONFile); isSet {
+		if filename := os.Getenv(awsCredentialJSONFile); filename != "" {
+			awsConfig, err := credentialsFromJSON(filename)
+			if err != nil {
+				return "", fmt.Errorf("error getting credentials using %v file", filename)
+			}
+			return getS3Hash(awsConfig), nil
+		}
+	}
+
+	return "", nil
+}
+
+func getS3Hash(config *awsCredentials) string {
+	data := fmt.Sprintf("%s%s%s", config.AccessKeyID, config.SecretAccessKey, config.Region)
+	return getHash(data)
 }

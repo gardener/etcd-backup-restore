@@ -42,7 +42,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-var emptyStruct struct{}
+var (
+	emptyStruct   struct{}
+	snapstoreHash = make(map[string]interface{})
+)
 
 // event is wrapper over etcd event to keep track of time of event
 type event struct {
@@ -414,13 +417,17 @@ func (ssr *Snapshotter) TakeDeltaSnapshot() (*brtypes.Snapshot, error) {
 	}
 	ssr.events = append(ssr.events, byte(']'))
 
-	var err error
+	isSecretUpdated := ssr.checkSnapstoreSecretUpdate()
+	if isSecretUpdated {
+		var err error
 
-	// Update the snapstore object before taking every delta snapshot
-	// Refer: https://github.com/gardener/etcd-backup-restore/issues/422
-	ssr.store, err = snapstore.GetSnapstore(ssr.snapstoreConfig)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create snapstore from configured storage provider: %v", err)
+		// Update the snapstore object before taking every delta snapshot
+		// Refer: https://github.com/gardener/etcd-backup-restore/issues/422
+		ssr.store, err = snapstore.GetSnapstore(ssr.snapstoreConfig)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create snapstore from configured storage provider: %v", err)
+		}
+		ssr.logger.Info("updated the snapstore object with new credentials")
 	}
 
 	// compressionSuffix is useful in backward compatibility(restoring from uncompressed snapshots).
@@ -702,4 +709,20 @@ func (ssr *Snapshotter) resetFullSnapshotTimer() error {
 	ssr.logger.Infof("Will take next full snapshot at time: %s", effective)
 
 	return nil
+}
+
+func (ssr *Snapshotter) checkSnapstoreSecretUpdate() bool {
+	ssr.logger.Debug("checking the hash of snapstore secret...")
+	newSnapstoreSecretHash, err := snapstore.GetSnapstoreSecretHash(ssr.snapstoreConfig)
+	if err != nil {
+		return true
+	}
+
+	if snapstoreHash[ssr.snapstoreConfig.Provider] == newSnapstoreSecretHash {
+		return false
+	}
+
+	//update the map with latest newSnapstoreHash
+	snapstoreHash[ssr.snapstoreConfig.Provider] = newSnapstoreSecretHash
+	return true
 }

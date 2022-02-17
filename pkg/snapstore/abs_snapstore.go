@@ -98,7 +98,7 @@ func getCredentials(prefixString string) (string, string, error) {
 
 	if _, isSet := os.LookupEnv(absCredentialJSONFile); isSet {
 		if filename := os.Getenv(absCredentialJSONFile); filename != "" {
-			credentials, err := readABSCredentialsJSON(filename, prefixString)
+			credentials, err := readABSCredentialsJSON(filename)
 			if err != nil {
 				return "", "", fmt.Errorf("error getting credentials using %v file", filename)
 			}
@@ -108,7 +108,7 @@ func getCredentials(prefixString string) (string, string, error) {
 
 	if _, isSet := os.LookupEnv(absCredentialFile); isSet {
 		if dir := os.Getenv(absCredentialFile); dir != "" {
-			credentials, err := absReadCredentialFiles(dir, prefixString)
+			credentials, err := readABSCredentialFiles(dir)
 			if err != nil {
 				return "", "", fmt.Errorf("error getting credentials from %v dir", dir)
 			}
@@ -119,17 +119,17 @@ func getCredentials(prefixString string) (string, string, error) {
 	return "", "", fmt.Errorf("unable to get credentials")
 }
 
-func readABSCredentialsJSON(filename string, prefixString string) (*absCredentials, error) {
+func readABSCredentialsJSON(filename string) (*absCredentials, error) {
 	jsonData, err := ioutil.ReadFile(filename)
 	if err != nil {
 		return nil, err
 	}
 
-	return absCredentialsFromJSON(jsonData, prefixString)
+	return absCredentialsFromJSON(jsonData)
 }
 
 // absCredentialsFromJSON obtains ABS credentials from a JSON value.
-func absCredentialsFromJSON(jsonData []byte, prefixString string) (*absCredentials, error) {
+func absCredentialsFromJSON(jsonData []byte) (*absCredentials, error) {
 	absConfig := &absCredentials{}
 	if err := json.Unmarshal(jsonData, absConfig); err != nil {
 		return nil, err
@@ -138,7 +138,7 @@ func absCredentialsFromJSON(jsonData []byte, prefixString string) (*absCredentia
 	return absConfig, nil
 }
 
-func absReadCredentialFiles(dirname string, prefixString string) (*absCredentials, error) {
+func readABSCredentialFiles(dirname string) (*absCredentials, error) {
 	absConfig := &absCredentials{}
 
 	files, err := ioutil.ReadDir(dirname)
@@ -359,4 +359,34 @@ func (a *ABSSnapStore) Delete(snap brtypes.Snapshot) error {
 		return fmt.Errorf("failed to delete blob %s with error: %v", blobName, err)
 	}
 	return nil
+}
+
+// ABSSnapStoreHash calculate and returns the hash of azure object storage snapstore secret.
+func ABSSnapStoreHash(config *brtypes.SnapstoreConfig) (string, error) {
+	if _, isSet := os.LookupEnv(absCredentialFile); isSet {
+		if dir := os.Getenv(absCredentialFile); dir != "" {
+			absConfig, err := readABSCredentialFiles(dir)
+			if err != nil {
+				return "", fmt.Errorf("error getting credentials from %v directory", dir)
+			}
+			return getABSHash(absConfig), nil
+		}
+	}
+
+	if _, isSet := os.LookupEnv(absCredentialJSONFile); isSet {
+		if filename := os.Getenv(absCredentialJSONFile); filename != "" {
+			absConfig, err := readABSCredentialsJSON(filename)
+			if err != nil {
+				return "", fmt.Errorf("error getting credentials using %v file", filename)
+			}
+			return getABSHash(absConfig), nil
+		}
+	}
+
+	return "", nil
+}
+
+func getABSHash(config *absCredentials) string {
+	data := fmt.Sprintf("%s%s", config.SecretKey, config.StorageAccount)
+	return getHash(data)
 }
