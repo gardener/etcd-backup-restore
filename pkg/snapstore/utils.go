@@ -192,8 +192,6 @@ func GetSnapstoreSecretHash(config *brtypes.SnapstoreConfig) (string, error) {
 }
 
 func getHash(data string) string {
-	hash := sha256.New()
-	hash.Write([]byte(data))
-	sha := hash.Sum(nil)
+	sha := sha256.Sum256([]byte(data))
 	return fmt.Sprintf("%x", sha)
 }

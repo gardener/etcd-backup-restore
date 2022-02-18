@@ -226,6 +226,10 @@ func readSwiftCredentialDir(dirname string) (*swiftCredentials, error) {
 			cred.Username = string(data)
 		}
 	}
+
+	if err := isSwiftConfigEmpty(cred); err != nil {
+		return nil, err
+	}
 	return cred, nil
 }
 
@@ -408,7 +412,7 @@ func (s *SwiftSnapStore) Delete(snap brtypes.Snapshot) error {
 	return result.Err
 }
 
-// SwiftSnapStoreHash calculate and returns the hash of openstack swift snapstore secret.
+// SwiftSnapStoreHash calculates and returns the hash of openstack swift snapstore secret.
 func SwiftSnapStoreHash(config *brtypes.SnapstoreConfig) (string, error) {
 	if _, isSet := os.LookupEnv(swiftCredentialFile); isSet {
 		if dir := os.Getenv(swiftCredentialFile); dir != "" {
@@ -436,4 +440,11 @@ func SwiftSnapStoreHash(config *brtypes.SnapstoreConfig) (string, error) {
 func getSwiftHash(config *swiftCredentials) string {
 	data := fmt.Sprintf("%s%s%s%s%s", config.AuthURL, config.TenantName, config.Username, config.DomainName, config.Password)
 	return getHash(data)
+}
+
+func isSwiftConfigEmpty(config *swiftCredentials) error {
+	if len(config.AuthURL) != 0 && len(config.TenantName) != 0 && len(config.Password) != 0 && len(config.Username) != 0 && len(config.DomainName) != 0 {
+		return nil
+	}
+	return fmt.Errorf("openstack swift credentials are not passed correctly")
 }

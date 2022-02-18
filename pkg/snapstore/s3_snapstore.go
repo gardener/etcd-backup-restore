@@ -196,6 +196,9 @@ func readAWSCredentialFromDir(dirname string) (*awsCredentials, error) {
 		}
 	}
 
+	if err := isAWSConfigEmpty(awsConfig); err != nil {
+		return nil, err
+	}
 	return awsConfig, nil
 }
 
@@ -423,7 +426,7 @@ func (s *S3SnapStore) Delete(snap brtypes.Snapshot) error {
 	return err
 }
 
-// S3SnapStoreHash calculate and returns the hash of aws S3 snapstore secret.
+// S3SnapStoreHash calculates and returns the hash of aws S3 snapstore secret.
 func S3SnapStoreHash(config *brtypes.SnapstoreConfig) (string, error) {
 	if _, isSet := os.LookupEnv(awsCredentialFile); isSet {
 		if dir := os.Getenv(awsCredentialFile); dir != "" {
@@ -451,4 +454,11 @@ func S3SnapStoreHash(config *brtypes.SnapstoreConfig) (string, error) {
 func getS3Hash(config *awsCredentials) string {
 	data := fmt.Sprintf("%s%s%s", config.AccessKeyID, config.SecretAccessKey, config.Region)
 	return getHash(data)
+}
+
+func isAWSConfigEmpty(config *awsCredentials) error {
+	if len(config.AccessKeyID) != 0 && len(config.Region) != 0 && len(config.SecretAccessKey) != 0 {
+		return nil
+	}
+	return fmt.Errorf("aws s3 credentials: region or secretAccessKey or accessKeyID are passed as empty")
 }

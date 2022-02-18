@@ -346,6 +346,9 @@ func readALICredentialFiles(dirname string) (*authOptions, error) {
 		}
 	}
 
+	if err := isOSSConfigEmpty(aliConfig); err != nil {
+		return nil, err
+	}
 	return aliConfig, nil
 }
 
@@ -370,7 +373,7 @@ func authOptionsFromEnv(prefix string) (*authOptions, error) {
 	}, nil
 }
 
-// OSSSnapStoreHash calculate and returns the hash of aliCloud OSS snapstore secret.
+// OSSSnapStoreHash calculates and returns the hash of aliCloud OSS snapstore secret.
 func OSSSnapStoreHash(config *brtypes.SnapstoreConfig) (string, error) {
 	if _, isSet := os.LookupEnv(aliCredentialFile); isSet {
 		if dir := os.Getenv(aliCredentialFile); dir != "" {
@@ -397,4 +400,11 @@ func OSSSnapStoreHash(config *brtypes.SnapstoreConfig) (string, error) {
 func getOSSHash(config *authOptions) string {
 	data := fmt.Sprintf("%s%s%s", config.AccessID, config.AccessKey, config.Endpoint)
 	return getHash(data)
+}
+
+func isOSSConfigEmpty(config *authOptions) error {
+	if len(config.AccessID) != 0 && len(config.AccessKey) != 0 && len(config.Endpoint) != 0 {
+		return nil
+	}
+	return fmt.Errorf("aliCloud OSS credentials: accessKeyID or accessKeySecret or storageEndpoint are passed as empty")
 }

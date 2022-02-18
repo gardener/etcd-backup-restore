@@ -61,7 +61,7 @@ func NewCompactCommand(ctx context.Context) *cobra.Command {
 				}
 			}
 
-			cp := compactor.NewCompactor(store, opts.snapstoreConfig, logrus.NewEntry(logger), clientSet)
+			cp := compactor.NewCompactor(store, logrus.NewEntry(logger), clientSet)
 			compactOptions := &brtypes.CompactOptions{
 				RestoreOptions:  options,
 				CompactorConfig: opts.compactorConfig,

@@ -162,6 +162,9 @@ func readABSCredentialFiles(dirname string) (*absCredentials, error) {
 		}
 	}
 
+	if err := isABSConfigEmpty(absConfig); err != nil {
+		return nil, err
+	}
 	return absConfig, nil
 }
 
@@ -361,7 +364,7 @@ func (a *ABSSnapStore) Delete(snap brtypes.Snapshot) error {
 	return nil
 }
 
-// ABSSnapStoreHash calculate and returns the hash of azure object storage snapstore secret.
+// ABSSnapStoreHash calculates and returns the hash of azure object storage snapstore secret.
 func ABSSnapStoreHash(config *brtypes.SnapstoreConfig) (string, error) {
 	if _, isSet := os.LookupEnv(absCredentialFile); isSet {
 		if dir := os.Getenv(absCredentialFile); dir != "" {
@@ -389,4 +392,11 @@ func ABSSnapStoreHash(config *brtypes.SnapstoreConfig) (string, error) {
 func getABSHash(config *absCredentials) string {
 	data := fmt.Sprintf("%s%s", config.SecretKey, config.StorageAccount)
 	return getHash(data)
+}
+
+func isABSConfigEmpty(config *absCredentials) error {
+	if len(config.SecretKey) != 0 && len(config.StorageAccount) != 0 {
+		return nil
+	}
+	return fmt.Errorf("azure object storage credentials: storageKey or storageAccount are passed as empty")
 }
