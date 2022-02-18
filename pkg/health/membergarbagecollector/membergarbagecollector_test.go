@@ -82,9 +82,6 @@ var _ = Describe("Membergarbagecollector", func() {
 			})
 
 			It("Should not remove any members if equal members in statefulset and etcd cluster", func() {
-				//Create etcd object
-				//k8sClientset.Create(context.TODO(), getEtcdObjectWithMembers(3))
-
 				//Create sts object
 				k8sClientset.Create(context.TODO(), getStsWithName("test-etcd", 3))
 
@@ -99,14 +96,10 @@ var _ = Describe("Membergarbagecollector", func() {
 				Expect(err).To(BeNil())
 
 				//Cleanup
-				//k8sClientset.Delete(context.TODO(), getEtcdObjectWithMembers(3))
 				k8sClientset.Delete(context.TODO(), getStsWithName("test-etcd", 3))
 			})
 
 			It("Should not remove any member missing from replicas but with its pod present", func() {
-				//Create etcd object
-				//k8sClientset.Create(context.TODO(), getEtcdObjectWithMembers(2))
-
 				//Create sts object
 				k8sClientset.Create(context.TODO(), getStsWithName("test-etcd", 2))
 
@@ -121,7 +114,6 @@ var _ = Describe("Membergarbagecollector", func() {
 				Expect(err).To(BeNil())
 
 				//Cleanup
-				//k8sClientset.Delete(context.TODO(), getEtcdObjectWithMembers(2))
 				k8sClientset.Delete(context.TODO(), getStsWithName("test-etcd", 2))
 			})
 		})
@@ -138,9 +130,6 @@ var _ = Describe("Membergarbagecollector", func() {
 			})
 
 			It("Should not remove the member with the missing pod if it has a lease present", func() {
-				//Create etcd object
-				//k8sClientset.Create(context.TODO(), getEtcdObjectWithMembers(3))
-
 				//Create sts object
 				k8sClientset.Create(context.TODO(), getStsWithName("test-etcd", 3))
 
@@ -158,15 +147,11 @@ var _ = Describe("Membergarbagecollector", func() {
 				Expect(err).To(BeNil())
 
 				//Cleanup
-				//k8sClientset.Delete(context.TODO(), getEtcdObjectWithMembers(3))
 				k8sClientset.Delete(context.TODO(), getStsWithName("test-etcd", 3))
 				k8sClientset.Delete(context.TODO(), getLeaseWithName("test-etcd-2"))
 			})
 
 			It("Should remove the member with the missing pod if it has no lease present", func() {
-				//Create etcd object
-				//k8sClientset.Create(context.TODO(), getEtcdObjectWithMembers(2))
-
 				//Create sts object
 				k8sClientset.Create(context.TODO(), getStsWithName("test-etcd", 2))
 
@@ -181,32 +166,11 @@ var _ = Describe("Membergarbagecollector", func() {
 				Expect(err).To(BeNil())
 
 				//Cleanup
-				//k8sClientset.Delete(context.TODO(), getEtcdObjectWithMembers(2))
 				k8sClientset.Delete(context.TODO(), getStsWithName("test-etcd", 2))
 			})
 		})
 	})
 })
-
-// func getEtcdObjectWithMembers(members int) *druidv1alpha1.Etcd {
-// 	etcd := &druidv1alpha1.Etcd{
-// 		TypeMeta: metav1.TypeMeta{
-// 			Kind:       "Etcd",
-// 			APIVersion: "druid.gardener.cloud/v1alpha1",
-// 		},
-// 		ObjectMeta: metav1.ObjectMeta{
-// 			Name:      "test-etcd",
-// 			Namespace: os.Getenv("POD_NAMESPACE"),
-// 		},
-// 	}
-
-// 	for members > 0 {
-// 		members--
-// 		etcd.Status.Members = append(etcd.Status.Members, druidv1alpha1.EtcdMemberStatus{Name: "test-etcd-" + strconv.Itoa(members)})
-// 	}
-
-// 	return etcd
-// }
 
 func getMemberListResponse(members int) *clientv3.MemberListResponse {
 	response := &clientv3.MemberListResponse{
