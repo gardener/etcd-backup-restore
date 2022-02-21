@@ -398,5 +398,5 @@ func isABSConfigEmpty(config *absCredentials) error {
 	if len(config.SecretKey) != 0 && len(config.StorageAccount) != 0 {
 		return nil
 	}
-	return fmt.Errorf("azure object storage credentials: storageKey or storageAccount are passed as empty")
+	return fmt.Errorf("azure object storage credentials: storageKey or storageAccount is missing")
 }

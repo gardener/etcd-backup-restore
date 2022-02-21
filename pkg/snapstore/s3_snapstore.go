@@ -460,5 +460,5 @@ func isAWSConfigEmpty(config *awsCredentials) error {
 	if len(config.AccessKeyID) != 0 && len(config.Region) != 0 && len(config.SecretAccessKey) != 0 {
 		return nil
 	}
-	return fmt.Errorf("aws s3 credentials: region or secretAccessKey or accessKeyID are passed as empty")
+	return fmt.Errorf("aws s3 credentials: region, secretAccessKey or accessKeyID is missing")
 }

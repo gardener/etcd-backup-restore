@@ -406,5 +406,5 @@ func isOSSConfigEmpty(config *authOptions) error {
 	if len(config.AccessID) != 0 && len(config.AccessKey) != 0 && len(config.Endpoint) != 0 {
 		return nil
 	}
-	return fmt.Errorf("aliCloud OSS credentials: accessKeyID or accessKeySecret or storageEndpoint are passed as empty")
+	return fmt.Errorf("aliCloud OSS credentials: accessKeyID, accessKeySecret or storageEndpoint is missing")
 }
