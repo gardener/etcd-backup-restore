@@ -180,8 +180,8 @@ func GetSnapstoreSecretHash(config *brtypes.SnapstoreConfig) (string, error) {
 		return S3SnapStoreHash(config)
 	case brtypes.SnapstoreProviderABS:
 		return ABSSnapStoreHash(config)
-	// case brtypes.SnapstoreProviderGCS:
-	// 	return GCSSnapStoreHash(config)
+	case brtypes.SnapstoreProviderGCS:
+		return GCSSnapStoreHash(config)
 	case brtypes.SnapstoreProviderSwift:
 		return SwiftSnapStoreHash(config)
 	case brtypes.SnapstoreProviderOSS:
@@ -191,7 +191,14 @@ func GetSnapstoreSecretHash(config *brtypes.SnapstoreConfig) (string, error) {
 	}
 }
 
-func getHash(data string) string {
-	sha := sha256.Sum256([]byte(data))
-	return fmt.Sprintf("%x", sha)
+func getHash(data interface{}) string {
+	switch dat := data.(type) {
+	case string:
+		sha := sha256.Sum256([]byte(dat))
+		return fmt.Sprintf("%x", sha)
+	case []byte:
+		sha := sha256.Sum256(dat)
+		return fmt.Sprintf("%x", sha)
+	}
+	return ""
 }

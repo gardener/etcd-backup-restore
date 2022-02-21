@@ -36,6 +36,7 @@ import (
 )
 
 const (
+	storeCredentials       = "GOOGLE_APPLICATION_CREDENTIALS"
 	sourceStoreCredentials = "SOURCE_GOOGLE_APPLICATION_CREDENTIALS"
 )
 
@@ -255,4 +256,26 @@ func (s *GCSSnapStore) List() (brtypes.SnapList, error) {
 func (s *GCSSnapStore) Delete(snap brtypes.Snapshot) error {
 	objectName := path.Join(snap.Prefix, snap.SnapDir, snap.SnapName)
 	return s.client.Bucket(s.bucket).Object(objectName).Delete(context.TODO())
+}
+
+// GCSSnapStoreHash calculates and returns the hash of GCS snapstore secret.
+func GCSSnapStoreHash(config *brtypes.SnapstoreConfig) (string, error) {
+	if _, isSet := os.LookupEnv(storeCredentials); isSet {
+		if file := os.Getenv(storeCredentials); file != "" {
+			credjson, err := readGCSCredentialsFile(file)
+			if err != nil {
+				return "", fmt.Errorf("error getting credentials from %v ", file)
+			}
+			return getHash(credjson), nil
+		}
+	}
+	return "", nil
+}
+
+func readGCSCredentialsFile(filename string) ([]byte, error) {
+	b, err := ioutil.ReadFile(filename)
+	if err != nil {
+		return nil, err
+	}
+	return b, nil
 }
