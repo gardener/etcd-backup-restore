@@ -21,7 +21,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"math"
 	"os"
 	"path"
@@ -511,7 +510,7 @@ func (r *Restorer) applySnaps(clientKV client.KVCloser, remainingSnaps brtypes.S
 					filePath := pathList[currSnapIndex]
 					snapName := remainingSnaps[currSnapIndex].SnapName
 
-					eventsData, err := ioutil.ReadFile(filePath)
+					eventsData, err := os.ReadFile(filePath)
 					if err != nil {
 						errCh <- fmt.Errorf("failed to read events data from file for delta snapshot %s : %v", snapName, err)
 						return
@@ -655,7 +654,7 @@ func (r *Restorer) getEventsDataFromDeltaSnapshot(snap brtypes.Snapshot) ([]byte
 
 // persistDeltaSnapshot writes delta snapshot events to disk and returns the file path for the same.
 func persistDeltaSnapshot(data []byte) (string, error) {
-	tmpFile, err := ioutil.TempFile(tmpDir, tmpEventsDataFilePrefix)
+	tmpFile, err := os.CreateTemp(tmpDir, tmpEventsDataFilePrefix)
 	if err != nil {
 		err = fmt.Errorf("failed to create temp file")
 		return "", err

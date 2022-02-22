@@ -17,7 +17,7 @@ package cmd
 import (
 	"context"
 	"errors"
-	"io/ioutil"
+	"os"
 
 	"github.com/gardener/etcd-backup-restore/pkg/compressor"
 
@@ -71,7 +71,7 @@ func (o *serverOptions) complete() {
 
 func (o *serverOptions) loadConfigFromFile() error {
 	if len(o.ConfigFile) != 0 {
-		data, err := ioutil.ReadFile(o.ConfigFile)
+		data, err := os.ReadFile(o.ConfigFile)
 		if err != nil {
 			return err
 		}

@@ -18,7 +18,6 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"sort"
 	"sync"
 	"time"
@@ -55,7 +54,7 @@ func (m *mockOSSBucket) GetObject(objectKey string, options ...oss.Option) (io.R
 	if m.objects[objectKey] == nil {
 		return nil, fmt.Errorf("object not found")
 	}
-	out := ioutil.NopCloser(bytes.NewReader(*m.objects[objectKey]))
+	out := io.NopCloser(bytes.NewReader(*m.objects[objectKey]))
 	return out, nil
 }
 

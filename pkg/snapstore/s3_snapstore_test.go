@@ -18,7 +18,6 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"sort"
 	"strings"
 	"sync"
@@ -46,7 +45,7 @@ func (m *mockS3Client) GetObject(in *s3.GetObjectInput) (*s3.GetObjectOutput, er
 	}
 	// Only need to return mocked response output
 	out := s3.GetObjectOutput{
-		Body: ioutil.NopCloser(bytes.NewReader(*m.objects[*in.Key])),
+		Body: io.NopCloser(bytes.NewReader(*m.objects[*in.Key])),
 	}
 	return &out, nil
 }

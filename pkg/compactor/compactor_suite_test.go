@@ -17,7 +17,6 @@ package compactor_test
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"sync"
 	"testing"
@@ -57,7 +56,7 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 	)
 
 	// Create a directory for compaction test cases
-	testSuitDir, err = ioutil.TempDir("/tmp", "compactor-test")
+	testSuitDir, err = os.MkdirTemp("/tmp", "compactor-test")
 	Expect(err).ShouldNot(HaveOccurred())
 
 	// Directory for the main ETCD process

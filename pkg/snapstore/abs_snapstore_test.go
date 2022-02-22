@@ -19,7 +19,7 @@ import (
 	"context"
 	"encoding/xml"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"net/url"
 	"sort"
@@ -189,7 +189,7 @@ func (p *fakePolicy) handleListObjects(w *http.Response) error {
 		return err
 	}
 
-	w.Body = ioutil.NopCloser(strings.NewReader(xml.Header + string(rawXML)))
+	w.Body = io.NopCloser(strings.NewReader(xml.Header + string(rawXML)))
 	w.StatusCode = http.StatusOK
 	return nil
 }
@@ -208,7 +208,7 @@ func (p *fakePolicy) handleBlobPutOperation(w *http.Response) {
 		content := make([]byte, w.Request.ContentLength)
 		if _, err := w.Request.Body.Read(content); err != nil {
 			w.StatusCode = http.StatusBadRequest
-			w.Body = ioutil.NopCloser(strings.NewReader(fmt.Sprintf("failed to read content %v", err)))
+			w.Body = io.NopCloser(strings.NewReader(fmt.Sprintf("failed to read content %v", err)))
 			return
 		}
 
@@ -226,14 +226,14 @@ func (p *fakePolicy) handleBlobPutOperation(w *http.Response) {
 		content := make([]byte, w.Request.ContentLength)
 		if _, err := w.Request.Body.Read(content); err != nil {
 			w.StatusCode = http.StatusBadRequest
-			w.Body = ioutil.NopCloser(strings.NewReader(fmt.Sprintf("failed to read content %v", err)))
+			w.Body = io.NopCloser(strings.NewReader(fmt.Sprintf("failed to read content %v", err)))
 			return
 		}
 		blockLookupXML := strings.TrimPrefix(string(content), xml.Header)
 		var blockLookupList azblob.BlockLookupList
 		if err := xml.Unmarshal([]byte(blockLookupXML), &blockLookupList); err != nil {
 			w.StatusCode = http.StatusBadRequest
-			w.Body = ioutil.NopCloser(strings.NewReader(fmt.Sprintf("failed to parse body %v", err)))
+			w.Body = io.NopCloser(strings.NewReader(fmt.Sprintf("failed to parse body %v", err)))
 			return
 		}
 		blockContentMap := p.multiPartUploads[key]
@@ -252,7 +252,7 @@ func (p *fakePolicy) handleBlobGetOperation(w *http.Response) {
 	key := parseObjectNamefromURL(w.Request.URL)
 	if _, ok := p.objectMap[key]; ok {
 		w.StatusCode = http.StatusOK
-		w.Body = ioutil.NopCloser(bytes.NewReader(*p.objectMap[key]))
+		w.Body = io.NopCloser(bytes.NewReader(*p.objectMap[key]))
 	} else {
 		w.StatusCode = http.StatusNotFound
 		w.Body = http.NoBody

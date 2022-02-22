@@ -20,7 +20,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/url"
 	"os"
 	"path"
@@ -120,7 +119,7 @@ func getCredentials(prefixString string) (string, string, error) {
 }
 
 func readABSCredentialsJSON(filename string) (*absCredentials, error) {
-	jsonData, err := ioutil.ReadFile(filename)
+	jsonData, err := os.ReadFile(filename)
 	if err != nil {
 		return nil, err
 	}
@@ -141,20 +140,20 @@ func absCredentialsFromJSON(jsonData []byte) (*absCredentials, error) {
 func readABSCredentialFiles(dirname string) (*absCredentials, error) {
 	absConfig := &absCredentials{}
 
-	files, err := ioutil.ReadDir(dirname)
+	files, err := os.ReadDir(dirname)
 	if err != nil {
 		return nil, err
 	}
 
 	for _, file := range files {
 		if file.Name() == "storageAccount" {
-			data, err := ioutil.ReadFile(dirname + "/storageAccount")
+			data, err := os.ReadFile(dirname + "/storageAccount")
 			if err != nil {
 				return nil, err
 			}
 			absConfig.StorageAccount = string(data)
 		} else if file.Name() == "storageKey" {
-			data, err := ioutil.ReadFile(dirname + "/storageKey")
+			data, err := os.ReadFile(dirname + "/storageKey")
 			if err != nil {
 				return nil, err
 			}
@@ -240,7 +239,7 @@ func (a *ABSSnapStore) List() (brtypes.SnapList, error) {
 // Save will write the snapshot to store
 func (a *ABSSnapStore) Save(snap brtypes.Snapshot, rc io.ReadCloser) error {
 	// Save it locally
-	tmpfile, err := ioutil.TempFile(a.tempDir, tmpBackupFilePrefix)
+	tmpfile, err := os.CreateTemp(a.tempDir, tmpBackupFilePrefix)
 	if err != nil {
 		rc.Close()
 		return fmt.Errorf("failed to create snapshot tempfile: %v", err)
