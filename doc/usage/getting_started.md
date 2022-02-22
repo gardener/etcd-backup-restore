@@ -38,7 +38,7 @@ The procedure to provide credentials to access the cloud provider object store v
   1. `ECS_ENDPOINT`, `ECS_ACCESS_KEY_ID`, `ECS_SECRET_ACCESS_KEY` should be made available as environment variables. For development purposes, the environment variables `ECS_DISABLE_SSL` and `ECS_INSECURE_SKIP_VERIFY` can also be set to "true" or "false".
 
 
-Check the [example of storage provider secrets](https://github.com/gardener/etcd-backup-restore/doc/example)
+Check the [example of storage provider secrets](https://github.com/gardener/etcd-backup-restore/tree/master/example/storage-provider-secrets)
 
 ### Taking scheduled snapshot
 
