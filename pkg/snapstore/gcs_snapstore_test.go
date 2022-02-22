@@ -19,7 +19,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"sort"
 	"sync"
 
@@ -67,7 +66,7 @@ type mockObjectHandle struct {
 
 func (m *mockObjectHandle) NewReader(ctx context.Context) (stiface.Reader, error) {
 	if value, ok := m.client.objects[m.object]; ok {
-		return &mockObjectReader{reader: ioutil.NopCloser(bytes.NewReader(*value))}, nil
+		return &mockObjectReader{reader: io.NopCloser(bytes.NewReader(*value))}, nil
 	}
 	return nil, fmt.Errorf("object %s not found", m.object)
 }

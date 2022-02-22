@@ -19,7 +19,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"math"
 	"os"
 	"path"
@@ -151,7 +150,7 @@ func readSwiftCredentialsJSON(filename string) (*clientconfig.ClientOpts, error)
 // swiftCredentialsFromJSON obtains Swift credentials from a JSON value.
 func swiftCredentialsFromJSON(filename string) (*swiftCredentials, error) {
 	cred := &swiftCredentials{}
-	jsonData, err := ioutil.ReadFile(filename)
+	jsonData, err := os.ReadFile(filename)
 	if err != nil {
 		return nil, err
 	}
@@ -182,44 +181,44 @@ func readSwiftCredentialFiles(dirname string) (*clientconfig.ClientOpts, error) 
 
 func readSwiftCredentialDir(dirname string) (*swiftCredentials, error) {
 	cred := &swiftCredentials{}
-	files, err := ioutil.ReadDir(dirname)
+	files, err := os.ReadDir(dirname)
 	if err != nil {
 		return nil, err
 	}
 
 	for _, file := range files {
 		if file.Name() == "authURL" {
-			data, err := ioutil.ReadFile(dirname + "/authURL")
+			data, err := os.ReadFile(dirname + "/authURL")
 			if err != nil {
 				return nil, err
 			}
 			cred.AuthURL = string(data)
 		} else if file.Name() == "domainName" {
-			data, err := ioutil.ReadFile(dirname + "/domainName")
+			data, err := os.ReadFile(dirname + "/domainName")
 			if err != nil {
 				return nil, err
 			}
 			cred.DomainName = string(data)
 		} else if file.Name() == "password" {
-			data, err := ioutil.ReadFile(dirname + "/password")
+			data, err := os.ReadFile(dirname + "/password")
 			if err != nil {
 				return nil, err
 			}
 			cred.Password = string(data)
 		} else if file.Name() == "region" {
-			data, err := ioutil.ReadFile(dirname + "/region")
+			data, err := os.ReadFile(dirname + "/region")
 			if err != nil {
 				return nil, err
 			}
 			cred.Region = string(data)
 		} else if file.Name() == "tenantName" {
-			data, err := ioutil.ReadFile(dirname + "/tenantName")
+			data, err := os.ReadFile(dirname + "/tenantName")
 			if err != nil {
 				return nil, err
 			}
 			cred.TenantName = string(data)
 		} else if file.Name() == "username" {
-			data, err := ioutil.ReadFile(dirname + "/username")
+			data, err := os.ReadFile(dirname + "/username")
 			if err != nil {
 				return nil, err
 			}
@@ -253,7 +252,7 @@ func (s *SwiftSnapStore) Fetch(snap brtypes.Snapshot) (io.ReadCloser, error) {
 // Save will write the snapshot to store
 func (s *SwiftSnapStore) Save(snap brtypes.Snapshot, rc io.ReadCloser) error {
 	// Save it locally
-	tmpfile, err := ioutil.TempFile(s.tempDir, tmpBackupFilePrefix)
+	tmpfile, err := os.CreateTemp(s.tempDir, tmpBackupFilePrefix)
 	if err != nil {
 		rc.Close()
 		return fmt.Errorf("failed to create snapshot tempfile: %v", err)

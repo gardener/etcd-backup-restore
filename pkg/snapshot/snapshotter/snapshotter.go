@@ -20,7 +20,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"path"
 	"sync"
 	"time"
@@ -446,7 +446,7 @@ func (ssr *Snapshotter) TakeDeltaSnapshot() (*brtypes.Snapshot, error) {
 	ssr.events = hash.Sum(ssr.events)
 
 	startTime := time.Now()
-	rc := ioutil.NopCloser(bytes.NewReader(ssr.events))
+	rc := io.NopCloser(bytes.NewReader(ssr.events))
 
 	// if compression is enabled
 	//    then compress the snapshot.

@@ -3,7 +3,6 @@ package validator_test
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path"
 	"sync"
@@ -118,7 +117,7 @@ func runSnapshotter(logger *logrus.Entry, deltaSnapshotPeriod time.Duration, end
 
 // copyFile copies the contents of the file at sourceFilePath into the file at destinationFilePath. If no file exists at destinationFilePath, a new file is created before copying
 func copyFile(sourceFilePath, destinationFilePath string, filePermission os.FileMode) error {
-	data, err := ioutil.ReadFile(sourceFilePath)
+	data, err := os.ReadFile(sourceFilePath)
 	if err != nil {
 		return fmt.Errorf("unable to read source file %s: %v", sourceFilePath, err)
 	}
@@ -129,7 +128,7 @@ func copyFile(sourceFilePath, destinationFilePath string, filePermission os.File
 		return fmt.Errorf("unable to create destination directory %s: %v", destinationDirectoryPath, err)
 	}
 
-	err = ioutil.WriteFile(destinationFilePath, data, filePermission)
+	err = os.WriteFile(destinationFilePath, data, filePermission)
 	if err != nil {
 		return fmt.Errorf("unable to create destination file %s: %v", destinationFilePath, err)
 	}
@@ -142,7 +141,7 @@ func copyDir(sourceDirPath, destinationDirPath string) error {
 		return nil
 	}
 
-	files, err := ioutil.ReadDir(sourceDirPath)
+	files, err := os.ReadDir(sourceDirPath)
 	if err != nil {
 		return err
 	}

@@ -18,7 +18,6 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/url"
 	"path"
 	"strings"
@@ -168,7 +167,7 @@ var _ = Describe("Save, List, Fetch, Delete from mock snapstore", func() {
 				// Save snapshot
 				resetObjectMap()
 				dummyData := make([]byte, 6*1024*1024)
-				err = snapStore.Save(snap3, ioutil.NopCloser(bytes.NewReader(dummyData)))
+				err = snapStore.Save(snap3, io.NopCloser(bytes.NewReader(dummyData)))
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(len(objectMap)).Should(BeNumerically(">", 0))
 			}
@@ -222,13 +221,13 @@ var _ = Describe("Save, List, Fetch, Delete from mock snapstore", func() {
 				// Save snapshot
 				resetObjectMap()
 				dummyData := make([]byte, 6*1024*1024)
-				err = snapStore.Save(snap1, ioutil.NopCloser(bytes.NewReader(dummyData)))
+				err = snapStore.Save(snap1, io.NopCloser(bytes.NewReader(dummyData)))
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(len(objectMap)).Should(BeNumerically(">", 0))
 
 				prevLen = len(objectMap)
 				dummyData = make([]byte, 6*1024*1024)
-				err = snapStore.Save(snap4, ioutil.NopCloser(bytes.NewReader(dummyData)))
+				err = snapStore.Save(snap4, io.NopCloser(bytes.NewReader(dummyData)))
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(len(objectMap)).Should(BeNumerically(">", prevLen))
 			}
@@ -267,7 +266,7 @@ var _ = Describe("Save, List, Fetch, Delete from mock snapstore", func() {
 				// Save snapshot
 				resetObjectMap()
 				dummyData := make([]byte, 6*1024*1024)
-				err = snapStore.Save(snap4, ioutil.NopCloser(bytes.NewReader(dummyData)))
+				err = snapStore.Save(snap4, io.NopCloser(bytes.NewReader(dummyData)))
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(len(objectMap)).Should(BeNumerically(">", 0))
 			}
