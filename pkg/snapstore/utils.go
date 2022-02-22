@@ -15,6 +15,7 @@
 package snapstore
 
 import (
+	"crypto/sha256"
 	"fmt"
 	"os"
 	"path"
@@ -168,4 +169,36 @@ func adaptPrefix(snap *brtypes.Snapshot, snapstorePrefix string) string {
 	}
 
 	return snapstorePrefix
+}
+
+// GetSnapstoreSecretHash returns the hash of object store secrets hash
+func GetSnapstoreSecretHash(config *brtypes.SnapstoreConfig) (string, error) {
+	switch config.Provider {
+	case brtypes.SnapstoreProviderLocal:
+		return "", nil
+	case brtypes.SnapstoreProviderS3:
+		return S3SnapStoreHash(config)
+	case brtypes.SnapstoreProviderABS:
+		return ABSSnapStoreHash(config)
+	case brtypes.SnapstoreProviderGCS:
+		return GCSSnapStoreHash(config)
+	case brtypes.SnapstoreProviderSwift:
+		return SwiftSnapStoreHash(config)
+	case brtypes.SnapstoreProviderOSS:
+		return OSSSnapStoreHash(config)
+	default:
+		return "", nil
+	}
+}
+
+func getHash(data interface{}) string {
+	switch dat := data.(type) {
+	case string:
+		sha := sha256.Sum256([]byte(dat))
+		return fmt.Sprintf("%x", sha)
+	case []byte:
+		sha := sha256.Sum256(dat)
+		return fmt.Sprintf("%x", sha)
+	}
+	return ""
 }

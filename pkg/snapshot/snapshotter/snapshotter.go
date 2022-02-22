@@ -42,7 +42,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-var emptyStruct struct{}
+var (
+	emptyStruct   struct{}
+	snapstoreHash = make(map[string]interface{})
+)
 
 // event is wrapper over etcd event to keep track of time of event
 type event struct {
@@ -75,29 +78,29 @@ type Snapshotter struct {
 	config               *brtypes.SnapshotterConfig
 	compressionConfig    *compressor.CompressionConfig
 	healthConfig         *brtypes.HealthConfig
-
-	schedule           cron.Schedule
-	prevSnapshot       *brtypes.Snapshot
-	PrevFullSnapshot   *brtypes.Snapshot
-	PrevDeltaSnapshots brtypes.SnapList
-	fullSnapshotReqCh  chan bool
-	deltaSnapshotReqCh chan struct{}
-	fullSnapshotAckCh  chan result
-	deltaSnapshotAckCh chan result
-	fullSnapshotTimer  *time.Timer
-	deltaSnapshotTimer *time.Timer
-	events             []byte
-	watchCh            clientv3.WatchChan
-	etcdWatchClient    *clientv3.Watcher
-	cancelWatch        context.CancelFunc
-	SsrStateMutex      *sync.Mutex
-	SsrState           brtypes.SnapshotterState
-	lastEventRevision  int64
-	K8sClientset       client.Client
+	schedule             cron.Schedule
+	prevSnapshot         *brtypes.Snapshot
+	PrevFullSnapshot     *brtypes.Snapshot
+	PrevDeltaSnapshots   brtypes.SnapList
+	fullSnapshotReqCh    chan bool
+	deltaSnapshotReqCh   chan struct{}
+	fullSnapshotAckCh    chan result
+	deltaSnapshotAckCh   chan result
+	fullSnapshotTimer    *time.Timer
+	deltaSnapshotTimer   *time.Timer
+	events               []byte
+	watchCh              clientv3.WatchChan
+	etcdWatchClient      *clientv3.Watcher
+	cancelWatch          context.CancelFunc
+	SsrStateMutex        *sync.Mutex
+	SsrState             brtypes.SnapshotterState
+	lastEventRevision    int64
+	K8sClientset         client.Client
+	snapstoreConfig      *brtypes.SnapstoreConfig
 }
 
 // NewSnapshotter returns the snapshotter object.
-func NewSnapshotter(logger *logrus.Entry, config *brtypes.SnapshotterConfig, store brtypes.SnapStore, etcdConnectionConfig *brtypes.EtcdConnectionConfig, compressionConfig *compressor.CompressionConfig, healthConfig *brtypes.HealthConfig) (*Snapshotter, error) {
+func NewSnapshotter(logger *logrus.Entry, config *brtypes.SnapshotterConfig, store brtypes.SnapStore, etcdConnectionConfig *brtypes.EtcdConnectionConfig, compressionConfig *compressor.CompressionConfig, healthConfig *brtypes.HealthConfig, storeConfig *brtypes.SnapstoreConfig) (*Snapshotter, error) {
 	sdl, err := cron.ParseStandard(config.FullSnapshotSchedule)
 	if err != nil {
 		// Ideally this should be validated before.
@@ -153,6 +156,7 @@ func NewSnapshotter(logger *logrus.Entry, config *brtypes.SnapshotterConfig, sto
 		deltaSnapshotAckCh: make(chan result),
 		cancelWatch:        func() {},
 		K8sClientset:       clientSet,
+		snapstoreConfig:    storeConfig,
 	}, nil
 }
 
@@ -282,6 +286,15 @@ func (ssr *Snapshotter) takeFullSnapshot(isFinal bool) (*brtypes.Snapshot, error
 	// close previous watch and client.
 	ssr.closeEtcdClient()
 
+	var err error
+
+	// Update the snapstore object before taking every full snapshot
+	// Refer: https://github.com/gardener/etcd-backup-restore/issues/422
+	ssr.store, err = snapstore.GetSnapstore(ssr.snapstoreConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create snapstore from configured storage provider: %v", err)
+	}
+
 	clientFactory := etcdutil.NewFactory(*ssr.etcdConnectionConfig)
 	clientKV, err := clientFactory.NewKV()
 	if err != nil {
@@ -403,6 +416,19 @@ func (ssr *Snapshotter) TakeDeltaSnapshot() (*brtypes.Snapshot, error) {
 		return nil, nil
 	}
 	ssr.events = append(ssr.events, byte(']'))
+
+	isSecretUpdated := ssr.checkSnapstoreSecretUpdate()
+	if isSecretUpdated {
+		var err error
+
+		// Update the snapstore object before taking every delta snapshot
+		// Refer: https://github.com/gardener/etcd-backup-restore/issues/422
+		ssr.store, err = snapstore.GetSnapstore(ssr.snapstoreConfig)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create snapstore from configured storage provider: %v", err)
+		}
+		ssr.logger.Info("updated the snapstore object with new credentials")
+	}
 
 	// compressionSuffix is useful in backward compatibility(restoring from uncompressed snapshots).
 	// it is also helpful in inferring which compression Policy to be used to decompress the snapshot.
@@ -683,4 +709,20 @@ func (ssr *Snapshotter) resetFullSnapshotTimer() error {
 	ssr.logger.Infof("Will take next full snapshot at time: %s", effective)
 
 	return nil
+}
+
+func (ssr *Snapshotter) checkSnapstoreSecretUpdate() bool {
+	ssr.logger.Debug("checking the hash of snapstore secret...")
+	newSnapstoreSecretHash, err := snapstore.GetSnapstoreSecretHash(ssr.snapstoreConfig)
+	if err != nil {
+		return true
+	}
+
+	if snapstoreHash[ssr.snapstoreConfig.Provider] == newSnapstoreSecretHash {
+		return false
+	}
+
+	//update the map with latest newSnapstoreHash
+	snapstoreHash[ssr.snapstoreConfig.Provider] = newSnapstoreSecretHash
+	return true
 }
