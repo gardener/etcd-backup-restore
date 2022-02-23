@@ -142,7 +142,7 @@ func (le *LeaderElector) Run(ctx context.Context) error {
 				le.CurrentState = StateFollower
 				le.logger.Infof("backup-restore changed the state from %v to %v", StateUnknown, le.CurrentState)
 			} else if !isLeader && le.CurrentState == StateFollower {
-				le.logger.Infof("backup-restore currentState: %v", le.CurrentState)
+				le.logger.Debugf("backup-restore currentState: %v", le.CurrentState)
 			}
 		}
 	}
