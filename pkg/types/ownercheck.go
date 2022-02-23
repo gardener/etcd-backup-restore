@@ -30,23 +30,27 @@ const (
 	DefaultOwnerCheckTimeout = 2 * time.Minute
 	// DefaultOwnerCheckDNSCacheTTL is the default DNS cache TTL for owner checks.
 	DefaultOwnerCheckDNSCacheTTL = 1 * time.Minute
+	// DefaultOwnerCheckFailureThreshold is the default FailureThreshold for owner checks.
+	DefaultOwnerCheckFailureThreshold = 6
 )
 
 // OwnerCheckConfig holds the configuration for the owner checks.
 type OwnerCheckConfig struct {
-	OwnerName             string            `json:"ownerName,omitempty"`
-	OwnerID               string            `json:"ownerID,omitempty"`
-	OwnerCheckInterval    wrappers.Duration `json:"ownerCheckInterval,omitempty"`
-	OwnerCheckTimeout     wrappers.Duration `json:"ownerCheckTimeout,omitempty"`
-	OwnerCheckDNSCacheTTL wrappers.Duration `json:"ownerCheckDNSCacheTTL,omitempty"`
+	OwnerName                  string            `json:"ownerName,omitempty"`
+	OwnerID                    string            `json:"ownerID,omitempty"`
+	OwnerCheckInterval         wrappers.Duration `json:"ownerCheckInterval,omitempty"`
+	OwnerCheckTimeout          wrappers.Duration `json:"ownerCheckTimeout,omitempty"`
+	OwnerCheckDNSCacheTTL      wrappers.Duration `json:"ownerCheckDNSCacheTTL,omitempty"`
+	OwnerCheckFailureThreshold uint              `json:"ownerCheckFailureThreshold,omitempty"`
 }
 
 // NewOwnerCheckConfig creates and returns a new OwnerCheckConfig.
 func NewOwnerCheckConfig() *OwnerCheckConfig {
 	return &OwnerCheckConfig{
-		OwnerCheckInterval:    wrappers.Duration{Duration: DefaultOwnerCheckInterval},
-		OwnerCheckTimeout:     wrappers.Duration{Duration: DefaultOwnerCheckTimeout},
-		OwnerCheckDNSCacheTTL: wrappers.Duration{Duration: DefaultOwnerCheckDNSCacheTTL},
+		OwnerCheckInterval:         wrappers.Duration{Duration: DefaultOwnerCheckInterval},
+		OwnerCheckTimeout:          wrappers.Duration{Duration: DefaultOwnerCheckTimeout},
+		OwnerCheckDNSCacheTTL:      wrappers.Duration{Duration: DefaultOwnerCheckDNSCacheTTL},
+		OwnerCheckFailureThreshold: DefaultOwnerCheckFailureThreshold,
 	}
 }
 
@@ -57,6 +61,7 @@ func (c *OwnerCheckConfig) AddFlags(fs *flag.FlagSet) {
 	fs.DurationVar(&c.OwnerCheckInterval.Duration, "owner-check-interval", c.OwnerCheckInterval.Duration, "time interval between owner checks")
 	fs.DurationVar(&c.OwnerCheckTimeout.Duration, "owner-check-timeout", c.OwnerCheckTimeout.Duration, "timeout for owner checks")
 	fs.DurationVar(&c.OwnerCheckDNSCacheTTL.Duration, "owner-check-dns-cache-ttl", c.OwnerCheckDNSCacheTTL.Duration, "DNS cache TTL for owner checks")
+	fs.UintVar(&c.OwnerCheckFailureThreshold, "owner-check-failure-threshold", c.OwnerCheckFailureThreshold, "no. of retry required to confirm owner checks failure")
 }
 
 // Validate validates the config.
@@ -69,6 +74,9 @@ func (c *OwnerCheckConfig) Validate() error {
 	}
 	if c.OwnerCheckDNSCacheTTL.Duration < 0 {
 		return errors.New("parameter owner-check-dns-cache-ttl must not be less than 0")
+	}
+	if c.OwnerCheckFailureThreshold <= 0 {
+		return errors.New("parameter owner-check-failure-threshold must be greater than 0")
 	}
 	return nil
 }

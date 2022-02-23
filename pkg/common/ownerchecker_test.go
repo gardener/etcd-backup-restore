@@ -29,9 +29,10 @@ import (
 )
 
 const (
-	ownerName = "foo.example.com"
-	ownerID   = "foo"
-	timeout   = 50 * time.Millisecond
+	ownerName        = "foo.example.com"
+	ownerID          = "foo"
+	timeout          = 50 * time.Millisecond
+	failureThreshold = 2
 )
 
 var _ = Describe("OwnerChecker", func() {
@@ -48,7 +49,7 @@ var _ = Describe("OwnerChecker", func() {
 		resolver = mockcommon.NewMockResolver(ctrl)
 		logger = logrus.New().WithField("test", "OwnerChecker")
 		ctx = context.TODO()
-		ownerChecker = NewOwnerChecker(ownerName, ownerID, timeout, resolver, logger)
+		ownerChecker = NewOwnerChecker(ownerName, ownerID, timeout, resolver, logger, failureThreshold)
 	})
 
 	AfterEach(func() {

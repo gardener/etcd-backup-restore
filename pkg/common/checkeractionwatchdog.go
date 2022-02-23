@@ -18,6 +18,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/gardener/etcd-backup-restore/pkg/backoff"
 	"github.com/sirupsen/logrus"
 	"k8s.io/apimachinery/pkg/util/clock"
 )
@@ -42,6 +43,8 @@ type Watchdog interface {
 	Start(ctx context.Context)
 	// Stop stops the goroutine started by Start.
 	Stop()
+	// Confirm gives the confirmation about checkerActionWatchdog check.
+	Confirm(context.Context, uint, *backoff.ExponentialBackoff) bool
 }
 
 // NewCheckerActionWatchdog creates a new Watchdog that regularly checks if the condition checked by the given checker
@@ -90,6 +93,36 @@ func (w *checkerActionWatchdog) Start(ctx context.Context) {
 			}
 		}
 	}()
+}
+
+// Confirm gives the confirmation that condition checked by the watchdog has failed or not.
+// It returns the boolean.
+func (w *checkerActionWatchdog) Confirm(ctx context.Context, failureThreshold uint, backoff *backoff.ExponentialBackoff) bool {
+	w.logger.Debug("Starting watchdog confirm")
+	defer w.logger.Debug("Stopping watchdog confirm")
+
+	ctx, w.cancelFunc = context.WithCancel(ctx)
+	var watchdogChecksFailCount uint = 0
+
+	for {
+		select {
+		case <-ctx.Done():
+			return false
+		case <-w.clock.After(backoff.GetNextBackoffTime()):
+			result, err := w.checker.Check(ctx)
+			if err != nil || !result {
+				watchdogChecksFailCount++
+				w.logger.Debugf("watchdog ChecksFailCount: %v", watchdogChecksFailCount)
+				if watchdogChecksFailCount >= failureThreshold {
+					w.logger.Info("watchdog check fails: confirm")
+					return true
+				}
+			} else {
+				w.logger.Info("watchdog check fails: not confirm")
+				return false
+			}
+		}
+	}
 }
 
 // Stop stops the goroutine started by Start.
