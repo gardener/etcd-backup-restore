@@ -19,6 +19,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/gardener/etcd-backup-restore/pkg/backoff"
 	. "github.com/gardener/etcd-backup-restore/pkg/common"
 	mockcommon "github.com/gardener/etcd-backup-restore/pkg/mock/common"
 
@@ -97,6 +98,46 @@ var _ = Describe("CheckerActionWatchdog", func() {
 			watchdog.Start(ctx)
 			defer watchdog.Stop()
 			Eventually(func() int { return int(count.Load()) }).Should(Equal(1))
+		})
+	})
+
+	Describe(" #Confirm", func() {
+		var (
+			exponentialBackoff *backoff.ExponentialBackoff
+			thresholdTime           = 4 * time.Second
+			attemptLimit       uint = 3
+			multiplier         uint = 2
+			failureThreshold   uint = 3
+		)
+
+		BeforeEach(func() {
+			exponentialBackoff = backoff.NewExponentialBackOffConfig(attemptLimit, multiplier, thresholdTime)
+		})
+
+		Context("when checker fails", func() {
+			It("should return true to confirm that checker has failed", func() {
+				checker.EXPECT().Check(gomock.Any()).DoAndReturn(func(ctx context.Context) (bool, error) {
+					return false, errors.New("text")
+				}).AnyTimes()
+
+				isFail := watchdog.Confirm(ctx, failureThreshold, exponentialBackoff)
+				Expect(isFail).Should(BeTrue())
+			})
+		})
+
+		Context("when checker fails once then succeeds", func() {
+			It("should return false", func() {
+				checker.EXPECT().Check(gomock.Any()).DoAndReturn(func(ctx context.Context) (bool, error) {
+					return false, errors.New("text")
+				}).Times(1)
+
+				checker.EXPECT().Check(gomock.Any()).DoAndReturn(func(ctx context.Context) (bool, error) {
+					return true, nil
+				}).Times(1)
+
+				isFail := watchdog.Confirm(ctx, failureThreshold, exponentialBackoff)
+				Expect(isFail).Should(BeFalse())
+			})
 		})
 	})
 })
