@@ -30,24 +30,22 @@ type Checker interface {
 
 // NewOwnerChecker returns a Checker that checks if the given owner domain name resolves to the given owner ID,
 // using the given resolver and logger.
-func NewOwnerChecker(ownerName, ownerID string, timeout time.Duration, resolver Resolver, logger *logrus.Entry, failureThreshold uint) Checker {
+func NewOwnerChecker(ownerName, ownerID string, timeout time.Duration, resolver Resolver, logger *logrus.Entry) Checker {
 	return &ownerChecker{
-		ownerName:     ownerName,
-		ownerID:       ownerID,
-		timeout:       timeout,
-		resolver:      resolver,
-		logger:        logger,
-		failThreshold: failureThreshold,
+		ownerName: ownerName,
+		ownerID:   ownerID,
+		timeout:   timeout,
+		resolver:  resolver,
+		logger:    logger,
 	}
 }
 
 type ownerChecker struct {
-	ownerName     string
-	ownerID       string
-	timeout       time.Duration
-	resolver      Resolver
-	logger        *logrus.Entry
-	failThreshold uint
+	ownerName string
+	ownerID   string
+	timeout   time.Duration
+	resolver  Resolver
+	logger    *logrus.Entry
 }
 
 // Check returns true if the owner domain name resolves to the owner ID, false otherwise.

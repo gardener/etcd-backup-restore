@@ -66,7 +66,7 @@ func NewBackupRestoreServer(logger *logrus.Logger, config *BackupRestoreComponen
 	var ownerChecker common.Checker
 	if occ.OwnerName != "" && occ.OwnerID != "" {
 		resolver := common.NewCachingResolver(net.DefaultResolver, clock.RealClock{}, occ.OwnerCheckDNSCacheTTL.Duration)
-		ownerChecker = common.NewOwnerChecker(occ.OwnerName, occ.OwnerID, occ.OwnerCheckTimeout.Duration, resolver, serverLogger, occ.OwnerCheckFailureThreshold)
+		ownerChecker = common.NewOwnerChecker(occ.OwnerName, occ.OwnerID, occ.OwnerCheckTimeout.Duration, resolver, serverLogger)
 	}
 	etcdProcessKiller := common.NewNamedProcessKiller(config.EtcdProcessName, common.NewGopsutilProcessLister(), serverLogger)
 	defragmentationSchedule, err := cron.ParseStandard(config.DefragmentationSchedule)
@@ -434,7 +434,7 @@ func (b *BackupRestoreServer) runEtcdProbeLoopWithSnapshotter(ctx context.Contex
 				// Stop owner check watchdog
 				ownerCheckWatchdog.Stop()
 
-				exponentialBackoff := backoff.NewExponentialBackOffConfig(b.config.ExponentialBackoffConfig.AttemptLimit, b.config.ExponentialBackoffConfig.Multiplier, b.config.ExponentialBackoffConfig.ThresholdTime.Duration)
+				exponentialBackoff := backoff.NewExponentialBackOffConfig(b.config.ExponentialBackoffConfig.AttemptLimit, b.config.OwnerCheckConfig.OwnerCheckBackoffMultiplier, b.config.ExponentialBackoffConfig.ThresholdTime.Duration)
 				isFail := ownerCheckWatchdog.Confirm(ctx, b.config.OwnerCheckConfig.OwnerCheckFailureThreshold, exponentialBackoff)
 
 				if isFail {

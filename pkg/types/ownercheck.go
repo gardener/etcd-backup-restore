@@ -32,25 +32,33 @@ const (
 	DefaultOwnerCheckDNSCacheTTL = 1 * time.Minute
 	// DefaultOwnerCheckFailureThreshold is the default FailureThreshold for owner checks.
 	DefaultOwnerCheckFailureThreshold = 6
+	// DefaultOwnerCheckBackoffMultiplier defines default value of multiplier for Exponential-Backoff mechanism for owner checks confirm.
+	DefaultOwnerCheckBackoffMultiplier = 2
+	// DefaultOwnerCheckThresholdTime defines default threshold Backoff time used when threshold is achieved for owner checks confirm.
+	DefaultOwnerCheckThresholdTime = 128 * time.Second
 )
 
 // OwnerCheckConfig holds the configuration for the owner checks.
 type OwnerCheckConfig struct {
-	OwnerName                  string            `json:"ownerName,omitempty"`
-	OwnerID                    string            `json:"ownerID,omitempty"`
-	OwnerCheckInterval         wrappers.Duration `json:"ownerCheckInterval,omitempty"`
-	OwnerCheckTimeout          wrappers.Duration `json:"ownerCheckTimeout,omitempty"`
-	OwnerCheckDNSCacheTTL      wrappers.Duration `json:"ownerCheckDNSCacheTTL,omitempty"`
-	OwnerCheckFailureThreshold uint              `json:"ownerCheckFailureThreshold,omitempty"`
+	OwnerName                   string            `json:"ownerName,omitempty"`
+	OwnerID                     string            `json:"ownerID,omitempty"`
+	OwnerCheckInterval          wrappers.Duration `json:"ownerCheckInterval,omitempty"`
+	OwnerCheckTimeout           wrappers.Duration `json:"ownerCheckTimeout,omitempty"`
+	OwnerCheckDNSCacheTTL       wrappers.Duration `json:"ownerCheckDNSCacheTTL,omitempty"`
+	OwnerCheckThresholdTime     wrappers.Duration `json:"ownerCheckThresholdTime,omitempty"`
+	OwnerCheckFailureThreshold  uint              `json:"ownerCheckFailureThreshold,omitempty"`
+	OwnerCheckBackoffMultiplier uint              `json:"ownerCheckBackoffMultiplier,omitempty"`
 }
 
 // NewOwnerCheckConfig creates and returns a new OwnerCheckConfig.
 func NewOwnerCheckConfig() *OwnerCheckConfig {
 	return &OwnerCheckConfig{
-		OwnerCheckInterval:         wrappers.Duration{Duration: DefaultOwnerCheckInterval},
-		OwnerCheckTimeout:          wrappers.Duration{Duration: DefaultOwnerCheckTimeout},
-		OwnerCheckDNSCacheTTL:      wrappers.Duration{Duration: DefaultOwnerCheckDNSCacheTTL},
-		OwnerCheckFailureThreshold: DefaultOwnerCheckFailureThreshold,
+		OwnerCheckInterval:          wrappers.Duration{Duration: DefaultOwnerCheckInterval},
+		OwnerCheckTimeout:           wrappers.Duration{Duration: DefaultOwnerCheckTimeout},
+		OwnerCheckDNSCacheTTL:       wrappers.Duration{Duration: DefaultOwnerCheckDNSCacheTTL},
+		OwnerCheckThresholdTime:     wrappers.Duration{Duration: DefaultOwnerCheckThresholdTime},
+		OwnerCheckFailureThreshold:  DefaultOwnerCheckFailureThreshold,
+		OwnerCheckBackoffMultiplier: DefaultOwnerCheckBackoffMultiplier,
 	}
 }
 
@@ -62,6 +70,8 @@ func (c *OwnerCheckConfig) AddFlags(fs *flag.FlagSet) {
 	fs.DurationVar(&c.OwnerCheckTimeout.Duration, "owner-check-timeout", c.OwnerCheckTimeout.Duration, "timeout for owner checks")
 	fs.DurationVar(&c.OwnerCheckDNSCacheTTL.Duration, "owner-check-dns-cache-ttl", c.OwnerCheckDNSCacheTTL.Duration, "DNS cache TTL for owner checks")
 	fs.UintVar(&c.OwnerCheckFailureThreshold, "owner-check-failure-threshold", c.OwnerCheckFailureThreshold, "no. of retry required to confirm owner checks failure")
+	fs.UintVar(&c.OwnerCheckBackoffMultiplier, "owner-check-backoff-multiplier", c.OwnerCheckBackoffMultiplier, "multiplicative factor for backoff owner checks")
+	fs.DurationVar(&c.OwnerCheckThresholdTime.Duration, "owner-check-backoff-threshold-time", c.OwnerCheckThresholdTime.Duration, "upper bound backoff time for owner checks")
 }
 
 // Validate validates the config.
@@ -77,6 +87,12 @@ func (c *OwnerCheckConfig) Validate() error {
 	}
 	if c.OwnerCheckFailureThreshold <= 0 {
 		return errors.New("parameter owner-check-failure-threshold must be greater than 0")
+	}
+	if c.OwnerCheckBackoffMultiplier <= 0 {
+		return errors.New("parameter owner-check-backoff-multiplier must be greater than 0")
+	}
+	if c.OwnerCheckThresholdTime.Duration <= 0 {
+		return errors.New("parameter owner-check-backoff-threshold-time must be greater than 0")
 	}
 	return nil
 }
