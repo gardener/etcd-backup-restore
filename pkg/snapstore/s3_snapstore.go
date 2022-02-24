@@ -52,10 +52,12 @@ const (
 )
 
 type awsCredentials struct {
-	AccessKeyID     string `json:"accessKeyID"`
-	Region          string `json:"region"`
-	SecretAccessKey string `json:"secretAccessKey"`
-	BucketName      string `json:"bucketName"`
+	AccessKeyID      string  `json:"accessKeyID"`
+	Region           string  `json:"region"`
+	SecretAccessKey  string  `json:"secretAccessKey"`
+	BucketName       string  `json:"bucketName"`
+	Endpoint         *string `json:"endpoint,omitempty"`
+	S3ForcePathStyle *bool   `json:"s3ForcePathStyle,omitempty"`
 }
 
 // S3SnapStore is snapstore with AWS S3 object store as backend
@@ -141,8 +143,10 @@ func readAWSCredentialsJSONFile(filename string) (session.Options, error) {
 
 	return session.Options{
 		Config: aws.Config{
-			Credentials: credentials.NewStaticCredentials(awsConfig.AccessKeyID, awsConfig.SecretAccessKey, ""),
-			Region:      pointer.StringPtr(awsConfig.Region),
+			Credentials:      credentials.NewStaticCredentials(awsConfig.AccessKeyID, awsConfig.SecretAccessKey, ""),
+			Region:           pointer.StringPtr(awsConfig.Region),
+			Endpoint:         awsConfig.Endpoint,
+			S3ForcePathStyle: awsConfig.S3ForcePathStyle,
 		},
 	}, nil
 }
@@ -183,24 +187,41 @@ func readAWSCredentialFromDir(dirname string) (*awsCredentials, error) {
 	}
 
 	for _, file := range files {
-		if file.Name() == "accessKeyID" {
+		switch file.Name() {
+		case "accessKeyID":
 			data, err := os.ReadFile(dirname + "/accessKeyID")
 			if err != nil {
 				return nil, err
 			}
 			awsConfig.AccessKeyID = string(data)
-		} else if file.Name() == "region" {
+		case "region":
 			data, err := os.ReadFile(dirname + "/region")
 			if err != nil {
 				return nil, err
 			}
 			awsConfig.Region = string(data)
-		} else if file.Name() == "secretAccessKey" {
+		case "secretAccessKey":
 			data, err := os.ReadFile(dirname + "/secretAccessKey")
 			if err != nil {
 				return nil, err
 			}
 			awsConfig.SecretAccessKey = string(data)
+		case "endpoint":
+			data, err := os.ReadFile(dirname + "/endpoint")
+			if err != nil {
+				return nil, err
+			}
+			awsConfig.Endpoint = pointer.StringPtr(string(data))
+		case "s3ForcePathStyle":
+			data, err := os.ReadFile(dirname + "/s3ForcePathStyle")
+			if err != nil {
+				return nil, err
+			}
+			val, err := strconv.ParseBool(string(data))
+			if err != nil {
+				return nil, err
+			}
+			awsConfig.S3ForcePathStyle = &val
 		}
 	}
 
