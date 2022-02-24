@@ -98,27 +98,26 @@ func (w *checkerActionWatchdog) Start(ctx context.Context) {
 // Confirm gives the confirmation that condition checked by the watchdog has failed or not.
 // It returns the boolean.
 func (w *checkerActionWatchdog) Confirm(ctx context.Context, failureThreshold uint, backoff *backoff.ExponentialBackoff) bool {
-	w.logger.Debug("Starting watchdog confirm")
-	defer w.logger.Debug("Stopping watchdog confirm")
+	w.logger.Info("Starting watchdog confirm")
+	defer w.logger.Info("Stopping watchdog confirm")
 
-	ctx, w.cancelFunc = context.WithCancel(ctx)
 	var watchdogChecksFailCount uint = 0
 
 	for {
 		select {
 		case <-ctx.Done():
 			return false
-		case <-w.clock.After(backoff.GetNextBackoffTime()):
+		case <-time.After(backoff.GetNextBackoffTime()):
 			result, err := w.checker.Check(ctx)
 			if err != nil || !result {
 				watchdogChecksFailCount++
 				w.logger.Debugf("watchdog ChecksFailCount: %v", watchdogChecksFailCount)
 				if watchdogChecksFailCount >= failureThreshold {
-					w.logger.Info("watchdog check fails: confirm")
+					w.logger.Info("watchdog check fails: CONFIRM")
 					return true
 				}
 			} else {
-				w.logger.Info("watchdog check fails: not confirm")
+				w.logger.Info("watchdog check fails: NOT CONFIRM")
 				return false
 			}
 		}
