@@ -24,6 +24,7 @@ import (
 	"os"
 	"path"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -45,6 +46,8 @@ const (
 	awsSecretAccessKey          = "AWS_SECRET_ACCESS_KEY"
 	awsAcessKeyID               = "AWS_ACCESS_KEY_ID"
 	awsRegion                   = "AWS_REGION"
+	awsEndpoint                 = "AWS_ENDPOINT"
+	awsForcePathStyle           = "AWS_FORCE_PATH_STYLE"
 	awsCredentialFile           = "AWS_APPLICATION_CREDENTIALS"
 	awsCredentialJSONFile       = "AWS_APPLICATION_CREDENTIALS_JSON"
 )
@@ -88,12 +91,18 @@ func newS3FromSessionOpt(bucket, prefix, tempDir string, maxParallelChunkUploads
 
 func getSessionOptions(prefixString string) (session.Options, error) {
 
+	var s3path *bool
+	if val, err := strconv.ParseBool(os.Getenv(awsForcePathStyle)); err != nil {
+		s3path = &val
+	}
 	// TODO: passing credentials through environment variable will be deprecated by "backup-restore v0.18.0"
 	if _, isSet := os.LookupEnv(prefixString + awsAcessKeyID); isSet {
 		return session.Options{
 			Config: aws.Config{
-				Credentials: credentials.NewStaticCredentials(os.Getenv(prefixString+awsAcessKeyID), os.Getenv(prefixString+awsSecretAccessKey), ""),
-				Region:      pointer.StringPtr(os.Getenv(awsRegion)),
+				Credentials:      credentials.NewStaticCredentials(os.Getenv(prefixString+awsAcessKeyID), os.Getenv(prefixString+awsSecretAccessKey), ""),
+				Region:           pointer.StringPtr(os.Getenv(awsRegion)),
+				Endpoint:         pointer.StringPtr(os.Getenv(awsEndpoint)),
+				S3ForcePathStyle: s3path,
 			},
 		}, nil
 	}
