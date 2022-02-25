@@ -37,14 +37,18 @@ const (
 
 var _ = Describe("CheckerActionWatchdog", func() {
 	var (
-		ctrl      *gomock.Controller
-		checker   *mockcommon.MockChecker
-		action    *mockcommon.MockAction
-		fakeClock *clock.FakeClock
-		logger    *logrus.Entry
-		ctx       context.Context
-		count     *atomic.Int32
-		watchdog  Watchdog
+		ctrl               *gomock.Controller
+		checker            *mockcommon.MockChecker
+		action             *mockcommon.MockAction
+		fakeClock          *clock.FakeClock
+		logger             *logrus.Entry
+		ctx                context.Context
+		count              *atomic.Int32
+		watchdog           Watchdog
+		exponentialBackoff *backoff.ExponentialBackoff
+		thresholdTime           = 4 * time.Second
+		attemptLimit       uint = 3
+		multiplier         uint = 2
 	)
 
 	BeforeEach(func() {
@@ -56,6 +60,7 @@ var _ = Describe("CheckerActionWatchdog", func() {
 		ctx = context.TODO()
 		count = atomic.NewInt32(0)
 		watchdog = NewCheckerActionWatchdog(checker, action, interval, fakeClock, logger)
+		exponentialBackoff = backoff.NewExponentialBackOffConfig(attemptLimit, multiplier, thresholdTime)
 	})
 
 	AfterEach(func() {
@@ -63,13 +68,17 @@ var _ = Describe("CheckerActionWatchdog", func() {
 	})
 
 	Describe("#Start / #Stop", func() {
+		var (
+			failureThreshold uint = 0
+		)
 		It("should not perform the action if the checker returns true", func() {
+
 			checker.EXPECT().Check(gomock.Any()).DoAndReturn(func(ctx context.Context) (bool, error) {
 				count.Inc()
 				return true, nil
 			}).Times(2)
 
-			watchdog.Start(ctx)
+			watchdog.Start(ctx, failureThreshold, exponentialBackoff)
 			defer watchdog.Stop()
 			Eventually(fakeClock.HasWaiters).Should(BeTrue())
 			fakeClock.Step(interval)
@@ -83,7 +92,7 @@ var _ = Describe("CheckerActionWatchdog", func() {
 			})
 			action.EXPECT().Do(gomock.Any())
 
-			watchdog.Start(ctx)
+			watchdog.Start(ctx, failureThreshold, exponentialBackoff)
 			defer watchdog.Stop()
 			Eventually(func() int { return int(count.Load()) }).Should(Equal(1))
 		})
@@ -95,7 +104,7 @@ var _ = Describe("CheckerActionWatchdog", func() {
 			})
 			action.EXPECT().Do(gomock.Any())
 
-			watchdog.Start(ctx)
+			watchdog.Start(ctx, failureThreshold, exponentialBackoff)
 			defer watchdog.Stop()
 			Eventually(func() int { return int(count.Load()) }).Should(Equal(1))
 		})
@@ -103,17 +112,8 @@ var _ = Describe("CheckerActionWatchdog", func() {
 
 	Describe(" #Confirm", func() {
 		var (
-			exponentialBackoff *backoff.ExponentialBackoff
-			thresholdTime           = 4 * time.Second
-			attemptLimit       uint = 3
-			multiplier         uint = 2
-			failureThreshold   uint = 3
+			failureThreshold uint = 3
 		)
-
-		BeforeEach(func() {
-			exponentialBackoff = backoff.NewExponentialBackOffConfig(attemptLimit, multiplier, thresholdTime)
-		})
-
 		Context("when checker fails", func() {
 			It("should return true to confirm that checker has failed", func() {
 				checker.EXPECT().Check(gomock.Any()).DoAndReturn(func(ctx context.Context) (bool, error) {

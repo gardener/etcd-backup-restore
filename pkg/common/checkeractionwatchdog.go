@@ -40,7 +40,7 @@ func (f ActionFunc) Do(ctx context.Context) {
 // Watchdog manages a goroutine that can be started and stopped.
 type Watchdog interface {
 	// Start starts a goroutine using the given context.
-	Start(ctx context.Context)
+	Start(context.Context, uint, *backoff.ExponentialBackoff)
 	// Stop stops the goroutine started by Start.
 	Stop()
 	// Confirm gives the confirmation about checkerActionWatchdog check.
@@ -70,7 +70,7 @@ type checkerActionWatchdog struct {
 
 // Start starts a goroutine that checks if the condition checked by the watchdog checker is true every watchdog interval.
 // If the check fails or returns false, it performs the watchdog action and returns.
-func (w *checkerActionWatchdog) Start(ctx context.Context) {
+func (w *checkerActionWatchdog) Start(ctx context.Context, failureThreshold uint, backoff *backoff.ExponentialBackoff) {
 	w.logger.Info("Starting watchdog")
 	ctx, w.cancelFunc = context.WithCancel(ctx)
 
@@ -81,9 +81,13 @@ func (w *checkerActionWatchdog) Start(ctx context.Context) {
 		for {
 			result, err := w.checker.Check(ctx)
 			if err != nil || !result {
-				w.logger.Debug("Performing watchdog action")
-				w.action.Do(ctx)
-				return
+				isFail := w.Confirm(ctx, failureThreshold, backoff)
+				if isFail {
+					w.logger.Debug("Performing watchdog action")
+					w.action.Do(ctx)
+					return
+				}
+				backoff.ResetExponentialBackoff()
 			}
 
 			select {
@@ -100,6 +104,12 @@ func (w *checkerActionWatchdog) Start(ctx context.Context) {
 func (w *checkerActionWatchdog) Confirm(ctx context.Context, failureThreshold uint, backoff *backoff.ExponentialBackoff) bool {
 	w.logger.Info("Starting watchdog confirm")
 	defer w.logger.Info("Stopping watchdog confirm")
+
+	// turn off the Confirm
+	if failureThreshold == 0 {
+		w.logger.Info("watchdog check fails: CONFIRM")
+		return true
+	}
 
 	var watchdogChecksFailCount uint = 0
 

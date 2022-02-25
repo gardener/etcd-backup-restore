@@ -85,9 +85,6 @@ func (c *OwnerCheckConfig) Validate() error {
 	if c.OwnerCheckDNSCacheTTL.Duration < 0 {
 		return errors.New("parameter owner-check-dns-cache-ttl must not be less than 0")
 	}
-	if c.OwnerCheckFailureThreshold <= 0 {
-		return errors.New("parameter owner-check-failure-threshold must be greater than 0")
-	}
 	if c.OwnerCheckBackoffMultiplier <= 0 {
 		return errors.New("parameter owner-check-backoff-multiplier must be greater than 0")
 	}

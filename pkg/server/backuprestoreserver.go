@@ -398,10 +398,11 @@ func (b *BackupRestoreServer) runEtcdProbeLoopWithSnapshotter(ctx context.Contex
 			// Start owner check watchdog
 			var ownerCheckWatchdog common.Watchdog
 			if b.ownerChecker != nil {
+				exponentialBackoff := backoff.NewExponentialBackOffConfig(b.config.ExponentialBackoffConfig.AttemptLimit, b.config.OwnerCheckConfig.OwnerCheckBackoffMultiplier, b.config.ExponentialBackoffConfig.ThresholdTime.Duration)
 				ownerCheckWatchdog = common.NewCheckerActionWatchdog(b.ownerChecker, common.ActionFunc(func(ctx context.Context) {
 					b.stopSnapshotter(handler)
 				}), b.config.OwnerCheckConfig.OwnerCheckInterval.Duration, clock.RealClock{}, b.logger)
-				ownerCheckWatchdog.Start(ctx)
+				ownerCheckWatchdog.Start(ctx, b.config.OwnerCheckConfig.OwnerCheckFailureThreshold, exponentialBackoff)
 			}
 
 			// Start garbage collector
@@ -434,18 +435,15 @@ func (b *BackupRestoreServer) runEtcdProbeLoopWithSnapshotter(ctx context.Contex
 				// Stop owner check watchdog
 				ownerCheckWatchdog.Stop()
 
-				exponentialBackoff := backoff.NewExponentialBackOffConfig(b.config.ExponentialBackoffConfig.AttemptLimit, b.config.OwnerCheckConfig.OwnerCheckBackoffMultiplier, b.config.ExponentialBackoffConfig.ThresholdTime.Duration)
-				isFail := ownerCheckWatchdog.Confirm(ctx, b.config.OwnerCheckConfig.OwnerCheckFailureThreshold, exponentialBackoff)
-
-				if isFail {
-					// If the owner check fails or returns false, kill the etcd process
-					// to ensure that any open connections from kube-apiserver are terminated
+				// If the owner check fails or returns false, kill the etcd process
+				// to ensure that any open connections from kube-apiserver are terminated
+				result, err := b.ownerChecker.Check(ctx)
+				if err != nil || !result {
 					if _, err := b.etcdProcessKiller.Kill(ctx); err != nil {
 						b.logger.Errorf("Could not kill etcd process: %v", err)
 					}
 				}
 			}
-
 		} else {
 			// for the case when snapshotter is not configured
 
