@@ -19,7 +19,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"math"
 	"os"
 	"path"
@@ -150,7 +149,7 @@ func readAWSCredentialsJSONFile(filename string) (session.Options, error) {
 
 // credentialsFromJSON obtains AWS credentials from a JSON value.
 func credentialsFromJSON(filename string) (*awsCredentials, error) {
-	jsonData, err := ioutil.ReadFile(filename)
+	jsonData, err := os.ReadFile(filename)
 	if err != nil {
 		return nil, err
 	}
@@ -178,26 +177,26 @@ func readAWSCredentialFiles(dirname string) (session.Options, error) {
 func readAWSCredentialFromDir(dirname string) (*awsCredentials, error) {
 	awsConfig := &awsCredentials{}
 
-	files, err := ioutil.ReadDir(dirname)
+	files, err := os.ReadDir(dirname)
 	if err != nil {
 		return nil, err
 	}
 
 	for _, file := range files {
 		if file.Name() == "accessKeyID" {
-			data, err := ioutil.ReadFile(dirname + "/accessKeyID")
+			data, err := os.ReadFile(dirname + "/accessKeyID")
 			if err != nil {
 				return nil, err
 			}
 			awsConfig.AccessKeyID = string(data)
 		} else if file.Name() == "region" {
-			data, err := ioutil.ReadFile(dirname + "/region")
+			data, err := os.ReadFile(dirname + "/region")
 			if err != nil {
 				return nil, err
 			}
 			awsConfig.Region = string(data)
 		} else if file.Name() == "secretAccessKey" {
-			data, err := ioutil.ReadFile(dirname + "/secretAccessKey")
+			data, err := os.ReadFile(dirname + "/secretAccessKey")
 			if err != nil {
 				return nil, err
 			}
@@ -236,7 +235,7 @@ func (s *S3SnapStore) Fetch(snap brtypes.Snapshot) (io.ReadCloser, error) {
 
 // Save will write the snapshot to store
 func (s *S3SnapStore) Save(snap brtypes.Snapshot, rc io.ReadCloser) error {
-	tmpfile, err := ioutil.TempFile(s.tempDir, tmpBackupFilePrefix)
+	tmpfile, err := os.CreateTemp(s.tempDir, tmpBackupFilePrefix)
 	if err != nil {
 		rc.Close()
 		return fmt.Errorf("failed to create snapshot tempfile: %v", err)

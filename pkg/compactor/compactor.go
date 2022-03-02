@@ -3,7 +3,6 @@ package compactor
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"time"
 
@@ -68,7 +67,7 @@ func (cp *Compactor) Compact(ctx context.Context, opts *brtypes.CompactOptions) 
 	if prefix == "" {
 		prefix = "/tmp"
 	}
-	cmpctDir, err := ioutil.TempDir(prefix, "compactor-")
+	cmpctDir, err := os.MkdirTemp(prefix, "compactor-")
 	if err != nil {
 		cp.logger.Errorf("Unable to create temporary etcd directory for compaction: %s", err.Error())
 		return nil, err

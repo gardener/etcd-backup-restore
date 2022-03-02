@@ -17,7 +17,7 @@ package snapshotter_test
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"path"
 	"strconv"
 	"sync"
@@ -845,7 +845,7 @@ func prepareStoreForGarbageCollection(forTime time.Time, storeContainer string, 
 			snap.GenerateSnapshotDirectory()
 		}
 		snapTime = snapTime.Add(time.Duration(time.Minute * 10))
-		store.Save(snap, ioutil.NopCloser(strings.NewReader(fmt.Sprintf("dummy-snapshot-content for snap created on %s", snap.CreatedOn))))
+		store.Save(snap, io.NopCloser(strings.NewReader(fmt.Sprintf("dummy-snapshot-content for snap created on %s", snap.CreatedOn))))
 	}
 	return store, snapstoreConf
 }
@@ -882,7 +882,7 @@ func prepareStoreForBackwardCompatibleGC(forTime time.Time, storeContainer strin
 		snap.GenerateSnapshotName()
 		snap.GenerateSnapshotDirectory()
 		snapTimev1 = snapTimev1.Add(time.Duration(time.Minute * 10))
-		store.Save(snap, ioutil.NopCloser(strings.NewReader(fmt.Sprintf("dummy-snapshot-content for snap created on %s", snap.CreatedOn))))
+		store.Save(snap, io.NopCloser(strings.NewReader(fmt.Sprintf("dummy-snapshot-content for snap created on %s", snap.CreatedOn))))
 	}
 
 	count = 0
@@ -905,7 +905,7 @@ func prepareStoreForBackwardCompatibleGC(forTime time.Time, storeContainer strin
 		}
 		snapv2.GenerateSnapshotName()
 		snapTimev2 = snapTimev2.Add(time.Duration(time.Minute * 10))
-		store.Save(snapv2, ioutil.NopCloser(strings.NewReader(fmt.Sprintf("dummy-snapshot-content for snap created on %s", snapv2.CreatedOn))))
+		store.Save(snapv2, io.NopCloser(strings.NewReader(fmt.Sprintf("dummy-snapshot-content for snap created on %s", snapv2.CreatedOn))))
 	}
 	return store, snapstoreConfig
 }

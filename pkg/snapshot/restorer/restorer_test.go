@@ -17,7 +17,7 @@ package restorer_test
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"os"
 	"path"
 	"strings"
@@ -986,7 +986,7 @@ func takeValidSnaps(logger *logrus.Entry, container string, resp *utils.EtcdData
 		err = os.MkdirAll(path.Join(path.Join(container, "v1"), fmt.Sprintf("Backup-%d", baseSnapshot.CreatedOn.Unix())), 0755)
 		Expect(err).ShouldNot(HaveOccurred())
 		//Move contents from v2 to v1/Backup-xxxxxx
-		files, err := ioutil.ReadDir(path.Join(container, "v2"))
+		files, err := os.ReadDir(path.Join(container, "v2"))
 		Expect(err).ShouldNot(HaveOccurred())
 		oldPath := path.Join(container, "v2")
 		newPath := path.Join(path.Join(container, "v1"), fmt.Sprintf("Backup-%d", baseSnapshot.CreatedOn.Unix()))
@@ -1045,14 +1045,14 @@ func takeInvalidV1Snaps(container string) error {
 		LastRevision:  100,
 	}
 	snap.GenerateSnapshotName()
-	store.Save(snap, ioutil.NopCloser(strings.NewReader(fmt.Sprintf("dummy-snapshot-content for snap created on %s", snap.CreatedOn))))
+	store.Save(snap, io.NopCloser(strings.NewReader(fmt.Sprintf("dummy-snapshot-content for snap created on %s", snap.CreatedOn))))
 	Expect(err).ShouldNot(HaveOccurred())
 
 	//Create v1/Backup-xxxxxx dir
 	err = os.MkdirAll(path.Join(path.Join(container, "v1"), fmt.Sprintf("Backup-%d", snap.CreatedOn.Unix())), 0755)
 	Expect(err).ShouldNot(HaveOccurred())
 	//Move contents from v2 to v1/Backup-xxxxxx
-	files, err := ioutil.ReadDir(path.Join(container, "v2"))
+	files, err := os.ReadDir(path.Join(container, "v2"))
 	Expect(err).ShouldNot(HaveOccurred())
 	oldPath := path.Join(container, "v2")
 	newPath := path.Join(path.Join(container, "v1"), fmt.Sprintf("Backup-%d", snap.CreatedOn.Unix()))

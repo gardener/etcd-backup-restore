@@ -18,7 +18,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"math"
 	"os"
 	"path"
@@ -113,7 +112,7 @@ func (s *OSSSnapStore) Fetch(snap brtypes.Snapshot) (io.ReadCloser, error) {
 
 // Save will write the snapshot to store
 func (s *OSSSnapStore) Save(snap brtypes.Snapshot, rc io.ReadCloser) error {
-	tmpfile, err := ioutil.TempFile(s.tempDir, tmpBackupFilePrefix)
+	tmpfile, err := os.CreateTemp(s.tempDir, tmpBackupFilePrefix)
 	if err != nil {
 		rc.Close()
 		return fmt.Errorf("failed to create snapshot tempfile: %v", err)
@@ -298,7 +297,7 @@ func getAuthOptions(prefix string) (*authOptions, error) {
 }
 
 func readALICredentialsJSON(filename string) (*authOptions, error) {
-	jsonData, err := ioutil.ReadFile(filename)
+	jsonData, err := os.ReadFile(filename)
 	if err != nil {
 		return nil, err
 	}
@@ -319,26 +318,26 @@ func aliCredentialsFromJSON(jsonData []byte) (*authOptions, error) {
 func readALICredentialFiles(dirname string) (*authOptions, error) {
 	aliConfig := &authOptions{}
 
-	files, err := ioutil.ReadDir(dirname)
+	files, err := os.ReadDir(dirname)
 	if err != nil {
 		return nil, err
 	}
 
 	for _, file := range files {
 		if file.Name() == "storageEndpoint" {
-			data, err := ioutil.ReadFile(dirname + "/storageEndpoint")
+			data, err := os.ReadFile(dirname + "/storageEndpoint")
 			if err != nil {
 				return nil, err
 			}
 			aliConfig.Endpoint = string(data)
 		} else if file.Name() == "accessKeySecret" {
-			data, err := ioutil.ReadFile(dirname + "/accessKeySecret")
+			data, err := os.ReadFile(dirname + "/accessKeySecret")
 			if err != nil {
 				return nil, err
 			}
 			aliConfig.AccessKey = string(data)
 		} else if file.Name() == "accessKeyID" {
-			data, err := ioutil.ReadFile(dirname + "/accessKeyID")
+			data, err := os.ReadFile(dirname + "/accessKeyID")
 			if err != nil {
 				return nil, err
 			}

@@ -2,7 +2,6 @@ package compactor_test
 
 import (
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path"
 	"time"
@@ -152,7 +151,7 @@ var _ = Describe("Running Compactor", func() {
 				Expect(size).ShouldNot(BeZero())
 
 				// Restore from the compacted snapshot
-				restoreDir, err = ioutil.TempDir("/tmp", "restore-")
+				restoreDir, err = os.MkdirTemp("/tmp", "restore-")
 				Expect(err).ShouldNot(HaveOccurred())
 
 				restoreOpts.Config.RestoreDataDir = restoreDir
@@ -228,7 +227,7 @@ var _ = Describe("Running Compactor", func() {
 				Expect(size).ShouldNot(BeZero())
 
 				// Restore from the compacted snapshot
-				restoreDir, err = ioutil.TempDir("/tmp", "restore-")
+				restoreDir, err = os.MkdirTemp("/tmp", "restore-")
 				Expect(err).ShouldNot(HaveOccurred())
 
 				restoreOpts.Config.RestoreDataDir = restoreDir
