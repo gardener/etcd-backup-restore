@@ -23,7 +23,7 @@ import (
 )
 
 const (
-	defaultEtcdConnectionEndpoint string = "127.0.0.1:2379"
+	defaultEtcdConnectionEndpoint string = "http://127.0.0.1:2379"
 
 	// DefaultEtcdConnectionTimeout defines default timeout duration for etcd client connection.
 	DefaultEtcdConnectionTimeout time.Duration = 30 * time.Second

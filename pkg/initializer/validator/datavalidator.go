@@ -148,6 +148,11 @@ func (d *DataValidator) sanityCheck(failBelowRevision int64) (DataDirStatus, err
 		return DataDirectoryCorrupt, nil
 	}
 
+	if d.ClusterSize > 1 {
+		d.Logger.Info("Skipping check for revision consistency, The revision will be updated by the other members of the cluster.")
+		return DataDirectoryValid, nil
+	}
+
 	d.Logger.Info("Checking for etcd revision consistency...")
 	etcdRevisionStatus, latestSnapshotRevision, err := d.checkEtcdDataRevisionConsistency(etcdRevision, failBelowRevision)
 
@@ -314,7 +319,7 @@ func (d *DataValidator) checkEtcdDataRevisionConsistency(etcdRevision, failBelow
 func (d *DataValidator) checkFullRevisionConsistency(dataDir string, latestSnapshotRevision int64) (DataDirStatus, error) {
 	var latestSyncedEtcdRevision int64
 
-	d.Logger.Info("Starting embedded etcd server...")
+	d.Logger.Info("Starting embedded etcd server for data validation...")
 	ro := &brtypes.RestoreOptions{
 		Config: &brtypes.RestorationConfig{
 			RestoreDataDir:         dataDir,

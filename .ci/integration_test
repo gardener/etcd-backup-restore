@@ -77,7 +77,7 @@ function setup_ginkgo() {
 
 function setup_etcd(){
   echo "Downloading and installing etcd..."
-  export ETCD_VER=v3.3.8
+  export ETCD_VER=v3.4.13
   if [[ $(uname) == 'Darwin' ]]; then
     curl -L https://storage.googleapis.com/etcd/${ETCD_VER}/etcd-${ETCD_VER}-darwin-amd64.zip -o etcd-${ETCD_VER}-darwin-amd64.zip
     unzip etcd-${ETCD_VER}-darwin-amd64.zip
@@ -196,6 +196,11 @@ function cleanup-aws-infrastructure() {
   echo "AWS infrastructure cleanup completed."
 }
 
+function remove-etcd-data-directory() {
+  echo "Removing ETCD Data Directory"
+  rm -rf ${ETCD_DATA_DIR}
+}
+
 #############################
 #        Azure Setup        #
 #############################
@@ -229,6 +234,7 @@ function setup_test_cluster() {
 
 function cleanup_test_environment() {
   cleanup-aws-infrastructure
+  remove-etcd-data-directory
 }
 
 ###############################################################################

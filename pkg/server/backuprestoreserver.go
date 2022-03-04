@@ -19,6 +19,10 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/url"
+	"os"
+	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -28,20 +32,28 @@ import (
 	"github.com/gardener/etcd-backup-restore/pkg/leaderelection"
 	"github.com/gardener/etcd-backup-restore/pkg/metrics"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
+	"gopkg.in/yaml.v2"
 
 	"github.com/gardener/etcd-backup-restore/pkg/defragmentor"
 	"github.com/gardener/etcd-backup-restore/pkg/errors"
 	"github.com/gardener/etcd-backup-restore/pkg/etcdutil"
 	"github.com/gardener/etcd-backup-restore/pkg/health/heartbeat"
 	"github.com/gardener/etcd-backup-restore/pkg/initializer"
+	"github.com/gardener/etcd-backup-restore/pkg/miscellaneous"
 	"github.com/gardener/etcd-backup-restore/pkg/snapshot/snapshotter"
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 
 	"github.com/prometheus/client_golang/prometheus"
 	cron "github.com/robfig/cron/v3"
 	"github.com/sirupsen/logrus"
+	"go.etcd.io/etcd/pkg/transport"
 	"go.etcd.io/etcd/pkg/types"
+	v1 "k8s.io/api/coordination/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/clock"
+	"k8s.io/client-go/util/retry"
+	"k8s.io/utils/pointer"
+	k8sClient "sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 // BackupRestoreServer holds the details for backup-restore server.
@@ -56,7 +68,17 @@ type BackupRestoreServer struct {
 
 var (
 	// runServerWithSnapshotter indicates whether to start server with or without snapshotter.
-	runServerWithSnapshotter bool = true
+	runServerWithSnapshotter bool   = true
+	etcdConfig               string = "/var/etcd/config/etcd.conf.yaml"
+	defaultRestoreProtocol   string = "http"
+	defaultRestoreClientPort string = "2479"
+	defaultRestorePeerPort   string = "2380"
+	defaultRestoreLCurl      string = "http://0.0.0.0:2479"
+	defaultRestoreLPurl      string = "http://0.0.0.0:2380"
+)
+
+const (
+	podNamespace = "POD_NAMESPACE"
 )
 
 // NewBackupRestoreServer return new backup restore server.
@@ -88,22 +110,236 @@ func NewBackupRestoreServer(logger *logrus.Logger, config *BackupRestoreComponen
 
 // Run starts the backup restore server.
 func (b *BackupRestoreServer) Run(ctx context.Context) error {
-	clusterURLsMap, err := types.NewURLsMap(b.config.RestorationConfig.InitialCluster)
-	if err != nil {
-		// Ideally this case should not occur, since this check is done at the config validations.
-		b.logger.Fatalf("failed creating url map for restore cluster: %v", err)
+	var inputFileName string
+	var err error
+
+	// (For testing purpose) If no ETCD_CONF variable set as environment variable, then consider backup-restore server is not used for tests.
+	// For tests or to run backup-restore server as standalone, user needs to set ETCD_CONF variable with proper location of ETCD config yaml
+	etcdConfigForTest := os.Getenv("ETCD_CONF")
+	if etcdConfigForTest != "" {
+		inputFileName = etcdConfigForTest
+	} else {
+		inputFileName = etcdConfig
 	}
 
-	peerURLs, err := types.NewURLs(b.config.RestorationConfig.InitialAdvertisePeerURLs)
+	configYML, err := os.ReadFile(inputFileName)
+	if err != nil {
+		b.logger.Fatalf("Unable to read etcd config file: %v", err)
+		return err
+	}
+
+	config := map[string]interface{}{}
+	if err := yaml.Unmarshal([]byte(configYML), &config); err != nil {
+		b.logger.Fatalf("Unable to unmarshal etcd config yaml file: %v", err)
+		return err
+	}
+
+	// fetch pod name from env
+	podName := os.Getenv("POD_NAME")
+	config["name"] = podName
+
+	protocol := "http"
+
+	initAdPeerURL := config["initial-advertise-peer-urls"]
+	protocol, svcName, namespace, peerPort, err := parsePeerURL(fmt.Sprint(initAdPeerURL))
+	if err != nil {
+		b.logger.Warnf("Unable to determine protocol, service name, namespace, port from advertise peer urls : %v", err)
+		b.logger.Warn("If this is not testing environment, you may face serious problem running ETCD cluster as service name and namespace could not be determined")
+	}
+
+	if peerPort == "" {
+		peerPort = defaultRestorePeerPort
+	}
+
+	var domainName string = ""
+	if svcName != "" {
+		domainName = fmt.Sprintf("%s.%s.%s", svcName, namespace, "svc")
+	}
+
+	if domainName != "" {
+		config["initial-advertise-peer-urls"] = fmt.Sprintf("%s://%s.%s:%s", protocol, podName, domainName, peerPort)
+	}
+
+	pURLS := strings.Split(fmt.Sprint(config["initial-advertise-peer-urls"]), ",")
+	peerURLs, err := types.NewURLs(pURLS)
+	if err != nil {
+		// Ideally this case should not occur, since this check is done at the config validations.
+		b.logger.Fatalf("failed creating peer URLs restore cluster: %v", err)
+		return err
+	}
+
+	var peerTLSInfo *transport.TLSInfo
+	var peerAutoTLS bool
+	if protocol == "https" {
+		// marshal peer-transport-security into yaml
+		out, err := yaml.Marshal(config["peer-transport-security"])
+		if err != nil {
+			b.logger.Fatalf("Unable to marshal peer-transport-security to yaml : %v", err)
+			return err
+		}
+
+		tls := map[string]interface{}{}
+		if err := yaml.Unmarshal(out, &tls); err != nil {
+			b.logger.Fatalf("Unable to unmarshal peer-transport-security: %v", err)
+			return err
+		}
+
+		peerTLSInfo = &transport.TLSInfo{
+			TrustedCAFile: fmt.Sprint(tls["trusted-ca-file"]),
+			CertFile:      fmt.Sprint(tls["cert-file"]),
+			KeyFile:       fmt.Sprint(tls["key-file"]),
+		}
+
+		auth, _ := strconv.ParseBool(fmt.Sprint(tls["client-cert-auth"]))
+		peerTLSInfo.ClientCertAuth = auth
+
+		peerAutoTLS, _ = strconv.ParseBool(fmt.Sprint((tls["auto-tls"])))
+	}
+
+	if protocol == "" {
+		protocol = defaultRestoreProtocol
+	}
+
+	lPurl := fmt.Sprint(config["listen-peer-urls"])
+	if lPurl == "" {
+		lPurl = defaultRestoreLPurl
+	}
+
+	lPUrlParsed, err := url.Parse(lPurl)
+	if err != nil {
+		b.logger.Fatalf("Could not parse listen-peer-urls : %s", fmt.Sprint(config["listen-peer-urls"]))
+	}
+
+	lPurl = fmt.Sprintf("%s://%s:%s", protocol, lPUrlParsed.Hostname(), peerPort)
+
+	advClientURL := config["advertise-client-urls"]
+	protocol, svcName, namespace, clientPort, err := parseAdvClientURL(fmt.Sprint(advClientURL))
+	if err != nil {
+		b.logger.Warnf("Unable to determine protocol, service name, namespace, port from advertise client url : %v", err)
+		b.logger.Warn("If this is not testing environment, you may face serious problem running ETCD cluster as service name and namespace could not be determined")
+	}
+
+	if clientPort == defaultRestoreClientPort {
+		b.logger.Fatalf("Client Port %s for main ETCD must not be same as client port %s for embedded ETCD", clientPort, defaultRestoreClientPort)
+	}
+	domainName = ""
+	if svcName != "" {
+		domainName = fmt.Sprintf("%s.%s.%s", svcName, namespace, "svc")
+	}
+
+	if domainName != "" {
+		config["advertise-client-urls"] = fmt.Sprintf("%s://%s.%s:%s", protocol, podName, domainName, defaultRestoreClientPort)
+	}
+
+	cURLs := strings.Split(fmt.Sprint(config["advertise-client-urls"]), ",")
+
+	var clientTLSInfo *transport.TLSInfo
+	var clientAutoTLS bool
+	if protocol == "https" {
+		// marshal client-transport-security into yaml
+		out, err := yaml.Marshal(config["client-transport-security"])
+		if err != nil {
+			b.logger.Fatalf("Unable to marshal client-transport-security to yaml : %v", err)
+			return err
+		}
+
+		tls := map[string]interface{}{}
+		if err := yaml.Unmarshal(out, &tls); err != nil {
+			b.logger.Fatalf("Unable to unmarshal client-transport-security: %v", err)
+			return err
+		}
+
+		clientTLSInfo = &transport.TLSInfo{
+			TrustedCAFile: fmt.Sprint(tls["trusted-ca-file"]),
+			CertFile:      fmt.Sprint(tls["cert-file"]),
+			KeyFile:       fmt.Sprint(tls["key-file"]),
+		}
+
+		auth, _ := strconv.ParseBool(fmt.Sprint(tls["client-cert-auth"]))
+		clientTLSInfo.ClientCertAuth = auth
+
+		clientAutoTLS, _ = strconv.ParseBool(fmt.Sprint(tls["auto-tls"]))
+	}
+
+	if protocol == "" {
+		protocol = defaultRestoreProtocol
+	}
+
+	lCurl := fmt.Sprint(config["listen-client-urls"])
+	if lCurl == "" {
+		lCurl = defaultRestoreLCurl
+	}
+
+	lCUrlParsed, err := url.Parse(lCurl)
+	if err != nil {
+		b.logger.Fatalf("Could not parse listen-client-urls : %s", fmt.Sprint(config["listen-client-urls"]))
+	}
+
+	lCurl = fmt.Sprintf("%s://%s:%s", protocol, lCUrlParsed.Hostname(), defaultRestoreClientPort)
+
+	embeddedEtcdQuotaBytes, err := strconv.ParseInt(fmt.Sprint(config["quota-backend-bytes"]), 10, 64)
+	if err != nil {
+		b.logger.Fatalf("failed to fetch ETCD Quota Bytes for restore cluster: %v", err)
+		return err
+	}
+
+	restoreConfig := &brtypes.RestorationConfig{
+		InitialClusterToken:      fmt.Sprint(config["initial-cluster-token"]),
+		RestoreDataDir:           fmt.Sprint(config["data-dir"]),
+		InitialAdvertisePeerURLs: pURLS,
+		AdvertiseClientURLs:      cURLs,
+		Name:                     fmt.Sprint((config["name"])),
+		SkipHashCheck:            false,
+		MaxFetchers:              b.config.RestorationConfig.MaxFetchers,
+		MaxCallSendMsgSize:       b.config.RestorationConfig.MaxCallSendMsgSize,
+		MaxRequestBytes:          b.config.RestorationConfig.MaxRequestBytes,
+		MaxTxnOps:                b.config.RestorationConfig.MaxTxnOps,
+		EmbeddedEtcdQuotaBytes:   embeddedEtcdQuotaBytes,
+		AutoCompactionMode:       fmt.Sprint(config["auto-compaction-mode"]),
+		AutoCompactionRetention:  fmt.Sprint(config["auto-compaction-retention"]),
+		ListenClientUrls:         pointer.StringPtr(lCurl),
+		ListenPeerUrls:           pointer.StringPtr(lPurl),
+	}
+
+	initialClusterMap, err := types.NewURLsMap(fmt.Sprint(config["initial-cluster"]))
+	if err != nil {
+		b.logger.Fatal("Please provide initial cluster value for embedded ETCD")
+	}
+
+	if protocol == "" {
+		protocol = defaultRestoreProtocol
+	}
+
+	var initialCluster string = ""
+	for name, url := range initialClusterMap {
+		initialCluster = initialCluster + fmt.Sprintf("%s=%s://%s:%s,", name, protocol, url[0].Hostname(), peerPort)
+	}
+	initialCluster = strings.Trim(initialCluster, ",")
+	b.logger.Infof("Initial cluster for restore cluster is: %s", initialCluster)
+
+	restoreConfig.InitialCluster = initialCluster
+	clusterURLsMap, err := types.NewURLsMap(initialCluster)
 	if err != nil {
 		// Ideally this case should not occur, since this check is done at the config validations.
 		b.logger.Fatalf("failed creating url map for restore cluster: %v", err)
+		return err
+	}
+
+	if clientTLSInfo != nil {
+		restoreConfig.ClientTLSInfo = clientTLSInfo
+		restoreConfig.ClientAutoTLS = clientAutoTLS
+	}
+
+	if peerTLSInfo != nil {
+		restoreConfig.PeerTLSInfo = peerTLSInfo
+		restoreConfig.PeerAutoTLS = peerAutoTLS
 	}
 
 	options := &brtypes.RestoreOptions{
-		Config:      b.config.RestorationConfig,
-		ClusterURLs: clusterURLsMap,
-		PeerURLs:    peerURLs,
+		Config:                  restoreConfig,
+		ClusterURLs:             clusterURLsMap,
+		PeerURLs:                peerURLs,
+		ClusterRestoreLeaseName: brtypes.DefaultRestorationIndicatorLease,
 	}
 
 	if b.config.SnapstoreConfig == nil || len(b.config.SnapstoreConfig.Provider) == 0 {
@@ -111,36 +347,6 @@ func (b *BackupRestoreServer) Run(ctx context.Context) error {
 		runServerWithSnapshotter = false
 	}
 	return b.runServer(ctx, options)
-}
-
-// startHTTPServer creates and starts the HTTP handler
-// with status 503 (Service Unavailable)
-func (b *BackupRestoreServer) startHTTPServer(initializer initializer.Initializer, storageProvider string, etcdConfig *brtypes.EtcdConnectionConfig, ssr *snapshotter.Snapshotter) *HTTPHandler {
-	// Start http handler with Error state and wait till snapshotter is up
-	// and running before setting the status to OK.
-	handler := &HTTPHandler{
-		Port:                 b.config.ServerConfig.Port,
-		Initializer:          initializer,
-		Snapshotter:          ssr,
-		Logger:               b.logger,
-		StopCh:               make(chan struct{}),
-		EnableProfiling:      b.config.ServerConfig.EnableProfiling,
-		ReqCh:                make(chan struct{}),
-		AckCh:                make(chan struct{}),
-		EnableTLS:            (b.config.ServerConfig.TLSCertFile != "" && b.config.ServerConfig.TLSKeyFile != ""),
-		ServerTLSCertFile:    b.config.ServerConfig.TLSCertFile,
-		ServerTLSKeyFile:     b.config.ServerConfig.TLSKeyFile,
-		HTTPHandlerMutex:     &sync.Mutex{},
-		EtcdConnectionConfig: etcdConfig,
-		StorageProvider:      storageProvider,
-	}
-	handler.SetStatus(http.StatusServiceUnavailable)
-	b.logger.Info("Registering the http request handlers...")
-	handler.RegisterHandler()
-	b.logger.Info("Starting the http server...")
-	go handler.Start()
-
-	return handler
 }
 
 // runServer runs the etcd-backup-restore server according to snapstore provider configuration.
@@ -188,6 +394,7 @@ func (b *BackupRestoreServer) runServer(ctx context.Context, restoreOpts *brtype
 				defragCallBack = ssr.TriggerFullSnapshot
 				go handleSsrStopRequest(leCtx, handler, ssr, ackCh, ssrStopCh)
 			}
+			go b.resetRestorationIndicatorLease(leCtx, b.config.EtcdConnectionConfig, restoreOpts)
 			go b.runEtcdProbeLoopWithSnapshotter(leCtx, handler, ssr, ss, ssrStopCh, ackCh)
 			go defragmentor.DefragDataPeriodically(leCtx, b.config.EtcdConnectionConfig, b.defragmentationSchedule, defragCallBack, b.logger)
 		},
@@ -465,6 +672,19 @@ func (b *BackupRestoreServer) runEtcdProbeLoopWithSnapshotter(ctx context.Contex
 // probeEtcd will make the snapshotter probe for etcd endpoint to be available
 // before it starts taking regular snapshots.
 func (b *BackupRestoreServer) probeEtcd(ctx context.Context) error {
+	/*ep, err := url.Parse(b.config.EtcdConnectionConfig.Endpoints[0])
+	if err != nil {
+		b.logger.Errorf("ETCD connection endpints could not be parsed : %v", err)
+		return err
+	}
+
+	conn, err := net.DialTimeout("tcp", ep.Host, b.config.EtcdConnectionConfig.ConnectionTimeout.Duration)
+	if err != nil {
+		b.logger.Infof("Main ETCD endpoint %s is unreachable, error: %v", b.config.EtcdConnectionConfig.Endpoints[0], err)
+	}
+	defer conn.Close()
+	b.logger.Info("Can't run leader elector because all ETCD instances have not restored yet. Wait more..")*/
+
 	clientFactory := etcdutil.NewFactory(*b.config.EtcdConnectionConfig)
 	clientKV, err := clientFactory.NewKV()
 	if err != nil {
@@ -480,6 +700,91 @@ func (b *BackupRestoreServer) probeEtcd(ctx context.Context) error {
 		b.logger.Errorf("Failed to connect to etcd KV client: %v", err)
 		return err
 	}
+	return nil
+}
+
+// resetRestorationIndicatorLease resets the restoration indicator lease to the code UNRESTORED
+func (b *BackupRestoreServer) resetRestorationIndicatorLease(ctx context.Context, etcdConnectionConfig *brtypes.EtcdConnectionConfig, options *brtypes.RestoreOptions) error {
+	namespace, err := snapstore.GetEnvVarOrError(podNamespace)
+	if err != nil {
+		// the instance is run in a local test environment
+		b.logger.Info("POD_NAMESPACE could not be obtained. Are you running this instance inside a test environment? Otherwise, restoration can be in inconsistent state")
+		return nil
+	}
+
+	clientSet, err := miscellaneous.GetKubernetesClientSetOrError()
+	if err != nil {
+		return fmt.Errorf("failed to create clientset while resetting restoration indicator lease: %v", err)
+	}
+
+	if err := retry.OnError(retry.DefaultBackoff, func(err error) bool { return true }, func() error {
+		b.logger.Info("Resetting restoration indicator")
+		//Create etcd client maintenance to get etcd ID
+		clientFactory := etcdutil.NewFactory(*b.config.EtcdConnectionConfig)
+		etcdClient, err := clientFactory.NewCluster()
+		if err != nil {
+			return &errors.EtcdError{
+				Message: fmt.Sprintf("Failed to create etcd cluster client while resetting restoration indicator lease: %v", err),
+			}
+		}
+		defer etcdClient.Close()
+
+		response, err := etcdClient.MemberList(ctx)
+		if err != nil {
+			return &errors.EtcdError{
+				Message: fmt.Sprintf("Failed to get list of members in cluster while resetting restoration indicator lease: %v", err),
+			}
+		}
+
+		members := response.Members
+
+		// for each member of the cluster, check whether the client port is still as same as restoration port.
+		// if client port of any member is still same as restoration port, retry resetting indicator lease.
+		for _, member := range members {
+			clientURL := member.GetClientURLs()[0]
+			b.logger.Infof("The clientURl of member %v is : %v", member.GetName(), clientURL)
+
+			// parse clientURl to obtain the port number
+			parsed, err := url.Parse(clientURL)
+			if err != nil {
+				return &errors.EtcdError{
+					Message: fmt.Sprintf("clientURL could not be parsed while resetting restoration indicator lease: %v", err),
+				}
+			}
+
+			// if client port is same as restore client port then it is inferred that the embedded ETCD server is yet running
+			// and main ETCD cluster is not setup yet. So, retry.
+			if parsed.Port() == defaultRestoreClientPort {
+				return &errors.EtcdError{
+					Message: "embedded ETCD for restoration is still running. Retry again to reset the restoration indicator lease",
+				}
+			}
+		}
+		clusterRestoreLease := &v1.Lease{}
+		if err := clientSet.Get(ctx, k8sClient.ObjectKey{
+			Namespace: namespace,
+			Name:      options.ClusterRestoreLeaseName,
+		}, clusterRestoreLease); err != nil {
+			return &errors.EtcdError{
+				Message: fmt.Sprintf("indicator for cluster restoration could not be fetched while resetting the restoration indicator lease : %v", err),
+			}
+		}
+
+		updateLease := clusterRestoreLease.DeepCopy()
+		updateTime := time.Now()
+		updateLease.Spec.RenewTime = &metav1.MicroTime{Time: updateTime}
+		updateLease.Spec.HolderIdentity = pointer.StringPtr(strconv.Itoa(brtypes.UNRESTORED))
+		b.logger.Infof("updating indicator for cluster restoration lease %s with holder identity UNRESTORED", options.ClusterRestoreLeaseName)
+
+		if err := clientSet.Patch(ctx, updateLease, k8sClient.MergeFromWithOptions(clusterRestoreLease, &k8sClient.MergeFromWithOptimisticLock{})); err != nil {
+			return err
+		}
+
+		return nil
+	}); err != nil {
+		return fmt.Errorf("failed to to reset indicator for cluster restoration lease: %v", err)
+	}
+
 	return nil
 }
 
@@ -523,4 +828,34 @@ func (b *BackupRestoreServer) stopSnapshotter(handler *HTTPHandler) {
 	handler.ReqCh <- emptyStruct
 	handler.Logger.Info("Waiting for acknowledgment...")
 	<-handler.AckCh
+}
+
+// startHTTPServer creates and starts the HTTP handler
+// with status 503 (Service Unavailable)
+func (b *BackupRestoreServer) startHTTPServer(initializer initializer.Initializer, storageProvider string, etcdConfig *brtypes.EtcdConnectionConfig, ssr *snapshotter.Snapshotter) *HTTPHandler {
+	// Start http handler with Error state and wait till snapshotter is up
+	// and running before setting the status to OK.
+	handler := &HTTPHandler{
+		Port:                 b.config.ServerConfig.Port,
+		Initializer:          initializer,
+		Snapshotter:          ssr,
+		Logger:               b.logger,
+		StopCh:               make(chan struct{}),
+		EnableProfiling:      b.config.ServerConfig.EnableProfiling,
+		ReqCh:                make(chan struct{}),
+		AckCh:                make(chan struct{}),
+		EnableTLS:            (b.config.ServerConfig.TLSCertFile != "" && b.config.ServerConfig.TLSKeyFile != ""),
+		ServerTLSCertFile:    b.config.ServerConfig.TLSCertFile,
+		ServerTLSKeyFile:     b.config.ServerConfig.TLSKeyFile,
+		HTTPHandlerMutex:     &sync.Mutex{},
+		EtcdConnectionConfig: etcdConfig,
+		StorageProvider:      storageProvider,
+	}
+	handler.SetStatus(http.StatusServiceUnavailable)
+	b.logger.Info("Registering the http request handlers...")
+	handler.RegisterHandler()
+	b.logger.Info("Starting the http server...")
+	go handler.Start()
+
+	return handler
 }
