@@ -266,12 +266,12 @@ func (ssr *Snapshotter) closeEtcdClient() {
 // TakeFullSnapshotAndResetTimer takes a full snapshot and resets the full snapshot
 // timer as per the schedule.
 func (ssr *Snapshotter) TakeFullSnapshotAndResetTimer(isFinal bool) (*brtypes.Snapshot, error) {
-	ssr.logger.Infof("Taking scheduled snapshot for time: %s", time.Now().Local())
+	ssr.logger.Infof("Taking scheduled full snapshot for time: %s", time.Now().Local())
 	s, err := ssr.takeFullSnapshot(isFinal)
 	if err != nil {
 		// As per design principle, in business critical service if backup is not working,
 		// it's better to fail the process. So, we are quiting here.
-		ssr.logger.Warnf("Taking scheduled snapshot failed: %v", err)
+		ssr.logger.Warnf("Taking scheduled full snapshot failed: %v", err)
 		return nil, err
 	}
 
