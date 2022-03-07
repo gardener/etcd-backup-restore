@@ -46,7 +46,7 @@ func CompressSnapshot(data io.ReadCloser, compressionPolicy string) (io.ReadClos
 	// It is actually unreachable but just to be on safe side:
 	// for unsupported CompressionPolicy return the error
 	default:
-		return nil, fmt.Errorf("Unsupported Compression Policy")
+		return nil, fmt.Errorf("unsupported Compression Policy")
 
 	}
 
@@ -80,14 +80,14 @@ func DecompressSnapshot(data io.ReadCloser, compressionPolicy string) (io.ReadCl
 	case ZlibCompressionPolicy:
 		deCompressedData, err = zlib.NewReader(data)
 		if err != nil {
-			logger.Infof("Unable to decompress: %v", err)
+			logger.Errorf("unable to decompress: %v", err)
 			return data, err
 		}
 
 	case GzipCompressionPolicy:
 		deCompressedData, err = gzip.NewReader(data)
 		if err != nil {
-			logger.Infof("Unable to decompress: %v", err)
+			logger.Errorf("unable to decompress: %v", err)
 			return data, err
 		}
 
@@ -97,7 +97,7 @@ func DecompressSnapshot(data io.ReadCloser, compressionPolicy string) (io.ReadCl
 	// It is actually unreachable but just to be on safe side:
 	// for unsupported CompressionPolicy return the same data with error
 	default:
-		return data, fmt.Errorf("Unsupported Compression Policy")
+		return data, fmt.Errorf("unsupported Compression Policy")
 	}
 
 	return deCompressedData, nil
@@ -124,7 +124,7 @@ func GetCompressionSuffix(compressionEnabled bool, compressionPolicy string) (st
 	// unreachable but just to be on safe side:
 	// for unsupported CompressionPolicy return the error
 	default:
-		return "", fmt.Errorf("Unsupported Compression Policy")
+		return "", fmt.Errorf("unsupported Compression Policy")
 
 	}
 }
@@ -149,6 +149,6 @@ func IsSnapshotCompressed(compressionSuffix string) (bool, string, error) {
 	// actually unreachable but just to be on safe side:
 	// for unsupported CompressionPolicy return the error
 	default:
-		return false, "", fmt.Errorf("Unsupported Compression Policy")
+		return false, "", fmt.Errorf("unsupported Compression Policy")
 	}
 }
