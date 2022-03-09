@@ -12,6 +12,7 @@ import (
 	"github.com/gardener/etcd-backup-restore/pkg/miscellaneous"
 	"github.com/gardener/etcd-backup-restore/pkg/snapshot/restorer"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
+	"go.etcd.io/etcd/clientv3"
 
 	"github.com/sirupsen/logrus"
 
@@ -129,11 +130,11 @@ func (cp *Compactor) Compact(ctx context.Context, opts *brtypes.CompactOptions) 
 	etcdRevision := getResponse.Header.GetRevision()
 
 	// Compact
-	if _, err := clientKV.Compact(ctx, etcdRevision); err != nil {
+	if _, err := clientKV.Compact(ctx, etcdRevision, clientv3.WithCompactPhysical()); err != nil {
 		return nil, fmt.Errorf("failed to compact: %v", err)
 	}
 
-	// Then defrag the ETCD
+	// Then defrag ETCD
 	if opts.NeedDefragmentation {
 		client, err := clientFactory.NewCluster()
 		if err != nil {
