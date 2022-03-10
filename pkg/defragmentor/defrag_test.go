@@ -252,7 +252,7 @@ var _ = Describe("Defrag", func() {
 			oldRevision := oldStatus.Header.GetRevision()
 
 			// compact the ETCD DB to let the defragmentor have full effect
-			_, err = clientKV.Compact(testCtx, oldRevision)
+			_, err = clientKV.Compact(testCtx, oldRevision, clientv3.WithCompactPhysical())
 			Expect(err).ShouldNot(HaveOccurred())
 			defragmentorJob := NewDefragmentorJob(testCtx, etcdConnectionConfig, logger, nil)
 			defragmentorJob.Run()
