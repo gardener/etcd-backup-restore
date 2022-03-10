@@ -130,6 +130,8 @@ func (cp *Compactor) Compact(ctx context.Context, opts *brtypes.CompactOptions) 
 	etcdRevision := getResponse.Header.GetRevision()
 
 	// Compact
+	// Please refer below issue for why physical compaction was necessary
+	// https://github.com/gardener/etcd-backup-restore/issues/451
 	if _, err := clientKV.Compact(ctx, etcdRevision, clientv3.WithCompactPhysical()); err != nil {
 		return nil, fmt.Errorf("failed to compact: %v", err)
 	}
