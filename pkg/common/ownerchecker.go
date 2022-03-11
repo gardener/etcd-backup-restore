@@ -16,7 +16,6 @@ package common
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -59,7 +58,7 @@ func (c *ownerChecker) Check(ctx context.Context) (bool, error) {
 	owner, err := c.resolver.LookupTXT(ctx, c.ownerName)
 	if err != nil {
 		c.logger.Errorf("Could not resolve owner domain name %s: %v", c.ownerName, err)
-		return false, fmt.Errorf("could not resolve owner domain name %s: %w", c.ownerName, err)
+		return false, err
 	}
 
 	var actualOwnerID string

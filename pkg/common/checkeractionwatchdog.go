@@ -77,8 +77,10 @@ func (w *checkerActionWatchdog) Start(ctx context.Context) {
 
 		for {
 			result, err := w.checker.Check(ctx)
-			if err != nil || !result {
-				w.logger.Debug("Performing watchdog action")
+			if err != nil {
+				w.logger.Errorf("watchdog check fails: %v", err)
+			} else if !result {
+				w.logger.Info("Performing watchdog action")
 				w.action.Do(ctx)
 				return
 			}

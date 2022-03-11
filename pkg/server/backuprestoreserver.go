@@ -275,17 +275,26 @@ func (b *BackupRestoreServer) runEtcdProbeLoopWithSnapshotter(ctx context.Contex
 			}
 		}
 
-		// set server's healthz endpoint status to OK so that
-		// etcd is marked as ready to serve traffic
-		handler.SetStatus(http.StatusOK)
-
 		if runServerWithSnapshotter {
 			if b.ownerChecker != nil {
 				// Check if the actual owner ID matches the expected one
 				// If the check fails or returns false, take a final full snapshot if needed
 				b.logger.Debugf("Checking owner before starting snapshotter...")
 				result, err := b.ownerChecker.Check(ctx)
-				if err != nil || !result {
+				if err != nil {
+					b.logger.Errorf("ownerChecker check fails: %v", err)
+
+					// Wait for the configured interval before making another attempt
+					b.logger.Infof("Waiting for %s...", b.config.OwnerCheckConfig.OwnerCheckInterval.Duration)
+					select {
+					case <-ctx.Done():
+						b.logger.Info("Shutting down...")
+						return
+					case <-time.After(b.config.OwnerCheckConfig.OwnerCheckInterval.Duration):
+					}
+					continue
+
+				} else if !result {
 					handler.SetStatus(http.StatusServiceUnavailable)
 
 					// If the previous full snapshot doesn't exist or is not marked as final, take a final full snapshot
@@ -317,6 +326,10 @@ func (b *BackupRestoreServer) runEtcdProbeLoopWithSnapshotter(ctx context.Contex
 					continue
 				}
 			}
+
+			// set server's healthz endpoint status to OK so that
+			// etcd is marked as ready to serve traffic
+			handler.SetStatus(http.StatusOK)
 
 			// The decision to either take an initial delta snapshot or
 			// or a full snapshot directly is based on whether there has
@@ -437,7 +450,9 @@ func (b *BackupRestoreServer) runEtcdProbeLoopWithSnapshotter(ctx context.Contex
 				// If the owner check fails or returns false, kill the etcd process
 				// to ensure that any open connections from kube-apiserver are terminated
 				result, err := b.ownerChecker.Check(ctx)
-				if err != nil || !result {
+				if err != nil {
+					b.logger.Errorf("ownerChecker check fails: %v", err)
+				} else if !result {
 					if _, err := b.etcdProcessKiller.Kill(ctx); err != nil {
 						b.logger.Errorf("Could not kill etcd process: %v", err)
 					}
@@ -446,6 +461,10 @@ func (b *BackupRestoreServer) runEtcdProbeLoopWithSnapshotter(ctx context.Contex
 
 		} else {
 			// for the case when snapshotter is not configured
+
+			// set server's healthz endpoint status to OK so that
+			// etcd is marked as ready to serve traffic
+			handler.SetStatus(http.StatusOK)
 			<-ctx.Done()
 			handler.SetStatus(http.StatusServiceUnavailable)
 			b.logger.Infof("Received stop signal. Terminating !!")
