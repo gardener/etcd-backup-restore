@@ -278,22 +278,12 @@ func (b *BackupRestoreServer) runEtcdProbeLoopWithSnapshotter(ctx context.Contex
 		if runServerWithSnapshotter {
 			if b.ownerChecker != nil {
 				// Check if the actual owner ID matches the expected one
-				// If the check fails or returns false, take a final full snapshot if needed
+				// If the check returns false, take a final full snapshot if needed.
+				// If the check returns an error continue with normal operation
 				b.logger.Debugf("Checking owner before starting snapshotter...")
 				result, err := b.ownerChecker.Check(ctx)
 				if err != nil {
 					b.logger.Errorf("ownerChecker check fails: %v", err)
-
-					// Wait for the configured interval before making another attempt
-					b.logger.Infof("Waiting for %s...", b.config.OwnerCheckConfig.OwnerCheckInterval.Duration)
-					select {
-					case <-ctx.Done():
-						b.logger.Info("Shutting down...")
-						return
-					case <-time.After(b.config.OwnerCheckConfig.OwnerCheckInterval.Duration):
-					}
-					continue
-
 				} else if !result {
 					handler.SetStatus(http.StatusServiceUnavailable)
 
