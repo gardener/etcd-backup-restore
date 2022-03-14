@@ -87,16 +87,23 @@ var _ = Describe("CheckerActionWatchdog", func() {
 			Eventually(func() int { return int(count.Load()) }).Should(Equal(1))
 		})
 
-		It("should perform the action if the checker returns an error", func() {
+		It("should not perform the action if the checker returns an error", func() {
+			actionCount := 0
+			action.EXPECT().Do(gomock.Any()).DoAndReturn(func(_ context.Context) {
+				actionCount++
+			}).AnyTimes()
+
 			checker.EXPECT().Check(gomock.Any()).DoAndReturn(func(ctx context.Context) (bool, error) {
 				count.Inc()
 				return false, errors.New("text")
-			})
-			action.EXPECT().Do(gomock.Any())
+			}).AnyTimes()
 
 			watchdog.Start(ctx)
 			defer watchdog.Stop()
-			Eventually(func() int { return int(count.Load()) }).Should(Equal(1))
+			Eventually(fakeClock.HasWaiters).Should(BeTrue())
+			fakeClock.Step(interval)
+			Eventually(func() int { return int(count.Load()) }).Should(Equal(2))
+			Expect(actionCount).Should(Equal(0))
 		})
 	})
 })
