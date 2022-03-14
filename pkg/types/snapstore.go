@@ -172,6 +172,8 @@ type SnapstoreConfig struct {
 	TempDir string `json:"tempDir,omitempty"`
 	// IsSource determines if this SnapStore is the source for a copy operation
 	IsSource bool `json:"isSource,omitempty"`
+	// EncryptionConfigPath is the path to a JSON file containing SnapstoreEncryptionConfig
+	EncryptionConfigPath string `json:"encryptionConfigPath,omitempty"`
 }
 
 // AddFlags adds the flags to flagset.
@@ -190,6 +192,7 @@ func (c *SnapstoreConfig) addFlags(fs *flag.FlagSet, parameterPrefix string) {
 	fs.StringVar(&c.Prefix, parameterPrefix+"store-prefix", c.Prefix, "prefix or directory inside container under which snapstore is created")
 	fs.UintVar(&c.MaxParallelChunkUploads, parameterPrefix+"max-parallel-chunk-uploads", c.MaxParallelChunkUploads, "maximum number of parallel chunk uploads allowed ")
 	fs.StringVar(&c.TempDir, parameterPrefix+"snapstore-temp-directory", c.TempDir, "temporary directory for processing")
+	fs.StringVar(&c.EncryptionConfigPath, parameterPrefix+"encryption-config-path", c.EncryptionConfigPath, "optional path to a JSON file containing SnapstoreEncryptionConfig ( e.g. '{ \"key\": \"my-encryption-key-123\" }' )")
 }
 
 // Validate validates the config.
@@ -218,4 +221,11 @@ func (c *SnapstoreConfig) MergeWith(other *SnapstoreConfig) {
 	if c.TempDir == "" {
 		c.TempDir = other.TempDir
 	}
+}
+
+// SnapstoreEncryptionConfig structure holds configuration for backup data encryption
+type SnapstoreEncryptionConfig struct {
+	// Key is the key (any string, e.g. "my-encryption-key-123") to be used in symmetric encryption of the backup data.
+	// If `Key` is an empty string, backup data encryption is disabled.
+	Key string `json:"key"`
 }
