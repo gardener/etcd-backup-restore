@@ -35,6 +35,11 @@ require (
 )
 
 require (
+	github.com/minio/sio v0.3.0
+	golang.org/x/crypto v0.0.0-20220313003712-b769efc7c000
+)
+
+require (
 	github.com/Azure/go-ansiterm v0.0.0-20170929234023-d6e3b3328b78 // indirect
 	github.com/BurntSushi/toml v0.3.1 // indirect
 	github.com/MakeNowJust/heredoc v1.0.0 // indirect
@@ -148,16 +153,15 @@ require (
 	github.com/xiang90/probing v0.0.0-20190116061207-43a291ad63a2 // indirect
 	go.opencensus.io v0.22.2 // indirect
 	go.uber.org/multierr v1.5.0 // indirect
-	golang.org/x/crypto v0.0.0-20201221181555-eec23a3978ad // indirect
 	golang.org/x/exp v0.0.0-20191227195350-da58074b4299 // indirect
 	golang.org/x/lint v0.0.0-20191125180803-fdd1cda4f05f // indirect
 	golang.org/x/mod v0.3.0 // indirect
-	golang.org/x/net v0.0.0-20201224014010-6772e930b67b // indirect
+	golang.org/x/net v0.0.0-20211112202133-69e39bad7dc2 // indirect
 	golang.org/x/oauth2 v0.0.0-20191202225959-858c2ad4c8b6 // indirect
 	golang.org/x/sync v0.0.0-20190911185100-cd5d95a43a6e // indirect
-	golang.org/x/sys v0.0.0-20210816074244-15123e1e1f71 // indirect
+	golang.org/x/sys v0.0.0-20220310020820-b874c991c1a5 // indirect
 	golang.org/x/term v0.0.0-20201126162022-7de9c90e9dd1 // indirect
-	golang.org/x/text v0.3.4 // indirect
+	golang.org/x/text v0.3.6 // indirect
 	golang.org/x/time v0.0.0-20200630173020-3af7569d3a1e // indirect
 	golang.org/x/tools v0.0.0-20200616133436-c1934b75d054 // indirect
 	golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1 // indirect
