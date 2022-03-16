@@ -248,17 +248,24 @@ func GetEtcdEndPointsSorted(ctx context.Context, clientMaintenance client.Mainte
 
 // TakeAndSaveFullSnapshot takes full snapshot and save it to store
 func TakeAndSaveFullSnapshot(ctx context.Context, client client.MaintenanceCloser, store brtypes.SnapStore, lastRevision int64, cc *compressor.CompressionConfig, suffix string, isFinal bool, logger *logrus.Entry) (*brtypes.Snapshot, error) {
+	startTime := time.Now()
 	rc, err := client.Snapshot(ctx)
 	if err != nil {
 		return nil, &errors.EtcdError{
 			Message: fmt.Sprintf("failed to create etcd snapshot: %v", err),
 		}
 	}
+	timeTaken := time.Since(startTime)
+	logger.Infof("Total time taken by Snapshot API: %f seconds.", timeTaken.Seconds())
+
 	if cc.Enabled {
+		startTimeCompression := time.Now()
 		rc, err = compressor.CompressSnapshot(rc, cc.CompressionPolicy)
 		if err != nil {
 			return nil, fmt.Errorf("unable to obtain reader for compressed file: %v", err)
 		}
+		timeTakenCompression := time.Since(startTimeCompression)
+		logger.Infof("Total time taken in full snapshot compression: %f seconds.", timeTakenCompression.Seconds())
 	}
 	defer rc.Close()
 
@@ -266,7 +273,6 @@ func TakeAndSaveFullSnapshot(ctx context.Context, client client.MaintenanceClose
 
 	// Then save the snapshot to the store.
 	snapshot := snapstore.NewSnapshot(brtypes.SnapshotKindFull, 0, lastRevision, suffix, isFinal)
-	startTime := time.Now()
 	if err := store.Save(*snapshot, rc); err != nil {
 		timeTaken := time.Since(startTime)
 		metrics.SnapshotDurationSeconds.With(prometheus.Labels{metrics.LabelKind: brtypes.SnapshotKindFull, metrics.LabelSucceeded: metrics.ValueSucceededFalse}).Observe(timeTaken.Seconds())
@@ -275,9 +281,9 @@ func TakeAndSaveFullSnapshot(ctx context.Context, client client.MaintenanceClose
 		}
 	}
 
-	timeTaken := time.Since(startTime)
+	timeTaken = time.Since(startTime)
 	metrics.SnapshotDurationSeconds.With(prometheus.Labels{metrics.LabelKind: brtypes.SnapshotKindFull, metrics.LabelSucceeded: metrics.ValueSucceededTrue}).Observe(timeTaken.Seconds())
-	logger.Infof("Total time to save snapshot: %f seconds.", timeTaken.Seconds())
+	logger.Infof("Total time to save full snapshot: %f seconds.", timeTaken.Seconds())
 
 	return snapshot, nil
 }
