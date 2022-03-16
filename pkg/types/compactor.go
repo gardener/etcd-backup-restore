@@ -26,7 +26,7 @@ const (
 	// defaultDefragTimeout defines default timeout duration for ETCD defrag call during compaction of snapshots.
 	defaultDefragTimeout time.Duration = 8 * time.Minute
 	// defaultSnapshotTimeout defines default timeout duration for taking compacted FullSnapshot.
-	defaultSnapshotTimeout time.Duration = 8 * time.Minute
+	defaultSnapshotTimeout time.Duration = 30 * time.Minute
 )
 
 // CompactOptions holds all configurable options of compact.
