@@ -19,11 +19,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"net/http"
 	"net/http/httputil"
 	"net/http/pprof"
 	"net/url"
+	"os"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 
@@ -33,6 +36,7 @@ import (
 	"github.com/gardener/etcd-backup-restore/pkg/miscellaneous"
 	"github.com/gardener/etcd-backup-restore/pkg/snapshot/snapshotter"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
+	"github.com/ghodss/yaml"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/sirupsen/logrus"
 )
@@ -132,6 +136,7 @@ func (h *HTTPHandler) RegisterHandler() {
 	mux.HandleFunc("/snapshot/full", h.serveFullSnapshotTrigger)
 	mux.HandleFunc("/snapshot/delta", h.serveDeltaSnapshotTrigger)
 	mux.HandleFunc("/snapshot/latest", h.serveLatestSnapshotMetadata)
+	mux.HandleFunc("/config", h.serveConfig)
 	mux.HandleFunc("/healthz", h.serveHealthz)
 	mux.Handle("/metrics", promhttp.Handler())
 
@@ -139,7 +144,6 @@ func (h *HTTPHandler) RegisterHandler() {
 		Addr:    fmt.Sprintf(":%d", h.Port),
 		Handler: mux,
 	}
-	return
 }
 
 // registerPProfHandler registers the PProf handler for profiling.
@@ -385,7 +389,81 @@ func (h *HTTPHandler) serveLatestSnapshotMetadata(rw http.ResponseWriter, req *h
 	}
 	rw.WriteHeader(http.StatusOK)
 	rw.Write(json)
-	return
+}
+
+func (h *HTTPHandler) serveConfig(rw http.ResponseWriter, req *http.Request) {
+	inputFileName := "/var/etcd/config/etcd.conf.yaml"
+	outputFileName := "/etc/etcd.conf.yaml"
+	configYML, err := ioutil.ReadFile(inputFileName)
+	if err != nil {
+		h.Logger.Warnf("Unable to read etcd config file: %v", err)
+		rw.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	config := map[string]interface{}{}
+	if err := yaml.Unmarshal([]byte(configYML), &config); err != nil {
+		h.Logger.Warnf("Unable to unmarshal etcd config yaml file: %v", err)
+		rw.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	// fetch pod name from env
+	podName := os.Getenv("POD_NAME")
+	config["name"] = podName
+
+	initAdPeerURL := config["initial-advertise-peer-urls"]
+	protocol, svcName, namespace, peerPort, err := parsePeerURL(fmt.Sprint(initAdPeerURL))
+	if err != nil {
+		h.Logger.Warnf("Unable to determine service name, namespace, peer port from advertise peer urls : %v", err)
+		rw.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	domaiName := fmt.Sprintf("%s.%s.%s", svcName, namespace, "svc")
+	config["initial-advertise-peer-urls"] = fmt.Sprintf("%s://%s.%s:%s", protocol, podName, domaiName, peerPort)
+
+	advClientURL := config["advertise-client-urls"]
+	protocol, svcName, namespace, clientPort, err := parseAdvClientURL(fmt.Sprint(advClientURL))
+	if err != nil {
+		h.Logger.Warnf("Unable to determine service name, namespace, peer port from advertise client url : %v", err)
+		rw.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	domaiName = fmt.Sprintf("%s.%s.%s", svcName, namespace, "svc")
+	config["advertise-client-urls"] = fmt.Sprintf("%s://%s.%s:%s", protocol, podName, domaiName, clientPort)
+
+	data, err := yaml.Marshal(&config)
+	if err != nil {
+		h.Logger.Warnf("Unable to marshal data to etcd config yaml file: %v", err)
+		rw.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	if err := ioutil.WriteFile(outputFileName, data, 0644); err != nil {
+		h.Logger.Warnf("Unable to write etcd config file: %v", err)
+		rw.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	http.ServeFile(rw, req, outputFileName)
+
+	h.Logger.Info("Served config for ETCD instance.")
+}
+
+func parsePeerURL(peerURL string) (string, string, string, string, error) {
+	tokens := strings.Split(peerURL, "@")
+	if len(tokens) < 4 {
+		return "", "", "", "", fmt.Errorf("total length of tokens is less than four")
+	}
+	return tokens[0], tokens[1], tokens[2], tokens[3], nil
+}
+
+func parseAdvClientURL(advClientURL string) (string, string, string, string, error) {
+	tokens := strings.Split(advClientURL, "@")
+	if len(tokens) < 4 {
+		return "", "", "", "", fmt.Errorf("total length of tokens is less than four")
+	}
+	return tokens[0], tokens[1], tokens[2], tokens[3], nil
 }
 
 // delegateReqToLeader forwards the incoming http/https request to BackupLeader.
