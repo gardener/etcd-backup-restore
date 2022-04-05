@@ -137,7 +137,7 @@ func (hb *Heartbeat) RenewMemberLease(ctx context.Context) error {
 		}
 	}
 
-	hb.logger.Info("Renewed member lease for etcd at ", renewedTime)
+	hb.logger.Debugf("Renewed member lease for etcd memberID: %v", memberID)
 
 	return nil
 }
