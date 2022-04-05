@@ -203,6 +203,11 @@ func GetAllEtcdEndpoints(ctx context.Context, client etcdClient.ClusterCloser, e
 		etcdEndpoints = append(etcdEndpoints, member.GetClientURLs()...)
 	}
 
+	// For single node etcd: use endpoint which was passed through etcdConnectionConfig
+	// refer: https://github.com/gardener/etcd-druid/issues/325
+	if len(etcdEndpoints) == 1 {
+		etcdEndpoints = etcdConnectionConfig.Endpoints
+	}
 	return etcdEndpoints, nil
 }
 
