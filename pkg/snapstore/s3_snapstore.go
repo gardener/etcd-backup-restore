@@ -93,7 +93,7 @@ func newS3FromSessionOpt(bucket, prefix, tempDir string, maxParallelChunkUploads
 func getSessionOptions(prefixString string) (session.Options, error) {
 
 	var s3path *bool
-	if val, err := strconv.ParseBool(os.Getenv(awsForcePathStyle)); err != nil {
+	if val, err := strconv.ParseBool(os.Getenv(awsForcePathStyle)); err == nil {
 		s3path = &val
 	}
 	// TODO: passing credentials through environment variable will be deprecated by "backup-restore v0.18.0"
