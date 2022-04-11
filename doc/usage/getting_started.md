@@ -38,6 +38,11 @@ The procedure to provide credentials to access the cloud provider object store v
 * For `Dell EMC ECS`:
   1. `ECS_ENDPOINT`, `ECS_ACCESS_KEY_ID`, `ECS_SECRET_ACCESS_KEY` should be made available as environment variables. For development purposes, the environment variables `ECS_DISABLE_SSL` and `ECS_INSECURE_SKIP_VERIFY` can also be set to "true" or "false".
 
+* For `Openshift Container Storage (OCS)`:
+  1. The secret file should be provided and file path should be made available as environment variables: `OPENSHIFT_APPLICATION_CREDENTIALS` or `OPENSHIFT_APPLICATION_CREDENTIALS_JSON`.
+  2. `OCS_ENDPOINT`, `OCS_REGION`, `OCS_ACCESS_KEY_ID`, `OCS_SECRET_ACCESS_KEY` should be made available as environment variables.
+  For development purposes, the environment variables `OCS_DISABLE_SSL` and `OCS_INSECURE_SKIP_VERIFY` can also be set to "true" or "false".
+
 
 Check the [example of storage provider secrets](https://github.com/gardener/etcd-backup-restore/tree/master/example/storage-provider-secrets)
 
