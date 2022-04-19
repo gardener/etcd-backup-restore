@@ -310,12 +310,13 @@ func RenewMemberLeasePeriodically(ctx context.Context, stopCh chan struct{}, hco
 
 	clientSet, err := miscellaneous.GetKubernetesClientSetOrError()
 	if err != nil {
-		logger.Errorf("failed to create clientset: %v", err)
+		logger.Fatalf("failed to create clientset: %v", err)
 		return
 	}
+
 	hb, err := NewHeartbeat(logger, etcdConfig, clientSet)
 	if err != nil {
-		logger.Errorf("failed to initialize new heartbeat: %v", err)
+		logger.Fatalf("failed to initialize new heartbeat: %v", err)
 		return
 	}
 	hb.heartbeatTimer = time.NewTimer(hconfig.HeartbeatDuration.Duration)
