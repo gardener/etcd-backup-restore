@@ -17,7 +17,6 @@ package snapstore
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"strconv"
 
@@ -96,7 +95,7 @@ func getOCSAuthOptions(prefix string) (*ocsAuthOptions, error) {
 func readOCSCredentialFromDir(dirname string) (*ocsAuthOptions, error) {
 	ao := ocsAuthOptions{}
 
-	files, err := ioutil.ReadDir(dirname)
+	files, err := os.ReadDir(dirname)
 	if err != nil {
 		return nil, err
 	}
@@ -121,7 +120,7 @@ func readOCSCredentialFromDir(dirname string) (*ocsAuthOptions, error) {
 			}
 		case "secretAccessKey":
 			{
-				data, err := ioutil.ReadFile(dirname + "/secretAccessKey")
+				data, err := os.ReadFile(dirname + "/secretAccessKey")
 				if err != nil {
 					return nil, err
 				}
@@ -129,7 +128,7 @@ func readOCSCredentialFromDir(dirname string) (*ocsAuthOptions, error) {
 			}
 		case "region":
 			{
-				data, err := ioutil.ReadFile(dirname + "/region")
+				data, err := os.ReadFile(dirname + "/region")
 				if err != nil {
 					return nil, err
 				}
@@ -137,7 +136,7 @@ func readOCSCredentialFromDir(dirname string) (*ocsAuthOptions, error) {
 			}
 		case "disableSSL":
 			{
-				data, err := ioutil.ReadFile(dirname + "/disableSSL")
+				data, err := os.ReadFile(dirname + "/disableSSL")
 				if err != nil {
 					return nil, err
 				}
@@ -148,7 +147,7 @@ func readOCSCredentialFromDir(dirname string) (*ocsAuthOptions, error) {
 			}
 		case "insecureSkipVerify":
 			{
-				data, err := ioutil.ReadFile(dirname + "/insecureSkipVerify")
+				data, err := os.ReadFile(dirname + "/insecureSkipVerify")
 				if err != nil {
 					return nil, err
 				}
@@ -167,7 +166,7 @@ func readOCSCredentialFromDir(dirname string) (*ocsAuthOptions, error) {
 }
 
 func readOCSCredentialsJSON(filename string) (*ocsAuthOptions, error) {
-	jsonData, err := ioutil.ReadFile(filename)
+	jsonData, err := os.ReadFile(filename)
 	if err != nil {
 		return nil, err
 	}
