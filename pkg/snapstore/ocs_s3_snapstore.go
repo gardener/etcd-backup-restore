@@ -113,7 +113,7 @@ func readOCSCredentialFromDir(dirname string) (*ocsAuthOptions, error) {
 			}
 		case "accessKeyID":
 			{
-				data, err := ioutil.ReadFile(dirname + "/accessKeyID")
+				data, err := os.ReadFile(dirname + "/accessKeyID")
 				if err != nil {
 					return nil, err
 				}
