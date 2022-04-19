@@ -105,7 +105,7 @@ func readOCSCredentialFromDir(dirname string) (*ocsAuthOptions, error) {
 		switch file.Name() {
 		case "endpoint":
 			{
-				data, err := ioutil.ReadFile(dirname + "/endpoint")
+				data, err := os.ReadFile(dirname + "/endpoint")
 				if err != nil {
 					return nil, err
 				}
