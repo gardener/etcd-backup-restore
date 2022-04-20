@@ -250,6 +250,6 @@ func OCSSnapStoreHash(config *brtypes.SnapstoreConfig) (string, error) {
 }
 
 func getOCSHash(config *ocsAuthOptions) string {
-	data := fmt.Sprintf("%s%s%s%s%v%v", config.AccessKeyID, config.Endpoint, config.Region, config.SecretAccessKey, config.DisableSSL, config.InsecureSkipVerify)
+	data := fmt.Sprintf("%s%s%s%s", config.AccessKeyID, config.Endpoint, config.Region, config.SecretAccessKey)
 	return getHash(data)
 }
