@@ -186,6 +186,8 @@ func GetSnapstoreSecretHash(config *brtypes.SnapstoreConfig) (string, error) {
 		return SwiftSnapStoreHash(config)
 	case brtypes.SnapstoreProviderOSS:
 		return OSSSnapStoreHash(config)
+	case brtypes.SnapstoreProviderOCS:
+		return OCSSnapStoreHash(config)
 	default:
 		return "", nil
 	}
