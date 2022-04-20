@@ -239,3 +239,17 @@ func isOCSConfigEmpty(config ocsAuthOptions) error {
 	}
 	return fmt.Errorf("ocs s3 credentials: region, secretAccessKey, endpoint or accessKeyID is missing")
 }
+
+func OCSSnapStoreHash(config *brtypes.SnapstoreConfig) (string, error) {
+	ao, err := getOCSAuthOptions("")
+	if err != nil {
+		return "", err
+	}
+
+	return getOCSHash(ao), nil
+}
+
+func getOCSHash(config *ocsAuthOptions) string {
+	data := fmt.Sprintf("%s%s%s%s%v%v", config.AccessKeyID, config.Endpoint, config.Region, config.SecretAccessKey, config.DisableSSL, config.InsecureSkipVerify)
+	return getHash(data)
+}
