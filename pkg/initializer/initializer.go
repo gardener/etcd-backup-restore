@@ -43,6 +43,11 @@ import (
 func (e *EtcdInitializer) Initialize(mode validator.Mode, failBelowRevision int64) error {
 	start := time.Now()
 	dataDirStatus, err := e.Validator.Validate(mode, failBelowRevision)
+	if dataDirStatus == validator.WrongVolumeMounted {
+		metrics.ValidationDurationSeconds.With(prometheus.Labels{metrics.LabelSucceeded: metrics.ValueSucceededFalse}).Observe(time.Since(start).Seconds())
+		return fmt.Errorf("won't initialize ETCD because wrong ETCD volume is mounted: %v", err)
+	}
+
 	if dataDirStatus == validator.DataDirectoryStatusUnknown {
 		metrics.ValidationDurationSeconds.With(prometheus.Labels{metrics.LabelSucceeded: metrics.ValueSucceededFalse}).Observe(time.Since(start).Seconds())
 		return fmt.Errorf("error while initializing: %v", err)
