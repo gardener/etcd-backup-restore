@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"path/filepath"
 	"time"
 
@@ -88,6 +89,35 @@ func (d *DataValidator) Validate(mode Mode, failBelowRevision int64) (DataDirSta
 }
 
 func (d *DataValidator) sanityCheck(failBelowRevision int64) (DataDirStatus, error) {
+	mntDataDir := path.Dir(d.Config.DataDir)
+	path := mntDataDir + "/" + safeGuard
+	namespace := os.Getenv(podNamespace)
+	if namespace == "" {
+		d.Logger.Warn("POD_NAMESPACE environment variable is not set. The variable is used to safe guard against wrong volume mount")
+	} else {
+		// create the file `safe_guard` if it doesn't exist
+		if _, err := os.Stat(path); err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				data := []byte(namespace)
+				err := os.WriteFile(path, data, 0644)
+				if err != nil {
+					d.Logger.Fatalf("can't create `safe_guard` file because : %v", err)
+				}
+			} else {
+				d.Logger.Fatalf("can't check if the `safe_guard` file exists or not because : %v", err)
+			}
+		}
+
+		// read the content of the file safe_guard and match it with the environment variable
+		content, err := os.ReadFile(path)
+		if err != nil {
+			return WrongVolumeMounted, fmt.Errorf("can't read the content of the `safe_guard` file to determine if a wrong volume is mounted: %v", err)
+		}
+		if string(content) != namespace {
+			return WrongVolumeMounted, fmt.Errorf("wrong volume is mounted. The shoot name derived from namespace is %s and the content of `safe_guard` file at %s is %s", namespace, path, string(content))
+		}
+	}
+
 	dataDir := d.Config.DataDir
 	dirExists, err := directoryExist(dataDir)
 	if err != nil {
