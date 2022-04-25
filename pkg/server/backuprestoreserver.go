@@ -171,7 +171,7 @@ func (b *BackupRestoreServer) runServer(ctx context.Context, restoreOpts *brtype
 				b.logger.Infof("Creating snapstore from provider: %s", b.config.SnapstoreConfig.Provider)
 				ss, err = snapstore.GetSnapstore(b.config.SnapstoreConfig)
 				if err != nil {
-					b.logger.Errorf("failed to create snapstore from configured storage provider: %v", err)
+					b.logger.Fatalf("failed to create snapstore from configured storage provider: %v", err)
 					return
 				}
 
@@ -179,7 +179,7 @@ func (b *BackupRestoreServer) runServer(ctx context.Context, restoreOpts *brtype
 				b.logger.Infof("Creating snapshotter...")
 				ssr, err = snapshotter.NewSnapshotter(b.logger, b.config.SnapshotterConfig, ss, b.config.EtcdConnectionConfig, b.config.CompressionConfig, b.config.HealthConfig, b.config.SnapstoreConfig)
 				if err != nil {
-					b.logger.Errorf("failed to create new Snapshotter object: %v", err)
+					b.logger.Fatalf("failed to create new Snapshotter object: %v", err)
 					return
 				}
 
