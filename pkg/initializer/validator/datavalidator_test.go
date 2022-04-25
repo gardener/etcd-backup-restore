@@ -61,6 +61,27 @@ var _ = Describe("Running Datavalidator", func() {
 		}
 	})
 
+	Context("with content in `safe_guard` file that doesn't match the env var POD_NAMESPACE", func() {
+		It("should return DataDirStatus as WrongVolumeMounted, and non-nil error", func() {
+			os.Setenv("POD_NAMESPACE", "xyzl")
+			_, err := validator.Validate(Full, 0)
+			Expect(err).ShouldNot(HaveOccurred())
+			// change the content of safe_guard file to indicate wrong volume mount
+			path := outputDir + "/" + "safe_guard"
+			data := []byte("abcd")
+			err = os.WriteFile(path, data, 0644)
+			Expect(err).ShouldNot(HaveOccurred())
+
+			dataDirStatus, err := validator.Validate(Sanity, 0)
+			Expect(err).Should(HaveOccurred())
+			Expect(int(dataDirStatus)).Should(Equal(WrongVolumeMounted))
+
+			// delete the safe_guard file
+			err = os.Remove(path)
+			Expect(err).ShouldNot(HaveOccurred())
+		})
+	})
+
 	Context("with missing data directory", func() {
 		It("should return DataDirStatus as DataDirectoryNotExist, and non-nil error", func() {
 			tempDir := fmt.Sprintf("%s.%s", restoreDataDir, "temp")

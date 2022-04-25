@@ -28,6 +28,8 @@ type DataDirStatus int
 const (
 	// DataDirectoryValid indicates data directory is valid.
 	DataDirectoryValid = iota
+	// WrongVolumeMounted indicates wrong volume is attached to the ETCD container
+	WrongVolumeMounted
 	// DataDirectoryNotExist indicates data directory is non-existent.
 	DataDirectoryNotExist
 	// DataDirectoryInvStruct indicates data directory has invalid structure.
@@ -46,6 +48,8 @@ const (
 	snapSuffix                    = ".snap"
 	connectionTimeout             = time.Duration(10 * time.Second)
 	embeddedEtcdPingLimitDuration = 60 * time.Second
+	podNamespace                  = "POD_NAMESPACE"
+	safeGuard                     = "safe_guard"
 )
 
 // Mode is the Validation mode passed on to the DataValidator
