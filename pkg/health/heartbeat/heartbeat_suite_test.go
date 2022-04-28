@@ -13,7 +13,7 @@ import (
 )
 
 var (
-	logger  = logrus.New().WithField("suite", "snapshotter")
+	logger  = logrus.New().WithField("suite", "heartbeat")
 	etcd    *embed.Etcd
 	err     error
 	testCtx = context.Background()
