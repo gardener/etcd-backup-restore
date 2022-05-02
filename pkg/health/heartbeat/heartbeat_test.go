@@ -8,6 +8,7 @@ import (
 	heartbeat "github.com/gardener/etcd-backup-restore/pkg/health/heartbeat"
 	"github.com/gardener/etcd-backup-restore/pkg/miscellaneous"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
+	"github.com/gardener/etcd-backup-restore/pkg/wrappers"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	. "github.com/onsi/gomega/gstruct"
@@ -322,4 +323,26 @@ var _ = Describe("Heartbeat", func() {
 			})
 		})
 	})
+
+	Describe("Renewing member lease periodically", func() {
+		var (
+			mmStopCh          chan struct{}
+			hConfig           = &brtypes.HealthConfig{}
+			leaseUpdatePeriod = 2 * time.Second
+		)
+		BeforeEach(func() {
+			mmStopCh = make(chan struct{})
+			hConfig = &brtypes.HealthConfig{
+				MemberLeaseRenewalEnabled: true,
+				HeartbeatDuration:         wrappers.Duration{Duration: leaseUpdatePeriod},
+			}
+		})
+		Context("With fail to create clientset", func() {
+			It("Should return an error", func() {
+				err := heartbeat.RenewMemberLeasePeriodically(testCtx, mmStopCh, hConfig, logger, etcdConnectionConfig)
+				Expect(err).Should(HaveOccurred())
+			})
+		})
+	})
+
 })

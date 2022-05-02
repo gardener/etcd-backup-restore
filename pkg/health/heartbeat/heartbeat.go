@@ -306,18 +306,18 @@ func DeltaSnapshotCaseLeaseUpdate(ctx context.Context, logger *logrus.Entry, k8s
 }
 
 // RenewMemberLeasePeriodically has a timer and will periodically call RenewMemberLeases to renew the member lease until stopped
-func RenewMemberLeasePeriodically(ctx context.Context, stopCh chan struct{}, hconfig *brtypes.HealthConfig, logger *logrus.Entry, etcdConfig *brtypes.EtcdConnectionConfig) {
+func RenewMemberLeasePeriodically(ctx context.Context, stopCh chan struct{}, hconfig *brtypes.HealthConfig, logger *logrus.Entry, etcdConfig *brtypes.EtcdConnectionConfig) error {
 
 	clientSet, err := miscellaneous.GetKubernetesClientSetOrError()
 	if err != nil {
-		logger.Errorf("failed to create clientset: %v", err)
-		return
+		return fmt.Errorf("failed to create clientset: %v", err)
 	}
+
 	hb, err := NewHeartbeat(logger, etcdConfig, clientSet)
 	if err != nil {
-		logger.Errorf("failed to initialize new heartbeat: %v", err)
-		return
+		return fmt.Errorf("failed to initialize new heartbeat: %v", err)
 	}
+
 	hb.heartbeatTimer = time.NewTimer(hconfig.HeartbeatDuration.Duration)
 	defer hb.heartbeatTimer.Stop()
 	hb.logger.Info("Started member lease renewal timer")
@@ -332,10 +332,10 @@ func RenewMemberLeasePeriodically(ctx context.Context, stopCh chan struct{}, hco
 			hb.heartbeatTimer.Reset(hconfig.HeartbeatDuration.Duration)
 		case <-ctx.Done():
 			hb.logger.Info("Stopped member lease renewal timer")
-			return
+			return nil
 		case <-stopCh:
 			hb.logger.Info("Stoping the member lease renewal")
-			return
+			return nil
 		}
 	}
 }

@@ -171,16 +171,14 @@ func (b *BackupRestoreServer) runServer(ctx context.Context, restoreOpts *brtype
 				b.logger.Infof("Creating snapstore from provider: %s", b.config.SnapstoreConfig.Provider)
 				ss, err = snapstore.GetSnapstore(b.config.SnapstoreConfig)
 				if err != nil {
-					b.logger.Errorf("failed to create snapstore from configured storage provider: %v", err)
-					return
+					b.logger.Fatalf("failed to create snapstore from configured storage provider: %v", err)
 				}
 
 				// Get the new snapshotter object
 				b.logger.Infof("Creating snapshotter...")
 				ssr, err = snapshotter.NewSnapshotter(b.logger, b.config.SnapshotterConfig, ss, b.config.EtcdConnectionConfig, b.config.CompressionConfig, b.config.HealthConfig, b.config.SnapstoreConfig)
 				if err != nil {
-					b.logger.Errorf("failed to create new Snapshotter object: %v", err)
-					return
+					b.logger.Fatalf("failed to create new Snapshotter object: %v", err)
 				}
 
 				// set "http handler" with the latest snapshotter object
@@ -212,7 +210,11 @@ func (b *BackupRestoreServer) runServer(ctx context.Context, restoreOpts *brtype
 		StartLeaseRenewal: func() {
 			mmStopCh = make(chan struct{})
 			if b.config.HealthConfig.MemberLeaseRenewalEnabled {
-				go heartbeat.RenewMemberLeasePeriodically(ctx, mmStopCh, b.config.HealthConfig, b.logger, b.config.EtcdConnectionConfig)
+				go func() {
+					if err := heartbeat.RenewMemberLeasePeriodically(ctx, mmStopCh, b.config.HealthConfig, b.logger, b.config.EtcdConnectionConfig); err != nil {
+						b.logger.Fatalf("failed RenewMemberLeases: %v", err)
+					}
+				}()
 			}
 		},
 		StopLeaseRenewal: func() {
@@ -236,7 +238,11 @@ func (b *BackupRestoreServer) runServer(ctx context.Context, restoreOpts *brtype
 
 	//TODO @aaronfern: Add functionality for member garbage collection
 	if b.config.HealthConfig.MemberLeaseRenewalEnabled {
-		go heartbeat.RenewMemberLeasePeriodically(ctx, mmStopCh, b.config.HealthConfig, b.logger, b.config.EtcdConnectionConfig)
+		go func() {
+			if err := heartbeat.RenewMemberLeasePeriodically(ctx, mmStopCh, b.config.HealthConfig, b.logger, b.config.EtcdConnectionConfig); err != nil {
+				b.logger.Fatalf("failed RenewMemberLeases: %v", err)
+			}
+		}()
 	}
 
 	return le.Run(ctx)
