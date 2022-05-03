@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-VERSION             := $(shell cat VERSION)
+VERSION             ?= $(shell cat VERSION)
 REGISTRY            ?= eu.gcr.io/gardener-project/gardener
 IMAGE_REPOSITORY    := $(REGISTRY)/etcdbrctl
 IMAGE_TAG           := $(VERSION)
