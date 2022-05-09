@@ -100,14 +100,9 @@ func NewSwiftSnapStore(config *brtypes.SnapstoreConfig) (*SwiftSnapStore, error)
 }
 
 func getClientOpts(isSource bool) (*clientconfig.ClientOpts, error) {
-	if isSource {
-		return &clientconfig.ClientOpts{
-			EnvPrefix: envPrefixSource,
-		}, nil
-	}
-
-	if _, isSet := os.LookupEnv(swiftCredentialJSONFile); isSet {
-		if filename := os.Getenv(swiftCredentialJSONFile); filename != "" {
+	prefix := getEnvPrefixString(isSource)
+	if _, isSet := os.LookupEnv(prefix + swiftCredentialJSONFile); isSet {
+		if filename := os.Getenv(prefix + swiftCredentialJSONFile); filename != "" {
 			clientOpts, err := readSwiftCredentialsJSON(filename)
 			if err != nil {
 				return &clientconfig.ClientOpts{}, fmt.Errorf("error getting credentials using %v file", filename)
@@ -116,8 +111,8 @@ func getClientOpts(isSource bool) (*clientconfig.ClientOpts, error) {
 		}
 	}
 
-	if _, isSet := os.LookupEnv(swiftCredentialFile); isSet {
-		if dir := os.Getenv(swiftCredentialFile); dir != "" {
+	if _, isSet := os.LookupEnv(prefix + swiftCredentialFile); isSet {
+		if dir := os.Getenv(prefix + swiftCredentialFile); dir != "" {
 			clientOpts, err := readSwiftCredentialFiles(dir)
 			if err != nil {
 				return &clientconfig.ClientOpts{}, fmt.Errorf("error getting credentials from %v directory", dir)
@@ -126,6 +121,16 @@ func getClientOpts(isSource bool) (*clientconfig.ClientOpts, error) {
 		}
 	}
 
+	// If a neither a swiftCredentialFile nor a swiftCredentialJSONFile was found, fall back to
+	// retreiving credentials from environment variables.
+	// If the snapstore is used as source during a copy operation all environment variables have a SOURCE_OS_ prefix.
+	if isSource {
+		return &clientconfig.ClientOpts{EnvPrefix: envPrefixSource}, nil
+	}
+
+	// Otherwise, the environment variable prefix is defined in each function that attempts to get the environment variable.
+	// For example: https://github.com/gardener/etcd-backup-restore/blob/9e80a31b8f319b1d29f07781b609a97bfff65916/vendor/github.com/gophercloud/utils/openstack/clientconfig/requests.go#L335
+	// That is why it must be left empty.
 	return &clientconfig.ClientOpts{}, nil
 }
 
