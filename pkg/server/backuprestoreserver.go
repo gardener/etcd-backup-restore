@@ -252,8 +252,9 @@ func (b *BackupRestoreServer) runServer(ctx context.Context, restoreOpts *brtype
 // for the case when backup-restore becomes leading sidecar.
 func (b *BackupRestoreServer) runEtcdProbeLoopWithSnapshotter(ctx context.Context, handler *HTTPHandler, ssr *snapshotter.Snapshotter, ss brtypes.SnapStore, ssrStopCh chan struct{}, ackCh chan struct{}) {
 	var (
-		err                       error
-		initialDeltaSnapshotTaken bool
+		err                               error
+		initialDeltaSnapshotTaken         bool
+		killEtcdBeforeTakingFinalSnapshot bool
 	)
 
 	for {
@@ -292,7 +293,16 @@ func (b *BackupRestoreServer) runEtcdProbeLoopWithSnapshotter(ctx context.Contex
 					b.logger.Errorf("ownerChecker check fails: %v", err)
 				} else if !result {
 					handler.SetStatus(http.StatusServiceUnavailable)
-
+					// If owner check was previously successful, but is now failed, kill the etcd process before attempting
+					// to take a final snapshot to ensure that any open connections from kube-apiserver are terminated
+					if killEtcdBeforeTakingFinalSnapshot {
+						if _, err := b.etcdProcessKiller.Kill(ctx); err != nil {
+							b.logger.Errorf("Could not kill etcd process: %v", err)
+							// only attempt to take final snapshot if process was successfully killed.
+							continue
+						}
+						killEtcdBeforeTakingFinalSnapshot = false
+					}
 					// If the previous full snapshot doesn't exist or is not marked as final, take a final full snapshot
 					if ssr.PrevFullSnapshot == nil || !ssr.PrevFullSnapshot.IsFinal {
 						b.logger.Infof("Taking final full snapshot...")
@@ -321,6 +331,10 @@ func (b *BackupRestoreServer) runEtcdProbeLoopWithSnapshotter(ctx context.Contex
 
 					continue
 				}
+
+				// At this point owner check was successful, so set killEtcdBeforeTakingFinalSnapshot to true.
+				// The etcd process will be killed before taking a final snapshot if the owner check fails.
+				killEtcdBeforeTakingFinalSnapshot = true
 			}
 
 			// set server's healthz endpoint status to OK so that
@@ -442,17 +456,6 @@ func (b *BackupRestoreServer) runEtcdProbeLoopWithSnapshotter(ctx context.Contex
 			if b.ownerChecker != nil {
 				// Stop owner check watchdog
 				ownerCheckWatchdog.Stop()
-
-				// If the owner check fails or returns false, kill the etcd process
-				// to ensure that any open connections from kube-apiserver are terminated
-				result, err := b.ownerChecker.Check(ctx)
-				if err != nil {
-					b.logger.Errorf("ownerChecker check fails: %v", err)
-				} else if !result {
-					if _, err := b.etcdProcessKiller.Kill(ctx); err != nil {
-						b.logger.Errorf("Could not kill etcd process: %v", err)
-					}
-				}
 			}
 
 		} else {
