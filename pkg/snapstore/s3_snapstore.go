@@ -172,8 +172,10 @@ func readAWSCredentialFiles(dirname string) (session.Options, error) {
 
 	return session.Options{
 		Config: aws.Config{
-			Credentials: credentials.NewStaticCredentials(awsConfig.AccessKeyID, awsConfig.SecretAccessKey, ""),
-			Region:      pointer.StringPtr(awsConfig.Region),
+			Credentials:      credentials.NewStaticCredentials(awsConfig.AccessKeyID, awsConfig.SecretAccessKey, ""),
+			Region:           pointer.StringPtr(awsConfig.Region),
+			Endpoint:         awsConfig.Endpoint,
+			S3ForcePathStyle: awsConfig.S3ForcePathStyle,
 		},
 	}, nil
 }
