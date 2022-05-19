@@ -249,7 +249,7 @@ func (b *BackupRestoreServer) runServer(ctx context.Context, restoreOpts *brtype
 		}()
 	}
 	//start etcd member garbage collector
-	go membergarbagecollector.RunMemberGarbageCollectorPeriodically(ctx, memGCStopCh, b.config.HealthConfig, b.logger, b.config.EtcdConnectionConfig)
+	go membergarbagecollector.RunMemberGarbageCollectorPeriodically(ctx, b.config.HealthConfig, b.logger, b.config.EtcdConnectionConfig)
 
 	return le.Run(ctx)
 }
