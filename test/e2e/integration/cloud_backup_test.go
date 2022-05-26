@@ -37,13 +37,14 @@ import (
 func startEtcd() (*Cmd, *chan error) {
 	errChan := make(chan error)
 	logger := logrus.New()
-	etcdArgs := []string{"--name=etcd",
+	etcdArgs := []string{"--name=etcd1",
 		"--advertise-client-urls=http://0.0.0.0:2379",
 		"--listen-client-urls=http://0.0.0.0:2379",
+		"--initial-cluster=etcd1=http://0.0.0.0:2380",
+		"--initial-advertise-peer-urls=http://0.0.0.0:2380",
 		"--initial-cluster-state=new",
 		"--initial-cluster-token=new",
-		"--log-output=stdout",
-		"--data-dir=" + os.Getenv("ETCD_DATA_DIR")}
+		"--log-outputs=stdout"}
 	cmdEtcd := &Cmd{
 		Task:    "etcd",
 		Flags:   etcdArgs,
@@ -68,6 +69,7 @@ func startSnapshotter() (*Cmd, *chan error) {
 		"--garbage-collection-period=30s",
 		"--schedule=*/1 * * * *",
 		"--storage-provider=S3",
+		"--endpoints=http://0.0.0.0:2379",
 		"--store-container=" + os.Getenv("TEST_ID"),
 	}
 	logger.Info(etcdbrctlArgs)
@@ -127,6 +129,29 @@ var _ = Describe("CloudBackup", func() {
 			Container: os.Getenv("TEST_ID"),
 			Prefix:    path.Join("v2"),
 		}
+		// Create and place a ETCD config yaml
+		outfile := "/tmp/etcd.conf.yaml"
+		etcdConfigYaml := `# Human-readable name for this member.
+    name: etcd1
+    data-dir: ` + os.Getenv("ETCD_DATA_DIR") + `
+    metrics: extensive
+    snapshot-count: 75000
+    enable-v2: false
+    quota-backend-bytes: 1073741824
+    listen-client-urls: http://0.0.0.0:2379
+    advertise-client-urls: http://0.0.0.0:2379
+    initial-advertise-peer-urls: http://0.0.0.0:2380
+    initial-cluster: etcd1=http://0.0.0.0:2380
+    initial-cluster-token: new
+    initial-cluster-state: new
+    auto-compaction-mode: periodic
+    auto-compaction-retention: 30m`
+
+		err := os.WriteFile(outfile, []byte(etcdConfigYaml), 0755)
+		Expect(err).ShouldNot(HaveOccurred())
+		os.Setenv("ETCD_CONF", outfile)
+		// Required as the config file for embedded ETCD fetches ETCD instance name from the POD_NAME variable
+		os.Setenv("POD_NAME", "etcd1")
 	})
 
 	Describe("Regular backups", func() {
@@ -241,9 +266,9 @@ var _ = Describe("CloudBackup", func() {
 				dbFilePath := filepath.Join(dataDir, "member", "snap", "db")
 				logger.Infof("db file: %v", dbFilePath)
 				file, err := os.Create(dbFilePath)
+				Expect(err).ShouldNot(HaveOccurred())
 				defer file.Close()
 				fileWriter := bufio.NewWriter(file)
-				Expect(err).ShouldNot(HaveOccurred())
 				fileWriter.Write([]byte("corrupt file.."))
 				fileWriter.Flush()
 				zapLogger, _ := zap.NewProduction()
@@ -354,19 +379,19 @@ var _ = Describe("CloudBackup", func() {
 				Expect(status).Should(Equal("New"))
 				Expect(err).ShouldNot(HaveOccurred())
 				time.Sleep(10 * time.Second)
-				// Stop etcd.
-				cmdEtcd.StopProcess()
-				time.Sleep(10 * time.Second)
 
 				// Corrupt directory
 				testDataCorruptionRestoration := func() {
+					// Stop etcd.
+					cmdEtcd.StopProcess()
+					time.Sleep(10 * time.Second)
 					dataDir := os.Getenv("ETCD_DATA_DIR")
 					dbFilePath := filepath.Join(dataDir, "member", "snap", "db")
 					logger.Infof("db file: %v", dbFilePath)
 					file, err := os.Create(dbFilePath)
+					Expect(err).ShouldNot(HaveOccurred())
 					defer file.Close()
 					fileWriter := bufio.NewWriter(file)
-					Expect(err).ShouldNot(HaveOccurred())
 					fileWriter.Write([]byte("corrupt file.."))
 					fileWriter.Flush()
 					status, err = getEtcdBrServerStatus()
