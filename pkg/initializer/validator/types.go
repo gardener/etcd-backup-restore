@@ -42,12 +42,15 @@ const (
 	RevisionConsistencyError
 	// FailBelowRevisionConsistencyError indicates the current etcd revision is inconsistent with failBelowRevision.
 	FailBelowRevisionConsistencyError
+	// FailToOpenBoltDBError indicates that backup-restore is unable to open boltDB as it is failed to acquire lock over database.
+	FailToOpenBoltDBError
 )
 
 const (
 	snapSuffix                    = ".snap"
 	connectionTimeout             = time.Duration(10 * time.Second)
 	embeddedEtcdPingLimitDuration = 60 * time.Second
+	timeoutToOpenBoltDB           = 120 * time.Second
 	podNamespace                  = "POD_NAMESPACE"
 	safeGuard                     = "safe_guard"
 )
