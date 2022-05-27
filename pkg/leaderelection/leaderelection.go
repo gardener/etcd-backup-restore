@@ -181,7 +181,7 @@ func IsLeader(ctx context.Context, etcdConnectionConfig *brtypes.EtcdConnectionC
 		return true, nil
 	} else if response.Leader == NoLeaderState {
 		return false, &errors.EtcdError{
-			Message: fmt.Sprintf("currently there is no etcd leader present may be due to etcd quorum loss or election is being held"),
+			Message: "currently there is no etcd leader present may be due to etcd quorum loss or election is being held",
 		}
 	}
 	return false, nil

@@ -47,19 +47,19 @@ func (f *factoryImpl) NewClient() (*clientv3.Client, error) {
 }
 
 func (f *factoryImpl) NewCluster() (client.ClusterCloser, error) {
-	return f.NewClient()
+	return GetTLSClientForEtcd((*brtypes.EtcdConnectionConfig)(f))
 }
 
 func (f *factoryImpl) NewKV() (client.KVCloser, error) {
-	return f.NewClient()
+	return GetTLSClientForEtcd((*brtypes.EtcdConnectionConfig)(f))
 }
 
 func (f *factoryImpl) NewMaintenance() (client.MaintenanceCloser, error) {
-	return f.NewClient()
+	return GetTLSClientForEtcd((*brtypes.EtcdConnectionConfig)(f))
 }
 
 func (f *factoryImpl) NewWatcher() (clientv3.Watcher, error) {
-	return f.NewClient()
+	return GetTLSClientForEtcd((*brtypes.EtcdConnectionConfig)(f))
 }
 
 // NewClientFactory returns the Factory using the supplied EtcdConnectionConfig.

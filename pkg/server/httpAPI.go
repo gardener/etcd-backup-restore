@@ -416,21 +416,33 @@ func (h *HTTPHandler) serveConfig(rw http.ResponseWriter, req *http.Request) {
 	protocol, svcName, namespace, peerPort, err := parsePeerURL(fmt.Sprint(initAdPeerURL))
 	if err != nil {
 		h.Logger.Warnf("Unable to determine service name, namespace, peer port from advertise peer urls : %v", err)
-		rw.WriteHeader(http.StatusInternalServerError)
-		return
+		h.Logger.Warn("If this is not testing environment, you may face serious problem running ETCD cluster as service name and namespace could not be determined")
 	}
-	domaiName := fmt.Sprintf("%s.%s.%s", svcName, namespace, "svc")
-	config["initial-advertise-peer-urls"] = fmt.Sprintf("%s://%s.%s:%s", protocol, podName, domaiName, peerPort)
+
+	var domainName string = ""
+	if svcName != "" {
+		domainName = fmt.Sprintf("%s.%s.%s", svcName, namespace, "svc")
+	}
+
+	if domainName != "" {
+		config["initial-advertise-peer-urls"] = fmt.Sprintf("%s://%s.%s:%s", protocol, podName, domainName, peerPort)
+	}
 
 	advClientURL := config["advertise-client-urls"]
 	protocol, svcName, namespace, clientPort, err := parseAdvClientURL(fmt.Sprint(advClientURL))
 	if err != nil {
 		h.Logger.Warnf("Unable to determine service name, namespace, peer port from advertise client url : %v", err)
-		rw.WriteHeader(http.StatusInternalServerError)
-		return
+		h.Logger.Warn("If this is not testing environment, you may face serious problem running ETCD cluster as service name and namespace could not be determined")
 	}
-	domaiName = fmt.Sprintf("%s.%s.%s", svcName, namespace, "svc")
-	config["advertise-client-urls"] = fmt.Sprintf("%s://%s.%s:%s", protocol, podName, domaiName, clientPort)
+
+	domainName = ""
+	if svcName != "" {
+		domainName = fmt.Sprintf("%s.%s.%s", svcName, namespace, "svc")
+	}
+
+	if domainName != "" {
+		config["advertise-client-urls"] = fmt.Sprintf("%s://%s.%s:%s", protocol, podName, domainName, clientPort)
+	}
 
 	data, err := yaml.Marshal(&config)
 	if err != nil {

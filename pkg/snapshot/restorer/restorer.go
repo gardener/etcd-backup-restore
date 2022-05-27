@@ -26,13 +26,16 @@ import (
 	"path"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"sync"
 	"time"
 
 	"github.com/gardener/etcd-backup-restore/pkg/compressor"
+	"github.com/gardener/etcd-backup-restore/pkg/errors"
 	"github.com/gardener/etcd-backup-restore/pkg/etcdutil"
 	"github.com/gardener/etcd-backup-restore/pkg/etcdutil/client"
 	"github.com/gardener/etcd-backup-restore/pkg/miscellaneous"
+	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 	"github.com/sirupsen/logrus"
 	"go.etcd.io/etcd/clientv3"
@@ -53,11 +56,20 @@ import (
 	"go.etcd.io/etcd/wal"
 	"go.etcd.io/etcd/wal/walpb"
 	"go.uber.org/zap"
+
+	v1 "k8s.io/api/coordination/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/util/retry"
+	"k8s.io/utils/pointer"
+	k8sClient "sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 const (
-	tmpDir                  = "/tmp"
-	tmpEventsDataFilePrefix = "etcd-restore-"
+	defaultEtcdCtlTimeout             = 2 * time.Minute
+	defaultEtcdEndpointWithTLS string = "https://etcd-main-local:2479"
+	podNamespace                      = "POD_NAMESPACE"
+	tmpDir                            = "/tmp"
+	tmpEventsDataFilePrefix           = "etcd-restore-"
 )
 
 // Restorer is a struct for etcd data directory restorer
@@ -98,28 +110,160 @@ func (r *Restorer) Restore(ro brtypes.RestoreOptions) (*embed.Etcd, error) {
 		r.logger.Infof("No delta snapshots present over base snapshot.")
 		return nil, nil
 	}
-	r.logger.Infof("Starting embedded etcd server...")
+	r.logger.Info("Starting embedded etcd server for restoration...")
 	e, err := miscellaneous.StartEmbeddedEtcd(r.logger, &ro)
 	if err != nil {
 		return e, err
 	}
 
-	clientFactory := etcdutil.NewClientFactory(ro.NewClientFactory, brtypes.EtcdConnectionConfig{
+	emEtcdStartTime := time.Now()
+	r.logger.Infof("Embedded ETCD server start time: %v", emEtcdStartTime)
+
+	cfg := &brtypes.EtcdConnectionConfig{
 		MaxCallSendMsgSize: ro.Config.MaxCallSendMsgSize,
 		Endpoints:          []string{e.Clients[0].Addr().String()},
 		InsecureTransport:  true,
-	})
+	}
+	if ro.Config.ClientTLSInfo != nil {
+		cfg.Endpoints = []string{defaultEtcdEndpointWithTLS}
+		cfg.CaFile = "/var/etcd/ssl/client/client/ca.crt"
+		cfg.CertFile = "/var/etcd/ssl/client/client/tls.crt"
+		cfg.KeyFile = "/var/etcd/ssl/client/client/tls.key"
+		cfg.InsecureTransport = false
+	}
+
+	clientFactory := etcdutil.NewClientFactory(ro.NewClientFactory, *cfg)
 	clientKV, err := clientFactory.NewKV()
 	if err != nil {
 		return e, err
 	}
 	defer clientKV.Close()
 
-	r.logger.Infof("Applying delta snapshots...")
-	if err := r.applyDeltaSnapshots(clientKV, ro); err != nil {
-		return e, err
+	desiredClusterSize := len(ro.ClusterURLs)
+	if desiredClusterSize == 1 {
+		r.logger.Info("Cluster size is one. No nead to check for leader")
+		r.logger.Info("Applying delta snapshots...")
+		if err := r.applyDeltaSnapshots(clientKV, ro); err != nil {
+			r.logger.Errorf("Error while applying delta snapshot: %v", err)
+		}
+
+		return e, nil
 	}
 
+	for {
+		actualEmbedClusterSize := len(e.Server.Cluster().Members())
+		if actualEmbedClusterSize == desiredClusterSize {
+			break
+		}
+
+		r.logger.Infof("Wait until the embedded cluster size reach desired cluster size. Actual cluster size %d, desired cluster size %d", actualEmbedClusterSize, desiredClusterSize)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), defaultEtcdCtlTimeout)
+	defer cancel()
+
+	r.logger.Infof("The time now is: %v", time.Now())
+	if r.isLeader(e.Server) {
+		// Apply the delta snapshots only if the current ETCD node is leader
+		r.logger.Info("Current Embedded ETCD node for restoration is leader")
+		r.logger.Info("Applying delta snapshots...")
+		if err := r.applyDeltaSnapshots(clientKV, ro); err != nil {
+			r.logger.Errorf("Error while applying delta snapshot: %v", err)
+		}
+
+		// If the restoration cluster has more than one members then the leader should update a kubernetes lease object named restoration-indicator-lease with
+		// holder identity field as RESTORED
+		namespace, err := snapstore.GetEnvVarOrError(podNamespace)
+		if err != nil {
+			return e, fmt.Errorf("aborting... Because env var POD_NAMESPACE is not present. The restore cluster might be in inconsistent state : %v", err)
+		}
+
+		r.logger.Infof("Cluster has more than one members. A kubernetes lease %s will be observed in namespace %s to track the state of restoration", ro.ClusterRestoreLeaseName, podNamespace)
+
+		clientSet, err := miscellaneous.GetKubernetesClientSetOrError()
+		if err != nil {
+			return e, fmt.Errorf("failed to create clientset: %v", err)
+		}
+
+		if err := retry.OnError(retry.DefaultBackoff, func(err error) bool { return true }, func() error {
+			clusterSize := len(e.Server.Cluster().Members())
+			if clusterSize != ro.ClusterURLs.Len() {
+				return &errors.EtcdError{
+					Message: fmt.Sprintf("Embedded ETCD server for all the members are not up yet. Expected %d but actual %d.", 3, clusterSize),
+				}
+			}
+			clusterRestoreLease := &v1.Lease{}
+			if err := clientSet.Get(ctx, k8sClient.ObjectKey{
+				Namespace: namespace,
+				Name:      ro.ClusterRestoreLeaseName,
+			}, clusterRestoreLease); err != nil {
+				return &errors.EtcdError{
+					Message: fmt.Sprintf("indicator for cluster restoration could not be fetched : %v", err),
+				}
+			}
+
+			updateLease := clusterRestoreLease.DeepCopy()
+			updateTime := time.Now()
+			updateLease.Spec.RenewTime = &metav1.MicroTime{Time: updateTime}
+			updateLease.Spec.HolderIdentity = pointer.StringPtr(strconv.Itoa(brtypes.RESTORED))
+			r.logger.Infof("updating indicator for cluster restoration lease %s with holder identity RESTORED", ro.ClusterRestoreLeaseName)
+
+			if err := clientSet.Patch(ctx, updateLease, k8sClient.MergeFromWithOptions(clusterRestoreLease, &k8sClient.MergeFromWithOptimisticLock{})); err != nil {
+				return err
+			}
+
+			return nil
+		}); err != nil {
+			return e, fmt.Errorf("failed to update indicator for cluster restoration lease: %v", err)
+		}
+	} else {
+		r.logger.Info("Current Embedded ETCD node for restoration is follower")
+		// Means the cluster size is definitely more than one. So. other ETCD nodes needs to check the restoration indicator lease repeatedly
+		// to be sure of the cluster restored properly before shutting down the embedded ETCD server
+		namespace, err := snapstore.GetEnvVarOrError(podNamespace)
+		if err != nil {
+			return e, fmt.Errorf("aborting... Because env var POD_NAMESPACE is not present. The restore cluster might be in inconsistent state : %v", err)
+		}
+
+		clientSet, err := miscellaneous.GetKubernetesClientSetOrError()
+		if err != nil {
+			return e, fmt.Errorf("failed to create clientset: %v", err)
+		}
+
+		if err := retry.OnError(retry.DefaultBackoff, func(err error) bool { return true }, func() error {
+			clusterRestoreLease := &v1.Lease{}
+			if err := clientSet.Get(ctx, k8sClient.ObjectKey{
+				Namespace: namespace,
+				Name:      ro.ClusterRestoreLeaseName,
+			}, clusterRestoreLease); err != nil {
+				return &errors.EtcdError{
+					Message: fmt.Sprintf("indicator for cluster restoration could not be fetched : %v", err),
+				}
+			}
+
+			if clusterRestoreLease.Spec.HolderIdentity == nil {
+				return &errors.EtcdError{
+					Message: "holder identity in indicator for cluster restoration is yet not updated. Checking again..",
+				}
+			}
+			holderIdentity := *(clusterRestoreLease.Spec.HolderIdentity)
+			//restorationTime := clusterRestoreLease.Spec.RenewTime
+			//etcdStartTime := metav1.NewMicroTime(emEtcdStartTime)
+			//if etcdStartTime.Before(restorationTime) {
+			if holderIdentity == strconv.Itoa(brtypes.RESTORED) {
+				r.logger.Info("Restoration is done. Shutting down the embedded ETCD")
+				return nil
+			}
+			//}
+			return &errors.EtcdError{
+				Message: "restoration is not yet done. Checking again..",
+			}
+		}); err != nil {
+			return e, fmt.Errorf("failed to update indicator for cluster restoration lease: %v", err)
+		}
+	}
+
+	time.Sleep(10 * time.Second)
 	return e, nil
 }
 
@@ -193,7 +337,7 @@ func (r *Restorer) makeDB(snapdir string, snap *brtypes.Snapshot, commit int, sk
 		return err
 	}
 	db.Sync()
-	totalTime := time.Now().Sub(startTime).Seconds()
+	totalTime := time.Since(startTime).Seconds()
 
 	if isCompressed {
 		r.logger.Infof("successfully fetched data of base snapshot in %v seconds [CompressionPolicy:%v]", totalTime, compressionPolicy)
@@ -623,7 +767,7 @@ func (r *Restorer) getEventsDataFromDeltaSnapshot(snap brtypes.Snapshot) ([]byte
 	if err != nil {
 		return nil, err
 	}
-	totalTime := time.Now().Sub(startTime).Seconds()
+	totalTime := time.Since(startTime).Seconds()
 
 	if isCompressed {
 		r.logger.Infof("successfully fetched data of delta snapshot in %v seconds [CompressionPolicy:%v]", totalTime, compressionPolicy)
@@ -694,7 +838,7 @@ func applyEventsToEtcd(clientKV client.KVCloser, events []brtypes.Event) error {
 		case mvccpb.DELETE:
 			ops = append(ops, clientv3.OpDelete(string(ev.Kv.Key)))
 		default:
-			return fmt.Errorf("Unexpected event type")
+			return fmt.Errorf("unexpected event type")
 		}
 	}
 	_, err := clientKV.Txn(ctx).Then(ops...).Commit()
@@ -712,4 +856,8 @@ func verifySnapshotRevision(clientKV client.KVCloser, snap *brtypes.Snapshot) er
 		return fmt.Errorf("mismatched event revision while applying delta snapshot, expected %d but applied %d ", snap.LastRevision, etcdRevision)
 	}
 	return nil
+}
+
+func (r *Restorer) isLeader(e *etcdserver.EtcdServer) bool {
+	return uint64(e.ID()) == e.Lead()
 }

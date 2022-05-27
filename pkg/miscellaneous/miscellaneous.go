@@ -30,6 +30,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/sirupsen/logrus"
 	"go.etcd.io/etcd/embed"
+	"go.etcd.io/etcd/pkg/types"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
@@ -39,6 +40,14 @@ import (
 const (
 	// NoLeaderState defines the state when etcd returns LeaderID as 0.
 	NoLeaderState uint64 = 0
+	// DefaultListenPeerURLs defines default listen-peer-urls for embedded ETCD server (port number should be different than main ETCD)
+	DefaultListenPeerURLs string = "http://0.0.0.0:2380"
+	// DefaultListenClientURLs defines default listen-client-urls for embedded ETCD server (port number should be different than main ETCD)
+	DefaultListenClientURLs string = "http://0.0.0.0:2479"
+	//DefaultInitialAdvertisePeerURLs defines default initial-advertise-peer-urls for embedded ETCD server (port number should be different than main ETCD)
+	DefaultInitialAdvertisePeerURLs string = "http://0.0.0.0:2380"
+	// DefaultAdvertiseClientURLs defines default advertise-client-urls for embedded ETCD server (port number should be different than main ETCD)
+	DefaultAdvertiseClientURLs string = "http://0.0.0.0:2479"
 )
 
 // GetLatestFullSnapshotAndDeltaSnapList returns the latest snapshot
@@ -133,19 +142,41 @@ func getStructuredBackupList(snapList brtypes.SnapList) []backup {
 func StartEmbeddedEtcd(logger *logrus.Entry, ro *brtypes.RestoreOptions) (*embed.Etcd, error) {
 	cfg := embed.NewConfig()
 	cfg.Dir = filepath.Join(ro.Config.RestoreDataDir)
-	DefaultListenPeerURLs := "http://localhost:0"
-	DefaultListenClientURLs := "http://localhost:0"
-	DefaultInitialAdvertisePeerURLs := "http://localhost:0"
-	DefaultAdvertiseClientURLs := "http://localhost:0"
 	lpurl, _ := url.Parse(DefaultListenPeerURLs)
-	apurl, _ := url.Parse(DefaultInitialAdvertisePeerURLs)
+	if ro.Config.ListenPeerUrls != nil {
+		lpurl, _ = url.Parse(*ro.Config.ListenPeerUrls)
+	}
+
+	apurls, _ := types.NewURLs([]string{DefaultInitialAdvertisePeerURLs})
+	if len(ro.Config.InitialAdvertisePeerURLs) > 0 {
+		apurls, _ = types.NewURLs(ro.Config.InitialAdvertisePeerURLs)
+	}
+	// Configure listen client urls properly as it is used as endpoint for clients
 	lcurl, _ := url.Parse(DefaultListenClientURLs)
-	acurl, _ := url.Parse(DefaultAdvertiseClientURLs)
+	if ro.Config.ListenClientUrls != nil {
+		lcurl, _ = url.Parse(*ro.Config.ListenClientUrls)
+	}
+
+	acurls, _ := types.NewURLs([]string{DefaultAdvertiseClientURLs})
+	if len(ro.Config.AdvertiseClientURLs) > 0 {
+		acurls, _ = types.NewURLs(ro.Config.AdvertiseClientURLs)
+	}
 	cfg.LPUrls = []url.URL{*lpurl}
 	cfg.LCUrls = []url.URL{*lcurl}
-	cfg.APUrls = []url.URL{*apurl}
-	cfg.ACUrls = []url.URL{*acurl}
-	cfg.InitialCluster = cfg.InitialClusterFromName(cfg.Name)
+	cfg.APUrls = apurls
+	cfg.ACUrls = acurls
+	cfg.InitialCluster = ro.Config.InitialCluster
+
+	if ro.Config.PeerTLSInfo != nil {
+		cfg.PeerTLSInfo = *ro.Config.PeerTLSInfo
+		cfg.PeerAutoTLS = ro.Config.PeerAutoTLS
+	}
+
+	if ro.Config.ClientTLSInfo != nil {
+		cfg.ClientTLSInfo = *ro.Config.ClientTLSInfo
+		cfg.ClientAutoTLS = ro.Config.ClientAutoTLS
+	}
+
 	cfg.QuotaBackendBytes = ro.Config.EmbeddedEtcdQuotaBytes
 	cfg.MaxRequestBytes = ro.Config.MaxRequestBytes
 	cfg.MaxTxnOps = ro.Config.MaxTxnOps
@@ -240,7 +271,7 @@ func GetLeader(ctx context.Context, clientMaintenance etcdClient.MaintenanceClos
 
 	if response.Leader == NoLeaderState {
 		return NoLeaderState, nil, &errors.EtcdError{
-			Message: fmt.Sprintf("currently there is no Etcd Leader present may be due to etcd quorum loss."),
+			Message: "currently there is no Etcd Leader present may be due to etcd quorum loss.",
 		}
 	}
 

@@ -23,12 +23,14 @@ import (
 	"github.com/gardener/etcd-backup-restore/pkg/etcdutil/client"
 	flag "github.com/spf13/pflag"
 	"go.etcd.io/etcd/clientv3"
+	"go.etcd.io/etcd/pkg/transport"
 	"go.etcd.io/etcd/pkg/types"
 )
 
 const (
 	defaultName                     = "default"
-	defaultInitialAdvertisePeerURLs = "http://localhost:2380"
+	defaultInitialAdvertisePeerURLs = "http://localhost:2480"
+	defaultAdvertiseClientURLs      = "http://localhost:2479"
 	defaultInitialClusterToken      = "etcd-cluster"
 	defaultMaxFetchers              = 6
 	defaultMaxCallSendMsgSize       = 10 * 1024 * 1024 //10Mib
@@ -37,6 +39,15 @@ const (
 	defaultEmbeddedEtcdQuotaBytes   = 8 * 1024 * 1024 * 1024 //8Gib
 	defaultAutoCompactionMode       = "periodic"             // only 2 mode is supported: 'periodic' or 'revision'
 	defaultAutoCompactionRetention  = "30m"
+	// DefaultRestorationIndicatorLease contains the name of the restoration indicator lease
+	DefaultRestorationIndicatorLease string = "etcd-main-restoration-indicator"
+)
+
+// Restoration code that is needed to update in holder identity of Restoration Indicator Lease to mark whether a cluster is ongoing restoration
+// or completed restoration
+const (
+	RESTORED int = iota
+	UNRESTORED
 )
 
 // NewClientFactoryFunc allows to define how to create a client.Factory
@@ -49,27 +60,35 @@ type RestoreOptions struct {
 	ClusterURLs types.URLsMap
 	PeerURLs    types.URLs
 	// Base full snapshot + delta snapshots to restore from
-	BaseSnapshot     *Snapshot
-	DeltaSnapList    SnapList
-	NewClientFactory NewClientFactoryFunc
+	BaseSnapshot            *Snapshot
+	DeltaSnapList           SnapList
+	NewClientFactory        NewClientFactoryFunc
+	ClusterRestoreLeaseName string
 }
 
 // RestorationConfig holds the restoration configuration.
 // Note: Please ensure DeepCopy and DeepCopyInto are properly implemented.
 type RestorationConfig struct {
-	InitialCluster           string   `json:"initialCluster"`
-	InitialClusterToken      string   `json:"initialClusterToken,omitempty"`
-	RestoreDataDir           string   `json:"restoreDataDir,omitempty"`
-	InitialAdvertisePeerURLs []string `json:"initialAdvertisePeerURLs"`
-	Name                     string   `json:"name"`
-	SkipHashCheck            bool     `json:"skipHashCheck,omitempty"`
-	MaxFetchers              uint     `json:"maxFetchers,omitempty"`
-	MaxRequestBytes          uint     `json:"MaxRequestBytes,omitempty"`
-	MaxTxnOps                uint     `json:"MaxTxnOps,omitempty"`
-	MaxCallSendMsgSize       int      `json:"maxCallSendMsgSize,omitempty"`
-	EmbeddedEtcdQuotaBytes   int64    `json:"embeddedEtcdQuotaBytes,omitempty"`
-	AutoCompactionMode       string   `json:"autoCompactionMode,omitempty"`
-	AutoCompactionRetention  string   `json:"autoCompactionRetention,omitempty"`
+	InitialCluster           string             `json:"initialCluster"`
+	InitialClusterToken      string             `json:"initialClusterToken,omitempty"`
+	RestoreDataDir           string             `json:"restoreDataDir,omitempty"`
+	InitialAdvertisePeerURLs []string           `json:"initialAdvertisePeerURLs"`
+	AdvertiseClientURLs      []string           `json:"advertiseClientURLs"`
+	Name                     string             `json:"name"`
+	SkipHashCheck            bool               `json:"skipHashCheck,omitempty"`
+	MaxFetchers              uint               `json:"maxFetchers,omitempty"`
+	MaxRequestBytes          uint               `json:"MaxRequestBytes,omitempty"`
+	MaxTxnOps                uint               `json:"MaxTxnOps,omitempty"`
+	MaxCallSendMsgSize       int                `json:"maxCallSendMsgSize,omitempty"`
+	EmbeddedEtcdQuotaBytes   int64              `json:"embeddedEtcdQuotaBytes,omitempty"`
+	AutoCompactionMode       string             `json:"autoCompactionMode,omitempty"`
+	AutoCompactionRetention  string             `json:"autoCompactionRetention,omitempty"`
+	ClientTLSInfo            *transport.TLSInfo `json:"clientTLSInfo,omitempty"`
+	ClientAutoTLS            bool               `json:"clientAutoTLS,omitempty"`
+	ListenClientUrls         *string            `json:"listenClientUrls,omitempty"`
+	PeerTLSInfo              *transport.TLSInfo `json:"peerTLSInfo,omitempty"`
+	PeerAutoTLS              bool               `json:"peerAutoTLS,omitempty"`
+	ListenPeerUrls           *string            `json:"listenPeerUrls,omitempty"`
 }
 
 // NewRestorationConfig returns the restoration config.
@@ -79,6 +98,7 @@ func NewRestorationConfig() *RestorationConfig {
 		InitialClusterToken:      defaultInitialClusterToken,
 		RestoreDataDir:           fmt.Sprintf("%s.etcd", defaultName),
 		InitialAdvertisePeerURLs: []string{defaultInitialAdvertisePeerURLs},
+		AdvertiseClientURLs:      []string{defaultAdvertiseClientURLs},
 		Name:                     defaultName,
 		SkipHashCheck:            false,
 		MaxFetchers:              defaultMaxFetchers,
@@ -123,7 +143,7 @@ func (c *RestorationConfig) Validate() error {
 		return fmt.Errorf("max fetchers should be greater than zero")
 	}
 	if c.EmbeddedEtcdQuotaBytes <= 0 {
-		return fmt.Errorf("Etcd Quota size for etcd must be greater than 0")
+		return fmt.Errorf("etcd quota size for etcd must be greater than 0")
 	}
 	if c.AutoCompactionMode != "periodic" && c.AutoCompactionMode != "revision" {
 		return fmt.Errorf("UnSupported auto-compaction-mode")
@@ -252,8 +272,7 @@ func DeepCopySnapList(in SnapList) SnapList {
 
 // DeepCopyNewClientFactory returns a deep copy
 func DeepCopyNewClientFactory(in NewClientFactoryFunc) NewClientFactoryFunc {
-	var out NewClientFactoryFunc
-	out = in
+	var out NewClientFactoryFunc = in
 	return out
 }
 
