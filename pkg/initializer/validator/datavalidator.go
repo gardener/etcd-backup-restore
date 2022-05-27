@@ -46,11 +46,6 @@ const (
 )
 
 var (
-	// A map of valid files that can be present in the snap folder.
-	validFiles = map[string]bool{
-		"db": true,
-	}
-
 	// ErrPathRequired is returned when the path to a Bolt database is not specified.
 	ErrPathRequired = errors.New("path required")
 
@@ -79,6 +74,10 @@ func (d *DataValidator) Validate(mode Mode, failBelowRevision int64) (DataDirSta
 	if mode == Full {
 		d.Logger.Info("Checking for data directory files corruption...")
 		if err := d.checkForDataCorruption(); err != nil {
+			if errors.Is(err, bolt.ErrTimeout) {
+				d.Logger.Errorf("another etcd process is using %v and holds the file lock", d.backendPath())
+				return FailToOpenBoltDBError, err
+			}
 			d.Logger.Infof("Data directory corrupt. %v", err)
 			return DataDirectoryCorrupt, nil
 		}
@@ -143,7 +142,10 @@ func (d *DataValidator) sanityCheck(failBelowRevision int64) (DataDirStatus, err
 	}
 
 	etcdRevision, err := getLatestEtcdRevision(d.backendPath())
-	if err != nil {
+	if err != nil && errors.Is(err, bolt.ErrTimeout) {
+		d.Logger.Errorf("another etcd process is using %v and holds the file lock", d.backendPath())
+		return FailToOpenBoltDBError, err
+	} else if err != nil {
 		d.Logger.Infof("unable to get current etcd revision from backend db file: %v", err)
 		return DataDirectoryCorrupt, nil
 	}
@@ -168,19 +170,23 @@ func (d *DataValidator) checkForDataCorruption() error {
 	d.Logger.Info("Verifying snap directory...")
 	snapshot, err := d.verifySnapDir()
 	if err != nil && err != snap.ErrNoSnapshot {
-		return fmt.Errorf("Invalid snapshot files: %v", err)
+		return fmt.Errorf("invalid snapshot files: %v", err)
 	}
 	if snapshot != nil {
 		walsnap.Index, walsnap.Term = snapshot.Metadata.Index, snapshot.Metadata.Term
 	}
+
 	d.Logger.Info("Verifying WAL directory...")
 	if err := verifyWALDir(d.ZapLogger, d.walDir(), walsnap); err != nil {
-		return fmt.Errorf("Invalid wal files: %v", err)
+		return fmt.Errorf("invalid wal files: %v", err)
 	}
+
 	d.Logger.Info("Verifying DB file...")
-	err = verifyDB(d.backendPath())
-	if err != nil {
-		return fmt.Errorf("Invalid db files: %v", err)
+	if err := verifyDB(d.backendPath()); err != nil {
+		if errors.Is(err, bolt.ErrTimeout) {
+			return err
+		}
+		return fmt.Errorf("invalid db files: %v", err)
 	}
 	return nil
 }
@@ -250,7 +256,7 @@ func verifyDB(path string) error {
 	}
 
 	// Open database.
-	db, err := bolt.Open(path, 0666, nil)
+	db, err := bolt.Open(path, 0666, &bolt.Options{Timeout: timeoutToOpenBoltDB})
 	if err != nil {
 		return err
 	}
@@ -376,9 +382,9 @@ func getLatestEtcdRevision(path string) (int64, error) {
 		return -1, fmt.Errorf("unable to stat backend db file: %v", err)
 	}
 
-	db, err := bolt.Open(path, 0400, &bolt.Options{ReadOnly: true})
+	db, err := bolt.Open(path, 0400, &bolt.Options{Timeout: timeoutToOpenBoltDB, ReadOnly: true})
 	if err != nil {
-		return -1, fmt.Errorf("unable to open backend boltdb file: %v", err)
+		return -1, err
 	}
 	defer db.Close()
 

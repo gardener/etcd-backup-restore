@@ -48,6 +48,11 @@ func (e *EtcdInitializer) Initialize(mode validator.Mode, failBelowRevision int6
 		return fmt.Errorf("won't initialize ETCD because wrong ETCD volume is mounted: %v", err)
 	}
 
+	if dataDirStatus == validator.FailToOpenBoltDBError {
+		metrics.ValidationDurationSeconds.With(prometheus.Labels{metrics.LabelSucceeded: metrics.ValueSucceededFalse}).Observe(time.Since(start).Seconds())
+		return fmt.Errorf("failed to initialize since another process still holds the file lock")
+	}
+
 	if dataDirStatus == validator.DataDirectoryStatusUnknown {
 		metrics.ValidationDurationSeconds.With(prometheus.Labels{metrics.LabelSucceeded: metrics.ValueSucceededFalse}).Observe(time.Since(start).Seconds())
 		return fmt.Errorf("error while initializing: %v", err)
