@@ -29,6 +29,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/gardener/etcd-backup-restore/pkg/etcdutil"
 	"github.com/gardener/etcd-backup-restore/pkg/initializer"
@@ -39,6 +40,8 @@ import (
 	"github.com/ghodss/yaml"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/sirupsen/logrus"
+	appsv1 "k8s.io/api/apps/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 const (
@@ -393,7 +396,9 @@ func (h *HTTPHandler) serveLatestSnapshotMetadata(rw http.ResponseWriter, req *h
 
 func (h *HTTPHandler) serveConfig(rw http.ResponseWriter, req *http.Request) {
 	inputFileName := "/var/etcd/config/etcd.conf.yaml"
+	//inputFileName := "/Users/I544000/etcd.conf.yaml"
 	outputFileName := "/etc/etcd.conf.yaml"
+	//outputFileName := "/Users/I544000/etcd.conf.yaml"
 	configYML, err := ioutil.ReadFile(inputFileName)
 	if err != nil {
 		h.Logger.Warnf("Unable to read etcd config file: %v", err)
@@ -409,6 +414,7 @@ func (h *HTTPHandler) serveConfig(rw http.ResponseWriter, req *http.Request) {
 	}
 
 	// fetch pod name from env
+	ns := os.Getenv("POD_NAMESPACE")
 	podName := os.Getenv("POD_NAME")
 	config["name"] = podName
 
@@ -431,6 +437,69 @@ func (h *HTTPHandler) serveConfig(rw http.ResponseWriter, req *http.Request) {
 	}
 	domaiName = fmt.Sprintf("%s.%s.%s", svcName, namespace, "svc")
 	config["advertise-client-urls"] = fmt.Sprintf("%s://%s.%s:%s", protocol, podName, domaiName, clientPort)
+
+	//Read sts spec for updated replicas to toggle `initial-cluster-state`
+	clientSet, err := miscellaneous.GetKubernetesClientSetOrError()
+	if err != nil {
+		h.Logger.Errorf("failed to create clientset: %v", err)
+		return
+	}
+	curSts := &appsv1.StatefulSet{}
+	errSts := clientSet.Get(context.TODO(), client.ObjectKey{
+		Namespace: ns,
+		Name:      "etcd-main", //TODO: derive sts name from pod name
+	}, curSts)
+	if errSts != nil {
+		h.Logger.Warn("error fetching etcd sts ", errSts)
+	}
+
+	config["initial-cluster-state"] = "new"
+	//TODO: achieve this without an sts?
+	if *curSts.Spec.Replicas > 1 && *curSts.Spec.Replicas > curSts.Status.UpdatedReplicas {
+		config["initial-cluster-state"] = "existing"
+	}
+	fmt.Println("*curSts.Spec.Replicas is ", *curSts.Spec.Replicas)
+	fmt.Println("curSts.Status.UpdatedReplicas is ", curSts.Status.UpdatedReplicas)
+
+	//INITIAL_CLUSTER served via the etcd config must be tailored to the number of members in the cluster at that point. Else etcd complains with error "member count is unequal"
+	//One reason why we might want to have a strict ordering when members are joining the cluster
+	//addmember subcommand achieves this by making sure the pod with the previous index is running before attempting to add itself as a learner
+	etcdConn := *h.EtcdConnectionConfig
+	etcdConn.Endpoints = []string{fmt.Sprintf("%s://%s:%s", protocol, domaiName, peerPort)} //[]string{"http://etcd-main-peer.default.svc.cluster.local:2380"} //TODO: pass via env var
+	clientFactory := etcdutil.NewFactory(etcdConn)
+	cli, err := clientFactory.NewCluster()
+	if err != nil {
+		h.Logger.Warnf("Error with NewCluster() : %v", err)
+	}
+	ctx, cancel := context.WithTimeout(context.TODO(), 2*time.Second)
+	defer cancel()
+	memList, err := cli.MemberList(ctx)
+	noOfMembers := 0
+	if err != nil {
+		h.Logger.Warnf("Error with MemberList() : %v", err)
+	} else {
+		noOfMembers = len(memList.Members)
+	}
+
+	//If no members present or a single node cluster, consider as case of first member bootstraping. No need to edit INITIAL_CLUSTER in that case
+	if noOfMembers > 1 {
+		initialcluster := strings.Split(fmt.Sprint(config["initial-cluster"]), ",")
+
+		membrs := make(map[string]bool)
+		for _, y := range memList.Members {
+			membrs[y.Name] = true
+		}
+		cluster := ""
+		for _, y := range initialcluster {
+			// Add member to `initial-cluster` only if already a cluster member
+			z := strings.Split(y, "=")
+			if membrs[z[0]] || z[0] == podName {
+				cluster = cluster + y + ","
+			}
+		}
+
+		config["initial-cluster"] = cluster[:len(cluster)-1]
+	}
 
 	data, err := yaml.Marshal(&config)
 	if err != nil {
@@ -556,4 +625,11 @@ func IsBackupRestoreHealthy(backupRestoreURL string) (bool, error) {
 		return false, err
 	}
 	return health.HealthStatus, nil
+}
+
+func getMemberURL() string {
+	//end := strings.Split(os.Getenv("ETCD_ENDPOINT"), "//")
+	memberURL := "http://" + os.Getenv("POD_NAME") + ".etcd-main-peer.default.svc:2380"
+	//memberURL := end[0] + "//" + os.Getenv("POD_NAME") + "." + end[1]
+	return memberURL
 }
