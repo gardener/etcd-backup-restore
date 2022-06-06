@@ -47,7 +47,9 @@ type NewClientFactoryFunc func(cfg EtcdConnectionConfig) client.Factory
 type RestoreOptions struct {
 	Config      *RestorationConfig
 	ClusterURLs types.URLsMap
-	PeerURLs    types.URLs
+	// OriginalClusterSize indicates the actual cluster size from the ETCD config
+	OriginalClusterSize int
+	PeerURLs            types.URLs
 	// Base full snapshot + delta snapshots to restore from
 	BaseSnapshot     *Snapshot
 	DeltaSnapList    SnapList

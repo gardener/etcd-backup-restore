@@ -74,9 +74,10 @@ type Config struct {
 
 // DataValidator contains implements Validator interface to perform data validation.
 type DataValidator struct {
-	Config    *Config
-	Logger    *logrus.Logger
-	ZapLogger *zap.Logger
+	Config              *Config
+	OriginalClusterSize int
+	Logger              *logrus.Logger
+	ZapLogger           *zap.Logger
 }
 
 // Validator is the interface for data validation actions.

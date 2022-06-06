@@ -93,8 +93,9 @@ func NewInitializer(options *brtypes.RestoreOptions, snapstoreConfig *brtypes.Sn
 				EmbeddedEtcdQuotaBytes: options.Config.EmbeddedEtcdQuotaBytes,
 				SnapstoreConfig:        snapstoreConfig,
 			},
-			Logger:    logger,
-			ZapLogger: zapLogger,
+			OriginalClusterSize: options.OriginalClusterSize,
+			Logger:              logger,
+			ZapLogger:           zapLogger,
 		},
 		Logger: logger,
 	}

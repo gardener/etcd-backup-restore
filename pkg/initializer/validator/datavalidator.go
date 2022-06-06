@@ -141,6 +141,11 @@ func (d *DataValidator) sanityCheck(failBelowRevision int64) (DataDirStatus, err
 		return DataDirectoryValid, nil
 	}
 
+	if d.OriginalClusterSize > 1 {
+		d.Logger.Info("Skipping check for revision consistency of etcd member as it will get in sync with etcd leader.")
+		return DataDirectoryValid, nil
+	}
+
 	etcdRevision, err := getLatestEtcdRevision(d.backendPath())
 	if err != nil && errors.Is(err, bolt.ErrTimeout) {
 		d.Logger.Errorf("another etcd process is using %v and holds the file lock", d.backendPath())
@@ -154,7 +159,7 @@ func (d *DataValidator) sanityCheck(failBelowRevision int64) (DataDirStatus, err
 	etcdRevisionStatus, latestSnapshotRevision, err := d.checkEtcdDataRevisionConsistency(etcdRevision, failBelowRevision)
 
 	// if etcd revision is inconsistent with latest snapshot revision then
-	//   check the etcd revision consistency by starting an embedded etcd since the WALs file can have uncommited data which it was unable to flush to Bolt DB.
+	//   check the etcd revision consistency by starting an embedded etcd since the WALs file can have uncommited data which it was unable to flush to Bolt DB
 	if etcdRevisionStatus == RevisionConsistencyError {
 		d.Logger.Info("Checking for Full revision consistency...")
 		fullRevisionConsistencyStatus, err := d.checkFullRevisionConsistency(dataDir, latestSnapshotRevision)

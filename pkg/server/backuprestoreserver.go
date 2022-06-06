@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"os"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -28,6 +29,7 @@ import (
 	"github.com/gardener/etcd-backup-restore/pkg/leaderelection"
 	"github.com/gardener/etcd-backup-restore/pkg/metrics"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
+	"github.com/ghodss/yaml"
 
 	"github.com/gardener/etcd-backup-restore/pkg/defragmentor"
 	"github.com/gardener/etcd-backup-restore/pkg/errors"
@@ -56,7 +58,8 @@ type BackupRestoreServer struct {
 
 var (
 	// runServerWithSnapshotter indicates whether to start server with or without snapshotter.
-	runServerWithSnapshotter bool = true
+	runServerWithSnapshotter bool   = true
+	etcdConfig               string = "/var/etcd/config/etcd.conf.yaml"
 )
 
 // NewBackupRestoreServer return new backup restore server.
@@ -88,6 +91,35 @@ func NewBackupRestoreServer(logger *logrus.Logger, config *BackupRestoreComponen
 
 // Run starts the backup restore server.
 func (b *BackupRestoreServer) Run(ctx context.Context) error {
+	var inputFileName string
+	var err error
+
+	// (For testing purpose) If no ETCD_CONF variable set as environment variable, then consider backup-restore server is not used for tests.
+	// For tests or to run backup-restore server as standalone, user needs to set ETCD_CONF variable with proper location of ETCD config yaml
+	etcdConfigForTest := os.Getenv("ETCD_CONF")
+	if etcdConfigForTest != "" {
+		inputFileName = etcdConfigForTest
+	} else {
+		inputFileName = etcdConfig
+	}
+
+	configYML, err := os.ReadFile(inputFileName)
+	if err != nil {
+		b.logger.Fatalf("Unable to read etcd config file: %v", err)
+		return err
+	}
+
+	config := map[string]interface{}{}
+	if err := yaml.Unmarshal([]byte(configYML), &config); err != nil {
+		b.logger.Fatalf("Unable to unmarshal etcd config yaml file: %v", err)
+		return err
+	}
+
+	initialClusterMap, err := types.NewURLsMap(fmt.Sprint(config["initial-cluster"]))
+	if err != nil {
+		b.logger.Fatal("Please provide initial cluster value for embedded ETCD")
+	}
+
 	clusterURLsMap, err := types.NewURLsMap(b.config.RestorationConfig.InitialCluster)
 	if err != nil {
 		// Ideally this case should not occur, since this check is done at the config validations.
@@ -101,9 +133,10 @@ func (b *BackupRestoreServer) Run(ctx context.Context) error {
 	}
 
 	options := &brtypes.RestoreOptions{
-		Config:      b.config.RestorationConfig,
-		ClusterURLs: clusterURLsMap,
-		PeerURLs:    peerURLs,
+		Config:              b.config.RestorationConfig,
+		ClusterURLs:         clusterURLsMap,
+		OriginalClusterSize: len(initialClusterMap),
+		PeerURLs:            peerURLs,
 	}
 
 	if b.config.SnapstoreConfig == nil || len(b.config.SnapstoreConfig.Provider) == 0 {
