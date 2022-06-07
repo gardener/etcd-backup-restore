@@ -23,6 +23,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gardener/etcd-backup-restore/pkg/dataencryption"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 	"github.com/sirupsen/logrus"
 )
@@ -71,31 +72,39 @@ func GetSnapstore(config *brtypes.SnapstoreConfig) (brtypes.SnapStore, error) {
 		config.MaxParallelChunkUploads = 5
 	}
 
-	switch config.Provider {
-	case brtypes.SnapstoreProviderLocal, "":
-		if config.Container == "" {
-			config.Container = defaultLocalStore
+	snapstore, err := (func() (brtypes.SnapStore, error) {
+		switch config.Provider {
+		case brtypes.SnapstoreProviderLocal, "":
+			if config.Container == "" {
+				config.Container = defaultLocalStore
+			}
+			return NewLocalSnapStore(path.Join(config.Container, config.Prefix))
+		case brtypes.SnapstoreProviderS3:
+			return NewS3SnapStore(config)
+		case brtypes.SnapstoreProviderABS:
+			return NewABSSnapStore(config)
+		case brtypes.SnapstoreProviderGCS:
+			return NewGCSSnapStore(config)
+		case brtypes.SnapstoreProviderSwift:
+			return NewSwiftSnapStore(config)
+		case brtypes.SnapstoreProviderOSS:
+			return NewOSSSnapStore(config)
+		case brtypes.SnapstoreProviderECS:
+			return NewECSSnapStore(config)
+		case brtypes.SnapstoreProviderOCS:
+			return NewOCSSnapStore(config)
+		case brtypes.SnapstoreProviderFakeFailed:
+			return NewFailedSnapStore(), nil
+		default:
+			return nil, fmt.Errorf("unsupported storage provider : %s", config.Provider)
 		}
-		return NewLocalSnapStore(path.Join(config.Container, config.Prefix))
-	case brtypes.SnapstoreProviderS3:
-		return NewS3SnapStore(config)
-	case brtypes.SnapstoreProviderABS:
-		return NewABSSnapStore(config)
-	case brtypes.SnapstoreProviderGCS:
-		return NewGCSSnapStore(config)
-	case brtypes.SnapstoreProviderSwift:
-		return NewSwiftSnapStore(config)
-	case brtypes.SnapstoreProviderOSS:
-		return NewOSSSnapStore(config)
-	case brtypes.SnapstoreProviderECS:
-		return NewECSSnapStore(config)
-	case brtypes.SnapstoreProviderOCS:
-		return NewOCSSnapStore(config)
-	case brtypes.SnapstoreProviderFakeFailed:
-		return NewFailedSnapStore(), nil
-	default:
-		return nil, fmt.Errorf("unsupported storage provider : %s", config.Provider)
+	})()
+
+	if err != nil {
+		return snapstore, err
 	}
+
+	return dataencryption.DecorateSnapStore(snapstore, config.EncryptionConfigPath), err
 }
 
 // GetEnvVarOrError returns the value of specified environment variable or terminates if it's not defined.
