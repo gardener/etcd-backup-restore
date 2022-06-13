@@ -20,7 +20,6 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -28,6 +27,7 @@ import (
 	"github.com/gardener/etcd-backup-restore/pkg/backoff"
 	"github.com/gardener/etcd-backup-restore/pkg/common"
 	"github.com/gardener/etcd-backup-restore/pkg/leaderelection"
+	"github.com/gardener/etcd-backup-restore/pkg/member"
 	"github.com/gardener/etcd-backup-restore/pkg/metrics"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 	"github.com/ghodss/yaml"
@@ -44,7 +44,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	cron "github.com/robfig/cron/v3"
 	"github.com/sirupsen/logrus"
-	"go.etcd.io/etcd/etcdserver/api/v3rpc/rpctypes"
 	"go.etcd.io/etcd/pkg/types"
 	"k8s.io/apimachinery/pkg/util/clock"
 )
@@ -198,56 +197,8 @@ func (b *BackupRestoreServer) runServer(ctx context.Context, restoreOpts *brtype
 	handler := b.startHTTPServer(etcdInitializer, b.config.SnapstoreConfig.Provider, b.config.EtcdConnectionConfig, nil)
 	defer handler.Stop()
 
-	//Promote self from a learner to a full member in the etcd cluster
-	for { //TODO: wise to have an infinite loop? Is there a risk of getting stuck unnecessarily here?
-		b.logger.Info("Promote loop")
-		clientFactory := etcdutil.NewFactory(brtypes.EtcdConnectionConfig{
-			Endpoints:         []string{"http://etcd-main-peer.default.svc:2380"}, //[]string{os.Getenv("ETCD_ENDPOINT")}, //TODO: Pass this via env var
-			InsecureTransport: true,
-		})
-		cli, _ := clientFactory.NewCluster()
-
-		//List all members in the etcd cluster
-		//Member URL will appear in the memberlist call response as soon as the member has been added to the cluster
-		//However, the name of the member will appear only if the member has started
-		ctx2, cancel := context.WithTimeout(context.TODO(), 5*time.Second)
-		etcdList, memListErr := cli.MemberList(ctx2)
-		cancel()
-
-		if memListErr != nil {
-			b.logger.Info("error listing members: ", memListErr)
-			continue
-		}
-
-		//TODO: Simplify logic below
-		var promoted bool
-		promoted = false
-		for _, y := range etcdList.Members {
-			b.logger.Info("CHECK: ", y.Name, " : ", os.Getenv("POD_NAME"))
-			if y.Name == os.Getenv("POD_NAME") {
-				b.logger.Info("Promoting member ", y.Name)
-				ctx2, cancel := context.WithTimeout(context.TODO(), 15*time.Second)
-				defer cancel()
-				//Member promote call will succeed only if member is in sync with leader, and will error out otherwise
-				_, err3 := cli.MemberPromote(ctx2, y.ID)
-				if err3 == nil || strings.Contains(rpctypes.ErrGRPCMemberNotLearner.Error(), err3.Error()) {
-					//Exit if member is successfully promoted or if member is not a learner
-					promoted = true
-					b.logger.Info("Member promoted ", y.Name, " : ", y.ID)
-					break
-				}
-				cancel()
-			}
-		}
-		if promoted {
-			break
-		}
-
-		//Timer here so that the member promote loop doesn't execute too frequently
-		timer := time.NewTimer(5 * time.Second)
-		<-timer.C
-		timer.Stop()
-	}
+	// Promotes member if it is a learner
+	member.PromoteMember(context.TODO(), b.logger)
 
 	leaderCallbacks := &brtypes.LeaderCallbacks{
 		OnStartedLeading: func(leCtx context.Context) {

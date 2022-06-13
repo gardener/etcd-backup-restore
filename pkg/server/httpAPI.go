@@ -29,7 +29,6 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
-	"time"
 
 	"github.com/gardener/etcd-backup-restore/pkg/etcdutil"
 	"github.com/gardener/etcd-backup-restore/pkg/initializer"
@@ -414,7 +413,7 @@ func (h *HTTPHandler) serveConfig(rw http.ResponseWriter, req *http.Request) {
 	}
 
 	// fetch pod name from env
-	ns := os.Getenv("POD_NAMESPACE")
+	podNS := os.Getenv("POD_NAMESPACE")
 	podName := os.Getenv("POD_NAME")
 	config["name"] = podName
 
@@ -446,11 +445,12 @@ func (h *HTTPHandler) serveConfig(rw http.ResponseWriter, req *http.Request) {
 	}
 	curSts := &appsv1.StatefulSet{}
 	errSts := clientSet.Get(context.TODO(), client.ObjectKey{
-		Namespace: ns,
-		Name:      "etcd-main", //TODO: derive sts name from pod name
+		Namespace: podNS,
+		Name:      podName[:strings.LastIndex(podName, "-")],
 	}, curSts)
 	if errSts != nil {
 		h.Logger.Warn("error fetching etcd sts ", errSts)
+		return
 	}
 
 	config["initial-cluster-state"] = "new"
@@ -458,6 +458,7 @@ func (h *HTTPHandler) serveConfig(rw http.ResponseWriter, req *http.Request) {
 	if *curSts.Spec.Replicas > 1 && *curSts.Spec.Replicas > curSts.Status.UpdatedReplicas {
 		config["initial-cluster-state"] = "existing"
 	}
+	// TODO Remove below prints
 	fmt.Println("*curSts.Spec.Replicas is ", *curSts.Spec.Replicas)
 	fmt.Println("curSts.Status.UpdatedReplicas is ", curSts.Status.UpdatedReplicas)
 
@@ -471,7 +472,7 @@ func (h *HTTPHandler) serveConfig(rw http.ResponseWriter, req *http.Request) {
 	if err != nil {
 		h.Logger.Warnf("Error with NewCluster() : %v", err)
 	}
-	ctx, cancel := context.WithTimeout(context.TODO(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(context.TODO(), brtypes.DefaultEtcdConnectionTimeout)
 	defer cancel()
 	memList, err := cli.MemberList(ctx)
 	noOfMembers := 0
@@ -497,7 +498,7 @@ func (h *HTTPHandler) serveConfig(rw http.ResponseWriter, req *http.Request) {
 				cluster = cluster + y + ","
 			}
 		}
-
+		//remove trailing `,`
 		config["initial-cluster"] = cluster[:len(cluster)-1]
 	}
 
