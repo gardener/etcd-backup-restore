@@ -1,0 +1,17 @@
+# It can be used to run etcd and etcd-backup-restore locally for testing purpose.
+
+# Human-readable config for single member etcd.
+name: etcd
+data-dir: "default.etcd"
+metrics: extensive
+snapshot-count: 75000
+enable-v2: false
+quota-backend-bytes: 1073741824 # 1Gi
+listen-client-urls: http://0.0.0.0:2379
+advertise-client-urls: http://0.0.0.0:2379
+initial-advertise-peer-urls: http://0.0.0.0:2380
+initial-cluster: etcd=http://0.0.0.0:2380
+initial-cluster-token: new
+initial-cluster-state: new
+auto-compaction-mode: periodic
+auto-compaction-retention: 30m
