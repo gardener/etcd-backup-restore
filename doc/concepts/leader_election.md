@@ -1,6 +1,6 @@
 ### Leading ETCD main container’s sidecar is the backup leader 
 
-- The `backup-restore sidecar` poll its corresponding etcd main container to see if it is the leading member in the etcd cluster. This information is used by the backup-restore sidecars to decide that sidecar of the leading etcd main container is the `backup leader`.
+- The `backup-restore sidecar` poll its corresponding etcd container to check if it is the leading member in the etcd cluster. This information is used by the backup-restore sidecars to decide that sidecar of the leading etcd container is the `backup leader`.
 
 - Only `backup leader` sidecar among the members have the responsibility to take/upload the snapshots(full as well as incremental) for a given Etcd cluster as well as to [trigger the defragmentation](https://github.com/gardener/etcd-druid/tree/master/docs/proposals/multi-node#defragmentation) for each Etcd cluster member. 
 

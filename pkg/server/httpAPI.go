@@ -19,7 +19,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"net/http/httputil"
 	"net/http/pprof"
@@ -208,10 +207,7 @@ func (h *HTTPHandler) serveHealthz(rw http.ResponseWriter, req *http.Request) {
 	rw.WriteHeader(h.GetStatus())
 	healthCheck := &healthCheck{
 		HealthStatus: func() bool {
-			if h.GetStatus() == http.StatusOK {
-				return true
-			}
-			return false
+			return h.GetStatus() == http.StatusOK
 		}(),
 	}
 	json, err := json.Marshal(healthCheck)
@@ -401,7 +397,7 @@ func (h *HTTPHandler) serveLatestSnapshotMetadata(rw http.ResponseWriter, req *h
 func (h *HTTPHandler) serveConfig(rw http.ResponseWriter, req *http.Request) {
 	inputFileName := miscellaneous.EtcdConfigFilePath
 	outputFileName := "/etc/etcd.conf.yaml"
-	configYML, err := ioutil.ReadFile(inputFileName)
+	configYML, err := os.ReadFile(inputFileName)
 	if err != nil {
 		h.Logger.Warnf("Unable to read etcd config file: %v", err)
 		rw.WriteHeader(http.StatusInternalServerError)
@@ -466,7 +462,7 @@ func (h *HTTPHandler) serveConfig(rw http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	if err := ioutil.WriteFile(outputFileName, data, 0644); err != nil {
+	if err := os.WriteFile(outputFileName, data, 0644); err != nil {
 		h.Logger.Warnf("Unable to write etcd config file: %v", err)
 		rw.WriteHeader(http.StatusInternalServerError)
 		return
