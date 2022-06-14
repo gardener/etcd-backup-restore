@@ -276,13 +276,10 @@ func TakeAndSaveFullSnapshot(ctx context.Context, client client.MaintenanceClose
 	logger.Infof("Total time taken by Snapshot API: %f seconds.", timeTaken.Seconds())
 
 	if cc.Enabled {
-		startTimeCompression := time.Now()
 		rc, err = compressor.CompressSnapshot(rc, cc.CompressionPolicy)
 		if err != nil {
 			return nil, fmt.Errorf("unable to obtain reader for compressed file: %v", err)
 		}
-		timeTakenCompression := time.Since(startTimeCompression)
-		logger.Infof("Total time taken in full snapshot compression: %f seconds.", timeTakenCompression.Seconds())
 	}
 	defer rc.Close()
 
