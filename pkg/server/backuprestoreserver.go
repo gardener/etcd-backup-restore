@@ -267,9 +267,6 @@ func (b *BackupRestoreServer) runServer(ctx context.Context, restoreOpts *brtype
 					b.logger.Info("backup-restore stops leading...")
 				}
 				handler.SetSnapshotterToNil()
-
-				// TODO @ishan16696: For Multi-node etcd HTTP status need to be set to `StatusServiceUnavailable` only when backup-restore is in "StateUnknown".
-				handler.SetStatus(http.StatusServiceUnavailable)
 			}
 		},
 	}
@@ -286,6 +283,10 @@ func (b *BackupRestoreServer) runServer(ctx context.Context, restoreOpts *brtype
 			}
 		},
 		StopLeaseRenewal: func() {
+			// when backup-restore is in "StateUnknown"
+			// stop the member lease renewal(if enabled)
+			// and set the HTTP status to `StatusServiceUnavailable`.
+			handler.SetStatus(http.StatusServiceUnavailable)
 			if b.config.HealthConfig.MemberLeaseRenewalEnabled {
 				mmStopCh <- emptyStruct
 			}
