@@ -26,9 +26,9 @@ func AddMemberAsLearner(logger *logrus.Logger) error {
 	}
 	for {
 		//Create etcd client
-		//TODO: use ETCD_ENDPOINT env var passed by druid and use secure transport
+		//TODO: Use secure transport
 		clientFactory := etcdutil.NewFactory(brtypes.EtcdConnectionConfig{
-			Endpoints:         []string{"http://etcd-main-peer.default.svc:2380"}, //TODO: use ETCD_ENDPOINT env var passed by druid
+			Endpoints:         []string{os.Getenv("ETCD_ENDPOINT")},
 			InsecureTransport: true,
 		})
 
@@ -63,10 +63,10 @@ func AddMemberAsLearner(logger *logrus.Logger) error {
 // IsMemberInCluster checks is the current members peer URL is already part of the etcd cluster
 func IsMemberInCluster(logger *logrus.Logger) bool {
 	//Create etcd client
-	// TODO: use ETCD_ENDPOINT env var passed by druid and use secure transport
+	// TODO: Use secure transport
 	clientFactory := etcdutil.NewFactory(brtypes.EtcdConnectionConfig{
-		Endpoints:         []string{"http://etcd-main-peer.default.svc:2380"}, //TODO: use ETCD_ENDPOINT env var passed by druid
-		InsecureTransport: true,                                               //TODO: is it right to use insecure transport?
+		Endpoints:         []string{os.Getenv("ETCD_ENDPOINT")},
+		InsecureTransport: true, //TODO: is it right to use insecure transport?
 	})
 
 	// TODO: should use a retry mechanism here
@@ -93,18 +93,17 @@ func IsMemberInCluster(logger *logrus.Logger) bool {
 }
 
 func getMemberURL() string {
-	//end := strings.Split(os.Getenv("ETCD_ENDPOINT"), "//") //TODO: use ETCD_ENDPOINT env var passed by druid
-	memberURL := "http://" + os.Getenv("POD_NAME") + ".etcd-main-peer.default.svc:2380"
-	//memberURL := end[0] + "//" + os.Getenv("POD_NAME") + "." + end[1]
+	end := strings.Split(os.Getenv("ETCD_ENDPOINT"), "//")
+	memberURL := end[0] + "//" + os.Getenv("POD_NAME") + "." + end[1]
 	return memberURL
 }
 
 // PromoteMember promotes an etcd member from a learner to a voting member of the cluster. This will succeed only if its logs are caught up with the leader
 func PromoteMember(ctx context.Context, logger *logrus.Entry) {
 	for {
-		// TODO: use ETCD_ENDPOINT env var passed by druid and use secure transport
+		// TODO: Use secure transport
 		clientFactory := etcdutil.NewFactory(brtypes.EtcdConnectionConfig{
-			Endpoints:         []string{"http://etcd-main-peer.default.svc:2380"}, //[]string{os.Getenv("ETCD_ENDPOINT")},
+			Endpoints:         []string{os.Getenv("ETCD_ENDPOINT")},
 			InsecureTransport: true,
 		})
 		cli, _ := clientFactory.NewCluster()
@@ -129,10 +128,10 @@ func PromoteMember(ctx context.Context, logger *logrus.Entry) {
 			if y.Name == os.Getenv("POD_NAME") {
 				logger.Info("Promoting member ", y.Name)
 				memPromoteCtx, cancel := context.WithTimeout(context.TODO(), brtypes.DefaultEtcdConnectionTimeout)
-				cancel()
 				//Member promote call will succeed only if member is in sync with leader, and will error out otherwise
 				_, memPromoteErr := cli.MemberPromote(memPromoteCtx, y.ID)
-				if memPromoteErr == nil || strings.Contains(rpctypes.ErrGRPCMemberNotLearner.Error(), memPromoteErr.Error()) {
+				cancel()
+				if memPromoteErr == nil {
 					//Exit if member is successfully promoted or if member is not a learner
 					promoted = true
 					logger.Info("Member promoted ", y.Name, " : ", y.ID)
@@ -141,7 +140,8 @@ func PromoteMember(ctx context.Context, logger *logrus.Entry) {
 				if strings.Contains(rpctypes.ErrGRPCMemberNotLearner.Error(), memPromoteErr.Error()) {
 					//Exit if member is already part of the cluster
 					promoted = true
-					logger.Info("Mmeber ", y.Name, " : ", y.ID, " already part of etcd cluster")
+					logger.Info("Member ", y.Name, " : ", y.ID, " already part of etcd cluster")
+					break
 				}
 			}
 		}
