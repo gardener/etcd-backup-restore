@@ -41,7 +41,7 @@ const (
 	podName      = "POD_NAME"
 )
 
-// MGCChecker garbage collects the members from the etcd cluster if its corresponding pod is not present. (Used for unit tests only)
+// MGCChecker garbage collects the members from the etcd cluster if its corresponding pod is not present. Used by Gomock to generate mock functions
 type MGCChecker interface {
 	RemoveSuperfluousMembers(ctx context.Context) error
 }
@@ -84,7 +84,7 @@ func NewMemberGarbageCollector(logger *logrus.Entry, clientSet client.Client, et
 func RunMemberGarbageCollectorPeriodically(ctx context.Context, hconfig *brtypes.HealthConfig, logger *logrus.Entry, etcdConfig *brtypes.EtcdConnectionConfig) {
 	clientSet, err := miscellaneous.GetKubernetesClientSetOrError()
 	if err != nil {
-		logger.Errorf("failed to create kubernetes clientset: %v", err)
+		logger.Fatalf("failed to create kubernetes clientset: %v", err)
 		return
 	}
 	mgc, err := NewMemberGarbageCollector(logger, clientSet, etcdConfig.ConnectionTimeout)
@@ -100,7 +100,8 @@ func RunMemberGarbageCollectorPeriodically(ctx context.Context, hconfig *brtypes
 	clientFactory := etcdutil.NewFactory(*etcdConfig)
 	etcdCluster, err := clientFactory.NewCluster()
 	if err != nil {
-		mgc.logger.Errorf("Failed to create etcd cluster client: %v", err)
+		mgc.logger.Errorf("failed to create etcd cluster client: %v", err)
+		return
 	}
 	defer etcdCluster.Close()
 
@@ -142,7 +143,7 @@ func (mgc *MemberGarbageCollector) RemoveSuperfluousMembers(ctx context.Context,
 	}
 
 	if sts.Generation != sts.Status.ObservedGeneration && stsSpecReplicas != sts.Status.UpdatedReplicas && stsSpecReplicas >= int32(len(etcdMemberListResponse.Members)) {
-		//Return if number of replicas in sts and etcd cluster match or cluster is in scale up scenario
+		//Return if number of replicas in sts and etcd cluster match or cluster is in scale-up scenario
 		return nil
 	}
 
@@ -164,7 +165,7 @@ func (mgc *MemberGarbageCollector) RemoveSuperfluousMembers(ctx context.Context,
 			defer removeCtxCancel()
 			if _, err = etcdCluster.MemberRemove(removeCtx, member.ID); err != nil {
 				return &errors.EtcdError{
-					Message: fmt.Sprintf("Error removing member %v from the cluster: %v", member.Name, err),
+					Message: fmt.Sprintf("Error while removing member %v with ID %v from the cluster: %v", member.Name, member.ID, err),
 				}
 			}
 			mgc.logger.Info("Removed superfluous member ", member.Name, ":", member.ID)

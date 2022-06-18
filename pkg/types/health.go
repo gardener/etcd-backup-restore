@@ -37,7 +37,7 @@ const (
 	DefaultHeartbeatDuration = 30 * time.Second
 	// LeaseUpdateTimeoutDuration is the timeout duration for updating snapshot leases
 	LeaseUpdateTimeoutDuration = 60 * time.Second
-	// DefaultMemberGarbageCollectionPeriod is the default member garbage collection period.
+	// DefaultMemberGarbageCollectionPeriod is the default etcd member garbage collection period.
 	DefaultMemberGarbageCollectionPeriod = 60 * time.Second
 )
 

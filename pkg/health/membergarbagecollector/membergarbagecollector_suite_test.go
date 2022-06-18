@@ -10,7 +10,7 @@ import (
 )
 
 var (
-	logger = logrus.New().WithField("suite", "snapshotter")
+	logger = logrus.New().WithField("suite", "etcd-member-gc")
 )
 
 func TestMembergarbagecollector(t *testing.T) {
