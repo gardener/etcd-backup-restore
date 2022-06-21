@@ -466,7 +466,9 @@ func (h *HTTPHandler) serveConfig(rw http.ResponseWriter, req *http.Request) {
 	//One reason why we might want to have a strict ordering when members are joining the cluster
 	//addmember subcommand achieves this by making sure the pod with the previous index is running before attempting to add itself as a learner
 	etcdConn := *h.EtcdConnectionConfig
-	etcdConn.Endpoints = []string{fmt.Sprintf("%s://%s:%s", protocol, domaiName, peerPort)} //[]string{"http://etcd-main-peer.default.svc.cluster.local:2380"} //TODO: pass via env var
+	//etcdConn.Endpoints = []string{fmt.Sprintf("%s://%s:%s", protocol, domaiName, peerPort)} //[]string{"http://etcd-main-peer.default.svc.cluster.local:2380"} //TODO: pass via env var
+	//etcdConn.Endpoints = []string{fmt.Sprintf("%s://%s:%s", protocol, "etcd-main-0.etcd-main-peer.default.svc", "2379")}
+	etcdConn.Endpoints = []string{fmt.Sprintf("%s://%s:%s", protocol, "etcd-main-0.etcd-main-peer.default.svc", clientPort)} //TODO: Don't hardcode this
 	clientFactory := etcdutil.NewFactory(etcdConn)
 	cli, err := clientFactory.NewCluster()
 	if err != nil {
@@ -628,9 +630,9 @@ func IsBackupRestoreHealthy(backupRestoreURL string) (bool, error) {
 	return health.HealthStatus, nil
 }
 
-func getMemberURL() string {
-	//end := strings.Split(os.Getenv("ETCD_ENDPOINT"), "//")
-	memberURL := "http://" + os.Getenv("POD_NAME") + ".etcd-main-peer.default.svc:2380"
-	//memberURL := end[0] + "//" + os.Getenv("POD_NAME") + "." + end[1]
-	return memberURL
-}
+// func getMemberURL() string {
+// 	//end := strings.Split(os.Getenv("ETCD_ENDPOINT"), "//")
+// 	memberURL := "http://" + os.Getenv("POD_NAME") + ".etcd-main-peer.default.svc:2380"
+// 	//memberURL := end[0] + "//" + os.Getenv("POD_NAME") + "." + end[1]
+// 	return memberURL
+// }

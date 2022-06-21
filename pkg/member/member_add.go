@@ -2,6 +2,7 @@ package member
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"strings"
 	"time"
@@ -10,6 +11,7 @@ import (
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 	"github.com/sirupsen/logrus"
 	"go.etcd.io/etcd/etcdserver/api/v3rpc/rpctypes"
+	"gopkg.in/yaml.v2"
 )
 
 const (
@@ -18,22 +20,20 @@ const (
 )
 
 // AddMemberAsLearner add a member as a learner to the etcd cluster
-func AddMemberAsLearner(logger *logrus.Logger) error {
+func AddMemberAsLearner(logger *logrus.Logger, etcdConnConfig *brtypes.EtcdConnectionConfig) error {
 	//Add member as learner to cluster
-	memberURL := getMemberURL()
-	if memberURL == "" {
+	memberURL, err := getMemberURL(logger)
+	if memberURL == "" || err != nil {
 		logger.Warn("Could not fetch member URL")
 	}
 	for {
 		//Create etcd client
-		//TODO: Use secure transport
-		clientFactory := etcdutil.NewFactory(brtypes.EtcdConnectionConfig{
-			Endpoints:         []string{os.Getenv("ETCD_ENDPOINT")},
-			InsecureTransport: true,
-		})
+		etcdConn := *etcdConnConfig
+		etcdConn.Endpoints = []string{fmt.Sprintf("%s://%s:%s", "https", "etcd-main-0.etcd-main-peer.default.svc", "2379")} //TODO: Don't hardcode this
+		clientFactory := etcdutil.NewFactory(etcdConn)
+		cli, _ := clientFactory.NewCluster()
 
 		memAddCtx, cancel := context.WithTimeout(context.TODO(), brtypes.DefaultEtcdConnectionTimeout)
-		cli, _ := clientFactory.NewCluster()
 		_, err := cli.MemberAddAsLearner(memAddCtx, []string{memberURL})
 		cancel()
 		cli.Close()
@@ -61,16 +61,14 @@ func AddMemberAsLearner(logger *logrus.Logger) error {
 }
 
 // IsMemberInCluster checks is the current members peer URL is already part of the etcd cluster
-func IsMemberInCluster(logger *logrus.Logger) bool {
+func IsMemberInCluster(logger *logrus.Logger, etcdConnConfig *brtypes.EtcdConnectionConfig) bool {
 	//Create etcd client
-	// TODO: Use secure transport
-	clientFactory := etcdutil.NewFactory(brtypes.EtcdConnectionConfig{
-		Endpoints:         []string{os.Getenv("ETCD_ENDPOINT")},
-		InsecureTransport: true, //TODO: is it right to use insecure transport?
-	})
+	etcdConn := *etcdConnConfig
+	etcdConn.Endpoints = []string{fmt.Sprintf("%s://%s:%s", "https", "etcd-main-0.etcd-main-peer.default.svc", "2379")} //TODO: Don't hardcode this
+	clientFactory := etcdutil.NewFactory(etcdConn)
+	cli, _ := clientFactory.NewCluster()
 
 	// TODO: should use a retry mechanism here
-	cli, _ := clientFactory.NewCluster()
 	defer cli.Close()
 	logger.Info("Etcd client created")
 
@@ -92,20 +90,38 @@ func IsMemberInCluster(logger *logrus.Logger) bool {
 	return false
 }
 
-func getMemberURL() string {
-	end := strings.Split(os.Getenv("ETCD_ENDPOINT"), "//")
-	memberURL := end[0] + "//" + os.Getenv("POD_NAME") + "." + end[1]
-	return memberURL
+func getMemberURL(logger *logrus.Logger) (string, error) {
+	var inputFileName string
+	etcdConfigForTest := os.Getenv("ETCD_CONF")
+	if etcdConfigForTest != "" {
+		inputFileName = etcdConfigForTest
+	} else {
+		inputFileName = "/var/etcd/config/etcd.conf.yaml"
+	}
+
+	configYML, err := os.ReadFile(inputFileName)
+	if err != nil {
+		logger.Fatalf("Unable to read etcd config file: %v", err)
+		//return "", err
+	}
+
+	config := map[string]interface{}{}
+	if err := yaml.Unmarshal([]byte(configYML), &config); err != nil {
+		logger.Warnf("Unable to unmarshal etcd config yaml file: %v", err)
+		return "", err
+	}
+
+	return strings.Split(fmt.Sprint(config["initial-advertise-peer-urls"]), ",")[0], nil //TODO: too complicated
 }
 
 // PromoteMember promotes an etcd member from a learner to a voting member of the cluster. This will succeed only if its logs are caught up with the leader
-func PromoteMember(ctx context.Context, logger *logrus.Entry) {
+func PromoteMember(ctx context.Context, logger *logrus.Entry, etcdConnConfig *brtypes.EtcdConnectionConfig) {
 	for {
-		// TODO: Use secure transport
-		clientFactory := etcdutil.NewFactory(brtypes.EtcdConnectionConfig{
-			Endpoints:         []string{os.Getenv("ETCD_ENDPOINT")},
-			InsecureTransport: true,
-		})
+		etcdConn := *etcdConnConfig
+		//etcdConn.Endpoints = []string{os.Getenv("ETCD_ENDPOINT")}
+		etcdConn.Endpoints = []string{fmt.Sprintf("%s://%s:%s", "https", "etcd-main-0.etcd-main-peer.default.svc", "2379")} //TODO: Don't hardcode this
+
+		clientFactory := etcdutil.NewFactory(etcdConn)
 		cli, _ := clientFactory.NewCluster()
 
 		//List all members in the etcd cluster

@@ -94,15 +94,17 @@ func (o *serverOptions) run(ctx context.Context) error {
 }
 
 type initializerOptions struct {
-	validatorOptions *validatorOptions
-	restorerOptions  *restorerOptions
+	validatorOptions     *validatorOptions
+	restorerOptions      *restorerOptions
+	etcdConnectionConfig *brtypes.EtcdConnectionConfig
 }
 
 // newInitializerOptions returns the validation config.
 func newInitializerOptions() *initializerOptions {
 	return &initializerOptions{
-		validatorOptions: newValidatorOptions(),
-		restorerOptions:  newRestorerOptions(),
+		validatorOptions:     newValidatorOptions(),
+		restorerOptions:      newRestorerOptions(),
+		etcdConnectionConfig: brtypes.NewEtcdConnectionConfig(),
 	}
 }
 
@@ -110,11 +112,16 @@ func newInitializerOptions() *initializerOptions {
 func (c *initializerOptions) addFlags(fs *flag.FlagSet) {
 	c.validatorOptions.addFlags(fs)
 	c.restorerOptions.addFlags(fs)
+	c.etcdConnectionConfig.AddFlags(fs)
 }
 
 // Validate validates the config.
 func (c *initializerOptions) validate() error {
 	if err := c.validatorOptions.validate(); err != nil {
+		return err
+	}
+
+	if err := c.etcdConnectionConfig.Validate(); err != nil {
 		return err
 	}
 

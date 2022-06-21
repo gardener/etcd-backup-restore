@@ -44,9 +44,9 @@ import (
 func (e *EtcdInitializer) Initialize(mode validator.Mode, failBelowRevision int64) error {
 	start := time.Now()
 	//Etcd cluster scale-up case
-	if !member.IsMemberInCluster(e.Logger) {
+	if !member.IsMemberInCluster(e.Logger, e.Config.EtcdConnectionConfig) {
 		//return here as no restoration or validation needed
-		member.AddMemberAsLearner(e.Logger)
+		member.AddMemberAsLearner(e.Logger, e.Config.EtcdConnectionConfig)
 		return nil
 	}
 
@@ -88,12 +88,13 @@ func (e *EtcdInitializer) Initialize(mode validator.Mode, failBelowRevision int6
 }
 
 //NewInitializer creates an etcd initializer object.
-func NewInitializer(options *brtypes.RestoreOptions, snapstoreConfig *brtypes.SnapstoreConfig, logger *logrus.Logger) *EtcdInitializer {
+func NewInitializer(options *brtypes.RestoreOptions, snapstoreConfig *brtypes.SnapstoreConfig, etcdConnectionConfig *brtypes.EtcdConnectionConfig, logger *logrus.Logger) *EtcdInitializer {
 	zapLogger, _ := zap.NewProduction()
 	etcdInit := &EtcdInitializer{
 		Config: &Config{
-			SnapstoreConfig: snapstoreConfig,
-			RestoreOptions:  options,
+			SnapstoreConfig:      snapstoreConfig,
+			RestoreOptions:       options,
+			EtcdConnectionConfig: etcdConnectionConfig,
 		},
 		Validator: &validator.DataValidator{
 			Config: &validator.Config{

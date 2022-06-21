@@ -192,13 +192,13 @@ func (b *BackupRestoreServer) runServer(ctx context.Context, restoreOpts *brtype
 	if runServerWithSnapshotter {
 		snapstoreConfig = b.config.SnapstoreConfig
 	}
-	etcdInitializer := initializer.NewInitializer(restoreOpts, snapstoreConfig, b.logger.Logger)
+	etcdInitializer := initializer.NewInitializer(restoreOpts, snapstoreConfig, b.config.EtcdConnectionConfig, b.logger.Logger)
 
 	handler := b.startHTTPServer(etcdInitializer, b.config.SnapstoreConfig.Provider, b.config.EtcdConnectionConfig, nil)
 	defer handler.Stop()
 
 	// Promotes member if it is a learner
-	member.PromoteMember(context.TODO(), b.logger)
+	member.PromoteMember(context.TODO(), b.logger, b.config.EtcdConnectionConfig)
 
 	leaderCallbacks := &brtypes.LeaderCallbacks{
 		OnStartedLeading: func(leCtx context.Context) {
