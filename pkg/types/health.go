@@ -27,6 +27,8 @@ const (
 	DefaultSnapshotLeaseRenewalEnabled = false
 	// DefaultMemberLeaseRenewalEnabled is a default value for enabling the member lease renewal feature
 	DefaultMemberLeaseRenewalEnabled = false
+	// DefaultEtcdMemberGCEnabled is a default value for enabling the etcd member garbage collection feature
+	DefaultEtcdMemberGCEnabled = false
 	// DefaultFullSnapshotLeaseName is the name for the delta snapshot lease.
 	DefaultFullSnapshotLeaseName = "full-snapshot-revisions"
 	// DefaultDeltaSnapshotLeaseName is the name for the delta snapshot lease.
@@ -35,13 +37,17 @@ const (
 	DefaultHeartbeatDuration = 30 * time.Second
 	// LeaseUpdateTimeoutDuration is the timeout duration for updating snapshot leases
 	LeaseUpdateTimeoutDuration = 60 * time.Second
+	// DefaultMemberGarbageCollectionPeriod is the default etcd member garbage collection period.
+	DefaultMemberGarbageCollectionPeriod = 60 * time.Second
 )
 
 // HealthConfig holds the health configuration.
 type HealthConfig struct {
 	SnapshotLeaseRenewalEnabled bool              `json:"snapshotLeaseRenewalEnabled,omitempty"`
 	MemberLeaseRenewalEnabled   bool              `json:"memberLeaseRenewalEnabled,omitempty"`
+	EtcdMemberGCEnabled         bool              `json:"etcdMemberGCEnabled,omitempty"`
 	HeartbeatDuration           wrappers.Duration `json:"heartbeatDuration,omitempty"`
+	MemberGCDuration            wrappers.Duration `json:"memberGCDuration,omitempty"`
 	FullSnapshotLeaseName       string            `json:"fullSnapshotLeaseName,omitempty"`
 	DeltaSnapshotLeaseName      string            `json:"deltaSnapshotLeaseName,omitempty"`
 }
@@ -51,7 +57,9 @@ func NewHealthConfig() *HealthConfig {
 	return &HealthConfig{
 		SnapshotLeaseRenewalEnabled: DefaultSnapshotLeaseRenewalEnabled,
 		MemberLeaseRenewalEnabled:   DefaultMemberLeaseRenewalEnabled,
+		EtcdMemberGCEnabled:         DefaultEtcdMemberGCEnabled,
 		HeartbeatDuration:           wrappers.Duration{Duration: DefaultHeartbeatDuration},
+		MemberGCDuration:            wrappers.Duration{Duration: DefaultMemberGarbageCollectionPeriod},
 		FullSnapshotLeaseName:       DefaultFullSnapshotLeaseName,
 		DeltaSnapshotLeaseName:      DefaultDeltaSnapshotLeaseName,
 	}
@@ -61,8 +69,10 @@ func NewHealthConfig() *HealthConfig {
 func (c *HealthConfig) AddFlags(fs *flag.FlagSet) {
 
 	fs.BoolVar(&c.SnapshotLeaseRenewalEnabled, "enable-snapshot-lease-renewal", c.SnapshotLeaseRenewalEnabled, "Allows sidecar to renew the snapshot leases when snapshots are taken")
-	fs.BoolVar(&c.MemberLeaseRenewalEnabled, "enable-member-lease-renewal", c.MemberLeaseRenewalEnabled, "Allows sidecar to periodically renew the member leases when snapshots are taken")
+	fs.BoolVar(&c.MemberLeaseRenewalEnabled, "enable-member-lease-renewal", c.MemberLeaseRenewalEnabled, "Allows sidecar to periodically renew the member leases")
+	fs.BoolVar(&c.EtcdMemberGCEnabled, "enable-etcd-member-gc", c.EtcdMemberGCEnabled, "Allows leading sidecar to remove any superfluous etcd members from the cluster")
 	fs.DurationVar(&c.HeartbeatDuration.Duration, "k8s-heartbeat-duration", c.HeartbeatDuration.Duration, "Heartbeat duration")
+	fs.DurationVar(&c.MemberGCDuration.Duration, "k8s-member-gc-duration", c.MemberGCDuration.Duration, "Etcd member garbage collection duration")
 	fs.StringVar(&c.FullSnapshotLeaseName, "full-snapshot-lease-name", c.FullSnapshotLeaseName, "full snapshot lease name")
 	fs.StringVar(&c.DeltaSnapshotLeaseName, "delta-snapshot-lease-name", c.DeltaSnapshotLeaseName, "delta snapshot lease name")
 }
@@ -70,7 +80,12 @@ func (c *HealthConfig) AddFlags(fs *flag.FlagSet) {
 // Validate validates the health Config.
 func (c *HealthConfig) Validate() error {
 	if c.HeartbeatDuration.Seconds() <= 0 {
-		return fmt.Errorf("heartbeat timeout should be greater than zero")
+		return fmt.Errorf("heartbeat period should be greater than zero")
+
+	}
+
+	if c.MemberGCDuration.Seconds() <= 0 {
+		return fmt.Errorf("etcd member garbage collection period should be greater than zero")
 
 	}
 
