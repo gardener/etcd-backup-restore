@@ -273,6 +273,10 @@ func (b *BackupRestoreServer) runServer(ctx context.Context, restoreOpts *brtype
 
 	memberLeaseCallbacks := &brtypes.MemberLeaseCallbacks{
 		StartLeaseRenewal: func() {
+			// when backup-restore is in "StateFollower" or "StateLeader"
+			// start the member lease renewal(if enabled)
+			// and set the HTTP status to `StatusOK`.
+			handler.SetStatus(http.StatusOK)
 			mmStopCh = make(chan struct{})
 			if b.config.HealthConfig.MemberLeaseRenewalEnabled {
 				go func() {
