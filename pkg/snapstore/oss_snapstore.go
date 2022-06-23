@@ -45,9 +45,6 @@ type OSSBucket interface {
 const (
 	// Total number of chunks to be uploaded must be one less than maximum limit allowed.
 	ossNoOfChunk          int64 = 9999
-	ossEndPoint                 = "ALICLOUD_ENDPOINT"
-	accessKeyID                 = "ALICLOUD_ACCESS_KEY_ID"
-	accessKeySecret             = "ALICLOUD_ACCESS_KEY_SECRET"
 	aliCredentialFile           = "ALICLOUD_APPLICATION_CREDENTIALS"
 	aliCredentialJSONFile       = "ALICLOUD_APPLICATION_CREDENTIALS_JSON"
 )
@@ -268,11 +265,6 @@ func (s *OSSSnapStore) Delete(snap brtypes.Snapshot) error {
 
 func getAuthOptions(prefix string) (*authOptions, error) {
 
-	// TODO: passing credentials through environment variable will be deprecated by "backup-restore v0.18.0"
-	if _, isSet := os.LookupEnv(prefix + ossEndPoint); isSet {
-		return authOptionsFromEnv(prefix)
-	}
-
 	if _, isSet := os.LookupEnv(prefix + aliCredentialJSONFile); isSet {
 		if filename := os.Getenv(prefix + aliCredentialJSONFile); filename != "" {
 			ao, err := readALICredentialsJSON(filename)
@@ -349,27 +341,6 @@ func readALICredentialFiles(dirname string) (*authOptions, error) {
 		return nil, err
 	}
 	return aliConfig, nil
-}
-
-func authOptionsFromEnv(prefix string) (*authOptions, error) {
-	endpoint, err := GetEnvVarOrError(prefix + ossEndPoint)
-	if err != nil {
-		return nil, err
-	}
-	accessID, err := GetEnvVarOrError(prefix + accessKeyID)
-	if err != nil {
-		return nil, err
-	}
-	accessKey, err := GetEnvVarOrError(prefix + accessKeySecret)
-	if err != nil {
-		return nil, err
-	}
-
-	return &authOptions{
-		Endpoint:  endpoint,
-		AccessID:  accessID,
-		AccessKey: accessKey,
-	}, nil
 }
 
 // OSSSnapStoreHash calculates and returns the hash of aliCloud OSS snapstore secret.
