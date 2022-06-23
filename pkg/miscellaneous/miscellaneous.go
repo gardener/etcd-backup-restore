@@ -19,8 +19,10 @@ import (
 	"fmt"
 	"net"
 	"net/url"
+	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/gardener/etcd-backup-restore/pkg/errors"
@@ -30,6 +32,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/sirupsen/logrus"
 	"go.etcd.io/etcd/embed"
+	"gopkg.in/yaml.v2"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
@@ -275,4 +278,69 @@ func GetBackupLeaderEndPoint(endPoints []string, port uint) (string, error) {
 
 	backupLeaderEndPoint := fmt.Sprintf("%s://%s:%s", url.Scheme, host, fmt.Sprintf("%d", port))
 	return backupLeaderEndPoint, nil
+}
+
+// GetEnvVarOrError returns the value of specified environment variable or error if it's not defined.
+func GetEnvVarOrError(varName string) (string, error) {
+	value := os.Getenv(varName)
+	if value == "" {
+		err := fmt.Errorf("missing environment variable %s", varName)
+		return value, err
+	}
+
+	return value, nil
+}
+
+// GetEtcdSvcEndpoint returns the endpoint to the etcd client service
+func GetEtcdSvcEndpoint() (string, error) {
+	var inputFileName string
+	etcdConfigForTest := os.Getenv("ETCD_CONF")
+	if etcdConfigForTest != "" {
+		inputFileName = etcdConfigForTest
+	} else {
+		inputFileName = "/var/etcd/config/etcd.conf.yaml"
+		//inputFileName = "/Users/I544000/etcd.conf.yaml"
+	}
+
+	configYML, _ := os.ReadFile(inputFileName)
+	// if err != nil {
+	// 	logger.Fatalf("Unable to read etcd config file: %v", err)
+	// }
+
+	config := map[string]interface{}{}
+	_ = yaml.Unmarshal([]byte(configYML), &config)
+	// if err := yaml.Unmarshal([]byte(configYML), &config); err != nil {
+	// 	logger.Warnf("Unable to unmarshal etcd config yaml file: %v", err)
+	// 	return "", err
+	// }
+
+	advClientURL := config["advertise-client-urls"]
+	//protocol, svcName, namespace, peerPort, _ := parsePeerURL(fmt.Sprint(advClientURL))
+	tokens := strings.Split(fmt.Sprint(advClientURL), "@")
+	if len(tokens) < 4 {
+		return "", fmt.Errorf("total length of tokens is less than four")
+	}
+	protocol := tokens[0]
+	svcName := tokens[1]
+	namespace := tokens[2]
+	peerPort := tokens[3]
+	domaiName := fmt.Sprintf("%s.%s.%s", svcName, namespace, "svc")
+	return fmt.Sprintf("%s://%s:%s", protocol, domaiName, peerPort), nil
+}
+
+// ProbeEtcd probes the etcd endpoint to check if an etcd is available
+func ProbeEtcd(ctx context.Context, clientFactory etcdClient.Factory, logger *logrus.Logger) error {
+	clientKV, err := clientFactory.NewKV()
+	defer clientKV.Close()
+	if err != nil {
+		return &errors.EtcdError{
+			Message: fmt.Sprintf("Failed to create etcd KV client: %v", err),
+		}
+	}
+
+	if _, err := clientKV.Get(ctx, "foo"); err != nil {
+		logger.Errorf("Failed to connect to etcd KV client: %v", err)
+		return err
+	}
+	return nil
 }

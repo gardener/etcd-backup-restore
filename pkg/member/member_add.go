@@ -2,92 +2,154 @@ package member
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
 	"time"
 
 	"github.com/gardener/etcd-backup-restore/pkg/etcdutil"
+	"github.com/gardener/etcd-backup-restore/pkg/etcdutil/client"
+	"github.com/gardener/etcd-backup-restore/pkg/miscellaneous"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 	"github.com/sirupsen/logrus"
+	"go.etcd.io/etcd/clientv3"
 	"go.etcd.io/etcd/etcdserver/api/v3rpc/rpctypes"
 	"gopkg.in/yaml.v2"
+	"k8s.io/client-go/util/retry"
 )
 
 const (
-	// RetryPeriod is the peroid after which an operation is retried
-	RetryPeriod time.Duration = 5 * time.Second
+	// retryPeriod is the peroid after which an operation is retried
+	retryPeriod = 5 * time.Second
+
+	// etcdTimeout is timeout for etcd operations
+	etcdTimeout = 10 * time.Second
 )
 
+// AddMember interface defines the functionalities needed to add a member to the etcd cluster
+type AddMember interface {
+	// AddMemberAsLearner add a new member as a learner to the etcd cluster
+	AddMemberAsLearner(*logrus.Logger, *brtypes.EtcdConnectionConfig)
+
+	// IsMemberInCluster checks is the current members peer URL is already part of the etcd cluster
+	IsMemberInCluster(*logrus.Logger, *brtypes.EtcdConnectionConfig)
+
+	// PromoteMember promotes an etcd member from a learner to a voting member of the cluster. This will succeed only if its logs are caught up with the leader
+	PromoteMember(context.Context, *logrus.Entry, *brtypes.EtcdConnectionConfig)
+}
+
+// NewMember holds the configuration for the mechanism of adding a new member to the cluster.
+type NewMember struct {
+	clientFactory client.Factory
+}
+
+// NewMemberConfig returns new ExponentialBackoff.
+func NewMemberConfig(etcdConnConfig *brtypes.EtcdConnectionConfig) *NewMember {
+	etcdConn := *etcdConnConfig
+	svcEndpoint, err := miscellaneous.GetEtcdSvcEndpoint()
+	if svcEndpoint == "" || err != nil {
+		svcEndpoint = "http://127.0.0.1:2379"
+	}
+	etcdConn.Endpoints = []string{svcEndpoint}
+	//etcdConn.Endpoints = []string{fmt.Sprintf("%s://%s:%s", "https", "etcd-main-0.etcd-main-peer.default.svc", "2379")} //TODO: Don't hardcode this
+	//etcdConn.Endpoints = []string{"http://127.0.0.1:2379"}
+	clientFactory := etcdutil.NewFactory(etcdConn)
+	return &NewMember{
+		clientFactory: clientFactory,
+	}
+}
+
 // AddMemberAsLearner add a member as a learner to the etcd cluster
-func AddMemberAsLearner(logger *logrus.Logger, etcdConnConfig *brtypes.EtcdConnectionConfig) error {
+func (m *NewMember) AddMemberAsLearner(logger *logrus.Logger) error {
 	//Add member as learner to cluster
+	logger.Info("Starting Add Member")
 	memberURL, err := getMemberURL(logger)
 	if memberURL == "" || err != nil {
-		logger.Warn("Could not fetch member URL")
+		logger.Info("Error fetching etcd member URL")
+		return fmt.Errorf("Could not fetch member URL : %v", err)
 	}
-	for {
-		//Create etcd client
-		etcdConn := *etcdConnConfig
-		etcdConn.Endpoints = []string{fmt.Sprintf("%s://%s:%s", "https", "etcd-main-0.etcd-main-peer.default.svc", "2379")} //TODO: Don't hardcode this
-		clientFactory := etcdutil.NewFactory(etcdConn)
-		cli, _ := clientFactory.NewCluster()
+	//memberURL = "http://127.0.0.1:2380"
 
-		memAddCtx, cancel := context.WithTimeout(context.TODO(), brtypes.DefaultEtcdConnectionTimeout)
-		_, err := cli.MemberAddAsLearner(memAddCtx, []string{memberURL})
-		cancel()
-		cli.Close()
-
-		if err != nil {
-			logger.Warn("Error adding member as a learner: ", err)
-		}
-		if err == nil || strings.Contains(rpctypes.ErrGRPCPeerURLExist.Error(), err.Error()) {
-			logger.Info("Added member to cluster as a learner")
-			break //TODO: why not just return here?
-		}
-		if strings.Contains(rpctypes.ErrGRPCPeerURLExist.Error(), err.Error()) {
-			logger.Info("Member already part of etcd cluster")
-			break
-		}
-
-		logger.Info("Could not as member as learner due to: ", err)
-		logger.Info("Trying again in 5 seconds... ")
-		timer := time.NewTimer(RetryPeriod)
-		<-timer.C
-		timer.Stop()
+	cli, err := m.clientFactory.NewCluster()
+	defer cli.Close()
+	if err != nil {
+		logger.Info("Error creating etcd client to add member")
+		return fmt.Errorf("failed to build etcd cluster client : %v", err)
 	}
 
-	return nil
+	memAddCtx, cancel := getContext(context.TODO(), etcdTimeout)
+	defer cancel()
+	_, err = cli.MemberAddAsLearner(memAddCtx, []string{memberURL})
+
+	if err == nil {
+		logger.Info("Added member to cluster as a learner")
+		return nil
+	}
+	if errors.Is(err, rpctypes.Error(rpctypes.ErrGRPCPeerURLExist)) {
+		logger.Info("Member already part of etcd cluster")
+		return nil
+	}
+	if err != nil {
+		logger.Warn("Error adding member as a learner: ", err)
+		return fmt.Errorf("Error adding member as a learner: %v", err)
+	}
+
+	logger.Info("Could not as member as learner due to: ", err)
+	return fmt.Errorf("Could not as member as learner due to: %v", err)
 }
 
 // IsMemberInCluster checks is the current members peer URL is already part of the etcd cluster
-func IsMemberInCluster(logger *logrus.Logger, etcdConnConfig *brtypes.EtcdConnectionConfig) bool {
-	//Create etcd client
-	etcdConn := *etcdConnConfig
-	etcdConn.Endpoints = []string{fmt.Sprintf("%s://%s:%s", "https", "etcd-main-0.etcd-main-peer.default.svc", "2379")} //TODO: Don't hardcode this
-	clientFactory := etcdutil.NewFactory(etcdConn)
-	cli, _ := clientFactory.NewCluster()
+func (m *NewMember) IsMemberInCluster(logger *logrus.Logger) (bool, error) {
+	// Check if an etcd is already available
+	backoff := retry.DefaultBackoff
+	backoff.Steps = 2
+	err := retry.OnError(backoff, func(err error) bool {
+		return err != nil
+	}, func() error {
+		etcdProbeCtx, cancel := getContext(context.TODO(), etcdTimeout)
+		defer cancel()
+		return miscellaneous.ProbeEtcd(etcdProbeCtx, m.clientFactory, logger)
+	})
+	if err != nil {
+		return false, err
+	}
 
-	// TODO: should use a retry mechanism here
+	cli, err := m.clientFactory.NewCluster()
+	if err != nil {
+		logger.Errorf("failed to build etcd cluster client")
+		return false, err
+	}
 	defer cli.Close()
 	logger.Info("Etcd client created")
 
 	// List members in cluster
-	memListCtx, cancel := context.WithTimeout(context.TODO(), brtypes.DefaultEtcdConnectionTimeout)
-	etcdMemberList, err := cli.MemberList(memListCtx)
-	defer cancel()
+	var etcdMemberList *clientv3.MemberListResponse
+	err = retry.OnError(retry.DefaultBackoff, func(err error) bool {
+		return err != nil
+	}, func() error {
+		memListCtx, cancel := getContext(context.TODO(), etcdTimeout)
+		defer cancel()
+		etcdMemberList, err = cli.MemberList(memListCtx)
+		return err
+	})
 	if err != nil {
 		logger.Warn("Could not list any etcd members", err)
-		return true
+		return false, err
 	}
 
+	podName, err := miscellaneous.GetEnvVarOrError("POD_NAME")
+	if err != nil {
+		logger.Error("Error reading POD_NAME env var", err)
+		return false, err
+	}
 	for _, y := range etcdMemberList.Members {
-		if y.Name == os.Getenv("POD_NAME") {
-			return true
+		if y.Name == podName {
+			return true, err
 		}
 	}
 
-	return false
+	return false, err
 }
 
 func getMemberURL(logger *logrus.Logger) (string, error) {
@@ -102,7 +164,6 @@ func getMemberURL(logger *logrus.Logger) (string, error) {
 	configYML, err := os.ReadFile(inputFileName)
 	if err != nil {
 		logger.Fatalf("Unable to read etcd config file: %v", err)
-		//return "", err
 	}
 
 	config := map[string]interface{}{}
@@ -111,64 +172,74 @@ func getMemberURL(logger *logrus.Logger) (string, error) {
 		return "", err
 	}
 
-	return strings.Split(fmt.Sprint(config["initial-advertise-peer-urls"]), ",")[0], nil //TODO: too complicated
+	initAdPeerURL := config["initial-advertise-peer-urls"]
+	protocol, svcName, namespace, peerPort, err := parsePeerURL(fmt.Sprint(initAdPeerURL))
+	podName := os.Getenv("POD_NAME")
+	domaiName := fmt.Sprintf("%s.%s.%s", svcName, namespace, "svc")
+
+	return fmt.Sprintf("%s://%s.%s:%s", protocol, podName, domaiName, peerPort), nil
+}
+
+func parsePeerURL(peerURL string) (string, string, string, string, error) {
+	tokens := strings.Split(peerURL, "@")
+	if len(tokens) < 4 {
+		return "", "", "", "", fmt.Errorf("total length of tokens is less than four")
+	}
+	return tokens[0], tokens[1], tokens[2], tokens[3], nil
 }
 
 // PromoteMember promotes an etcd member from a learner to a voting member of the cluster. This will succeed only if its logs are caught up with the leader
-func PromoteMember(ctx context.Context, logger *logrus.Entry, etcdConnConfig *brtypes.EtcdConnectionConfig) {
-	for {
-		etcdConn := *etcdConnConfig
-		//etcdConn.Endpoints = []string{os.Getenv("ETCD_ENDPOINT")}
-		etcdConn.Endpoints = []string{fmt.Sprintf("%s://%s:%s", "https", "etcd-main-0.etcd-main-peer.default.svc", "2379")} //TODO: Don't hardcode this
+func (m *NewMember) PromoteMember(ctx context.Context, logger *logrus.Entry) error {
+	logger.Info("In Member Promote")
+	cli, err := m.clientFactory.NewCluster()
+	if err != nil {
+		logger.Errorf("failed to build etcd cluster client")
+	}
 
-		clientFactory := etcdutil.NewFactory(etcdConn)
-		cli, _ := clientFactory.NewCluster()
+	//List all members in the etcd cluster
+	//Member URL will appear in the memberlist call response as soon as the member has been added to the cluster as a learner
+	//However, the name of the member will appear only if the member has started running
+	memListCtx, memListCtxCancel := getContext(ctx, brtypes.DefaultEtcdConnectionTimeout)
+	etcdList, memListErr := cli.MemberList(memListCtx)
+	memListCtxCancel()
 
-		//List all members in the etcd cluster
-		//Member URL will appear in the memberlist call response as soon as the member has been added to the cluster as a learner
-		//However, the name of the member will appear only if the member has started running
-		memListCtx, memListCtxcancel := context.WithTimeout(context.TODO(), brtypes.DefaultEtcdConnectionTimeout)
-		etcdList, memListErr := cli.MemberList(memListCtx)
-		memListCtxcancel()
+	if memListErr != nil {
+		logger.Info("error listing members: ", memListErr)
+		cli.Close()
+		return memListErr
+	}
 
-		if memListErr != nil {
-			logger.Info("error listing members: ", memListErr)
-			cli.Close()
-			continue
-		}
-
-		//TODO: Simplify logic below
-		var promoted bool
-		promoted = false
-		for _, y := range etcdList.Members {
-			if y.Name == os.Getenv("POD_NAME") {
-				logger.Info("Promoting member ", y.Name)
-				memPromoteCtx, cancel := context.WithTimeout(context.TODO(), brtypes.DefaultEtcdConnectionTimeout)
-				//Member promote call will succeed only if member is in sync with leader, and will error out otherwise
-				_, memPromoteErr := cli.MemberPromote(memPromoteCtx, y.ID)
-				cancel()
-				if memPromoteErr == nil {
-					//Exit if member is successfully promoted or if member is not a learner
-					promoted = true
-					logger.Info("Member promoted ", y.Name, " : ", y.ID)
-					break
-				}
-				if strings.Contains(rpctypes.ErrGRPCMemberNotLearner.Error(), memPromoteErr.Error()) {
-					//Exit if member is already part of the cluster
-					promoted = true
-					logger.Info("Member ", y.Name, " : ", y.ID, " already part of etcd cluster")
-					break
-				}
+	//TODO: Simplify logic below
+	podName, err := miscellaneous.GetEnvVarOrError("POD_NAME")
+	if err != nil {
+		logger.Error("Error reading POD_NAME env var", err)
+	}
+	for _, y := range etcdList.Members {
+		if y.Name == podName {
+			var memPromoteErr error
+			memPromoteCtx, cancel := getContext(ctx, brtypes.DefaultEtcdConnectionTimeout)
+			defer cancel()
+			_, memPromoteErr = cli.MemberPromote(memPromoteCtx, y.ID) //Member promote call will succeed only if member is in sync with leader, and will error out otherwise
+			if memPromoteErr == nil {                                 //Member successfully promoted
+				logger.Info("Member promoted ", y.Name, " : ", y.ID)
+				return nil
+			} else if errors.Is(memPromoteErr, rpctypes.Error(rpctypes.ErrGRPCMemberNotLearner)) { //Member is not a learner
+				logger.Info("Member ", y.Name, " : ", y.ID, " already part of etcd cluster")
+				return nil
 			}
-		}
-		if promoted {
+			logger.Info("Could not promote member ", y.Name, " : ", memPromoteErr)
+			err = memPromoteErr
 			break
 		}
-
-		//Timer here so that the member promote loop doesn't execute too frequently
-		logger.Info("Member still catching up logs from leader. Retrying promotion...")
-		timer := time.NewTimer(RetryPeriod)
-		<-timer.C
-		timer.Stop()
 	}
+	logger.Info("Member still catching up logs from leader. Retrying promotion...")
+	if err == nil {
+		err = fmt.Errorf("Member not added to cluster yet : %v", err)
+	}
+	return err
+}
+
+func getContext(ctx context.Context, timeout time.Duration) (context.Context, context.CancelFunc) {
+	ctxt, cancel := context.WithTimeout(ctx, timeout)
+	return ctxt, cancel
 }

@@ -27,7 +27,6 @@ import (
 	"github.com/gardener/etcd-backup-restore/pkg/backoff"
 	"github.com/gardener/etcd-backup-restore/pkg/common"
 	"github.com/gardener/etcd-backup-restore/pkg/leaderelection"
-	"github.com/gardener/etcd-backup-restore/pkg/member"
 	"github.com/gardener/etcd-backup-restore/pkg/metrics"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 	"github.com/ghodss/yaml"
@@ -38,6 +37,7 @@ import (
 	"github.com/gardener/etcd-backup-restore/pkg/health/heartbeat"
 	"github.com/gardener/etcd-backup-restore/pkg/health/membergarbagecollector"
 	"github.com/gardener/etcd-backup-restore/pkg/initializer"
+	"github.com/gardener/etcd-backup-restore/pkg/member"
 	"github.com/gardener/etcd-backup-restore/pkg/snapshot/snapshotter"
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 
@@ -46,6 +46,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"go.etcd.io/etcd/pkg/types"
 	"k8s.io/apimachinery/pkg/util/clock"
+	"k8s.io/client-go/util/retry"
 )
 
 // BackupRestoreServer holds the details for backup-restore server.
@@ -61,7 +62,7 @@ type BackupRestoreServer struct {
 var (
 	// runServerWithSnapshotter indicates whether to start server with or without snapshotter.
 	runServerWithSnapshotter bool   = true
-	etcdConfig               string = "/var/etcd/config/etcd.conf.yaml"
+	etcdConfig               string = /*"/Users/I544000/etcd.conf.yaml"*/ "/var/etcd/config/etcd.conf.yaml"
 )
 
 // NewBackupRestoreServer return new backup restore server.
@@ -198,7 +199,16 @@ func (b *BackupRestoreServer) runServer(ctx context.Context, restoreOpts *brtype
 	defer handler.Stop()
 
 	// Promotes member if it is a learner
-	member.PromoteMember(context.TODO(), b.logger, b.config.EtcdConnectionConfig)
+	backoff := retry.DefaultBackoff
+	backoff.Steps = 20 //TODO: find an apt value here
+	retry.OnError(backoff, func(err error) bool {
+		return err != nil
+	}, func() error {
+		m := member.NewMemberConfig(b.config.EtcdConnectionConfig)
+		return m.PromoteMember(ctx, b.logger)
+	})
+
+	b.logger.Info("Done with member promote retry")
 
 	leaderCallbacks := &brtypes.LeaderCallbacks{
 		OnStartedLeading: func(leCtx context.Context) {

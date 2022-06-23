@@ -30,6 +30,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/sirupsen/logrus"
 	"go.uber.org/zap"
+	"k8s.io/client-go/util/retry"
 )
 
 // Initialize has the following steps:
@@ -44,9 +45,15 @@ import (
 func (e *EtcdInitializer) Initialize(mode validator.Mode, failBelowRevision int64) error {
 	start := time.Now()
 	//Etcd cluster scale-up case
-	if !member.IsMemberInCluster(e.Logger, e.Config.EtcdConnectionConfig) {
-		//return here as no restoration or validation needed
-		member.AddMemberAsLearner(e.Logger, e.Config.EtcdConnectionConfig)
+	m := member.NewMemberConfig(e.Config.EtcdConnectionConfig)
+	clusterMember, err := m.IsMemberInCluster(e.Logger)
+	if !clusterMember && err == nil {
+		retry.OnError(retry.DefaultBackoff, func(err error) bool {
+			return err != nil
+		}, func() error {
+			return m.AddMemberAsLearner(e.Logger)
+		})
+		// return here after adding member as no restoration or validation needed
 		return nil
 	}
 
@@ -207,4 +214,103 @@ func (e *EtcdInitializer) removeDir(dirname string) error {
 		return fmt.Errorf("failed to remove directory %s with err: %v", dirname, err)
 	}
 	return nil
+}
+
+// func (r *EtcdInitializer) SingleMemberRestoreCase() bool {
+// 	r.Logger.Info("Starting single member restore case")
+// 	clientSet, err := miscellaneous.GetKubernetesClientSetOrError()
+// 	if err != nil {
+// 		r.Logger.Errorf("failed to create clientset: %v", err)
+// 		return false
+// 	}
+// 	r.Logger.Info("Single member restore case: k8s clientset created")
+
+// 	//Fetch lease associated with member
+// 	memberLease := &v1.Lease{}
+// 	err = clientSet.Get(context.TODO(), controller_runtime_client.ObjectKey{
+// 		Namespace: os.Getenv("POD_NAMESPACE"),
+// 		Name:      os.Getenv("POD_NAME"),
+// 	}, memberLease)
+// 	if err != nil {
+// 		r.Logger.Errorf("error fetching lease: %v", err)
+// 	}
+// 	r.Logger.Info("Single member restore case: fetched lease")
+
+// 	if memberLease.Spec.HolderIdentity != nil {
+// 		r.Logger.Info("Single member restore case: lease holder ID is not nil")
+// 		//Case of lease already existing
+// 		//Assume case of single member restoration
+
+// 		//Create etcd client
+// 		clientFactory := etcdutil.NewFactory(brtypes.EtcdConnectionConfig{
+// 			Endpoints:         []string{"http://etcd-main-peer.default.svc.cluster.local:2380"},
+// 			InsecureTransport: true,
+// 		})
+// 		cli, _ := clientFactory.NewCluster()
+// 		r.Logger.Info("Single member restore case: created etcd client")
+
+// 		//remove self from cluster
+// 		ctx3, cancel := context.WithTimeout(context.TODO(), 5*time.Second)
+// 		etcdList, err2 := cli.MemberList(ctx3)
+// 		if err2 != nil {
+// 			r.Logger.Warn("Could not list any etcd members")
+// 		}
+// 		cancel()
+// 		r.Logger.Info("Single member restore case: etcd member list done")
+// 		//mem := make(map[string]uint64)
+// 		var peerURL []string
+// 		for _, y := range etcdList.Members {
+// 			if y.Name == os.Getenv("POD_NAME") {
+// 				peerURL = y.PeerURLs
+// 				cli.MemberRemove(context.TODO(), y.ID)
+// 				r.Logger.Info("Single member restore case: member removed")
+// 				break
+// 			}
+// 		}
+
+// 		//Add self to the cluster
+// 		ctx4, cancel := context.WithTimeout(context.TODO(), 5*time.Second)
+// 		cli.MemberAdd(ctx4, peerURL)
+// 		cancel()
+// 		r.Logger.Info("Single member restore case: member added")
+// 		return true
+// 	}
+
+// 	return false
+// }
+
+// func (r *EtcdInitializer) IsMemberInCluster() bool {
+// 	//Create etcd client
+// 	clientFactory := etcdutil.NewFactory(brtypes.EtcdConnectionConfig{
+// 		Endpoints:         []string{"http://etcd-main-peer.default.svc.cluster.local:2380"}, //TODO: use ETCD_ENDPOINT env var passed by druid
+// 		InsecureTransport: true,                                                             //TODO: is it right to use insecure transport?
+// 	})
+// 	cli, _ := clientFactory.NewCluster()
+// 	r.Logger.Info("Etcd client created")
+
+// 	// List members in cluster
+// 	memListCtx, cancel := context.WithTimeout(context.TODO(), brtypes.DefaultEtcdConnectionTimeout)
+// 	etcdMemberList, err := cli.MemberList(memListCtx)
+// 	cancel()
+// 	if err != nil {
+// 		r.Logger.Warn("Could not list any etcd members", err)
+// 		return true
+// 	}
+
+// 	for _, y := range etcdMemberList.Members {
+// 		if y.Name == os.Getenv("POD_NAME") {
+// 			return true
+// 		}
+// 	}
+
+// 	cli.Close()
+
+// 	return false
+// }
+
+func getMemberURL() string {
+	//end := strings.Split(os.Getenv("ETCD_ENDPOINT"), "//") //TODO: use ETCD_ENDPOINT env var passed by druid
+	memberURL := "http://" + os.Getenv("POD_NAME") + ".etcd-main-peer.default.svc:2380"
+	//memberURL := end[0] + "//" + os.Getenv("POD_NAME") + "." + end[1]
+	return memberURL
 }

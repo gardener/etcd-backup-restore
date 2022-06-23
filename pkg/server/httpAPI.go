@@ -39,7 +39,9 @@ import (
 	"github.com/ghodss/yaml"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/sirupsen/logrus"
+	"go.etcd.io/etcd/clientv3"
 	appsv1 "k8s.io/api/apps/v1"
+	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -437,72 +439,9 @@ func (h *HTTPHandler) serveConfig(rw http.ResponseWriter, req *http.Request) {
 	domaiName = fmt.Sprintf("%s.%s.%s", svcName, namespace, "svc")
 	config["advertise-client-urls"] = fmt.Sprintf("%s://%s.%s:%s", protocol, podName, domaiName, clientPort)
 
-	//Read sts spec for updated replicas to toggle `initial-cluster-state`
-	clientSet, err := miscellaneous.GetKubernetesClientSetOrError()
-	if err != nil {
-		h.Logger.Errorf("failed to create clientset: %v", err)
-		return
-	}
-	curSts := &appsv1.StatefulSet{}
-	errSts := clientSet.Get(context.TODO(), client.ObjectKey{
-		Namespace: podNS,
-		Name:      podName[:strings.LastIndex(podName, "-")],
-	}, curSts)
-	if errSts != nil {
-		h.Logger.Warn("error fetching etcd sts ", errSts)
-		return
-	}
+	config["initial-cluster-state"] = getInitialClusterState(req.Context(), *h.Logger, podName, podNS)
 
-	config["initial-cluster-state"] = "new"
-	//TODO: achieve this without an sts?
-	if *curSts.Spec.Replicas > 1 && *curSts.Spec.Replicas > curSts.Status.UpdatedReplicas {
-		config["initial-cluster-state"] = "existing"
-	}
-	// TODO Remove below prints
-	fmt.Println("*curSts.Spec.Replicas is ", *curSts.Spec.Replicas)
-	fmt.Println("curSts.Status.UpdatedReplicas is ", curSts.Status.UpdatedReplicas)
-
-	//INITIAL_CLUSTER served via the etcd config must be tailored to the number of members in the cluster at that point. Else etcd complains with error "member count is unequal"
-	//One reason why we might want to have a strict ordering when members are joining the cluster
-	//addmember subcommand achieves this by making sure the pod with the previous index is running before attempting to add itself as a learner
-	etcdConn := *h.EtcdConnectionConfig
-	//etcdConn.Endpoints = []string{fmt.Sprintf("%s://%s:%s", protocol, domaiName, peerPort)} //[]string{"http://etcd-main-peer.default.svc.cluster.local:2380"} //TODO: pass via env var
-	//etcdConn.Endpoints = []string{fmt.Sprintf("%s://%s:%s", protocol, "etcd-main-0.etcd-main-peer.default.svc", "2379")}
-	etcdConn.Endpoints = []string{fmt.Sprintf("%s://%s:%s", protocol, "etcd-main-0.etcd-main-peer.default.svc", clientPort)} //TODO: Don't hardcode this
-	clientFactory := etcdutil.NewFactory(etcdConn)
-	cli, err := clientFactory.NewCluster()
-	if err != nil {
-		h.Logger.Warnf("Error with NewCluster() : %v", err)
-	}
-	ctx, cancel := context.WithTimeout(context.TODO(), brtypes.DefaultEtcdConnectionTimeout)
-	defer cancel()
-	memList, err := cli.MemberList(ctx)
-	noOfMembers := 0
-	if err != nil {
-		h.Logger.Warnf("Error with MemberList() : %v", err)
-	} else {
-		noOfMembers = len(memList.Members)
-	}
-
-	//If no members present or a single node cluster, consider as case of first member bootstraping. No need to edit INITIAL_CLUSTER in that case
-	if noOfMembers > 1 {
-		initialcluster := strings.Split(fmt.Sprint(config["initial-cluster"]), ",")
-
-		membrs := make(map[string]bool)
-		for _, y := range memList.Members {
-			membrs[y.Name] = true
-		}
-		cluster := ""
-		for _, y := range initialcluster {
-			// Add member to `initial-cluster` only if already a cluster member
-			z := strings.Split(y, "=")
-			if membrs[z[0]] || z[0] == podName {
-				cluster = cluster + y + ","
-			}
-		}
-		//remove trailing `,`
-		config["initial-cluster"] = cluster[:len(cluster)-1]
-	}
+	config["initial-cluster"] = getInitialCluster(req.Context(), fmt.Sprint(config["initial-cluster"]), *h.EtcdConnectionConfig, protocol, clientPort, *h.Logger, podName)
 
 	data, err := yaml.Marshal(&config)
 	if err != nil {
@@ -520,6 +459,89 @@ func (h *HTTPHandler) serveConfig(rw http.ResponseWriter, req *http.Request) {
 	http.ServeFile(rw, req, outputFileName)
 
 	h.Logger.Info("Served config for ETCD instance.")
+}
+
+func getInitialCluster(ctx context.Context, initialCluster string, etcdConn brtypes.EtcdConnectionConfig, protocol string, clientPort string, logger logrus.Entry, podName string) string {
+	//INITIAL_CLUSTER served via the etcd config must be tailored to the number of members in the cluster at that point. Else etcd complains with error "member count is unequal"
+	//One reason why we might want to have a strict ordering when members are joining the cluster
+	//addmember subcommand achieves this by making sure the pod with the previous index is running before attempting to add itself as a learner
+	//etcdConn := *h.EtcdConnectionConfig
+	//etcdConn.Endpoints = []string{fmt.Sprintf("%s://%s:%s", protocol, domaiName, peerPort)} //[]string{"http://etcd-main-peer.default.svc.cluster.local:2380"} //TODO: pass via env var
+	//etcdConn.Endpoints = []string{fmt.Sprintf("%s://%s:%s", protocol, "etcd-main-0.etcd-main-peer.default.svc", "2379")}
+	svcEndpoint, _ := miscellaneous.GetEtcdSvcEndpoint()
+	etcdConn.Endpoints = []string{svcEndpoint}
+	//etcdConn.Endpoints = []string{fmt.Sprintf("%s://%s:%s", protocol, "etcd-main-0.etcd-main-peer.default.svc", clientPort)} //TODO: Don't hardcode this
+	clientFactory := etcdutil.NewFactory(etcdConn)
+	cli, err := clientFactory.NewCluster()
+	if err != nil {
+		logger.Warnf("Error with NewCluster() : %v", err)
+	}
+	ctx, cancel := context.WithTimeout(ctx, brtypes.DefaultEtcdConnectionTimeout)
+	defer cancel()
+	var memList *clientv3.MemberListResponse
+	err = retry.OnError(retry.DefaultBackoff, func(err error) bool {
+		return err != nil
+	}, func() error {
+		memList, err = cli.MemberList(ctx)
+		return err
+	})
+	noOfMembers := 0
+	if err != nil {
+		logger.Warnf("Error with MemberList() : %v", err)
+	} else {
+		noOfMembers = len(memList.Members)
+	}
+
+	//If no members present or a single node cluster, consider as case of first member bootstraping. No need to edit INITIAL_CLUSTER in that case
+	if noOfMembers > 1 {
+		initialcluster := strings.Split(initialCluster, ",")
+
+		membrs := make(map[string]bool)
+		for _, y := range memList.Members {
+			membrs[y.Name] = true
+		}
+		cluster := ""
+		for _, y := range initialcluster {
+			// Add member to `initial-cluster` only if already a cluster member
+			z := strings.Split(y, "=")
+			if membrs[z[0]] || z[0] == podName {
+				cluster = cluster + y + ","
+			}
+		}
+		//remove trailing `,`
+		initialCluster = cluster[:len(cluster)-1]
+	}
+
+	return initialCluster
+}
+
+func getInitialClusterState(ctx context.Context, logger logrus.Entry, podName string, podNS string) string {
+	clusterState := "new"
+
+	//Read sts spec for updated replicas to toggle `initial-cluster-state`
+	//podNS, _ := miscellaneous.GetEnvVarOrError("POD_NAMESPACE")
+	//podName, _ := miscellaneous.GetEnvVarOrError("POD_NAME")
+	clientSet, err := miscellaneous.GetKubernetesClientSetOrError()
+	if err != nil {
+		logger.Errorf("failed to create clientset: %v", err)
+		return clusterState
+	}
+	curSts := &appsv1.StatefulSet{}
+	errSts := clientSet.Get(ctx, client.ObjectKey{
+		Namespace: podNS,
+		Name:      podName[:strings.LastIndex(podName, "-")],
+	}, curSts)
+	if errSts != nil {
+		logger.Warn("error fetching etcd sts ", errSts)
+		return clusterState
+	}
+
+	//TODO: achieve this without an sts?
+	if *curSts.Spec.Replicas > 1 && *curSts.Spec.Replicas > curSts.Status.UpdatedReplicas {
+		clusterState = "existing"
+	}
+
+	return clusterState
 }
 
 func parsePeerURL(peerURL string) (string, string, string, string, error) {
