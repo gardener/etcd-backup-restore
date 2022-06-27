@@ -80,24 +80,20 @@ func NewABSSnapStore(config *brtypes.SnapstoreConfig) (*ABSSnapStore, error) {
 
 func getCredentials(prefixString string) (string, string, error) {
 
-	if _, isSet := os.LookupEnv(prefixString + absCredentialJSONFile); isSet {
-		if filename := os.Getenv(prefixString + absCredentialJSONFile); filename != "" {
-			credentials, err := readABSCredentialsJSON(filename)
-			if err != nil {
-				return "", "", fmt.Errorf("error getting credentials using %v file", filename)
-			}
-			return credentials.StorageAccount, credentials.SecretKey, nil
+	if filename, isSet := os.LookupEnv(prefixString + absCredentialJSONFile); isSet {
+		credentials, err := readABSCredentialsJSON(filename)
+		if err != nil {
+			return "", "", fmt.Errorf("error getting credentials using %v file", filename)
 		}
+		return credentials.StorageAccount, credentials.SecretKey, nil
 	}
 
-	if _, isSet := os.LookupEnv(prefixString + absCredentialFile); isSet {
-		if dir := os.Getenv(prefixString + absCredentialFile); dir != "" {
-			credentials, err := readABSCredentialFiles(dir)
-			if err != nil {
-				return "", "", fmt.Errorf("error getting credentials from %v dir", dir)
-			}
-			return credentials.StorageAccount, credentials.SecretKey, nil
+	if dir, isSet := os.LookupEnv(prefixString + absCredentialFile); isSet {
+		credentials, err := readABSCredentialFiles(dir)
+		if err != nil {
+			return "", "", fmt.Errorf("error getting credentials from %v dir", dir)
 		}
+		return credentials.StorageAccount, credentials.SecretKey, nil
 	}
 
 	return "", "", fmt.Errorf("unable to get credentials")

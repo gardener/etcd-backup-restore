@@ -48,24 +48,20 @@ func NewOCSSnapStore(config *brtypes.SnapstoreConfig) (*S3SnapStore, error) {
 }
 
 func getOCSAuthOptions(prefix string) (*ocsAuthOptions, error) {
-	if _, isSet := os.LookupEnv(prefix + ocsCredentialFileJSONFile); isSet {
-		if filename := os.Getenv(prefix + ocsCredentialFileJSONFile); filename != "" {
-			ao, err := readOCSCredentialsJSON(filename)
-			if err != nil {
-				return nil, fmt.Errorf("error getting credentials using %v file", filename)
-			}
-			return ao, nil
+	if filename, isSet := os.LookupEnv(prefix + ocsCredentialFileJSONFile); isSet {
+		ao, err := readOCSCredentialsJSON(filename)
+		if err != nil {
+			return nil, fmt.Errorf("error getting credentials using %v file", filename)
 		}
+		return ao, nil
 	}
 
-	if _, isSet := os.LookupEnv(prefix + ocsCredentialFile); isSet {
-		if dir := os.Getenv(prefix + ocsCredentialFile); dir != "" {
-			ao, err := readOCSCredentialFromDir(dir)
-			if err != nil {
-				return nil, fmt.Errorf("error getting credentials from %v directory", dir)
-			}
-			return ao, nil
+	if dir, isSet := os.LookupEnv(prefix + ocsCredentialFile); isSet {
+		ao, err := readOCSCredentialFromDir(dir)
+		if err != nil {
+			return nil, fmt.Errorf("error getting credentials from %v directory", dir)
 		}
+		return ao, nil
 	}
 
 	return nil, fmt.Errorf("unable to get credentials")

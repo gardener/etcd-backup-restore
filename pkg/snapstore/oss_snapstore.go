@@ -265,24 +265,20 @@ func (s *OSSSnapStore) Delete(snap brtypes.Snapshot) error {
 
 func getAuthOptions(prefix string) (*authOptions, error) {
 
-	if _, isSet := os.LookupEnv(prefix + aliCredentialJSONFile); isSet {
-		if filename := os.Getenv(prefix + aliCredentialJSONFile); filename != "" {
-			ao, err := readALICredentialsJSON(filename)
-			if err != nil {
-				return nil, fmt.Errorf("error getting credentials using %v file", filename)
-			}
-			return ao, nil
+	if filename, isSet := os.LookupEnv(prefix + aliCredentialJSONFile); isSet {
+		ao, err := readALICredentialsJSON(filename)
+		if err != nil {
+			return nil, fmt.Errorf("error getting credentials using %v file", filename)
 		}
+		return ao, nil
 	}
 
-	if _, isSet := os.LookupEnv(prefix + aliCredentialFile); isSet {
-		if dir := os.Getenv(prefix + aliCredentialFile); dir != "" {
-			ao, err := readALICredentialFiles(dir)
-			if err != nil {
-				return nil, fmt.Errorf("error getting credentials from %v directory", dir)
-			}
-			return ao, nil
+	if dir, isSet := os.LookupEnv(prefix + aliCredentialFile); isSet {
+		ao, err := readALICredentialFiles(dir)
+		if err != nil {
+			return nil, fmt.Errorf("error getting credentials from %v directory", dir)
 		}
+		return ao, nil
 	}
 
 	return nil, fmt.Errorf("unable to get credentials")

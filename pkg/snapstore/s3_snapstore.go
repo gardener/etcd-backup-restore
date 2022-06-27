@@ -87,24 +87,20 @@ func newS3FromSessionOpt(bucket, prefix, tempDir string, maxParallelChunkUploads
 
 func getSessionOptions(prefixString string) (session.Options, error) {
 
-	if _, isSet := os.LookupEnv(prefixString + awsCredentialJSONFile); isSet {
-		if filename := os.Getenv(prefixString + awsCredentialJSONFile); filename != "" {
-			creds, err := readAWSCredentialsJSONFile(filename)
-			if err != nil {
-				return session.Options{}, fmt.Errorf("error getting credentials using %v file", filename)
-			}
-			return creds, nil
+	if filename, isSet := os.LookupEnv(prefixString + awsCredentialJSONFile); isSet {
+		creds, err := readAWSCredentialsJSONFile(filename)
+		if err != nil {
+			return session.Options{}, fmt.Errorf("error getting credentials using %v file", filename)
 		}
+		return creds, nil
 	}
 
-	if _, isSet := os.LookupEnv(prefixString + awsCredentialFile); isSet {
-		if dir := os.Getenv(prefixString + awsCredentialFile); dir != "" {
-			creds, err := readAWSCredentialFiles(dir)
-			if err != nil {
-				return session.Options{}, fmt.Errorf("error getting credentials from %v directory", dir)
-			}
-			return creds, nil
+	if dir, isSet := os.LookupEnv(prefixString + awsCredentialFile); isSet {
+		creds, err := readAWSCredentialFiles(dir)
+		if err != nil {
+			return session.Options{}, fmt.Errorf("error getting credentials from %v directory", dir)
 		}
+		return creds, nil
 	}
 
 	return session.Options{
