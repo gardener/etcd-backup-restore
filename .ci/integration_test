@@ -134,6 +134,11 @@ function create_etcd_data_directory() {
   export ETCD_DATA_DIR=${TEST_DIR}/etcd-data
   mkdir -p ${ETCD_DATA_DIR}
 }
+
+function get_aws_existing_region() {
+  export REGION=`cat ${HOME}/.aws/config | tail -n 1 | awk '{print $3}'`
+}
+
 #############################
 #        AWS Setup          #
 #############################
@@ -182,6 +187,8 @@ function setup-aws-infrastructure() {
   echo "Setting up AWS infrastructure..."
   if [[ "${USE_EXISTING_AWS_SECRET}" == "1" ]]; then
     create_aws_secret
+  else
+    get_aws_existing_region
   fi
   create_s3_bucket
   echo "AWS infrastructure setup completed."
