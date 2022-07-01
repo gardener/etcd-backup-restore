@@ -315,17 +315,17 @@ func GetEtcdSvcEndpoint() (string, error) {
 	// }
 
 	advClientURL := config["advertise-client-urls"]
-	//protocol, svcName, namespace, peerPort, _ := parsePeerURL(fmt.Sprint(advClientURL))
 	tokens := strings.Split(fmt.Sprint(advClientURL), "@")
 	if len(tokens) < 4 {
 		return "", fmt.Errorf("total length of tokens is less than four")
 	}
 	protocol := tokens[0]
-	svcName := tokens[1]
-	namespace := tokens[2]
+	// svcName := tokens[1]
+	// namespace := tokens[2]
 	peerPort := tokens[3]
-	domaiName := fmt.Sprintf("%s.%s.%s", svcName, namespace, "svc")
-	return fmt.Sprintf("%s://%s:%s", protocol, domaiName, peerPort), nil
+	// domaiName := fmt.Sprintf("%s.%s.%s", svcName, namespace, "svc")
+	// return fmt.Sprintf("%s://%s:%s", protocol, domaiName, peerPort), nil
+	return fmt.Sprintf("%s://%s:%s", protocol, "etcd-main-client", peerPort), nil
 }
 
 // ProbeEtcd probes the etcd endpoint to check if an etcd is available

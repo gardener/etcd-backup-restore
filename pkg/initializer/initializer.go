@@ -307,10 +307,3 @@ func (e *EtcdInitializer) removeDir(dirname string) error {
 
 // 	return false
 // }
-
-func getMemberURL() string {
-	//end := strings.Split(os.Getenv("ETCD_ENDPOINT"), "//") //TODO: use ETCD_ENDPOINT env var passed by druid
-	memberURL := "http://" + os.Getenv("POD_NAME") + ".etcd-main-peer.default.svc:2380"
-	//memberURL := end[0] + "//" + os.Getenv("POD_NAME") + "." + end[1]
-	return memberURL
-}

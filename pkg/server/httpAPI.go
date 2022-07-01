@@ -465,12 +465,8 @@ func getInitialCluster(ctx context.Context, initialCluster string, etcdConn brty
 	//INITIAL_CLUSTER served via the etcd config must be tailored to the number of members in the cluster at that point. Else etcd complains with error "member count is unequal"
 	//One reason why we might want to have a strict ordering when members are joining the cluster
 	//addmember subcommand achieves this by making sure the pod with the previous index is running before attempting to add itself as a learner
-	//etcdConn := *h.EtcdConnectionConfig
-	//etcdConn.Endpoints = []string{fmt.Sprintf("%s://%s:%s", protocol, domaiName, peerPort)} //[]string{"http://etcd-main-peer.default.svc.cluster.local:2380"} //TODO: pass via env var
-	//etcdConn.Endpoints = []string{fmt.Sprintf("%s://%s:%s", protocol, "etcd-main-0.etcd-main-peer.default.svc", "2379")}
 	svcEndpoint, _ := miscellaneous.GetEtcdSvcEndpoint()
 	etcdConn.Endpoints = []string{svcEndpoint}
-	//etcdConn.Endpoints = []string{fmt.Sprintf("%s://%s:%s", protocol, "etcd-main-0.etcd-main-peer.default.svc", clientPort)} //TODO: Don't hardcode this
 	clientFactory := etcdutil.NewFactory(etcdConn)
 	cli, err := clientFactory.NewCluster()
 	if err != nil {
@@ -519,8 +515,6 @@ func getInitialClusterState(ctx context.Context, logger logrus.Entry, podName st
 	clusterState := "new"
 
 	//Read sts spec for updated replicas to toggle `initial-cluster-state`
-	//podNS, _ := miscellaneous.GetEnvVarOrError("POD_NAMESPACE")
-	//podName, _ := miscellaneous.GetEnvVarOrError("POD_NAME")
 	clientSet, err := miscellaneous.GetKubernetesClientSetOrError()
 	if err != nil {
 		logger.Errorf("failed to create clientset: %v", err)
@@ -651,10 +645,3 @@ func IsBackupRestoreHealthy(backupRestoreURL string) (bool, error) {
 	}
 	return health.HealthStatus, nil
 }
-
-// func getMemberURL() string {
-// 	//end := strings.Split(os.Getenv("ETCD_ENDPOINT"), "//")
-// 	memberURL := "http://" + os.Getenv("POD_NAME") + ".etcd-main-peer.default.svc:2380"
-// 	//memberURL := end[0] + "//" + os.Getenv("POD_NAME") + "." + end[1]
-// 	return memberURL
-// }

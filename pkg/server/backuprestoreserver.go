@@ -62,7 +62,7 @@ type BackupRestoreServer struct {
 var (
 	// runServerWithSnapshotter indicates whether to start server with or without snapshotter.
 	runServerWithSnapshotter bool   = true
-	etcdConfig               string = /*"/Users/I544000/etcd.conf.yaml"*/ "/var/etcd/config/etcd.conf.yaml"
+	etcdConfig               string = "/var/etcd/config/etcd.conf.yaml"
 )
 
 // NewBackupRestoreServer return new backup restore server.
@@ -207,8 +207,6 @@ func (b *BackupRestoreServer) runServer(ctx context.Context, restoreOpts *brtype
 		m := member.NewMemberConfig(b.config.EtcdConnectionConfig)
 		return m.PromoteMember(ctx, b.logger)
 	})
-
-	b.logger.Info("Done with member promote retry")
 
 	leaderCallbacks := &brtypes.LeaderCallbacks{
 		OnStartedLeading: func(leCtx context.Context) {
