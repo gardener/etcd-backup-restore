@@ -5,7 +5,7 @@ go 1.17
 require (
 	cloud.google.com/go v0.51.0
 	cloud.google.com/go/storage v1.0.0
-	github.com/Azure/azure-pipeline-go v0.2.2
+	github.com/Azure/azure-pipeline-go v0.2.3
 	github.com/Azure/azure-storage-blob-go v0.8.0
 	github.com/Azure/go-autorest/autorest v0.10.1 // indirect
 	github.com/MakeNowJust/heredoc v1.0.0 // indirect
@@ -25,7 +25,7 @@ require (
 	github.com/grpc-ecosystem/grpc-gateway v1.11.3 // indirect
 	github.com/huandu/xstrings v1.3.2 // indirect
 	github.com/mattn/go-colorable v0.1.2 // indirect
-	github.com/mattn/go-ieproxy v0.0.0-20190805055040-f9202b1cfdeb // indirect
+	github.com/mattn/go-ieproxy v0.0.1 // indirect
 	github.com/mattn/go-isatty v0.0.12 // indirect
 	github.com/mattn/go-runewidth v0.0.7 // indirect
 	github.com/mitchellh/reflectwalk v1.0.1 // indirect

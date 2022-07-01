@@ -10,8 +10,8 @@ cloud.google.com/go/internal/version
 # cloud.google.com/go/storage v1.0.0
 ## explicit; go 1.9
 cloud.google.com/go/storage
-# github.com/Azure/azure-pipeline-go v0.2.2
-## explicit
+# github.com/Azure/azure-pipeline-go v0.2.3
+## explicit; go 1.14
 github.com/Azure/azure-pipeline-go/pipeline
 # github.com/Azure/azure-storage-blob-go v0.8.0
 ## explicit
@@ -453,8 +453,8 @@ github.com/mailru/easyjson/jwriter
 # github.com/mattn/go-colorable v0.1.2
 ## explicit
 github.com/mattn/go-colorable
-# github.com/mattn/go-ieproxy v0.0.0-20190805055040-f9202b1cfdeb
-## explicit
+# github.com/mattn/go-ieproxy v0.0.1
+## explicit; go 1.14
 github.com/mattn/go-ieproxy
 # github.com/mattn/go-isatty v0.0.12
 ## explicit; go 1.12
