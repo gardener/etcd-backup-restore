@@ -39,8 +39,8 @@ require (
 	github.com/spf13/pflag v1.0.5
 	go.etcd.io/bbolt v1.3.5
 	go.etcd.io/etcd v0.5.0-alpha.5.0.20200910180754-dd1b699fc489
-	go.uber.org/atomic v1.6.0
-	go.uber.org/zap v1.15.0
+	go.uber.org/atomic v1.7.0
+	go.uber.org/zap v1.21.0
 	golang.org/x/lint v0.0.0-20201208152925-83fdc39ff7b5 // indirect
 	google.golang.org/api v0.15.0
 	google.golang.org/grpc v1.28.1 // indirect
@@ -151,18 +151,18 @@ require (
 	github.com/xeipuuv/gojsonschema v1.2.0 // indirect
 	github.com/xiang90/probing v0.0.0-20190116061207-43a291ad63a2 // indirect
 	go.opencensus.io v0.22.2 // indirect
-	go.uber.org/multierr v1.5.0 // indirect
+	go.uber.org/multierr v1.6.0 // indirect
 	golang.org/x/crypto v0.0.0-20201221181555-eec23a3978ad // indirect
 	golang.org/x/exp v0.0.0-20191227195350-da58074b4299 // indirect
-	golang.org/x/mod v0.3.0 // indirect
-	golang.org/x/net v0.0.0-20201224014010-6772e930b67b // indirect
+	golang.org/x/mod v0.4.2 // indirect
+	golang.org/x/net v0.0.0-20210405180319-a5a99cb37ef4 // indirect
 	golang.org/x/oauth2 v0.0.0-20191202225959-858c2ad4c8b6 // indirect
-	golang.org/x/sync v0.0.0-20201020160332-67f06af15bc9 // indirect
+	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c // indirect
 	golang.org/x/sys v0.0.0-20210816074244-15123e1e1f71 // indirect
 	golang.org/x/term v0.0.0-20201126162022-7de9c90e9dd1 // indirect
 	golang.org/x/text v0.3.4 // indirect
 	golang.org/x/time v0.0.0-20200630173020-3af7569d3a1e // indirect
-	golang.org/x/tools v0.0.0-20210106214847-113979e3529a // indirect
+	golang.org/x/tools v0.1.5 // indirect
 	golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1 // indirect
 	google.golang.org/appengine v1.6.6 // indirect
 	google.golang.org/genproto v0.0.0-20201110150050-8816d57aaa9a // indirect
@@ -171,7 +171,7 @@ require (
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/tomb.v1 v1.0.0-20141024135613-dd632973f1e7 // indirect
 	gopkg.in/yaml.v2 v2.3.0 // indirect
-	gopkg.in/yaml.v3 v3.0.0-20200615113413-eeeca48fe776 // indirect
+	gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b // indirect
 	honnef.co/go/tools v0.0.1-2019.2.3 // indirect
 	k8s.io/cli-runtime v0.19.2 // indirect
 	k8s.io/component-base v0.20.6 // indirect
