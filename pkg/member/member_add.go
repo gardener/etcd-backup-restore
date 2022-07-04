@@ -168,8 +168,7 @@ func getMemberURL(logger *logrus.Logger) (string, error) {
 
 	config := map[string]interface{}{}
 	if err := yaml.Unmarshal([]byte(configYML), &config); err != nil {
-		logger.Warnf("Unable to unmarshal etcd config yaml file: %v", err)
-		return "", err
+		logger.Fatalf("Unable to unmarshal etcd config yaml file: %v", err)
 	}
 
 	initAdPeerURL := config["initial-advertise-peer-urls"]
@@ -186,6 +185,20 @@ func parsePeerURL(peerURL string) (string, string, string, string, error) {
 		return "", "", "", "", fmt.Errorf("total length of tokens is less than four")
 	}
 	return tokens[0], tokens[1], tokens[2], tokens[3], nil
+}
+
+func (m *NewMember) UpdateMemberPeerAddress(ctx context.Context, logger *logrus.Entry, id uint64) {
+	cli, err := m.clientFactory.NewCluster()
+	if err != nil {
+		logger.Errorf("failed to build etcd cluster client")
+	}
+
+	memberURL, _ := getMemberURL(logger.Logger)
+	if memberURL == "" || err != nil {
+		logger.Errorf("Could not fetch member URL : %v", err)
+	}
+
+	cli.MemberUpdate(context.TODO(), id, []string{memberURL})
 }
 
 // PromoteMember promotes an etcd member from a learner to a voting member of the cluster. This will succeed only if its logs are caught up with the leader
@@ -224,6 +237,11 @@ func (m *NewMember) PromoteMember(ctx context.Context, logger *logrus.Entry) err
 				logger.Info("Member promoted ", y.Name, " : ", y.ID)
 				return nil
 			} else if errors.Is(memPromoteErr, rpctypes.Error(rpctypes.ErrGRPCMemberNotLearner)) { //Member is not a learner
+				if y.PeerURLs[0] == []string{"http://localhost:2380"}[0] {
+					// Already existing clusters have `http://localhost:2380` as the peer address. This needs to explicitly updated to the new address
+					// TODO: Remove this peer address updation logic on etcd-br v0.20.0
+					m.UpdateMemberPeerAddress(ctx, logger, y.ID)
+				}
 				logger.Info("Member ", y.Name, " : ", y.ID, " already part of etcd cluster")
 				return nil
 			}
