@@ -52,8 +52,6 @@ func NewMemberConfig(etcdConnConfig *brtypes.EtcdConnectionConfig) *NewMember {
 		svcEndpoint = "http://127.0.0.1:2379"
 	}
 	etcdConn.Endpoints = []string{svcEndpoint}
-	//etcdConn.Endpoints = []string{fmt.Sprintf("%s://%s:%s", "https", "etcd-main-0.etcd-main-peer.default.svc", "2379")} //TODO: Don't hardcode this
-	//etcdConn.Endpoints = []string{"http://127.0.0.1:2379"}
 	clientFactory := etcdutil.NewFactory(etcdConn)
 	return &NewMember{
 		clientFactory: clientFactory,
@@ -69,7 +67,6 @@ func (m *NewMember) AddMemberAsLearner(logger *logrus.Logger) error {
 		logger.Info("Error fetching etcd member URL")
 		return fmt.Errorf("Could not fetch member URL : %v", err)
 	}
-	//memberURL = "http://127.0.0.1:2380"
 
 	cli, err := m.clientFactory.NewCluster()
 	defer cli.Close()
@@ -187,6 +184,7 @@ func parsePeerURL(peerURL string) (string, string, string, string, error) {
 	return tokens[0], tokens[1], tokens[2], tokens[3], nil
 }
 
+// UpdateMemberPeerAddress updated the peer address of a specified etcd member
 func (m *NewMember) UpdateMemberPeerAddress(ctx context.Context, logger *logrus.Entry, id uint64) {
 	cli, err := m.clientFactory.NewCluster()
 	if err != nil {
@@ -198,7 +196,10 @@ func (m *NewMember) UpdateMemberPeerAddress(ctx context.Context, logger *logrus.
 		logger.Errorf("Could not fetch member URL : %v", err)
 	}
 
-	cli.MemberUpdate(context.TODO(), id, []string{memberURL})
+	ctx, cancel := getContext(context.TODO(), etcdTimeout)
+	defer cancel()
+
+	cli.MemberUpdate(ctx, id, []string{memberURL})
 }
 
 // PromoteMember promotes an etcd member from a learner to a voting member of the cluster. This will succeed only if its logs are caught up with the leader

@@ -465,7 +465,10 @@ func getInitialCluster(ctx context.Context, initialCluster string, etcdConn brty
 	//INITIAL_CLUSTER served via the etcd config must be tailored to the number of members in the cluster at that point. Else etcd complains with error "member count is unequal"
 	//One reason why we might want to have a strict ordering when members are joining the cluster
 	//addmember subcommand achieves this by making sure the pod with the previous index is running before attempting to add itself as a learner
-	svcEndpoint, _ := miscellaneous.GetEtcdSvcEndpoint()
+	svcEndpoint, err := miscellaneous.GetEtcdSvcEndpoint()
+	if svcEndpoint == "" || err != nil {
+		svcEndpoint = "http://127.0.0.1:2379"
+	}
 	etcdConn.Endpoints = []string{svcEndpoint}
 	clientFactory := etcdutil.NewFactory(etcdConn)
 	cli, err := clientFactory.NewCluster()

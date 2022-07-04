@@ -302,17 +302,16 @@ func GetEtcdSvcEndpoint() (string, error) {
 		//inputFileName = "/Users/I544000/etcd.conf.yaml"
 	}
 
-	configYML, _ := os.ReadFile(inputFileName)
-	// if err != nil {
-	// 	logger.Fatalf("Unable to read etcd config file: %v", err)
-	// }
+	configYML, err := os.ReadFile(inputFileName)
+	if err != nil {
+		return "", fmt.Errorf("Unable to read etcd config file: %v", err)
+	}
 
 	config := map[string]interface{}{}
-	_ = yaml.Unmarshal([]byte(configYML), &config)
-	// if err := yaml.Unmarshal([]byte(configYML), &config); err != nil {
-	// 	logger.Warnf("Unable to unmarshal etcd config yaml file: %v", err)
-	// 	return "", err
-	// }
+	err = yaml.Unmarshal([]byte(configYML), &config)
+	if err := yaml.Unmarshal([]byte(configYML), &config); err != nil {
+		return "", fmt.Errorf("Unable to unmarshal etcd config yaml file: %v", err)
+	}
 
 	advClientURL := config["advertise-client-urls"]
 	tokens := strings.Split(fmt.Sprint(advClientURL), "@")
@@ -320,11 +319,7 @@ func GetEtcdSvcEndpoint() (string, error) {
 		return "", fmt.Errorf("total length of tokens is less than four")
 	}
 	protocol := tokens[0]
-	// svcName := tokens[1]
-	// namespace := tokens[2]
 	peerPort := tokens[3]
-	// domaiName := fmt.Sprintf("%s.%s.%s", svcName, namespace, "svc")
-	// return fmt.Sprintf("%s://%s:%s", protocol, domaiName, peerPort), nil
 	return fmt.Sprintf("%s://%s:%s", protocol, "etcd-main-client", peerPort), nil
 }
 
