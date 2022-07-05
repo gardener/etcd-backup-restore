@@ -12,10 +12,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM eu.gcr.io/gardener-project/3rd/alpine:3.10.1
+FROM golang:1.18.3 as builder
+
+WORKDIR /go/src/github.com/gardener/backup-restore
+COPY . .
+
+RUN make build
+
+FROM alpine:3.15.4
 
 RUN apk add --update bash curl
 
-COPY ./bin/linux-amd64/etcdbrctl /usr/local/bin/etcdbrctl
+COPY --from=builder /go/src/github.com/gardener/backup-restore/bin/etcdbrctl /usr/local/bin/etcdbrctl
 WORKDIR /
 ENTRYPOINT ["/usr/local/bin/etcdbrctl"]
