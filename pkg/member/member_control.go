@@ -104,7 +104,7 @@ func (m *memberControl) AddMemberAsLearner(ctx context.Context) error {
 	_, err = cli.MemberAddAsLearner(memAddCtx, []string{memberURL})
 
 	if err != nil {
-		if errors.Is(err, rpctypes.Error(rpctypes.ErrGRPCPeerURLExist)) {
+		if errors.Is(err, rpctypes.Error(rpctypes.ErrGRPCPeerURLExist)) || errors.Is(err, rpctypes.Error(rpctypes.ErrGRPCMemberExist)) {
 			m.logger.Infof("Member %s already part of etcd cluster", memberURL)
 			return nil
 		}
@@ -154,11 +154,11 @@ func (m *memberControl) IsMemberInCluster(ctx context.Context) (bool, error) {
 
 	for _, y := range etcdMemberList.Members {
 		if y.Name == m.podName {
-			return true, err
+			return true, nil
 		}
 	}
 
-	return false, err
+	return false, fmt.Errorf("Could not find member %s in the list", m.podName)
 }
 
 func (m *memberControl) getMemberURL() (string, error) {
@@ -174,6 +174,9 @@ func (m *memberControl) getMemberURL() (string, error) {
 
 	initAdPeerURL := config["initial-advertise-peer-urls"]
 	peerURL, err := parsePeerURL(initAdPeerURL.(string), m.podName)
+	if err != nil {
+		return "", fmt.Errorf("Could not parse peer URL from the config file : %v", err)
+	}
 	return peerURL, nil
 }
 
@@ -219,7 +222,7 @@ func (m *memberControl) PromoteMember(ctx context.Context) error {
 	//However, the name of the member will appear only if the member has started running
 	memListCtx, memListCtxCancel := context.WithTimeout(ctx, brtypes.DefaultEtcdConnectionTimeout)
 	etcdList, err := cli.MemberList(memListCtx)
-	memListCtxCancel()
+	defer memListCtxCancel()
 
 	if err != nil {
 		return fmt.Errorf("error listing members: %v", err)
@@ -254,6 +257,7 @@ func (m *memberControl) doPromoteMember(ctx context.Context, member *etcdserverp
 			// Already existing clusters have `http://localhost:2380` as the peer address. This needs to explicitly updated to the new address
 			// TODO: Remove this peer address updation logic on etcd-br v0.20.0
 			err = m.updateMemberPeerAddress(ctx, member.ID)
+			m.logger.Errorf("Could not update member peer URL : %v", err)
 		}
 		m.logger.Info("Member ", member.Name, " : ", member.ID, " already part of etcd cluster")
 		return nil

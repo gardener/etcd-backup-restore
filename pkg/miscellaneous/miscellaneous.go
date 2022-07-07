@@ -338,7 +338,7 @@ func ProbeEtcd(ctx context.Context, clientFactory etcdClient.Factory, logger *lo
 	return nil
 }
 
-// SleepWithContext sleeps for a determoned period while respecting a context
+// SleepWithContext sleeps for a determined period while respecting a context
 func SleepWithContext(ctx context.Context, sleepFor time.Duration) error {
 	for {
 		select {
