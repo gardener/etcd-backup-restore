@@ -296,11 +296,9 @@ func GetEtcdSvcEndpoint() (string, error) {
 	var inputFileName string
 	etcdConfigForTest := os.Getenv("ETCD_CONF")
 	if etcdConfigForTest != "" {
-		inputFileName = etcdConfigForTest
-	} else {
-		inputFileName = "/var/etcd/config/etcd.conf.yaml"
-		//inputFileName = "/Users/I544000/etcd.conf.yaml"
+		return "", nil
 	}
+	inputFileName = "/var/etcd/config/etcd.conf.yaml"
 
 	configYML, err := os.ReadFile(inputFileName)
 	if err != nil {
@@ -324,7 +322,7 @@ func GetEtcdSvcEndpoint() (string, error) {
 }
 
 // ProbeEtcd probes the etcd endpoint to check if an etcd is available
-func ProbeEtcd(ctx context.Context, clientFactory etcdClient.Factory, logger *logrus.Logger) error {
+func ProbeEtcd(ctx context.Context, clientFactory etcdClient.Factory, logger *logrus.Entry) error {
 	clientKV, err := clientFactory.NewKV()
 	defer clientKV.Close()
 	if err != nil {
@@ -338,4 +336,16 @@ func ProbeEtcd(ctx context.Context, clientFactory etcdClient.Factory, logger *lo
 		return err
 	}
 	return nil
+}
+
+// SleepWithContext sleeps for a determoned period while respecting a context
+func SleepWithContext(ctx context.Context, sleepFor time.Duration) error {
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(sleepFor):
+			return nil
+		}
+	}
 }

@@ -397,9 +397,7 @@ func (h *HTTPHandler) serveLatestSnapshotMetadata(rw http.ResponseWriter, req *h
 
 func (h *HTTPHandler) serveConfig(rw http.ResponseWriter, req *http.Request) {
 	inputFileName := "/var/etcd/config/etcd.conf.yaml"
-	//inputFileName := "/Users/I544000/etcd.conf.yaml"
 	outputFileName := "/etc/etcd.conf.yaml"
-	//outputFileName := "/Users/I544000/etcd.conf.yaml"
 	configYML, err := ioutil.ReadFile(inputFileName)
 	if err != nil {
 		h.Logger.Warnf("Unable to read etcd config file: %v", err)
@@ -466,15 +464,20 @@ func getInitialCluster(ctx context.Context, initialCluster string, etcdConn brty
 	//One reason why we might want to have a strict ordering when members are joining the cluster
 	//addmember subcommand achieves this by making sure the pod with the previous index is running before attempting to add itself as a learner
 	svcEndpoint, err := miscellaneous.GetEtcdSvcEndpoint()
-	if svcEndpoint == "" || err != nil {
-		svcEndpoint = "http://127.0.0.1:2379"
+	if err != nil {
+		logger.Errorf("Error getting etcd service endpoint %v", err)
+	}
+	if svcEndpoint != "" {
+		etcdConn.Endpoints = []string{svcEndpoint}
 	}
 	etcdConn.Endpoints = []string{svcEndpoint}
 	clientFactory := etcdutil.NewFactory(etcdConn)
 	cli, err := clientFactory.NewCluster()
 	if err != nil {
 		logger.Warnf("Error with NewCluster() : %v", err)
+		return initialCluster
 	}
+	defer cli.Close()
 	ctx, cancel := context.WithTimeout(ctx, brtypes.DefaultEtcdConnectionTimeout)
 	defer cancel()
 	var memList *clientv3.MemberListResponse

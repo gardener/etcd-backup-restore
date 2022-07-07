@@ -28,6 +28,7 @@ import (
 	"github.com/gardener/etcd-backup-restore/pkg/common"
 	"github.com/gardener/etcd-backup-restore/pkg/leaderelection"
 	"github.com/gardener/etcd-backup-restore/pkg/metrics"
+	"github.com/gardener/etcd-backup-restore/pkg/miscellaneous"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 	"github.com/ghodss/yaml"
 
@@ -46,7 +47,6 @@ import (
 	"github.com/sirupsen/logrus"
 	"go.etcd.io/etcd/pkg/types"
 	"k8s.io/apimachinery/pkg/util/clock"
-	"k8s.io/client-go/util/retry"
 )
 
 // BackupRestoreServer holds the details for backup-restore server.
@@ -63,6 +63,7 @@ var (
 	// runServerWithSnapshotter indicates whether to start server with or without snapshotter.
 	runServerWithSnapshotter bool   = true
 	etcdConfig               string = "/var/etcd/config/etcd.conf.yaml"
+	retryTimeout                    = 5 * time.Second
 )
 
 // NewBackupRestoreServer return new backup restore server.
@@ -199,14 +200,20 @@ func (b *BackupRestoreServer) runServer(ctx context.Context, restoreOpts *brtype
 	defer handler.Stop()
 
 	// Promotes member if it is a learner
-	backoff := retry.DefaultBackoff
-	backoff.Steps = 20 //TODO: find an apt value here
-	retry.OnError(backoff, func(err error) bool {
-		return err != nil
-	}, func() error {
-		m := member.NewMemberConfig(b.config.EtcdConnectionConfig)
-		return m.PromoteMember(ctx, b.logger)
-	})
+	for {
+		select {
+		case <-ctx.Done():
+			b.logger.Info("Context cancelled. Stopping retry promoting member")
+			return ctx.Err()
+		default:
+		}
+		m := member.NewMemberControl(b.config.EtcdConnectionConfig)
+		err := m.PromoteMember(ctx)
+		if err == nil {
+			break
+		}
+		miscellaneous.SleepWithContext(ctx, retryTimeout)
+	}
 
 	leaderCallbacks := &brtypes.LeaderCallbacks{
 		OnStartedLeading: func(leCtx context.Context) {
