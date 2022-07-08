@@ -117,6 +117,7 @@ func (m *memberControl) AddMemberAsLearner(ctx context.Context) error {
 
 // IsMemberInCluster checks is the current members peer URL is already part of the etcd cluster
 func (m *memberControl) IsMemberInCluster(ctx context.Context) (bool, error) {
+	m.logger.Infof("Checking if member %s is part of a running cluster", m.podName)
 	// Check if an etcd is already available
 	backoff := retry.DefaultBackoff
 	backoff.Steps = 2
@@ -154,10 +155,12 @@ func (m *memberControl) IsMemberInCluster(ctx context.Context) (bool, error) {
 
 	for _, y := range etcdMemberList.Members {
 		if y.Name == m.podName {
+			m.logger.Infof("Member %s part of running cluster", m.podName)
 			return true, nil
 		}
 	}
 
+	m.logger.Infof("Member %s not part of any running cluster", m.podName)
 	return false, fmt.Errorf("Could not find member %s in the list", m.podName)
 }
 
@@ -192,6 +195,7 @@ func parsePeerURL(peerURL, podName string) (string, error) {
 
 // UpdateMemberPeerAddress updated the peer address of a specified etcd member
 func (m *memberControl) updateMemberPeerAddress(ctx context.Context, id uint64) error {
+	m.logger.Infof("Updating member peer URL for %s", m.podName)
 	cli, err := m.clientFactory.NewCluster()
 	if err != nil {
 		return fmt.Errorf("failed to build etcd cluster client : %v", err)
@@ -211,6 +215,7 @@ func (m *memberControl) updateMemberPeerAddress(ctx context.Context, id uint64) 
 
 // PromoteMember promotes an etcd member from a learner to a voting member of the cluster. This will succeed only if its logs are caught up with the leader
 func (m *memberControl) PromoteMember(ctx context.Context) error {
+	m.logger.Infof("Attempting to promote member %s", m.podName)
 	cli, err := m.clientFactory.NewCluster()
 	if err != nil {
 		return fmt.Errorf("failed to build etcd cluster client : %v", err)

@@ -2,7 +2,6 @@ package member_test
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"time"
 
@@ -40,7 +39,6 @@ var _ = Describe("Membercontrol", func() {
 
 	Describe("While attempting to add a new member as a learner", func() {
 		BeforeEach(func() {
-			os.Setenv("POD_NAME", "test-pod")
 			outfile := "/tmp/etcd.conf.yaml"
 			etcdConfigYaml := `# Human-readable name for this member.
     name: etcd1
@@ -75,14 +73,10 @@ var _ = Describe("Membercontrol", func() {
 	})
 
 	Describe("While attempting to check if etcd is part of a cluster", func() {
-		BeforeEach(func() {
-			os.Setenv("POD_NAME", "test-pod")
-		})
 		Context("When cluster is up and member is not part of the list", func() {
 			It("Should return an error", func() {
 				mem := member.NewMemberControl(etcdConnectionConfig)
-				b, err := mem.IsMemberInCluster(context.TODO())
-				fmt.Println("Error os : ", err, " -> ", b)
+				_, err := mem.IsMemberInCluster(context.TODO())
 				Expect(err).ToNot(BeNil())
 			})
 		})
