@@ -44,8 +44,6 @@ build-local:
 
 .PHONY: docker-build
 docker-build:
-	@.ci/build
-	@if [[ ! -f $(BIN_DIR)/linux-amd64/etcdbrctl ]]; then echo "No binary found. Please run 'make build'"; false; fi
 	@docker build -t ${IMG} -f $(BUILD_DIR)/Dockerfile --rm .
 
 .PHONY: docker-push
