@@ -23,8 +23,9 @@ import (
 // Config holds etcd related configuration required for initialization
 // checks and snapshot restoration in case of corruption.
 type Config struct {
-	SnapstoreConfig *brtypes.SnapstoreConfig
-	RestoreOptions  *brtypes.RestoreOptions
+	SnapstoreConfig      *brtypes.SnapstoreConfig
+	RestoreOptions       *brtypes.RestoreOptions
+	EtcdConnectionConfig *brtypes.EtcdConnectionConfig
 }
 
 // EtcdInitializer implements Initializer interface to perform validation and

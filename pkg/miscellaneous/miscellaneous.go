@@ -19,8 +19,10 @@ import (
 	"fmt"
 	"net"
 	"net/url"
+	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/gardener/etcd-backup-restore/pkg/errors"
@@ -30,6 +32,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/sirupsen/logrus"
 	"go.etcd.io/etcd/embed"
+	"gopkg.in/yaml.v2"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
@@ -275,4 +278,74 @@ func GetBackupLeaderEndPoint(endPoints []string, port uint) (string, error) {
 
 	backupLeaderEndPoint := fmt.Sprintf("%s://%s:%s", url.Scheme, host, fmt.Sprintf("%d", port))
 	return backupLeaderEndPoint, nil
+}
+
+// GetEnvVarOrError returns the value of specified environment variable or error if it's not defined.
+func GetEnvVarOrError(varName string) (string, error) {
+	value := os.Getenv(varName)
+	if value == "" {
+		err := fmt.Errorf("missing environment variable %s", varName)
+		return value, err
+	}
+
+	return value, nil
+}
+
+// GetEtcdSvcEndpoint returns the endpoint to the etcd client service
+func GetEtcdSvcEndpoint() (string, error) {
+	var inputFileName string
+	etcdConfigForTest := os.Getenv("ETCD_CONF")
+	if etcdConfigForTest != "" {
+		return "", nil
+	}
+	inputFileName = "/var/etcd/config/etcd.conf.yaml"
+
+	configYML, err := os.ReadFile(inputFileName)
+	if err != nil {
+		return "", fmt.Errorf("Unable to read etcd config file: %v", err)
+	}
+
+	config := map[string]interface{}{}
+	err = yaml.Unmarshal([]byte(configYML), &config)
+	if err := yaml.Unmarshal([]byte(configYML), &config); err != nil {
+		return "", fmt.Errorf("Unable to unmarshal etcd config yaml file: %v", err)
+	}
+
+	advClientURL := config["advertise-client-urls"]
+	tokens := strings.Split(fmt.Sprint(advClientURL), "@")
+	if len(tokens) < 4 {
+		return "", fmt.Errorf("total length of tokens is less than four")
+	}
+	protocol := tokens[0]
+	peerPort := tokens[3]
+	return fmt.Sprintf("%s://%s:%s", protocol, "etcd-main-client", peerPort), nil
+}
+
+// ProbeEtcd probes the etcd endpoint to check if an etcd is available
+func ProbeEtcd(ctx context.Context, clientFactory etcdClient.Factory, logger *logrus.Entry) error {
+	clientKV, err := clientFactory.NewKV()
+	defer clientKV.Close()
+	if err != nil {
+		return &errors.EtcdError{
+			Message: fmt.Sprintf("Failed to create etcd KV client: %v", err),
+		}
+	}
+
+	if _, err := clientKV.Get(ctx, "foo"); err != nil {
+		logger.Errorf("Failed to connect to etcd KV client: %v", err)
+		return err
+	}
+	return nil
+}
+
+// SleepWithContext sleeps for a determined period while respecting a context
+func SleepWithContext(ctx context.Context, sleepFor time.Duration) error {
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(sleepFor):
+			return nil
+		}
+	}
 }

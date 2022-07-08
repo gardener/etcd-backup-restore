@@ -15,12 +15,14 @@
 package initializer
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
 	"time"
 
 	"github.com/gardener/etcd-backup-restore/pkg/initializer/validator"
+	"github.com/gardener/etcd-backup-restore/pkg/member"
 	"github.com/gardener/etcd-backup-restore/pkg/metrics"
 	"github.com/gardener/etcd-backup-restore/pkg/miscellaneous"
 	"github.com/gardener/etcd-backup-restore/pkg/snapshot/restorer"
@@ -29,6 +31,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/sirupsen/logrus"
 	"go.uber.org/zap"
+	"k8s.io/client-go/util/retry"
 )
 
 // Initialize has the following steps:
@@ -42,6 +45,20 @@ import (
 //		   - No snapshots are available, start etcd as a fresh installation.
 func (e *EtcdInitializer) Initialize(mode validator.Mode, failBelowRevision int64) error {
 	start := time.Now()
+	//Etcd cluster scale-up case
+	m := member.NewMemberControl(e.Config.EtcdConnectionConfig)
+	ctx := context.Background()
+	clusterMember, err := m.IsMemberInCluster(ctx)
+	if !clusterMember && err == nil {
+		retry.OnError(retry.DefaultBackoff, func(err error) bool {
+			return err != nil
+		}, func() error {
+			return m.AddMemberAsLearner(ctx)
+		})
+		// return here after adding member as no restoration or validation needed
+		return nil
+	}
+
 	dataDirStatus, err := e.Validator.Validate(mode, failBelowRevision)
 	if dataDirStatus == validator.WrongVolumeMounted {
 		metrics.ValidationDurationSeconds.With(prometheus.Labels{metrics.LabelSucceeded: metrics.ValueSucceededFalse}).Observe(time.Since(start).Seconds())
@@ -80,12 +97,13 @@ func (e *EtcdInitializer) Initialize(mode validator.Mode, failBelowRevision int6
 }
 
 //NewInitializer creates an etcd initializer object.
-func NewInitializer(options *brtypes.RestoreOptions, snapstoreConfig *brtypes.SnapstoreConfig, logger *logrus.Logger) *EtcdInitializer {
+func NewInitializer(options *brtypes.RestoreOptions, snapstoreConfig *brtypes.SnapstoreConfig, etcdConnectionConfig *brtypes.EtcdConnectionConfig, logger *logrus.Logger) *EtcdInitializer {
 	zapLogger, _ := zap.NewProduction()
 	etcdInit := &EtcdInitializer{
 		Config: &Config{
-			SnapstoreConfig: snapstoreConfig,
-			RestoreOptions:  options,
+			SnapstoreConfig:      snapstoreConfig,
+			RestoreOptions:       options,
+			EtcdConnectionConfig: etcdConnectionConfig,
 		},
 		Validator: &validator.DataValidator{
 			Config: &validator.Config{

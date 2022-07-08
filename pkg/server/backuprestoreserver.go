@@ -28,6 +28,7 @@ import (
 	"github.com/gardener/etcd-backup-restore/pkg/common"
 	"github.com/gardener/etcd-backup-restore/pkg/leaderelection"
 	"github.com/gardener/etcd-backup-restore/pkg/metrics"
+	"github.com/gardener/etcd-backup-restore/pkg/miscellaneous"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 	"github.com/ghodss/yaml"
 
@@ -37,6 +38,7 @@ import (
 	"github.com/gardener/etcd-backup-restore/pkg/health/heartbeat"
 	"github.com/gardener/etcd-backup-restore/pkg/health/membergarbagecollector"
 	"github.com/gardener/etcd-backup-restore/pkg/initializer"
+	"github.com/gardener/etcd-backup-restore/pkg/member"
 	"github.com/gardener/etcd-backup-restore/pkg/snapshot/snapshotter"
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 
@@ -61,6 +63,7 @@ var (
 	// runServerWithSnapshotter indicates whether to start server with or without snapshotter.
 	runServerWithSnapshotter bool   = true
 	etcdConfig               string = "/var/etcd/config/etcd.conf.yaml"
+	retryTimeout                    = 5 * time.Second
 )
 
 // NewBackupRestoreServer return new backup restore server.
@@ -191,10 +194,26 @@ func (b *BackupRestoreServer) runServer(ctx context.Context, restoreOpts *brtype
 	if runServerWithSnapshotter {
 		snapstoreConfig = b.config.SnapstoreConfig
 	}
-	etcdInitializer := initializer.NewInitializer(restoreOpts, snapstoreConfig, b.logger.Logger)
+	etcdInitializer := initializer.NewInitializer(restoreOpts, snapstoreConfig, b.config.EtcdConnectionConfig, b.logger.Logger)
 
 	handler := b.startHTTPServer(etcdInitializer, b.config.SnapstoreConfig.Provider, b.config.EtcdConnectionConfig, nil)
 	defer handler.Stop()
+
+	// Promotes member if it is a learner
+	for {
+		select {
+		case <-ctx.Done():
+			b.logger.Info("Context cancelled. Stopping retry promoting member")
+			return ctx.Err()
+		default:
+		}
+		m := member.NewMemberControl(b.config.EtcdConnectionConfig)
+		err := m.PromoteMember(ctx)
+		if err == nil {
+			break
+		}
+		miscellaneous.SleepWithContext(ctx, retryTimeout)
+	}
 
 	leaderCallbacks := &brtypes.LeaderCallbacks{
 		OnStartedLeading: func(leCtx context.Context) {
