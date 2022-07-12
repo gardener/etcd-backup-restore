@@ -79,7 +79,7 @@ func (e *EtcdInitializer) Initialize(mode validator.Mode, failBelowRevision int6
 
 	if dataDirStatus == validator.DataDirStatusUnknownInMultiNode {
 		metrics.ValidationDurationSeconds.With(prometheus.Labels{metrics.LabelSucceeded: metrics.ValueSucceededFalse}).Observe(time.Since(start).Seconds())
-		return fmt.Errorf("failed to initialize data dir in multi-node cluster")
+		return fmt.Errorf("failed to initialize data dir of cluster member in multi-node cluster")
 	}
 
 	if dataDirStatus == validator.FailBelowRevisionConsistencyError {
