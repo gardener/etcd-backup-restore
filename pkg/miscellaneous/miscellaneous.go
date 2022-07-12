@@ -308,13 +308,13 @@ func GetEtcdSvcEndpoint() (string, error) {
 
 	configYML, err := os.ReadFile(inputFileName)
 	if err != nil {
-		return "", fmt.Errorf("Unable to read etcd config file: %v", err)
+		return "", fmt.Errorf("unable to read etcd config file: %v", err)
 	}
 
 	config := map[string]interface{}{}
 	err = yaml.Unmarshal([]byte(configYML), &config)
 	if err := yaml.Unmarshal([]byte(configYML), &config); err != nil {
-		return "", fmt.Errorf("Unable to unmarshal etcd config yaml file: %v", err)
+		return "", fmt.Errorf("unable to unmarshal etcd config yaml file: %v", err)
 	}
 
 	advClientURL := config["advertise-client-urls"]
@@ -330,12 +330,12 @@ func GetEtcdSvcEndpoint() (string, error) {
 // ProbeEtcd probes the etcd endpoint to check if an etcd is available
 func ProbeEtcd(ctx context.Context, clientFactory etcdClient.Factory, logger *logrus.Entry) error {
 	clientKV, err := clientFactory.NewKV()
-	defer clientKV.Close()
 	if err != nil {
 		return &errors.EtcdError{
 			Message: fmt.Sprintf("Failed to create etcd KV client: %v", err),
 		}
 	}
+	defer clientKV.Close()
 
 	if _, err := clientKV.Get(ctx, "foo"); err != nil {
 		logger.Errorf("Failed to connect to etcd KV client: %v", err)
