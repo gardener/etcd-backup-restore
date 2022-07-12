@@ -28,6 +28,7 @@ import (
 	"github.com/gardener/etcd-backup-restore/pkg/errors"
 	etcdClient "github.com/gardener/etcd-backup-restore/pkg/etcdutil/client"
 	"github.com/gardener/etcd-backup-restore/pkg/metrics"
+	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/sirupsen/logrus"
@@ -402,4 +403,25 @@ func SleepWithContext(ctx context.Context, sleepFor time.Duration) error {
 			return nil
 		}
 	}
+}
+
+// IsBackupBucketEmpty checks whether the backup bucket is empty or not.
+func IsBackupBucketEmpty(snapStoreConfig *brtypes.SnapstoreConfig, logger *logrus.Logger) bool {
+	logger.Info("Checking whether the backup bucket is empty or not...")
+	store, err := snapstore.GetSnapstore(snapStoreConfig)
+	if err != nil {
+		logger.Fatalf("failed to create snapstore from configured storage provider: %v", err)
+	}
+
+	baseSnap, deltaSnapList, err := GetLatestFullSnapshotAndDeltaSnapList(store)
+	if err != nil {
+		logger.Errorf("failed to list the snapshot: %v", err)
+		return false
+	}
+
+	if baseSnap == nil && (deltaSnapList == nil || len(deltaSnapList) == 0) {
+		logger.Infof("No snapshot found. BackupBucket is empty")
+		return true
+	}
+	return false
 }
