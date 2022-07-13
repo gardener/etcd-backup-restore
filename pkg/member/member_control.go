@@ -161,7 +161,8 @@ func (m *memberControl) IsMemberInCluster(ctx context.Context) (bool, error) {
 	}
 
 	m.logger.Infof("Member %s not part of any running cluster", m.podName)
-	return false, fmt.Errorf("Could not find member %s in the list", m.podName)
+	//return false, fmt.Errorf("Could not find member %s in the list", m.podName)
+	return false, nil
 }
 
 func (m *memberControl) getMemberURL() (string, error) {

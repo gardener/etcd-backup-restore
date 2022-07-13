@@ -32,6 +32,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/sirupsen/logrus"
 	"go.etcd.io/etcd/embed"
+	"go.etcd.io/etcd/pkg/types"
 	"gopkg.in/yaml.v2"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -41,7 +42,8 @@ import (
 
 const (
 	// NoLeaderState defines the state when etcd returns LeaderID as 0.
-	NoLeaderState uint64 = 0
+	NoLeaderState      uint64 = 0
+	etcdConfigFilePath string = "/var/etcd/config/etcd.conf.yaml"
 )
 
 // GetLatestFullSnapshotAndDeltaSnapList returns the latest snapshot
@@ -336,6 +338,42 @@ func ProbeEtcd(ctx context.Context, clientFactory etcdClient.Factory, logger *lo
 		return err
 	}
 	return nil
+}
+
+func getConfigFilePath() string {
+	etcdConfigForTest := os.Getenv("ETCD_CONF")
+	if etcdConfigForTest != "" {
+		return etcdConfigForTest
+	}
+	return etcdConfigFilePath
+}
+
+// IsMultiNode determines whether a pod is part of a multi node setup or not
+// This is determined by checking the `initial-cluster` of the etcd configmap to check the number of members expected.
+func IsMultiNode(logger *logrus.Entry) bool {
+	inputFileName := getConfigFilePath()
+
+	configYML, err := os.ReadFile(inputFileName)
+	if err != nil {
+		return false
+	}
+
+	config := map[string]interface{}{}
+	err = yaml.Unmarshal([]byte(configYML), &config)
+	if err := yaml.Unmarshal([]byte(configYML), &config); err != nil {
+		return false
+	}
+
+	initialClusterMap, err := types.NewURLsMap(fmt.Sprint(config["initial-cluster"]))
+	if err != nil {
+		logger.Fatal("initial cluster value for not present in etcd config file")
+	}
+
+	if len(initialClusterMap) > 1 {
+		return true
+	}
+
+	return false
 }
 
 // SleepWithContext sleeps for a determined period while respecting a context

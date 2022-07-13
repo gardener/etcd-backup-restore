@@ -200,19 +200,21 @@ func (b *BackupRestoreServer) runServer(ctx context.Context, restoreOpts *brtype
 	defer handler.Stop()
 
 	// Promotes member if it is a learner
-	for {
-		select {
-		case <-ctx.Done():
-			b.logger.Info("Context cancelled. Stopping retry promoting member")
-			return ctx.Err()
-		default:
+	if miscellaneous.IsMultiNode(b.logger) {
+		for {
+			select {
+			case <-ctx.Done():
+				b.logger.Info("Context cancelled. Stopping retry promoting member")
+				return ctx.Err()
+			default:
+			}
+			m := member.NewMemberControl(b.config.EtcdConnectionConfig)
+			err := m.PromoteMember(ctx)
+			if err == nil {
+				break
+			}
+			miscellaneous.SleepWithContext(ctx, retryTimeout)
 		}
-		m := member.NewMemberControl(b.config.EtcdConnectionConfig)
-		err := m.PromoteMember(ctx)
-		if err == nil {
-			break
-		}
-		miscellaneous.SleepWithContext(ctx, retryTimeout)
 	}
 
 	leaderCallbacks := &brtypes.LeaderCallbacks{

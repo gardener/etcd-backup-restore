@@ -489,7 +489,7 @@ func getInitialCluster(ctx context.Context, initialCluster string, etcdConn brty
 	})
 	noOfMembers := 0
 	if err != nil {
-		logger.Warnf("Error with MemberList() : %v", err)
+		logger.Warnf("Could not list members : %v", err)
 	} else {
 		noOfMembers = len(memList.Members)
 	}
