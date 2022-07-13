@@ -36,6 +36,7 @@ import (
 	"go.etcd.io/etcd/pkg/types"
 	"gopkg.in/yaml.v2"
 
+	appsv1 "k8s.io/api/apps/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
 	fake "sigs.k8s.io/controller-runtime/pkg/client/fake"
@@ -46,6 +47,10 @@ const (
 	NoLeaderState uint64 = 0
 	// EtcdConfigFilePath is the file path where the etcd config map is mounted.
 	EtcdConfigFilePath string = "/var/etcd/config/etcd.conf.yaml"
+	// ClusterStateNew defines the "new" state of etcd cluster.
+	ClusterStateNew = "new"
+	// ClusterStateExisting defines the "existing" state of etcd cluster.
+	ClusterStateExisting = "existing"
 )
 
 // GetLatestFullSnapshotAndDeltaSnapList returns the latest snapshot
@@ -424,4 +429,32 @@ func IsBackupBucketEmpty(snapStoreConfig *brtypes.SnapstoreConfig, logger *logru
 		return true
 	}
 	return false
+}
+
+// GetInitialClusterState returns the cluster state
+func GetInitialClusterState(ctx context.Context, logger logrus.Entry, podName string, podNS string) string {
+	clusterState := "new"
+
+	//Read sts spec for updated replicas to toggle `initial-cluster-state`
+	clientSet, err := GetKubernetesClientSetOrError()
+	if err != nil {
+		logger.Errorf("failed to create clientset: %v", err)
+		return clusterState
+	}
+	curSts := &appsv1.StatefulSet{}
+	errSts := clientSet.Get(ctx, client.ObjectKey{
+		Namespace: podNS,
+		Name:      podName[:strings.LastIndex(podName, "-")],
+	}, curSts)
+	if errSts != nil {
+		logger.Warn("error fetching etcd sts ", errSts)
+		return clusterState
+	}
+
+	//TODO: achieve this without an sts?
+	if *curSts.Spec.Replicas > 1 && *curSts.Spec.Replicas > curSts.Status.UpdatedReplicas {
+		clusterState = "existing"
+	}
+
+	return clusterState
 }
