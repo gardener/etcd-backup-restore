@@ -21,11 +21,11 @@ import (
 )
 
 const (
-	// retryPeriod is the peroid after which an operation is retried
-	retryPeriod = 5 * time.Second
+	// RetryPeriod is the peroid after which an operation is retried
+	RetryPeriod = 2 * time.Second
 
-	// etcdTimeout is timeout for etcd operations
-	etcdTimeout = 5 * time.Second
+	// EtcdTimeout is timeout for etcd operations
+	EtcdTimeout = 5 * time.Second
 )
 
 var (
@@ -43,6 +43,9 @@ type ControlMember interface {
 
 	// PromoteMember promotes an etcd member from a learner to a voting member of the cluster. This will succeed if and only if learner is in a healthy state and the learner is in sync with leader
 	PromoteMember(context.Context) error
+
+	// UpdateMember updates the peer address of a specified etcd cluster member.
+	UpdateMember(context.Context, client.ClusterCloser) error
 }
 
 // memberControl holds the configuration for the mechanism of adding a new member to the cluster.
@@ -84,7 +87,7 @@ func NewMemberControl(etcdConnConfig *brtypes.EtcdConnectionConfig) ControlMembe
 // AddMemberAsLearner add a member as a learner to the etcd cluster
 func (m *memberControl) AddMemberAsLearner(ctx context.Context) error {
 	//Add member as learner to cluster
-	memberURL, err := m.getMemberURL()
+	memberURL, err := getMemberURL(m.configFile, m.podName)
 	if err != nil {
 		m.logger.Fatalf("Error fetching etcd member URL : %v", err)
 	}
@@ -95,7 +98,7 @@ func (m *memberControl) AddMemberAsLearner(ctx context.Context) error {
 	}
 	defer cli.Close()
 
-	memAddCtx, cancel := context.WithTimeout(ctx, etcdTimeout)
+	memAddCtx, cancel := context.WithTimeout(ctx, EtcdTimeout)
 	defer cancel()
 	_, err = cli.MemberAddAsLearner(memAddCtx, []string{memberURL})
 
@@ -120,7 +123,7 @@ func (m *memberControl) IsMemberInCluster(ctx context.Context) (bool, error) {
 	err := retry.OnError(backoff, func(err error) bool {
 		return err != nil
 	}, func() error {
-		etcdProbeCtx, cancel := context.WithTimeout(context.TODO(), etcdTimeout)
+		etcdProbeCtx, cancel := context.WithTimeout(context.TODO(), EtcdTimeout)
 		defer cancel()
 		return miscellaneous.ProbeEtcd(etcdProbeCtx, m.clientFactory, &m.logger)
 	})
@@ -140,7 +143,7 @@ func (m *memberControl) IsMemberInCluster(ctx context.Context) (bool, error) {
 	err = retry.OnError(retry.DefaultBackoff, func(err error) bool {
 		return err != nil
 	}, func() error {
-		memListCtx, cancel := context.WithTimeout(context.TODO(), etcdTimeout)
+		memListCtx, cancel := context.WithTimeout(context.TODO(), EtcdTimeout)
 		defer cancel()
 		etcdMemberList, err = cli.MemberList(memListCtx)
 		return err
@@ -161,8 +164,8 @@ func (m *memberControl) IsMemberInCluster(ctx context.Context) (bool, error) {
 	return false, nil
 }
 
-func (m *memberControl) getMemberURL() (string, error) {
-	configYML, err := os.ReadFile(m.configFile)
+func getMemberURL(configFile string, podName string) (string, error) {
+	configYML, err := os.ReadFile(configFile)
 	if err != nil {
 		return "", fmt.Errorf("unable to read etcd config file: %v", err)
 	}
@@ -173,7 +176,7 @@ func (m *memberControl) getMemberURL() (string, error) {
 	}
 
 	initAdPeerURL := config["initial-advertise-peer-urls"]
-	peerURL, err := parsePeerURL(initAdPeerURL.(string), m.podName)
+	peerURL, err := parsePeerURL(initAdPeerURL.(string), podName)
 	if err != nil {
 		return "", fmt.Errorf("could not parse peer URL from the config file : %v", err)
 	}
@@ -190,20 +193,16 @@ func parsePeerURL(peerURL, podName string) (string, error) {
 	return fmt.Sprintf("%s://%s.%s:%s", tokens[0], podName, domaiName, tokens[3]), nil
 }
 
-// UpdateMemberPeerAddress updated the peer address of a specified etcd member
-func (m *memberControl) updateMemberPeerAddress(ctx context.Context, id uint64) error {
+// updateMemberPeerAddress updated the peer address of a specified etcd member
+func (m *memberControl) updateMemberPeerAddress(ctx context.Context, cli client.ClusterCloser, id uint64) error {
 	m.logger.Infof("Updating member peer URL for %s", m.podName)
-	cli, err := m.clientFactory.NewCluster()
-	if err != nil {
-		return fmt.Errorf("failed to build etcd cluster client : %v", err)
-	}
 
-	memberURL, err := m.getMemberURL()
+	memberURL, err := getMemberURL(m.configFile, m.podName)
 	if err != nil {
 		return fmt.Errorf("could not fetch member URL : %v", err)
 	}
 
-	memberUpdateCtx, cancel := context.WithTimeout(ctx, etcdTimeout)
+	memberUpdateCtx, cancel := context.WithTimeout(ctx, EtcdTimeout)
 	defer cancel()
 
 	_, err = cli.MemberUpdate(memberUpdateCtx, id, []string{memberURL})
@@ -240,11 +239,25 @@ func (m *memberControl) PromoteMember(ctx context.Context) error {
 
 func findMember(existingMembers []*etcdserverpb.Member, memberName string) *etcdserverpb.Member {
 	for _, member := range existingMembers {
-		if member.Name == memberName {
+		if member.GetName() == memberName {
 			return member
 		}
 	}
 	return nil
+}
+
+// UpdateMember updates the peer address of a specified etcd cluster member.
+func (m *memberControl) UpdateMember(ctx context.Context, cli client.ClusterCloser) error {
+	m.logger.Infof("Attempting to update the member Info %v", m.podName)
+	ctx, cancel := context.WithTimeout(ctx, brtypes.DefaultEtcdConnectionTimeout)
+	defer cancel()
+
+	membersInfo, err := cli.MemberList(ctx)
+	if err != nil {
+		return fmt.Errorf("error listing members: %v", err)
+	}
+
+	return m.updateMemberPeerAddress(ctx, cli, membersInfo.Header.GetMemberId())
 }
 
 func (m *memberControl) doPromoteMember(ctx context.Context, member *etcdserverpb.Member, cli client.ClusterCloser) error {
@@ -252,13 +265,13 @@ func (m *memberControl) doPromoteMember(ctx context.Context, member *etcdserverp
 	defer cancel()
 	_, err := cli.MemberPromote(memPromoteCtx, member.ID) //Member promote call will succeed only if member is in sync with leader, and will error out otherwise
 	if err == nil {                                       //Member successfully promoted
-		m.logger.Info("Member promoted ", member.Name, " : ", member.ID)
+		m.logger.Infof("Member %v with ID: %v have been promoted", member.GetName(), member.GetID())
 		return nil
 	} else if errors.Is(err, rpctypes.Error(rpctypes.ErrGRPCMemberNotLearner)) { //Member is not a learner
 		if member.PeerURLs[0] == "http://localhost:2380" { //[]string{"http://localhost:2380"}[0] {
 			// Already existing clusters have `http://localhost:2380` as the peer address. This needs to explicitly updated to the new address
 			// TODO: Remove this peer address updation logic on etcd-br v0.20.0
-			err = m.updateMemberPeerAddress(ctx, member.ID)
+			err = m.updateMemberPeerAddress(ctx, cli, member.ID)
 			m.logger.Errorf("Could not update member peer URL : %v", err)
 		}
 		m.logger.Info("Member ", member.Name, " : ", member.ID, " already part of etcd cluster")
