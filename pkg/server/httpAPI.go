@@ -33,6 +33,7 @@ import (
 	"github.com/gardener/etcd-backup-restore/pkg/etcdutil"
 	"github.com/gardener/etcd-backup-restore/pkg/initializer"
 	"github.com/gardener/etcd-backup-restore/pkg/initializer/validator"
+	"github.com/gardener/etcd-backup-restore/pkg/member"
 	"github.com/gardener/etcd-backup-restore/pkg/miscellaneous"
 	"github.com/gardener/etcd-backup-restore/pkg/snapshot/snapshotter"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
@@ -484,10 +485,15 @@ func getInitialCluster(ctx context.Context, initialCluster string, etcdConn brty
 		return initialCluster
 	}
 	defer cli.Close()
-	ctx, cancel := context.WithTimeout(ctx, brtypes.DefaultEtcdConnectionTimeout)
+
+	ctx, cancel := context.WithTimeout(ctx, member.EtcdTimeout)
 	defer cancel()
 	var memList *clientv3.MemberListResponse
-	err = retry.OnError(retry.DefaultBackoff, func(err error) bool {
+
+	backoff := retry.DefaultBackoff
+	backoff.Steps = 2
+	backoff.Duration = member.RetryPeriod
+	err = retry.OnError(backoff, func(err error) bool {
 		return err != nil
 	}, func() error {
 		memList, err = cli.MemberList(ctx)
