@@ -205,7 +205,10 @@ func (m *memberControl) updateMemberPeerAddress(ctx context.Context, cli client.
 	memberUpdateCtx, cancel := context.WithTimeout(ctx, EtcdTimeout)
 	defer cancel()
 
-	_, err = cli.MemberUpdate(memberUpdateCtx, id, []string{memberURL})
+	if _, err := cli.MemberUpdate(memberUpdateCtx, id, []string{memberURL}); err == nil {
+		m.logger.Info("Successfully updated the member peer URL")
+		return nil
+	}
 	return err
 }
 
@@ -248,7 +251,7 @@ func findMember(existingMembers []*etcdserverpb.Member, memberName string) *etcd
 
 // UpdateMember updates the peer address of a specified etcd cluster member.
 func (m *memberControl) UpdateMember(ctx context.Context, cli client.ClusterCloser) error {
-	m.logger.Infof("Attempting to update the member Info %v", m.podName)
+	m.logger.Infof("Attempting to update the member Info: %v", m.podName)
 	ctx, cancel := context.WithTimeout(ctx, brtypes.DefaultEtcdConnectionTimeout)
 	defer cancel()
 
@@ -271,8 +274,9 @@ func (m *memberControl) doPromoteMember(ctx context.Context, member *etcdserverp
 		if member.PeerURLs[0] == "http://localhost:2380" { //[]string{"http://localhost:2380"}[0] {
 			// Already existing clusters have `http://localhost:2380` as the peer address. This needs to explicitly updated to the new address
 			// TODO: Remove this peer address updation logic on etcd-br v0.20.0
-			err = m.updateMemberPeerAddress(ctx, cli, member.ID)
-			m.logger.Errorf("Could not update member peer URL : %v", err)
+			if err := m.updateMemberPeerAddress(ctx, cli, member.ID); err != nil {
+				m.logger.Errorf("Could not update member peer URL : %v", err)
+			}
 		}
 		m.logger.Info("Member ", member.Name, " : ", member.ID, " already part of etcd cluster")
 		return nil
