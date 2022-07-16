@@ -413,6 +413,14 @@ func (h *HTTPHandler) serveConfig(rw http.ResponseWriter, req *http.Request) {
 	// fetch pod name from env
 	podNS := os.Getenv("POD_NAMESPACE")
 	podName := os.Getenv("POD_NAME")
+
+	clientSet, err := miscellaneous.GetKubernetesClientSetOrError()
+	if err != nil {
+		h.Logger.Warnf("Failed to create clientset: %v", err)
+		rw.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
 	config["name"] = podName
 
 	initAdPeerURL := config["initial-advertise-peer-urls"]
@@ -435,7 +443,7 @@ func (h *HTTPHandler) serveConfig(rw http.ResponseWriter, req *http.Request) {
 	domaiName = fmt.Sprintf("%s.%s.%s", svcName, namespace, "svc")
 	config["advertise-client-urls"] = fmt.Sprintf("%s://%s.%s:%s", protocol, podName, domaiName, clientPort)
 
-	config["initial-cluster-state"] = miscellaneous.GetInitialClusterState(req.Context(), *h.Logger, podName, podNS)
+	config["initial-cluster-state"] = miscellaneous.GetInitialClusterState(req.Context(), *h.Logger, clientSet, podName, podNS)
 
 	config["initial-cluster"] = getInitialCluster(req.Context(), fmt.Sprint(config["initial-cluster"]), *h.EtcdConnectionConfig, protocol, clientPort, *h.Logger, podName)
 

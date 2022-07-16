@@ -431,16 +431,11 @@ func IsBackupBucketEmpty(snapStoreConfig *brtypes.SnapstoreConfig, logger *logru
 	return false
 }
 
-// GetInitialClusterState returns the cluster state
-func GetInitialClusterState(ctx context.Context, logger logrus.Entry, podName string, podNS string) string {
+// GetInitialClusterState returns the cluster state, either `new` or `existing`.
+func GetInitialClusterState(ctx context.Context, logger logrus.Entry, clientSet client.Client, podName string, podNS string) string {
 	clusterState := "new"
 
 	//Read sts spec for updated replicas to toggle `initial-cluster-state`
-	clientSet, err := GetKubernetesClientSetOrError()
-	if err != nil {
-		logger.Errorf("failed to create clientset: %v", err)
-		return clusterState
-	}
 	curSts := &appsv1.StatefulSet{}
 	errSts := clientSet.Get(ctx, client.ObjectKey{
 		Namespace: podNS,

@@ -18,16 +18,20 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
 	"reflect"
 	"time"
 
 	mockfactory "github.com/gardener/etcd-backup-restore/pkg/mock/etcdutil/client"
+	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 	"github.com/golang/mock/gomock"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	"go.etcd.io/etcd/clientv3"
 	"go.etcd.io/etcd/etcdserver/etcdserverpb"
+	appsv1 "k8s.io/api/apps/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 var (
@@ -293,6 +297,117 @@ var _ = Describe("Miscellaneous Tests", func() {
 		})
 	})
 
+	Describe("Check Emptiness of backup-bucket", func() {
+		var snapStoreConfig *brtypes.SnapstoreConfig
+		BeforeEach(func() {
+			snapStoreConfig = snapstore.NewSnapstoreConfig()
+			snapStoreConfig.Provider = "Local"
+		})
+		Context("#Empty backup-bucket", func() {
+			It("should return true", func() {
+				isBackupBucketEmpty := IsBackupBucketEmpty(snapStoreConfig, logger.Logger)
+				Expect(isBackupBucketEmpty).Should(BeTrue())
+			})
+		})
+	})
+
+	Describe("Get the Initial ClusterState", func() {
+		var (
+			sts *appsv1.StatefulSet
+		)
+		BeforeEach(func() {
+			os.Setenv("STS_NAME", "etcd-test")
+			os.Setenv("POD_NAME", "etcd-test-0")
+			os.Setenv("NAMESPACE", "test_namespace")
+		})
+		AfterEach(func() {
+			os.Unsetenv("STS_NAME")
+			os.Unsetenv("POD_NAME")
+			os.Unsetenv("NAMESPACE")
+		})
+		Context("In single-node etcd", func() {
+			It("Should return the cluster state as `new` ", func() {
+				sts = &appsv1.StatefulSet{
+					TypeMeta: metav1.TypeMeta{
+						Kind:       "StatefulSet",
+						APIVersion: "apps/v1",
+					},
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      os.Getenv("STS_NAME"),
+						Namespace: os.Getenv("NAMESPACE"),
+					},
+					Spec: appsv1.StatefulSetSpec{
+						Replicas: getInt32Pointer(1),
+					},
+					Status: appsv1.StatefulSetStatus{
+						UpdatedReplicas: 1,
+					},
+				}
+				clientSet := GetFakeKubernetesClientSet()
+
+				err := clientSet.Create(testCtx, sts)
+				Expect(err).ShouldNot(HaveOccurred())
+
+				clusterState := GetInitialClusterState(testCtx, *logger, clientSet, os.Getenv("POD_NAME"), os.Getenv("NAMESPACE"))
+				Expect(clusterState).Should(Equal(ClusterStateNew))
+			})
+		})
+		Context("In multi-node etcd bootstrap", func() {
+			It("Should return the cluster state as `new` ", func() {
+				sts = &appsv1.StatefulSet{
+					TypeMeta: metav1.TypeMeta{
+						Kind:       "StatefulSet",
+						APIVersion: "apps/v1",
+					},
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      os.Getenv("STS_NAME"),
+						Namespace: os.Getenv("NAMESPACE"),
+					},
+					Spec: appsv1.StatefulSetSpec{
+						Replicas: getInt32Pointer(3),
+					},
+					Status: appsv1.StatefulSetStatus{
+						UpdatedReplicas: 3,
+					},
+				}
+				clientSet := GetFakeKubernetesClientSet()
+
+				err := clientSet.Create(testCtx, sts)
+				Expect(err).ShouldNot(HaveOccurred())
+
+				clusterState := GetInitialClusterState(testCtx, *logger, clientSet, os.Getenv("POD_NAME"), os.Getenv("NAMESPACE"))
+				Expect(clusterState).Should(Equal(ClusterStateNew))
+			})
+		})
+		Context("In case of Scaling up from single node to multi-node etcd", func() {
+			It("Should return clusterState as `existing` ", func() {
+				sts = &appsv1.StatefulSet{
+					TypeMeta: metav1.TypeMeta{
+						Kind:       "StatefulSet",
+						APIVersion: "apps/v1",
+					},
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      os.Getenv("STS_NAME"),
+						Namespace: os.Getenv("NAMESPACE"),
+					},
+					Spec: appsv1.StatefulSetSpec{
+						Replicas: getInt32Pointer(3),
+					},
+					Status: appsv1.StatefulSetStatus{
+						UpdatedReplicas: 1,
+					},
+				}
+				clientSet := GetFakeKubernetesClientSet()
+
+				err := clientSet.Create(testCtx, sts)
+				Expect(err).ShouldNot(HaveOccurred())
+
+				clusterState := GetInitialClusterState(testCtx, *logger, clientSet, os.Getenv("POD_NAME"), os.Getenv("NAMESPACE"))
+				Expect(clusterState).Should(Equal(ClusterStateExisting))
+			})
+		})
+	})
+
 })
 
 func generateSnapshotList(n int) brtypes.SnapList {
@@ -335,4 +450,9 @@ func (ds *DummyStore) Save(snap brtypes.Snapshot, rc io.ReadCloser) error {
 
 func (ds *DummyStore) Fetch(snap brtypes.Snapshot) (io.ReadCloser, error) {
 	return nil, nil
+}
+
+func getInt32Pointer(val int) *int32 {
+	value := int32(val)
+	return &value
 }
