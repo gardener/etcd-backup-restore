@@ -309,6 +309,13 @@ var _ = Describe("Miscellaneous Tests", func() {
 				Expect(isBackupBucketEmpty).Should(BeTrue())
 			})
 		})
+		Context("#Storage provider is not specified", func() {
+			It("should return true", func() {
+				snapStoreConfig.Provider = ""
+				isBackupBucketEmpty := IsBackupBucketEmpty(snapStoreConfig, logger.Logger)
+				Expect(isBackupBucketEmpty).Should(BeTrue())
+			})
+		})
 	})
 
 	Describe("Get the Initial ClusterState", func() {

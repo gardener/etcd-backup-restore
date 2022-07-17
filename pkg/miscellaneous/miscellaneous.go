@@ -413,6 +413,11 @@ func SleepWithContext(ctx context.Context, sleepFor time.Duration) error {
 // IsBackupBucketEmpty checks whether the backup bucket is empty or not.
 func IsBackupBucketEmpty(snapStoreConfig *brtypes.SnapstoreConfig, logger *logrus.Logger) bool {
 	logger.Info("Checking whether the backup bucket is empty or not...")
+
+	if snapStoreConfig == nil || len(snapStoreConfig.Provider) == 0 {
+		logger.Info("storage provider name not specified")
+		return true
+	}
 	store, err := snapstore.GetSnapstore(snapStoreConfig)
 	if err != nil {
 		logger.Fatalf("failed to create snapstore from configured storage provider: %v", err)
