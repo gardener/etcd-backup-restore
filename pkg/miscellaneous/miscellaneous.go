@@ -438,8 +438,6 @@ func IsBackupBucketEmpty(snapStoreConfig *brtypes.SnapstoreConfig, logger *logru
 
 // GetInitialClusterState returns the cluster state, either `new` or `existing`.
 func GetInitialClusterState(ctx context.Context, logger logrus.Entry, clientSet client.Client, podName string, podNS string) string {
-	clusterState := "new"
-
 	//Read sts spec for updated replicas to toggle `initial-cluster-state`
 	curSts := &appsv1.StatefulSet{}
 	errSts := clientSet.Get(ctx, client.ObjectKey{
@@ -448,13 +446,13 @@ func GetInitialClusterState(ctx context.Context, logger logrus.Entry, clientSet 
 	}, curSts)
 	if errSts != nil {
 		logger.Warn("error fetching etcd sts ", errSts)
-		return clusterState
+		return ClusterStateNew
 	}
 
 	//TODO: achieve this without an sts?
 	if *curSts.Spec.Replicas > 1 && *curSts.Spec.Replicas > curSts.Status.UpdatedReplicas {
-		clusterState = "existing"
+		return ClusterStateExisting
 	}
 
-	return clusterState
+	return ClusterStateNew
 }

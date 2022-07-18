@@ -413,6 +413,36 @@ var _ = Describe("Miscellaneous Tests", func() {
 				Expect(clusterState).Should(Equal(ClusterStateExisting))
 			})
 		})
+
+		Context("Unable to fetch statefulset", func() {
+			It("Should return clusterState as `new` ", func() {
+				sts = &appsv1.StatefulSet{
+					TypeMeta: metav1.TypeMeta{
+						Kind:       "StatefulSet",
+						APIVersion: "apps/v1",
+					},
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      os.Getenv("STS_NAME"),
+						Namespace: os.Getenv("NAMESPACE"),
+					},
+					Spec: appsv1.StatefulSetSpec{
+						Replicas: getInt32Pointer(3),
+					},
+					Status: appsv1.StatefulSetStatus{
+						UpdatedReplicas: 1,
+					},
+				}
+
+				wrongNamespace := "wrongNamespace"
+				clientSet := GetFakeKubernetesClientSet()
+
+				err := clientSet.Create(testCtx, sts)
+				Expect(err).ShouldNot(HaveOccurred())
+
+				clusterState := GetInitialClusterState(testCtx, *logger, clientSet, os.Getenv("POD_NAME"), wrongNamespace)
+				Expect(clusterState).Should(Equal(ClusterStateNew))
+			})
+		})
 	})
 
 })
