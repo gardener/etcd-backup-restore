@@ -396,7 +396,7 @@ func (h *HTTPHandler) serveLatestSnapshotMetadata(rw http.ResponseWriter, req *h
 }
 
 func (h *HTTPHandler) serveConfig(rw http.ResponseWriter, req *http.Request) {
-	inputFileName := "/var/etcd/config/etcd.conf.yaml"
+	inputFileName := miscellaneous.EtcdConfigFilePath
 	outputFileName := "/etc/etcd.conf.yaml"
 	configYML, err := ioutil.ReadFile(inputFileName)
 	if err != nil {

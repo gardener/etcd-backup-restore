@@ -71,12 +71,8 @@ func NewMemberControl(etcdConnConfig *brtypes.EtcdConnectionConfig) ControlMembe
 		logger.Fatalf("Error reading POD_NAME env var : %v", err)
 	}
 	//TODO: Refactor needed
-	etcdConfigForTest := os.Getenv("ETCD_CONF")
-	if etcdConfigForTest != "" {
-		configFile = etcdConfigForTest
-	} else {
-		configFile = "/var/etcd/config/etcd.conf.yaml"
-	}
+	configFile = miscellaneous.GetConfigFilePath()
+
 	return &memberControl{
 		clientFactory: clientFactory,
 		logger:        *logger,

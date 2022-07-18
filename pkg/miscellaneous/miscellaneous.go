@@ -42,8 +42,9 @@ import (
 
 const (
 	// NoLeaderState defines the state when etcd returns LeaderID as 0.
-	NoLeaderState      uint64 = 0
-	etcdConfigFilePath string = "/var/etcd/config/etcd.conf.yaml"
+	NoLeaderState uint64 = 0
+	// EtcdConfigFilePath is the file path where the etcd config map is mounted.
+	EtcdConfigFilePath string = "/var/etcd/config/etcd.conf.yaml"
 )
 
 // GetLatestFullSnapshotAndDeltaSnapList returns the latest snapshot
@@ -296,11 +297,11 @@ func GetEnvVarOrError(varName string) (string, error) {
 // GetEtcdSvcEndpoint returns the endpoint to the etcd client service
 func GetEtcdSvcEndpoint() (string, error) {
 	var inputFileName string
-	etcdConfigForTest := os.Getenv("ETCD_CONF")
-	if etcdConfigForTest != "" {
+
+	inputFileName = GetConfigFilePath()
+	if inputFileName != EtcdConfigFilePath {
 		return "", nil
 	}
-	inputFileName = "/var/etcd/config/etcd.conf.yaml"
 
 	configYML, err := os.ReadFile(inputFileName)
 	if err != nil {
@@ -340,18 +341,31 @@ func ProbeEtcd(ctx context.Context, clientFactory etcdClient.Factory, logger *lo
 	return nil
 }
 
-func getConfigFilePath() string {
+// GetConfigFilePath returns the path of the etcd configuration file
+func GetConfigFilePath() string {
+	// (For testing purpose) If no ETCD_CONF variable set as environment variable, then consider backup-restore server is not used for tests.
+	// For tests or to run backup-restore server as standalone, user needs to set ETCD_CONF variable with proper location of ETCD config yaml
 	etcdConfigForTest := os.Getenv("ETCD_CONF")
 	if etcdConfigForTest != "" {
 		return etcdConfigForTest
 	}
-	return etcdConfigFilePath
+	return EtcdConfigFilePath
+}
+
+// GetClusterSize returns the size of a cluster passed as a string
+func GetClusterSize(cluster string) (int, error) {
+	clusterMap, err := types.NewURLsMap(cluster)
+	if err != nil {
+		return 0, err
+	}
+
+	return len(clusterMap), nil
 }
 
 // IsMultiNode determines whether a pod is part of a multi node setup or not
 // This is determined by checking the `initial-cluster` of the etcd configmap to check the number of members expected.
 func IsMultiNode(logger *logrus.Entry) bool {
-	inputFileName := getConfigFilePath()
+	inputFileName := GetConfigFilePath()
 
 	configYML, err := os.ReadFile(inputFileName)
 	if err != nil {
@@ -364,12 +378,12 @@ func IsMultiNode(logger *logrus.Entry) bool {
 		return false
 	}
 
-	initialClusterMap, err := types.NewURLsMap(fmt.Sprint(config["initial-cluster"]))
+	initialClusterMap, err := GetClusterSize(fmt.Sprint(config["initial-cluster"]))
 	if err != nil {
 		logger.Fatal("initial cluster value for not present in etcd config file")
 	}
 
-	if len(initialClusterMap) > 1 {
+	if initialClusterMap > 1 {
 		return true
 	}
 

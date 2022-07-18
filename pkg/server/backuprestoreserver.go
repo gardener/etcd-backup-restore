@@ -61,9 +61,8 @@ type BackupRestoreServer struct {
 
 var (
 	// runServerWithSnapshotter indicates whether to start server with or without snapshotter.
-	runServerWithSnapshotter bool   = true
-	etcdConfig               string = "/var/etcd/config/etcd.conf.yaml"
-	retryTimeout                    = 5 * time.Second
+	runServerWithSnapshotter bool = true
+	retryTimeout                  = 5 * time.Second
 )
 
 // NewBackupRestoreServer return new backup restore server.
@@ -98,14 +97,7 @@ func (b *BackupRestoreServer) Run(ctx context.Context) error {
 	var inputFileName string
 	var err error
 
-	// (For testing purpose) If no ETCD_CONF variable set as environment variable, then consider backup-restore server is not used for tests.
-	// For tests or to run backup-restore server as standalone, user needs to set ETCD_CONF variable with proper location of ETCD config yaml
-	etcdConfigForTest := os.Getenv("ETCD_CONF")
-	if etcdConfigForTest != "" {
-		inputFileName = etcdConfigForTest
-	} else {
-		inputFileName = etcdConfig
-	}
+	inputFileName = miscellaneous.GetConfigFilePath()
 
 	configYML, err := os.ReadFile(inputFileName)
 	if err != nil {
@@ -119,7 +111,7 @@ func (b *BackupRestoreServer) Run(ctx context.Context) error {
 		return err
 	}
 
-	initialClusterMap, err := types.NewURLsMap(fmt.Sprint(config["initial-cluster"]))
+	initialClusterSize, err := miscellaneous.GetClusterSize(fmt.Sprint(config["initial-cluster"]))
 	if err != nil {
 		b.logger.Fatal("Please provide initial cluster value for embedded ETCD")
 	}
@@ -139,7 +131,7 @@ func (b *BackupRestoreServer) Run(ctx context.Context) error {
 	options := &brtypes.RestoreOptions{
 		Config:              b.config.RestorationConfig,
 		ClusterURLs:         clusterURLsMap,
-		OriginalClusterSize: len(initialClusterMap),
+		OriginalClusterSize: initialClusterSize,
 		PeerURLs:            peerURLs,
 	}
 
