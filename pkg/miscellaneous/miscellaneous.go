@@ -300,6 +300,8 @@ func GetEtcdSvcEndpoint() (string, error) {
 
 	inputFileName = GetConfigFilePath()
 	if inputFileName != EtcdConfigFilePath {
+		// Return "" here to indicate to the caller to use the default svc endpoint.
+		// This is used for testing purposes where localhost is to be used as the endpoint
 		return "", nil
 	}
 
@@ -363,7 +365,7 @@ func GetClusterSize(cluster string) (int, error) {
 }
 
 // IsMultiNode determines whether a pod is part of a multi node setup or not
-// This is determined by checking the `initial-cluster` of the etcd configmap to check the number of members expected.
+// This is determined by checking the `initial-cluster` of the etcd configmap to check the number of members expected
 func IsMultiNode(logger *logrus.Entry) bool {
 	inputFileName := GetConfigFilePath()
 

@@ -192,7 +192,7 @@ func (b *BackupRestoreServer) runServer(ctx context.Context, restoreOpts *brtype
 	defer handler.Stop()
 
 	// Promotes member if it is a learner
-	if miscellaneous.IsMultiNode(b.logger) {
+	if restoreOpts.OriginalClusterSize > 1 {
 		for {
 			select {
 			case <-ctx.Done():
