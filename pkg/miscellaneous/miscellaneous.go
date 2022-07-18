@@ -410,6 +410,21 @@ func SleepWithContext(ctx context.Context, sleepFor time.Duration) error {
 	}
 }
 
+// ContainsBackup checks whether the backup is present in given SnapStore or not.
+func ContainsBackup(store brtypes.SnapStore, logger *logrus.Logger) bool {
+	baseSnap, deltaSnapList, err := GetLatestFullSnapshotAndDeltaSnapList(store)
+	if err != nil {
+		logger.Errorf("failed to list the snapshot: %v", err)
+		return false
+	}
+
+	if baseSnap == nil && (deltaSnapList == nil || len(deltaSnapList) == 0) {
+		logger.Infof("No snapshot found. BackupBucket is empty")
+		return false
+	}
+	return true
+}
+
 // IsBackupBucketEmpty checks whether the backup bucket is empty or not.
 func IsBackupBucketEmpty(snapStoreConfig *brtypes.SnapstoreConfig, logger *logrus.Logger) bool {
 	logger.Info("Checking whether the backup bucket is empty or not...")
@@ -423,17 +438,10 @@ func IsBackupBucketEmpty(snapStoreConfig *brtypes.SnapstoreConfig, logger *logru
 		logger.Fatalf("failed to create snapstore from configured storage provider: %v", err)
 	}
 
-	baseSnap, deltaSnapList, err := GetLatestFullSnapshotAndDeltaSnapList(store)
-	if err != nil {
-		logger.Errorf("failed to list the snapshot: %v", err)
+	if ContainsBackup(store, logger) {
 		return false
 	}
-
-	if baseSnap == nil && (deltaSnapList == nil || len(deltaSnapList) == 0) {
-		logger.Infof("No snapshot found. BackupBucket is empty")
-		return true
-	}
-	return false
+	return true
 }
 
 // GetInitialClusterState returns the cluster state, either `new` or `existing`.

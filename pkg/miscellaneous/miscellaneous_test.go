@@ -18,7 +18,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"os"
 	"reflect"
 	"time"
 
@@ -32,6 +31,7 @@ import (
 	"go.etcd.io/etcd/etcdserver/etcdserverpb"
 	appsv1 "k8s.io/api/apps/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/utils/pointer"
 )
 
 var (
@@ -40,7 +40,8 @@ var (
 )
 
 const (
-	generatedSnaps = 20
+	generatedSnaps   = 20
+	generatedNoSnaps = 0
 )
 
 var _ = Describe("Miscellaneous Tests", func() {
@@ -316,22 +317,33 @@ var _ = Describe("Miscellaneous Tests", func() {
 				Expect(isBackupBucketEmpty).Should(BeTrue())
 			})
 		})
+
+		Context("#Contains backup", func() {
+			It("should return true", func() {
+				snapList = generateSnapshotList(generatedSnaps)
+				ds = NewDummyStore(snapList)
+				containsBackup := ContainsBackup(&ds, logger.Logger)
+				Expect(containsBackup).Should(BeTrue())
+			})
+		})
+
+		Context("#Contains no backup", func() {
+			It("should return false", func() {
+				snapList = generateSnapshotList(generatedNoSnaps)
+				ds = NewDummyStore(snapList)
+				containsBackup := ContainsBackup(&ds, logger.Logger)
+				Expect(containsBackup).Should(BeFalse())
+			})
+		})
 	})
 
 	Describe("Get the Initial ClusterState", func() {
 		var (
-			sts *appsv1.StatefulSet
+			sts             *appsv1.StatefulSet
+			statefulSetName = "etcd-test"
+			podName         = "etcd-test-0"
+			namespace       = "test_namespace"
 		)
-		BeforeEach(func() {
-			os.Setenv("STS_NAME", "etcd-test")
-			os.Setenv("POD_NAME", "etcd-test-0")
-			os.Setenv("NAMESPACE", "test_namespace")
-		})
-		AfterEach(func() {
-			os.Unsetenv("STS_NAME")
-			os.Unsetenv("POD_NAME")
-			os.Unsetenv("NAMESPACE")
-		})
 		Context("In single-node etcd", func() {
 			It("Should return the cluster state as `new` ", func() {
 				sts = &appsv1.StatefulSet{
@@ -340,11 +352,11 @@ var _ = Describe("Miscellaneous Tests", func() {
 						APIVersion: "apps/v1",
 					},
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      os.Getenv("STS_NAME"),
-						Namespace: os.Getenv("NAMESPACE"),
+						Name:      statefulSetName,
+						Namespace: namespace,
 					},
 					Spec: appsv1.StatefulSetSpec{
-						Replicas: getInt32Pointer(1),
+						Replicas: pointer.Int32Ptr(1),
 					},
 					Status: appsv1.StatefulSetStatus{
 						UpdatedReplicas: 1,
@@ -355,7 +367,7 @@ var _ = Describe("Miscellaneous Tests", func() {
 				err := clientSet.Create(testCtx, sts)
 				Expect(err).ShouldNot(HaveOccurred())
 
-				clusterState := GetInitialClusterState(testCtx, *logger, clientSet, os.Getenv("POD_NAME"), os.Getenv("NAMESPACE"))
+				clusterState := GetInitialClusterState(testCtx, *logger, clientSet, podName, namespace)
 				Expect(clusterState).Should(Equal(ClusterStateNew))
 			})
 		})
@@ -367,11 +379,11 @@ var _ = Describe("Miscellaneous Tests", func() {
 						APIVersion: "apps/v1",
 					},
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      os.Getenv("STS_NAME"),
-						Namespace: os.Getenv("NAMESPACE"),
+						Name:      statefulSetName,
+						Namespace: namespace,
 					},
 					Spec: appsv1.StatefulSetSpec{
-						Replicas: getInt32Pointer(3),
+						Replicas: pointer.Int32Ptr(3),
 					},
 					Status: appsv1.StatefulSetStatus{
 						UpdatedReplicas: 3,
@@ -382,7 +394,7 @@ var _ = Describe("Miscellaneous Tests", func() {
 				err := clientSet.Create(testCtx, sts)
 				Expect(err).ShouldNot(HaveOccurred())
 
-				clusterState := GetInitialClusterState(testCtx, *logger, clientSet, os.Getenv("POD_NAME"), os.Getenv("NAMESPACE"))
+				clusterState := GetInitialClusterState(testCtx, *logger, clientSet, podName, namespace)
 				Expect(clusterState).Should(Equal(ClusterStateNew))
 			})
 		})
@@ -394,11 +406,11 @@ var _ = Describe("Miscellaneous Tests", func() {
 						APIVersion: "apps/v1",
 					},
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      os.Getenv("STS_NAME"),
-						Namespace: os.Getenv("NAMESPACE"),
+						Name:      statefulSetName,
+						Namespace: namespace,
 					},
 					Spec: appsv1.StatefulSetSpec{
-						Replicas: getInt32Pointer(3),
+						Replicas: pointer.Int32Ptr(3),
 					},
 					Status: appsv1.StatefulSetStatus{
 						UpdatedReplicas: 1,
@@ -409,7 +421,7 @@ var _ = Describe("Miscellaneous Tests", func() {
 				err := clientSet.Create(testCtx, sts)
 				Expect(err).ShouldNot(HaveOccurred())
 
-				clusterState := GetInitialClusterState(testCtx, *logger, clientSet, os.Getenv("POD_NAME"), os.Getenv("NAMESPACE"))
+				clusterState := GetInitialClusterState(testCtx, *logger, clientSet, podName, namespace)
 				Expect(clusterState).Should(Equal(ClusterStateExisting))
 			})
 		})
@@ -422,11 +434,11 @@ var _ = Describe("Miscellaneous Tests", func() {
 						APIVersion: "apps/v1",
 					},
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      os.Getenv("STS_NAME"),
-						Namespace: os.Getenv("NAMESPACE"),
+						Name:      statefulSetName,
+						Namespace: namespace,
 					},
 					Spec: appsv1.StatefulSetSpec{
-						Replicas: getInt32Pointer(3),
+						Replicas: pointer.Int32Ptr(3),
 					},
 					Status: appsv1.StatefulSetStatus{
 						UpdatedReplicas: 1,
@@ -439,7 +451,7 @@ var _ = Describe("Miscellaneous Tests", func() {
 				err := clientSet.Create(testCtx, sts)
 				Expect(err).ShouldNot(HaveOccurred())
 
-				clusterState := GetInitialClusterState(testCtx, *logger, clientSet, os.Getenv("POD_NAME"), wrongNamespace)
+				clusterState := GetInitialClusterState(testCtx, *logger, clientSet, podName, wrongNamespace)
 				Expect(clusterState).Should(Equal(ClusterStateNew))
 			})
 		})
@@ -487,9 +499,4 @@ func (ds *DummyStore) Save(snap brtypes.Snapshot, rc io.ReadCloser) error {
 
 func (ds *DummyStore) Fetch(snap brtypes.Snapshot) (io.ReadCloser, error) {
 	return nil, nil
-}
-
-func getInt32Pointer(val int) *int32 {
-	value := int32(val)
-	return &value
 }
