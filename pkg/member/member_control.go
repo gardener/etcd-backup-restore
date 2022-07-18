@@ -268,7 +268,7 @@ func (m *memberControl) doPromoteMember(ctx context.Context, member *etcdserverp
 	defer cancel()
 	_, err := cli.MemberPromote(memPromoteCtx, member.ID) //Member promote call will succeed only if member is in sync with leader, and will error out otherwise
 	if err == nil {                                       //Member successfully promoted
-		m.logger.Infof("Member %v with ID: %v have been promoted", member.GetName(), member.GetID())
+		m.logger.Infof("Member %v with ID: %v has been promoted", member.GetName(), member.GetID())
 		return nil
 	} else if errors.Is(err, rpctypes.Error(rpctypes.ErrGRPCMemberNotLearner)) { //Member is not a learner
 		if member.PeerURLs[0] == "http://localhost:2380" { //[]string{"http://localhost:2380"}[0] {
