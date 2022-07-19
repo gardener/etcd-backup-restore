@@ -71,12 +71,8 @@ func NewMemberControl(etcdConnConfig *brtypes.EtcdConnectionConfig) ControlMembe
 		logger.Fatalf("Error reading POD_NAME env var : %v", err)
 	}
 	//TODO: Refactor needed
-	etcdConfigForTest := os.Getenv("ETCD_CONF")
-	if etcdConfigForTest != "" {
-		configFile = etcdConfigForTest
-	} else {
-		configFile = "/var/etcd/config/etcd.conf.yaml"
-	}
+	configFile = miscellaneous.GetConfigFilePath()
+
 	return &memberControl{
 		clientFactory: clientFactory,
 		logger:        *logger,
@@ -161,7 +157,8 @@ func (m *memberControl) IsMemberInCluster(ctx context.Context) (bool, error) {
 	}
 
 	m.logger.Infof("Member %s not part of any running cluster", m.podName)
-	return false, fmt.Errorf("Could not find member %s in the list", m.podName)
+	//return false, fmt.Errorf("Could not find member %s in the list", m.podName)
+	return false, nil
 }
 
 func (m *memberControl) getMemberURL() (string, error) {

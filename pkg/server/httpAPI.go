@@ -396,7 +396,7 @@ func (h *HTTPHandler) serveLatestSnapshotMetadata(rw http.ResponseWriter, req *h
 }
 
 func (h *HTTPHandler) serveConfig(rw http.ResponseWriter, req *http.Request) {
-	inputFileName := "/var/etcd/config/etcd.conf.yaml"
+	inputFileName := miscellaneous.EtcdConfigFilePath
 	outputFileName := "/etc/etcd.conf.yaml"
 	configYML, err := ioutil.ReadFile(inputFileName)
 	if err != nil {
@@ -489,7 +489,7 @@ func getInitialCluster(ctx context.Context, initialCluster string, etcdConn brty
 	})
 	noOfMembers := 0
 	if err != nil {
-		logger.Warnf("Error with MemberList() : %v", err)
+		logger.Warnf("Could not list members : %v", err)
 	} else {
 		noOfMembers = len(memList.Members)
 	}
