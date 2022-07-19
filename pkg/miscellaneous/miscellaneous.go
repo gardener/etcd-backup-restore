@@ -32,6 +32,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/sirupsen/logrus"
 	"go.etcd.io/etcd/embed"
+	"go.etcd.io/etcd/pkg/types"
 	"gopkg.in/yaml.v2"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -42,6 +43,8 @@ import (
 const (
 	// NoLeaderState defines the state when etcd returns LeaderID as 0.
 	NoLeaderState uint64 = 0
+	// EtcdConfigFilePath is the file path where the etcd config map is mounted.
+	EtcdConfigFilePath string = "/var/etcd/config/etcd.conf.yaml"
 )
 
 // GetLatestFullSnapshotAndDeltaSnapList returns the latest snapshot
@@ -294,11 +297,13 @@ func GetEnvVarOrError(varName string) (string, error) {
 // GetEtcdSvcEndpoint returns the endpoint to the etcd client service
 func GetEtcdSvcEndpoint() (string, error) {
 	var inputFileName string
-	etcdConfigForTest := os.Getenv("ETCD_CONF")
-	if etcdConfigForTest != "" {
+
+	inputFileName = GetConfigFilePath()
+	if inputFileName != EtcdConfigFilePath {
+		// Return "" here to indicate to the caller to use the default svc endpoint.
+		// This is used for testing purposes where localhost is to be used as the endpoint
 		return "", nil
 	}
-	inputFileName = "/var/etcd/config/etcd.conf.yaml"
 
 	configYML, err := os.ReadFile(inputFileName)
 	if err != nil {
@@ -336,6 +341,55 @@ func ProbeEtcd(ctx context.Context, clientFactory etcdClient.Factory, logger *lo
 		return err
 	}
 	return nil
+}
+
+// GetConfigFilePath returns the path of the etcd configuration file
+func GetConfigFilePath() string {
+	// (For testing purpose) If no ETCD_CONF variable set as environment variable, then consider backup-restore server is not used for tests.
+	// For tests or to run backup-restore server as standalone, user needs to set ETCD_CONF variable with proper location of ETCD config yaml
+	etcdConfigForTest := os.Getenv("ETCD_CONF")
+	if etcdConfigForTest != "" {
+		return etcdConfigForTest
+	}
+	return EtcdConfigFilePath
+}
+
+// GetClusterSize returns the size of a cluster passed as a string
+func GetClusterSize(cluster string) (int, error) {
+	clusterMap, err := types.NewURLsMap(cluster)
+	if err != nil {
+		return 0, err
+	}
+
+	return len(clusterMap), nil
+}
+
+// IsMultiNode determines whether a pod is part of a multi node setup or not
+// This is determined by checking the `initial-cluster` of the etcd configmap to check the number of members expected
+func IsMultiNode(logger *logrus.Entry) bool {
+	inputFileName := GetConfigFilePath()
+
+	configYML, err := os.ReadFile(inputFileName)
+	if err != nil {
+		return false
+	}
+
+	config := map[string]interface{}{}
+	err = yaml.Unmarshal([]byte(configYML), &config)
+	if err := yaml.Unmarshal([]byte(configYML), &config); err != nil {
+		return false
+	}
+
+	initialClusterMap, err := GetClusterSize(fmt.Sprint(config["initial-cluster"]))
+	if err != nil {
+		logger.Fatal("initial cluster value for not present in etcd config file")
+	}
+
+	if initialClusterMap > 1 {
+		return true
+	}
+
+	return false
 }
 
 // SleepWithContext sleeps for a determined period while respecting a context

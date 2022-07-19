@@ -46,17 +46,19 @@ import (
 func (e *EtcdInitializer) Initialize(mode validator.Mode, failBelowRevision int64) error {
 	start := time.Now()
 	//Etcd cluster scale-up case
-	m := member.NewMemberControl(e.Config.EtcdConnectionConfig)
-	ctx := context.Background()
-	clusterMember, err := m.IsMemberInCluster(ctx)
-	if !clusterMember && err == nil {
-		retry.OnError(retry.DefaultBackoff, func(err error) bool {
-			return err != nil
-		}, func() error {
-			return m.AddMemberAsLearner(ctx)
-		})
-		// return here after adding member as no restoration or validation needed
-		return nil
+	if miscellaneous.IsMultiNode(e.Logger.WithField("actor", "initializer")) {
+		m := member.NewMemberControl(e.Config.EtcdConnectionConfig)
+		ctx := context.Background()
+		clusterMember, err := m.IsMemberInCluster(ctx)
+		if !clusterMember && err == nil {
+			retry.OnError(retry.DefaultBackoff, func(err error) bool {
+				return err != nil
+			}, func() error {
+				return m.AddMemberAsLearner(ctx)
+			})
+			// return here after adding member as no restoration or validation needed
+			return nil
+		}
 	}
 
 	dataDirStatus, err := e.Validator.Validate(mode, failBelowRevision)
