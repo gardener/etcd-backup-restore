@@ -40,9 +40,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/sirupsen/logrus"
 	"go.etcd.io/etcd/clientv3"
-	appsv1 "k8s.io/api/apps/v1"
 	"k8s.io/client-go/util/retry"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 const (
@@ -415,6 +413,14 @@ func (h *HTTPHandler) serveConfig(rw http.ResponseWriter, req *http.Request) {
 	// fetch pod name from env
 	podNS := os.Getenv("POD_NAMESPACE")
 	podName := os.Getenv("POD_NAME")
+
+	clientSet, err := miscellaneous.GetKubernetesClientSetOrError()
+	if err != nil {
+		h.Logger.Warnf("Failed to create clientset: %v", err)
+		rw.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
 	config["name"] = podName
 
 	initAdPeerURL := config["initial-advertise-peer-urls"]
@@ -437,7 +443,7 @@ func (h *HTTPHandler) serveConfig(rw http.ResponseWriter, req *http.Request) {
 	domaiName = fmt.Sprintf("%s.%s.%s", svcName, namespace, "svc")
 	config["advertise-client-urls"] = fmt.Sprintf("%s://%s.%s:%s", protocol, podName, domaiName, clientPort)
 
-	config["initial-cluster-state"] = getInitialClusterState(req.Context(), *h.Logger, podName, podNS)
+	config["initial-cluster-state"] = miscellaneous.GetInitialClusterState(req.Context(), *h.Logger, clientSet, podName, podNS)
 
 	config["initial-cluster"] = getInitialCluster(req.Context(), fmt.Sprint(config["initial-cluster"]), *h.EtcdConnectionConfig, protocol, clientPort, *h.Logger, podName)
 
@@ -515,33 +521,6 @@ func getInitialCluster(ctx context.Context, initialCluster string, etcdConn brty
 	}
 
 	return initialCluster
-}
-
-func getInitialClusterState(ctx context.Context, logger logrus.Entry, podName string, podNS string) string {
-	clusterState := "new"
-
-	//Read sts spec for updated replicas to toggle `initial-cluster-state`
-	clientSet, err := miscellaneous.GetKubernetesClientSetOrError()
-	if err != nil {
-		logger.Errorf("failed to create clientset: %v", err)
-		return clusterState
-	}
-	curSts := &appsv1.StatefulSet{}
-	errSts := clientSet.Get(ctx, client.ObjectKey{
-		Namespace: podNS,
-		Name:      podName[:strings.LastIndex(podName, "-")],
-	}, curSts)
-	if errSts != nil {
-		logger.Warn("error fetching etcd sts ", errSts)
-		return clusterState
-	}
-
-	//TODO: achieve this without an sts?
-	if *curSts.Spec.Replicas > 1 && *curSts.Spec.Replicas > curSts.Status.UpdatedReplicas {
-		clusterState = "existing"
-	}
-
-	return clusterState
 }
 
 func parsePeerURL(peerURL string) (string, string, string, string, error) {

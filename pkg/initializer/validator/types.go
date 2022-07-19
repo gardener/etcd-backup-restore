@@ -38,6 +38,9 @@ const (
 	DataDirectoryCorrupt
 	// DataDirectoryStatusUnknown indicates validator failed to check the data directory status.
 	DataDirectoryStatusUnknown
+	// DataDirStatusUnknownInMultiNode indicates validator failed to check the data directory status in multi-node etcd cluster.
+	// TODO: To be removed when backup-restore supports restoration of single member in multi-node etcd cluster.
+	DataDirStatusUnknownInMultiNode
 	// RevisionConsistencyError indicates current etcd revision is inconsistent with latest snapshot revision.
 	RevisionConsistencyError
 	// FailBelowRevisionConsistencyError indicates the current etcd revision is inconsistent with failBelowRevision.

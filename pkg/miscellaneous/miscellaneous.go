@@ -28,6 +28,7 @@ import (
 	"github.com/gardener/etcd-backup-restore/pkg/errors"
 	etcdClient "github.com/gardener/etcd-backup-restore/pkg/etcdutil/client"
 	"github.com/gardener/etcd-backup-restore/pkg/metrics"
+	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/sirupsen/logrus"
@@ -35,6 +36,7 @@ import (
 	"go.etcd.io/etcd/pkg/types"
 	"gopkg.in/yaml.v2"
 
+	appsv1 "k8s.io/api/apps/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
 	fake "sigs.k8s.io/controller-runtime/pkg/client/fake"
@@ -45,6 +47,10 @@ const (
 	NoLeaderState uint64 = 0
 	// EtcdConfigFilePath is the file path where the etcd config map is mounted.
 	EtcdConfigFilePath string = "/var/etcd/config/etcd.conf.yaml"
+	// ClusterStateNew defines the "new" state of etcd cluster.
+	ClusterStateNew = "new"
+	// ClusterStateExisting defines the "existing" state of etcd cluster.
+	ClusterStateExisting = "existing"
 )
 
 // GetLatestFullSnapshotAndDeltaSnapList returns the latest snapshot
@@ -307,13 +313,13 @@ func GetEtcdSvcEndpoint() (string, error) {
 
 	configYML, err := os.ReadFile(inputFileName)
 	if err != nil {
-		return "", fmt.Errorf("Unable to read etcd config file: %v", err)
+		return "", fmt.Errorf("unable to read etcd config file: %v", err)
 	}
 
 	config := map[string]interface{}{}
 	err = yaml.Unmarshal([]byte(configYML), &config)
 	if err := yaml.Unmarshal([]byte(configYML), &config); err != nil {
-		return "", fmt.Errorf("Unable to unmarshal etcd config yaml file: %v", err)
+		return "", fmt.Errorf("unable to unmarshal etcd config yaml file: %v", err)
 	}
 
 	advClientURL := config["advertise-client-urls"]
@@ -329,12 +335,12 @@ func GetEtcdSvcEndpoint() (string, error) {
 // ProbeEtcd probes the etcd endpoint to check if an etcd is available
 func ProbeEtcd(ctx context.Context, clientFactory etcdClient.Factory, logger *logrus.Entry) error {
 	clientKV, err := clientFactory.NewKV()
-	defer clientKV.Close()
 	if err != nil {
 		return &errors.EtcdError{
 			Message: fmt.Sprintf("Failed to create etcd KV client: %v", err),
 		}
 	}
+	defer clientKV.Close()
 
 	if _, err := clientKV.Get(ctx, "foo"); err != nil {
 		logger.Errorf("Failed to connect to etcd KV client: %v", err)
@@ -402,4 +408,59 @@ func SleepWithContext(ctx context.Context, sleepFor time.Duration) error {
 			return nil
 		}
 	}
+}
+
+// ContainsBackup checks whether the backup is present in given SnapStore or not.
+func ContainsBackup(store brtypes.SnapStore, logger *logrus.Logger) bool {
+	baseSnap, deltaSnapList, err := GetLatestFullSnapshotAndDeltaSnapList(store)
+	if err != nil {
+		logger.Errorf("failed to list the snapshot: %v", err)
+		return false
+	}
+
+	if baseSnap == nil && (deltaSnapList == nil || len(deltaSnapList) == 0) {
+		logger.Infof("No snapshot found. BackupBucket is empty")
+		return false
+	}
+	return true
+}
+
+// IsBackupBucketEmpty checks whether the backup bucket is empty or not.
+func IsBackupBucketEmpty(snapStoreConfig *brtypes.SnapstoreConfig, logger *logrus.Logger) bool {
+	logger.Info("Checking whether the backup bucket is empty or not...")
+
+	if snapStoreConfig == nil || len(snapStoreConfig.Provider) == 0 {
+		logger.Info("storage provider name not specified")
+		return true
+	}
+	store, err := snapstore.GetSnapstore(snapStoreConfig)
+	if err != nil {
+		logger.Fatalf("failed to create snapstore from configured storage provider: %v", err)
+	}
+
+	if ContainsBackup(store, logger) {
+		return false
+	}
+	return true
+}
+
+// GetInitialClusterState returns the cluster state, either `new` or `existing`.
+func GetInitialClusterState(ctx context.Context, logger logrus.Entry, clientSet client.Client, podName string, podNS string) string {
+	//Read sts spec for updated replicas to toggle `initial-cluster-state`
+	curSts := &appsv1.StatefulSet{}
+	errSts := clientSet.Get(ctx, client.ObjectKey{
+		Namespace: podNS,
+		Name:      podName[:strings.LastIndex(podName, "-")],
+	}, curSts)
+	if errSts != nil {
+		logger.Warn("error fetching etcd sts ", errSts)
+		return ClusterStateNew
+	}
+
+	//TODO: achieve this without an sts?
+	if *curSts.Spec.Replicas > 1 && *curSts.Spec.Replicas > curSts.Status.UpdatedReplicas {
+		return ClusterStateExisting
+	}
+
+	return ClusterStateNew
 }

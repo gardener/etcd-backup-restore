@@ -146,7 +146,7 @@ func (m *memberControl) IsMemberInCluster(ctx context.Context) (bool, error) {
 		return err
 	})
 	if err != nil {
-		return false, fmt.Errorf("Could not list any etcd members %w", err)
+		return false, fmt.Errorf("could not list any etcd members %w", err)
 	}
 
 	for _, y := range etcdMemberList.Members {
@@ -156,26 +156,26 @@ func (m *memberControl) IsMemberInCluster(ctx context.Context) (bool, error) {
 		}
 	}
 
-	m.logger.Infof("Member %s not part of any running cluster", m.podName)
-	//return false, fmt.Errorf("Could not find member %s in the list", m.podName)
+	m.logger.Infof("Member %v not part of any running cluster", m.podName)
+	m.logger.Infof("Could not find member %v in the list", m.podName)
 	return false, nil
 }
 
 func (m *memberControl) getMemberURL() (string, error) {
 	configYML, err := os.ReadFile(m.configFile)
 	if err != nil {
-		return "", fmt.Errorf("Unable to read etcd config file: %v", err)
+		return "", fmt.Errorf("unable to read etcd config file: %v", err)
 	}
 
 	config := map[string]interface{}{}
 	if err := yaml.Unmarshal([]byte(configYML), &config); err != nil {
-		return "", fmt.Errorf("Unable to unmarshal etcd config yaml file: %v", err)
+		return "", fmt.Errorf("unable to unmarshal etcd config yaml file: %v", err)
 	}
 
 	initAdPeerURL := config["initial-advertise-peer-urls"]
 	peerURL, err := parsePeerURL(initAdPeerURL.(string), m.podName)
 	if err != nil {
-		return "", fmt.Errorf("Could not parse peer URL from the config file : %v", err)
+		return "", fmt.Errorf("could not parse peer URL from the config file : %v", err)
 	}
 	return peerURL, nil
 }
@@ -183,7 +183,7 @@ func (m *memberControl) getMemberURL() (string, error) {
 func parsePeerURL(peerURL, podName string) (string, error) {
 	tokens := strings.Split(peerURL, "@")
 	if len(tokens) < 4 {
-		return "", fmt.Errorf("Invalid peer URL : %s", peerURL)
+		return "", fmt.Errorf("invalid peer URL : %s", peerURL)
 	}
 	domaiName := fmt.Sprintf("%s.%s.%s", tokens[1], tokens[2], "svc")
 
@@ -200,7 +200,7 @@ func (m *memberControl) updateMemberPeerAddress(ctx context.Context, id uint64) 
 
 	memberURL, err := m.getMemberURL()
 	if err != nil {
-		return fmt.Errorf("Could not fetch member URL : %v", err)
+		return fmt.Errorf("could not fetch member URL : %v", err)
 	}
 
 	memberUpdateCtx, cancel := context.WithTimeout(ctx, etcdTimeout)

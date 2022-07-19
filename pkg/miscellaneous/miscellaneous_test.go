@@ -22,12 +22,16 @@ import (
 	"time"
 
 	mockfactory "github.com/gardener/etcd-backup-restore/pkg/mock/etcdutil/client"
+	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 	"github.com/golang/mock/gomock"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	"go.etcd.io/etcd/clientv3"
 	"go.etcd.io/etcd/etcdserver/etcdserverpb"
+	appsv1 "k8s.io/api/apps/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/utils/pointer"
 )
 
 var (
@@ -36,7 +40,8 @@ var (
 )
 
 const (
-	generatedSnaps = 20
+	generatedSnaps   = 20
+	generatedNoSnaps = 0
 )
 
 var _ = Describe("Miscellaneous Tests", func() {
@@ -289,6 +294,165 @@ var _ = Describe("Miscellaneous Tests", func() {
 				backupLeaderEndPoint, err := GetBackupLeaderEndPoint(endpoints, portNo)
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(backupLeaderEndPoint).To(Equal("http://127.0.0.1:8080"))
+			})
+		})
+	})
+
+	Describe("Check Emptiness of backup-bucket", func() {
+		var snapStoreConfig *brtypes.SnapstoreConfig
+		BeforeEach(func() {
+			snapStoreConfig = snapstore.NewSnapstoreConfig()
+			snapStoreConfig.Provider = "Local"
+		})
+		Context("#Empty backup-bucket", func() {
+			It("should return true", func() {
+				isBackupBucketEmpty := IsBackupBucketEmpty(snapStoreConfig, logger.Logger)
+				Expect(isBackupBucketEmpty).Should(BeTrue())
+			})
+		})
+		Context("#Storage provider is not specified", func() {
+			It("should return true", func() {
+				snapStoreConfig.Provider = ""
+				isBackupBucketEmpty := IsBackupBucketEmpty(snapStoreConfig, logger.Logger)
+				Expect(isBackupBucketEmpty).Should(BeTrue())
+			})
+		})
+
+		Context("#Contains backup", func() {
+			It("should return true", func() {
+				snapList = generateSnapshotList(generatedSnaps)
+				ds = NewDummyStore(snapList)
+				containsBackup := ContainsBackup(&ds, logger.Logger)
+				Expect(containsBackup).Should(BeTrue())
+			})
+		})
+
+		Context("#Contains no backup", func() {
+			It("should return false", func() {
+				snapList = generateSnapshotList(generatedNoSnaps)
+				ds = NewDummyStore(snapList)
+				containsBackup := ContainsBackup(&ds, logger.Logger)
+				Expect(containsBackup).Should(BeFalse())
+			})
+		})
+	})
+
+	Describe("Get the Initial ClusterState", func() {
+		var (
+			sts             *appsv1.StatefulSet
+			statefulSetName = "etcd-test"
+			podName         = "etcd-test-0"
+			namespace       = "test_namespace"
+		)
+		Context("In single-node etcd", func() {
+			It("Should return the cluster state as `new` ", func() {
+				sts = &appsv1.StatefulSet{
+					TypeMeta: metav1.TypeMeta{
+						Kind:       "StatefulSet",
+						APIVersion: "apps/v1",
+					},
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      statefulSetName,
+						Namespace: namespace,
+					},
+					Spec: appsv1.StatefulSetSpec{
+						Replicas: pointer.Int32Ptr(1),
+					},
+					Status: appsv1.StatefulSetStatus{
+						UpdatedReplicas: 1,
+					},
+				}
+				clientSet := GetFakeKubernetesClientSet()
+
+				err := clientSet.Create(testCtx, sts)
+				Expect(err).ShouldNot(HaveOccurred())
+
+				clusterState := GetInitialClusterState(testCtx, *logger, clientSet, podName, namespace)
+				Expect(clusterState).Should(Equal(ClusterStateNew))
+			})
+		})
+		Context("In multi-node etcd bootstrap", func() {
+			It("Should return the cluster state as `new` ", func() {
+				sts = &appsv1.StatefulSet{
+					TypeMeta: metav1.TypeMeta{
+						Kind:       "StatefulSet",
+						APIVersion: "apps/v1",
+					},
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      statefulSetName,
+						Namespace: namespace,
+					},
+					Spec: appsv1.StatefulSetSpec{
+						Replicas: pointer.Int32Ptr(3),
+					},
+					Status: appsv1.StatefulSetStatus{
+						UpdatedReplicas: 3,
+					},
+				}
+				clientSet := GetFakeKubernetesClientSet()
+
+				err := clientSet.Create(testCtx, sts)
+				Expect(err).ShouldNot(HaveOccurred())
+
+				clusterState := GetInitialClusterState(testCtx, *logger, clientSet, podName, namespace)
+				Expect(clusterState).Should(Equal(ClusterStateNew))
+			})
+		})
+		Context("In case of Scaling up from single node to multi-node etcd", func() {
+			It("Should return clusterState as `existing` ", func() {
+				sts = &appsv1.StatefulSet{
+					TypeMeta: metav1.TypeMeta{
+						Kind:       "StatefulSet",
+						APIVersion: "apps/v1",
+					},
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      statefulSetName,
+						Namespace: namespace,
+					},
+					Spec: appsv1.StatefulSetSpec{
+						Replicas: pointer.Int32Ptr(3),
+					},
+					Status: appsv1.StatefulSetStatus{
+						UpdatedReplicas: 1,
+					},
+				}
+				clientSet := GetFakeKubernetesClientSet()
+
+				err := clientSet.Create(testCtx, sts)
+				Expect(err).ShouldNot(HaveOccurred())
+
+				clusterState := GetInitialClusterState(testCtx, *logger, clientSet, podName, namespace)
+				Expect(clusterState).Should(Equal(ClusterStateExisting))
+			})
+		})
+
+		Context("Unable to fetch statefulset", func() {
+			It("Should return clusterState as `new` ", func() {
+				sts = &appsv1.StatefulSet{
+					TypeMeta: metav1.TypeMeta{
+						Kind:       "StatefulSet",
+						APIVersion: "apps/v1",
+					},
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      statefulSetName,
+						Namespace: namespace,
+					},
+					Spec: appsv1.StatefulSetSpec{
+						Replicas: pointer.Int32Ptr(3),
+					},
+					Status: appsv1.StatefulSetStatus{
+						UpdatedReplicas: 1,
+					},
+				}
+
+				wrongNamespace := "wrongNamespace"
+				clientSet := GetFakeKubernetesClientSet()
+
+				err := clientSet.Create(testCtx, sts)
+				Expect(err).ShouldNot(HaveOccurred())
+
+				clusterState := GetInitialClusterState(testCtx, *logger, clientSet, podName, wrongNamespace)
+				Expect(clusterState).Should(Equal(ClusterStateNew))
 			})
 		})
 	})
