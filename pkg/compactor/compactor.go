@@ -80,7 +80,7 @@ func (cp *Compactor) Compact(ctx context.Context, opts *brtypes.CompactOptions) 
 
 	// Then restore from the snapshots
 	r := restorer.NewRestorer(cp.store, cp.logger)
-	embeddedEtcd, err := r.Restore(*cmpctOptions)
+	embeddedEtcd, err := r.Restore(*cmpctOptions, nil)
 	if err != nil {
 		return nil, fmt.Errorf("unable to restore snapshots during compaction: %v", err)
 	}

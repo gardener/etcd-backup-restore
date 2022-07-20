@@ -47,6 +47,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"go.etcd.io/etcd/pkg/types"
 	"k8s.io/apimachinery/pkg/util/clock"
+	"k8s.io/client-go/util/retry"
 )
 
 // BackupRestoreServer holds the details for backup-restore server.
@@ -206,6 +207,21 @@ func (b *BackupRestoreServer) runServer(ctx context.Context, restoreOpts *brtype
 				break
 			}
 			miscellaneous.SleepWithContext(ctx, retryTimeout)
+		}
+	} else {
+		// when OriginalClusterSize = 1
+		m := member.NewMemberControl(b.config.EtcdConnectionConfig)
+		err := retry.OnError(retry.DefaultBackoff, func(err error) bool {
+			return err != nil
+		}, func() error {
+			cli, err := etcdutil.NewFactory(*b.config.EtcdConnectionConfig).NewCluster()
+			if err != nil {
+				return err
+			}
+			return m.UpdateMember(ctx, cli)
+		})
+		if err != nil {
+			b.logger.Error("unable to update the member")
 		}
 	}
 
