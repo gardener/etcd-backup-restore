@@ -79,7 +79,7 @@ func NewRestorer(store brtypes.SnapStore, logger *logrus.Entry) *Restorer {
 }
 
 // RestoreAndStopEtcd restore the etcd data directory as per specified restore options but doesn't return the ETCD server that it statrted.
-func (r *Restorer) RestoreAndStopEtcd(ro brtypes.RestoreOptions, m member.ControlMember) error {
+func (r *Restorer) RestoreAndStopEtcd(ro brtypes.RestoreOptions, m member.Control) error {
 	embeddedEtcd, err := r.Restore(ro, m)
 	defer func() {
 		if embeddedEtcd != nil {
@@ -91,7 +91,7 @@ func (r *Restorer) RestoreAndStopEtcd(ro brtypes.RestoreOptions, m member.Contro
 }
 
 // Restore restore the etcd data directory as per specified restore options but returns the ETCD server that it statrted.
-func (r *Restorer) Restore(ro brtypes.RestoreOptions, m member.ControlMember) (*embed.Etcd, error) {
+func (r *Restorer) Restore(ro brtypes.RestoreOptions, m member.Control) (*embed.Etcd, error) {
 	if err := r.restoreFromBaseSnapshot(ro); err != nil {
 		return nil, fmt.Errorf("failed to restore from the base snapshot :%v", err)
 	}

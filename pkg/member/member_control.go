@@ -33,8 +33,8 @@ var (
 	ErrMissingMember = errors.New("member missing from member list")
 )
 
-// ControlMember interface defines the functionalities needed to manipulate a member in the etcd cluster
-type ControlMember interface {
+// Control interface defines the functionalities needed to manipulate a member in the etcd cluster
+type Control interface {
 	// AddMemberAsLearner add a new member as a learner to the etcd cluster
 	AddMemberAsLearner(context.Context) error
 
@@ -56,8 +56,8 @@ type memberControl struct {
 	configFile    string
 }
 
-// NewMemberControl returns new ExponentialBackoff.
-func NewMemberControl(etcdConnConfig *brtypes.EtcdConnectionConfig) ControlMember {
+// NewMemberControl returns new Control object.
+func NewMemberControl(etcdConnConfig *brtypes.EtcdConnectionConfig) Control {
 	var configFile string
 	logger := logrus.New().WithField("actor", "member-add")
 	etcdConn := *etcdConnConfig
@@ -284,7 +284,7 @@ func (m *memberControl) doPromoteMember(ctx context.Context, member *etcdserverp
 				return m.updateMemberPeerAddress(ctx, cli, member.ID)
 			})
 			if err != nil {
-				m.logger.Warnf("Could not update member peer URL : %v", err)
+				m.logger.Errorf("Could not update member peer URL : %v", err)
 			}
 		}
 		m.logger.Info("Member ", member.Name, " : ", member.ID, " already part of etcd cluster")
