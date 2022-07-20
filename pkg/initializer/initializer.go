@@ -167,7 +167,8 @@ func (e *EtcdInitializer) restoreCorruptData() (bool, error) {
 	}
 
 	rs := restorer.NewRestorer(store, logrus.NewEntry(logger))
-	if err := rs.RestoreAndStopEtcd(tempRestoreOptions); err != nil {
+	m := member.NewMemberControl(e.Config.EtcdConnectionConfig)
+	if err := rs.RestoreAndStopEtcd(tempRestoreOptions, m); err != nil {
 		err = fmt.Errorf("failed to restore snapshot: %v", err)
 		return false, err
 	}

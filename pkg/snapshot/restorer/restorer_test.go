@@ -137,7 +137,7 @@ var _ = Describe("Running Restorer", func() {
 				restoreOpts.Config.InitialAdvertisePeerURLs = []string{"http://localhost:2390"}
 				restoreOpts.ClusterURLs, err = types.NewURLsMap(restoreOpts.Config.InitialCluster)
 
-				err = rstr.RestoreAndStopEtcd(restoreOpts)
+				err = rstr.RestoreAndStopEtcd(restoreOpts, nil)
 				Expect(err).Should(HaveOccurred())
 			})
 		})
@@ -146,7 +146,7 @@ var _ = Describe("Running Restorer", func() {
 			It("should fail to restore", func() {
 				restoreOpts.Config.RestoreDataDir = ""
 
-				err = rstr.RestoreAndStopEtcd(restoreOpts)
+				err = rstr.RestoreAndStopEtcd(restoreOpts, nil)
 				Expect(err).Should(HaveOccurred())
 			})
 		})
@@ -156,7 +156,7 @@ var _ = Describe("Running Restorer", func() {
 				restoreOpts.BaseSnapshot.SnapDir = "test"
 				restoreOpts.BaseSnapshot.SnapName = "test"
 
-				err := rstr.RestoreAndStopEtcd(restoreOpts)
+				err := rstr.RestoreAndStopEtcd(restoreOpts, nil)
 				Expect(err).Should(HaveOccurred())
 			})
 		})
@@ -182,7 +182,7 @@ var _ = Describe("Running Restorer", func() {
 		Context("with maximum of one fetcher allowed", func() {
 			It("should restore etcd data directory", func() {
 				restoreOpts.Config.MaxFetchers = 1
-				err = rstr.RestoreAndStopEtcd(restoreOpts)
+				err = rstr.RestoreAndStopEtcd(restoreOpts, nil)
 				Expect(err).ShouldNot(HaveOccurred())
 
 				err = utils.CheckDataConsistency(testCtx, restoreOpts.Config.RestoreDataDir, keyTo, logger)
@@ -194,7 +194,7 @@ var _ = Describe("Running Restorer", func() {
 			It("should restore etcd data directory", func() {
 				restoreOpts.Config.MaxFetchers = 4
 
-				err = rstr.RestoreAndStopEtcd(restoreOpts)
+				err = rstr.RestoreAndStopEtcd(restoreOpts, nil)
 				Expect(err).ShouldNot(HaveOccurred())
 
 				err = utils.CheckDataConsistency(testCtx, restoreOpts.Config.RestoreDataDir, keyTo, logger)
@@ -206,7 +206,7 @@ var _ = Describe("Running Restorer", func() {
 			It("should restore etcd data directory", func() {
 				restoreOpts.Config.MaxFetchers = 100
 
-				err = rstr.RestoreAndStopEtcd(restoreOpts)
+				err = rstr.RestoreAndStopEtcd(restoreOpts, nil)
 				Expect(err).ShouldNot(HaveOccurred())
 
 				err = utils.CheckDataConsistency(testCtx, restoreOpts.Config.RestoreDataDir, keyTo, logger)
@@ -323,7 +323,7 @@ var _ = Describe("Running Restorer", func() {
 					restoreOpts.BaseSnapshot.SnapName = ""
 				}
 
-				err := rstr.RestoreAndStopEtcd(restoreOpts)
+				err := rstr.RestoreAndStopEtcd(restoreOpts, nil)
 
 				Expect(err).ShouldNot(HaveOccurred())
 				err = utils.CheckDataConsistency(testCtx, restoreOpts.Config.RestoreDataDir, keyTo, logger)
@@ -364,7 +364,7 @@ var _ = Describe("Running Restorer", func() {
 					PeerURLs:      peerUrls,
 				}
 
-				err = rstr.RestoreAndStopEtcd(restoreOpts)
+				err = rstr.RestoreAndStopEtcd(restoreOpts, nil)
 
 				Expect(err).ShouldNot(HaveOccurred())
 
@@ -408,7 +408,7 @@ var _ = Describe("Running Restorer", func() {
 					PeerURLs:      peerUrls,
 				}
 
-				err = rstr.RestoreAndStopEtcd(restoreOpts)
+				err = rstr.RestoreAndStopEtcd(restoreOpts, nil)
 				Expect(err).Should(HaveOccurred())
 				// the below consistency fails with index out of range error hence commented,
 				// but the etcd directory is filled partially as part of the restore which should be relooked.
@@ -446,7 +446,7 @@ var _ = Describe("Running Restorer", func() {
 				}
 
 				logger.Infoln("starting restore, restore directory exists already")
-				err = rstr.RestoreAndStopEtcd(restoreOpts)
+				err = rstr.RestoreAndStopEtcd(restoreOpts, nil)
 				logger.Infof("Failed to restore because :: %s", err)
 
 				Expect(err).Should(HaveOccurred())
@@ -494,7 +494,7 @@ var _ = Describe("Running Restorer", func() {
 				}
 
 				logger.Infoln("starting restore while snapshotter is running")
-				err = rstr.RestoreAndStopEtcd(restoreOpts)
+				err = rstr.RestoreAndStopEtcd(restoreOpts, nil)
 				Expect(err).ShouldNot(HaveOccurred())
 				err = utils.CheckDataConsistency(testCtx, restoreOpts.Config.RestoreDataDir, keyTo, logger)
 				Expect(err).ShouldNot(HaveOccurred())
@@ -582,7 +582,7 @@ var _ = Describe("Running Restorer", func() {
 					PeerURLs:      peerUrls,
 				}
 
-				err = rstr.RestoreAndStopEtcd(restoreOpts)
+				err = rstr.RestoreAndStopEtcd(restoreOpts, nil)
 				Expect(err).ShouldNot(HaveOccurred())
 				err = utils.CheckDataConsistency(testCtx, restoreOpts.Config.RestoreDataDir, keyTo, logger)
 				Expect(err).ShouldNot(HaveOccurred())
@@ -667,7 +667,7 @@ var _ = Describe("Running Restorer", func() {
 					PeerURLs:      peerUrls,
 				}
 
-				err = rstr.RestoreAndStopEtcd(restoreOpts)
+				err = rstr.RestoreAndStopEtcd(restoreOpts, nil)
 				Expect(err).ShouldNot(HaveOccurred())
 				err = utils.CheckDataConsistency(testCtx, restoreOpts.Config.RestoreDataDir, keyTo, logger)
 				Expect(err).ShouldNot(HaveOccurred())
@@ -782,7 +782,7 @@ var _ = Describe("Running Restorer when both v1 and v2 directory structures are 
 			err = os.RemoveAll(path.Join(emDir, "member"))
 			Expect(err).ShouldNot(HaveOccurred())
 
-			err = rstr.RestoreAndStopEtcd(restoreOpts)
+			err = rstr.RestoreAndStopEtcd(restoreOpts, nil)
 			Expect(err).ShouldNot(HaveOccurred())
 			err = utils.CheckDataConsistency(testCtx, restoreOpts.Config.RestoreDataDir, resp.KeyTo, logger)
 			Expect(err).ShouldNot(HaveOccurred())
@@ -814,7 +814,7 @@ var _ = Describe("Running Restorer when both v1 and v2 directory structures are 
 			err = os.RemoveAll(path.Join(emDir, "member"))
 			Expect(err).ShouldNot(HaveOccurred())
 
-			err = rstr.RestoreAndStopEtcd(restoreOpts)
+			err = rstr.RestoreAndStopEtcd(restoreOpts, nil)
 			Expect(err).ShouldNot(HaveOccurred())
 			err = utils.CheckDataConsistency(testCtx, restoreOpts.Config.RestoreDataDir, resp.KeyTo, logger)
 			Expect(err).ShouldNot(HaveOccurred())
@@ -846,7 +846,7 @@ var _ = Describe("Running Restorer when both v1 and v2 directory structures are 
 			err = os.RemoveAll(path.Join(emDir, "member"))
 			Expect(err).ShouldNot(HaveOccurred())
 
-			err = rstr.RestoreAndStopEtcd(restoreOpts)
+			err = rstr.RestoreAndStopEtcd(restoreOpts, nil)
 			Expect(err).ShouldNot(HaveOccurred())
 			err = utils.CheckDataConsistency(testCtx, restoreOpts.Config.RestoreDataDir, resp.KeyTo, logger)
 			Expect(err).ShouldNot(HaveOccurred())
@@ -880,7 +880,7 @@ var _ = Describe("Running Restorer when both v1 and v2 directory structures are 
 			err = os.RemoveAll(path.Join(emDir, "member"))
 			Expect(err).ShouldNot(HaveOccurred())
 
-			err = rstr.RestoreAndStopEtcd(restoreOpts)
+			err = rstr.RestoreAndStopEtcd(restoreOpts, nil)
 			Expect(err).ShouldNot(HaveOccurred())
 			err = utils.CheckDataConsistency(testCtx, restoreOpts.Config.RestoreDataDir, resp.KeyTo, logger)
 			Expect(err).ShouldNot(HaveOccurred())
@@ -913,7 +913,7 @@ var _ = Describe("Running Restorer when both v1 and v2 directory structures are 
 				err = os.RemoveAll(path.Join(emDir, "member"))
 				Expect(err).ShouldNot(HaveOccurred())
 
-				err = rstr.RestoreAndStopEtcd(restoreOpts)
+				err = rstr.RestoreAndStopEtcd(restoreOpts, nil)
 				Expect(err).Should(HaveOccurred())
 			})
 		})
