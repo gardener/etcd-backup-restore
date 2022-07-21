@@ -68,6 +68,10 @@ func (d *DataValidator) backendPath() string { return filepath.Join(d.snapDir(),
 func (d *DataValidator) Validate(mode Mode, failBelowRevision int64) (DataDirStatus, error) {
 	status, err := d.sanityCheck(failBelowRevision)
 	if status != DataDirectoryValid {
+		// TODO: To be removed when backup-restore supports restoration of single member in multi-node etcd cluster.
+		if d.OriginalClusterSize > 1 && !miscellaneous.IsBackupBucketEmpty(d.Config.SnapstoreConfig, d.Logger) {
+			return DataDirStatusUnknownInMultiNode, nil
+		}
 		return status, err
 	}
 

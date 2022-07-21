@@ -32,6 +32,7 @@ import (
 	"github.com/gardener/etcd-backup-restore/pkg/compressor"
 	"github.com/gardener/etcd-backup-restore/pkg/etcdutil"
 	"github.com/gardener/etcd-backup-restore/pkg/etcdutil/client"
+	"github.com/gardener/etcd-backup-restore/pkg/member"
 	"github.com/gardener/etcd-backup-restore/pkg/miscellaneous"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 	"github.com/sirupsen/logrus"
@@ -78,8 +79,8 @@ func NewRestorer(store brtypes.SnapStore, logger *logrus.Entry) *Restorer {
 }
 
 // RestoreAndStopEtcd restore the etcd data directory as per specified restore options but doesn't return the ETCD server that it statrted.
-func (r *Restorer) RestoreAndStopEtcd(ro brtypes.RestoreOptions) error {
-	embeddedEtcd, err := r.Restore(ro)
+func (r *Restorer) RestoreAndStopEtcd(ro brtypes.RestoreOptions, m member.Control) error {
+	embeddedEtcd, err := r.Restore(ro, m)
 	defer func() {
 		if embeddedEtcd != nil {
 			embeddedEtcd.Server.Stop()
@@ -90,7 +91,7 @@ func (r *Restorer) RestoreAndStopEtcd(ro brtypes.RestoreOptions) error {
 }
 
 // Restore restore the etcd data directory as per specified restore options but returns the ETCD server that it statrted.
-func (r *Restorer) Restore(ro brtypes.RestoreOptions) (*embed.Etcd, error) {
+func (r *Restorer) Restore(ro brtypes.RestoreOptions, m member.Control) (*embed.Etcd, error) {
 	if err := r.restoreFromBaseSnapshot(ro); err != nil {
 		return nil, fmt.Errorf("failed to restore from the base snapshot :%v", err)
 	}
@@ -120,6 +121,14 @@ func (r *Restorer) Restore(ro brtypes.RestoreOptions) (*embed.Etcd, error) {
 		return e, err
 	}
 
+	if m != nil {
+		clientCluster, err := clientFactory.NewCluster()
+		if err != nil {
+			return e, err
+		}
+		defer clientCluster.Close()
+		m.UpdateMember(context.TODO(), clientCluster)
+	}
 	return e, nil
 }
 

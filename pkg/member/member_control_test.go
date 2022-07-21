@@ -74,12 +74,12 @@ var _ = Describe("Membercontrol", func() {
 
 	Describe("While attempting to check if etcd is part of a cluster", func() {
 		Context("When cluster is up and member is not part of the list", func() {
-			It("Should return an error", func() {
+			It("Should return false and no error", func() {
 				mem := member.NewMemberControl(etcdConnectionConfig)
-				_, err := mem.IsMemberInCluster(context.TODO())
-				Expect(err).ToNot(BeNil())
+				bool, err := mem.IsMemberInCluster(context.TODO())
+				Expect(bool).To(BeFalse())
+				Expect(err).To(BeNil())
 			})
 		})
 	})
-
 })

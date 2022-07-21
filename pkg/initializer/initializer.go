@@ -46,17 +46,19 @@ import (
 func (e *EtcdInitializer) Initialize(mode validator.Mode, failBelowRevision int64) error {
 	start := time.Now()
 	//Etcd cluster scale-up case
-	m := member.NewMemberControl(e.Config.EtcdConnectionConfig)
-	ctx := context.Background()
-	clusterMember, err := m.IsMemberInCluster(ctx)
-	if !clusterMember && err == nil {
-		retry.OnError(retry.DefaultBackoff, func(err error) bool {
-			return err != nil
-		}, func() error {
-			return m.AddMemberAsLearner(ctx)
-		})
-		// return here after adding member as no restoration or validation needed
-		return nil
+	if miscellaneous.IsMultiNode(e.Logger.WithField("actor", "initializer")) {
+		m := member.NewMemberControl(e.Config.EtcdConnectionConfig)
+		ctx := context.Background()
+		clusterMember, err := m.IsMemberInCluster(ctx)
+		if !clusterMember && err == nil {
+			retry.OnError(retry.DefaultBackoff, func(err error) bool {
+				return err != nil
+			}, func() error {
+				return m.AddMemberAsLearner(ctx)
+			})
+			// return here after adding member as no restoration or validation needed
+			return nil
+		}
 	}
 
 	dataDirStatus, err := e.Validator.Validate(mode, failBelowRevision)
@@ -73,6 +75,11 @@ func (e *EtcdInitializer) Initialize(mode validator.Mode, failBelowRevision int6
 	if dataDirStatus == validator.DataDirectoryStatusUnknown {
 		metrics.ValidationDurationSeconds.With(prometheus.Labels{metrics.LabelSucceeded: metrics.ValueSucceededFalse}).Observe(time.Since(start).Seconds())
 		return fmt.Errorf("error while initializing: %v", err)
+	}
+
+	if dataDirStatus == validator.DataDirStatusUnknownInMultiNode {
+		metrics.ValidationDurationSeconds.With(prometheus.Labels{metrics.LabelSucceeded: metrics.ValueSucceededFalse}).Observe(time.Since(start).Seconds())
+		return fmt.Errorf("failed to initialize data dir of cluster member in multi-node cluster")
 	}
 
 	if dataDirStatus == validator.FailBelowRevisionConsistencyError {
@@ -160,7 +167,8 @@ func (e *EtcdInitializer) restoreCorruptData() (bool, error) {
 	}
 
 	rs := restorer.NewRestorer(store, logrus.NewEntry(logger))
-	if err := rs.RestoreAndStopEtcd(tempRestoreOptions); err != nil {
+	m := member.NewMemberControl(e.Config.EtcdConnectionConfig)
+	if err := rs.RestoreAndStopEtcd(tempRestoreOptions, m); err != nil {
 		err = fmt.Errorf("failed to restore snapshot: %v", err)
 		return false, err
 	}

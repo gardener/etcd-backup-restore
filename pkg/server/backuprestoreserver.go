@@ -47,6 +47,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"go.etcd.io/etcd/pkg/types"
 	"k8s.io/apimachinery/pkg/util/clock"
+	"k8s.io/client-go/util/retry"
 )
 
 // BackupRestoreServer holds the details for backup-restore server.
@@ -61,9 +62,8 @@ type BackupRestoreServer struct {
 
 var (
 	// runServerWithSnapshotter indicates whether to start server with or without snapshotter.
-	runServerWithSnapshotter bool   = true
-	etcdConfig               string = "/var/etcd/config/etcd.conf.yaml"
-	retryTimeout                    = 5 * time.Second
+	runServerWithSnapshotter bool = true
+	retryTimeout                  = 5 * time.Second
 )
 
 // NewBackupRestoreServer return new backup restore server.
@@ -98,14 +98,7 @@ func (b *BackupRestoreServer) Run(ctx context.Context) error {
 	var inputFileName string
 	var err error
 
-	// (For testing purpose) If no ETCD_CONF variable set as environment variable, then consider backup-restore server is not used for tests.
-	// For tests or to run backup-restore server as standalone, user needs to set ETCD_CONF variable with proper location of ETCD config yaml
-	etcdConfigForTest := os.Getenv("ETCD_CONF")
-	if etcdConfigForTest != "" {
-		inputFileName = etcdConfigForTest
-	} else {
-		inputFileName = etcdConfig
-	}
+	inputFileName = miscellaneous.GetConfigFilePath()
 
 	configYML, err := os.ReadFile(inputFileName)
 	if err != nil {
@@ -119,7 +112,7 @@ func (b *BackupRestoreServer) Run(ctx context.Context) error {
 		return err
 	}
 
-	initialClusterMap, err := types.NewURLsMap(fmt.Sprint(config["initial-cluster"]))
+	initialClusterSize, err := miscellaneous.GetClusterSize(fmt.Sprint(config["initial-cluster"]))
 	if err != nil {
 		b.logger.Fatal("Please provide initial cluster value for embedded ETCD")
 	}
@@ -139,7 +132,7 @@ func (b *BackupRestoreServer) Run(ctx context.Context) error {
 	options := &brtypes.RestoreOptions{
 		Config:              b.config.RestorationConfig,
 		ClusterURLs:         clusterURLsMap,
-		OriginalClusterSize: len(initialClusterMap),
+		OriginalClusterSize: initialClusterSize,
 		PeerURLs:            peerURLs,
 	}
 
@@ -200,19 +193,36 @@ func (b *BackupRestoreServer) runServer(ctx context.Context, restoreOpts *brtype
 	defer handler.Stop()
 
 	// Promotes member if it is a learner
-	for {
-		select {
-		case <-ctx.Done():
-			b.logger.Info("Context cancelled. Stopping retry promoting member")
-			return ctx.Err()
-		default:
+	if restoreOpts.OriginalClusterSize > 1 {
+		for {
+			select {
+			case <-ctx.Done():
+				b.logger.Info("Context cancelled. Stopping retry promoting member")
+				return ctx.Err()
+			default:
+			}
+			m := member.NewMemberControl(b.config.EtcdConnectionConfig)
+			err := m.PromoteMember(ctx)
+			if err == nil {
+				break
+			}
+			miscellaneous.SleepWithContext(ctx, retryTimeout)
 		}
+	} else {
+		// when OriginalClusterSize = 1
 		m := member.NewMemberControl(b.config.EtcdConnectionConfig)
-		err := m.PromoteMember(ctx)
-		if err == nil {
-			break
+		err := retry.OnError(retry.DefaultBackoff, func(err error) bool {
+			return err != nil
+		}, func() error {
+			cli, err := etcdutil.NewFactory(*b.config.EtcdConnectionConfig).NewCluster()
+			if err != nil {
+				return err
+			}
+			return m.UpdateMember(ctx, cli)
+		})
+		if err != nil {
+			b.logger.Error("unable to update the member")
 		}
-		miscellaneous.SleepWithContext(ctx, retryTimeout)
 	}
 
 	leaderCallbacks := &brtypes.LeaderCallbacks{

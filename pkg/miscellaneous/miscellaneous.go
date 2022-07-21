@@ -28,12 +28,15 @@ import (
 	"github.com/gardener/etcd-backup-restore/pkg/errors"
 	etcdClient "github.com/gardener/etcd-backup-restore/pkg/etcdutil/client"
 	"github.com/gardener/etcd-backup-restore/pkg/metrics"
+	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/sirupsen/logrus"
 	"go.etcd.io/etcd/embed"
+	"go.etcd.io/etcd/pkg/types"
 	"gopkg.in/yaml.v2"
 
+	appsv1 "k8s.io/api/apps/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
 	fake "sigs.k8s.io/controller-runtime/pkg/client/fake"
@@ -42,6 +45,12 @@ import (
 const (
 	// NoLeaderState defines the state when etcd returns LeaderID as 0.
 	NoLeaderState uint64 = 0
+	// EtcdConfigFilePath is the file path where the etcd config map is mounted.
+	EtcdConfigFilePath string = "/var/etcd/config/etcd.conf.yaml"
+	// ClusterStateNew defines the "new" state of etcd cluster.
+	ClusterStateNew = "new"
+	// ClusterStateExisting defines the "existing" state of etcd cluster.
+	ClusterStateExisting = "existing"
 )
 
 // GetLatestFullSnapshotAndDeltaSnapList returns the latest snapshot
@@ -294,21 +303,23 @@ func GetEnvVarOrError(varName string) (string, error) {
 // GetEtcdSvcEndpoint returns the endpoint to the etcd client service
 func GetEtcdSvcEndpoint() (string, error) {
 	var inputFileName string
-	etcdConfigForTest := os.Getenv("ETCD_CONF")
-	if etcdConfigForTest != "" {
+
+	inputFileName = GetConfigFilePath()
+	if inputFileName != EtcdConfigFilePath {
+		// Return "" here to indicate to the caller to use the default svc endpoint.
+		// This is used for testing purposes where localhost is to be used as the endpoint
 		return "", nil
 	}
-	inputFileName = "/var/etcd/config/etcd.conf.yaml"
 
 	configYML, err := os.ReadFile(inputFileName)
 	if err != nil {
-		return "", fmt.Errorf("Unable to read etcd config file: %v", err)
+		return "", fmt.Errorf("unable to read etcd config file: %v", err)
 	}
 
 	config := map[string]interface{}{}
 	err = yaml.Unmarshal([]byte(configYML), &config)
 	if err := yaml.Unmarshal([]byte(configYML), &config); err != nil {
-		return "", fmt.Errorf("Unable to unmarshal etcd config yaml file: %v", err)
+		return "", fmt.Errorf("unable to unmarshal etcd config yaml file: %v", err)
 	}
 
 	advClientURL := config["advertise-client-urls"]
@@ -324,18 +335,67 @@ func GetEtcdSvcEndpoint() (string, error) {
 // ProbeEtcd probes the etcd endpoint to check if an etcd is available
 func ProbeEtcd(ctx context.Context, clientFactory etcdClient.Factory, logger *logrus.Entry) error {
 	clientKV, err := clientFactory.NewKV()
-	defer clientKV.Close()
 	if err != nil {
 		return &errors.EtcdError{
 			Message: fmt.Sprintf("Failed to create etcd KV client: %v", err),
 		}
 	}
+	defer clientKV.Close()
 
 	if _, err := clientKV.Get(ctx, "foo"); err != nil {
 		logger.Errorf("Failed to connect to etcd KV client: %v", err)
 		return err
 	}
 	return nil
+}
+
+// GetConfigFilePath returns the path of the etcd configuration file
+func GetConfigFilePath() string {
+	// (For testing purpose) If no ETCD_CONF variable set as environment variable, then consider backup-restore server is not used for tests.
+	// For tests or to run backup-restore server as standalone, user needs to set ETCD_CONF variable with proper location of ETCD config yaml
+	etcdConfigForTest := os.Getenv("ETCD_CONF")
+	if etcdConfigForTest != "" {
+		return etcdConfigForTest
+	}
+	return EtcdConfigFilePath
+}
+
+// GetClusterSize returns the size of a cluster passed as a string
+func GetClusterSize(cluster string) (int, error) {
+	clusterMap, err := types.NewURLsMap(cluster)
+	if err != nil {
+		return 0, err
+	}
+
+	return len(clusterMap), nil
+}
+
+// IsMultiNode determines whether a pod is part of a multi node setup or not
+// This is determined by checking the `initial-cluster` of the etcd configmap to check the number of members expected
+func IsMultiNode(logger *logrus.Entry) bool {
+	inputFileName := GetConfigFilePath()
+
+	configYML, err := os.ReadFile(inputFileName)
+	if err != nil {
+		return false
+	}
+
+	config := map[string]interface{}{}
+	err = yaml.Unmarshal([]byte(configYML), &config)
+	if err := yaml.Unmarshal([]byte(configYML), &config); err != nil {
+		return false
+	}
+
+	initialClusterMap, err := GetClusterSize(fmt.Sprint(config["initial-cluster"]))
+	if err != nil {
+		logger.Fatal("initial cluster value for not present in etcd config file")
+	}
+
+	if initialClusterMap > 1 {
+		return true
+	}
+
+	return false
 }
 
 // SleepWithContext sleeps for a determined period while respecting a context
@@ -348,4 +408,59 @@ func SleepWithContext(ctx context.Context, sleepFor time.Duration) error {
 			return nil
 		}
 	}
+}
+
+// ContainsBackup checks whether the backup is present in given SnapStore or not.
+func ContainsBackup(store brtypes.SnapStore, logger *logrus.Logger) bool {
+	baseSnap, deltaSnapList, err := GetLatestFullSnapshotAndDeltaSnapList(store)
+	if err != nil {
+		logger.Errorf("failed to list the snapshot: %v", err)
+		return false
+	}
+
+	if baseSnap == nil && (deltaSnapList == nil || len(deltaSnapList) == 0) {
+		logger.Infof("No snapshot found. BackupBucket is empty")
+		return false
+	}
+	return true
+}
+
+// IsBackupBucketEmpty checks whether the backup bucket is empty or not.
+func IsBackupBucketEmpty(snapStoreConfig *brtypes.SnapstoreConfig, logger *logrus.Logger) bool {
+	logger.Info("Checking whether the backup bucket is empty or not...")
+
+	if snapStoreConfig == nil || len(snapStoreConfig.Provider) == 0 {
+		logger.Info("storage provider name not specified")
+		return true
+	}
+	store, err := snapstore.GetSnapstore(snapStoreConfig)
+	if err != nil {
+		logger.Fatalf("failed to create snapstore from configured storage provider: %v", err)
+	}
+
+	if ContainsBackup(store, logger) {
+		return false
+	}
+	return true
+}
+
+// GetInitialClusterState returns the cluster state, either `new` or `existing`.
+func GetInitialClusterState(ctx context.Context, logger logrus.Entry, clientSet client.Client, podName string, podNS string) string {
+	//Read sts spec for updated replicas to toggle `initial-cluster-state`
+	curSts := &appsv1.StatefulSet{}
+	errSts := clientSet.Get(ctx, client.ObjectKey{
+		Namespace: podNS,
+		Name:      podName[:strings.LastIndex(podName, "-")],
+	}, curSts)
+	if errSts != nil {
+		logger.Warn("error fetching etcd sts ", errSts)
+		return ClusterStateNew
+	}
+
+	//TODO: achieve this without an sts?
+	if *curSts.Spec.Replicas > 1 && *curSts.Spec.Replicas > curSts.Status.UpdatedReplicas {
+		return ClusterStateExisting
+	}
+
+	return ClusterStateNew
 }

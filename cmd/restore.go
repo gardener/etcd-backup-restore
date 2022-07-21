@@ -43,7 +43,7 @@ func NewRestoreCommand(ctx context.Context) *cobra.Command {
 			}
 
 			rs := restorer.NewRestorer(store, logrus.NewEntry(logger))
-			if err := rs.RestoreAndStopEtcd(*options); err != nil {
+			if err := rs.RestoreAndStopEtcd(*options, nil); err != nil {
 				logger.Fatalf("Failed to restore snapshot: %v", err)
 				return
 			}
