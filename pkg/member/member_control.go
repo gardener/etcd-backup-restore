@@ -33,8 +33,8 @@ var (
 	ErrMissingMember = errors.New("member missing from member list")
 )
 
-// ControlMember interface defines the functionalities needed to manipulate a member in the etcd cluster
-type ControlMember interface {
+// Control interface defines the functionalities needed to manipulate a member in the etcd cluster
+type Control interface {
 	// AddMemberAsLearner add a new member as a learner to the etcd cluster
 	AddMemberAsLearner(context.Context) error
 
@@ -57,7 +57,7 @@ type memberControl struct {
 }
 
 // NewMemberControl returns new ExponentialBackoff.
-func NewMemberControl(etcdConnConfig *brtypes.EtcdConnectionConfig) ControlMember {
+func NewMemberControl(etcdConnConfig *brtypes.EtcdConnectionConfig) Control {
 	var configFile string
 	logger := logrus.New().WithField("actor", "member-add")
 	etcdConn := *etcdConnConfig
