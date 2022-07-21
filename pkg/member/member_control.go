@@ -195,6 +195,8 @@ func parsePeerURL(peerURL, podName string) (string, error) {
 
 // updateMemberPeerAddress updated the peer address of a specified etcd member
 func (m *memberControl) updateMemberPeerAddress(ctx context.Context, cli client.ClusterCloser, id uint64) error {
+	// Already existing clusters have `http://localhost:2380` as the peer address. This needs to explicitly updated to the new address
+	// TODO: Remove this peer address updation logic on etcd-br v0.20.0
 	m.logger.Infof("Updating member peer URL for %s", m.podName)
 
 	memberURL, err := getMemberURL(m.configFile, m.podName)
@@ -271,13 +273,6 @@ func (m *memberControl) doPromoteMember(ctx context.Context, member *etcdserverp
 		m.logger.Infof("Member %v with ID: %v has been promoted", member.GetName(), member.GetID())
 		return nil
 	} else if errors.Is(err, rpctypes.Error(rpctypes.ErrGRPCMemberNotLearner)) { //Member is not a learner
-		if member.PeerURLs[0] == "http://localhost:2380" { //[]string{"http://localhost:2380"}[0] {
-			// Already existing clusters have `http://localhost:2380` as the peer address. This needs to explicitly updated to the new address
-			// TODO: Remove this peer address updation logic on etcd-br v0.20.0
-			if err := m.updateMemberPeerAddress(ctx, cli, member.ID); err != nil {
-				m.logger.Errorf("Could not update member peer URL : %v", err)
-			}
-		}
 		m.logger.Info("Member ", member.Name, " : ", member.ID, " already part of etcd cluster")
 		return nil
 	}
