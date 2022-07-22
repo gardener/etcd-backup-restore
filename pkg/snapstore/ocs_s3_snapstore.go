@@ -26,18 +26,6 @@ import (
 const (
 	ocsCredentialFile         string = "OPENSHIFT_APPLICATION_CREDENTIALS"
 	ocsCredentialFileJSONFile string = "OPENSHIFT_APPLICATION_CREDENTIALS_JSON"
-
-	// TODO: passing credentials through environment variable will be deprecated by "backup-restore v0.18.0"
-	// The constants below will not be needed after the removal of this feature
-	ocsDefaultDisableSSL         bool = false
-	ocsDefaultInsecureSkipVerify bool = false
-
-	ocsEndpoint           string = "OCS_ENDPOINT"
-	ocsRegion             string = "OCS_REGION"
-	ocsDisableSSL         string = "OCS_DISABLE_SSL"
-	ocsInsecureSkipVerify string = "OCS_INSECURE_SKIP_VERIFY"
-	ocsAccessKeyID        string = "OCS_ACCESS_KEY_ID"
-	ocsSecretAccessKey    string = "OCS_SECRET_ACCESS_KEY"
 )
 
 type ocsAuthOptions struct {
@@ -60,31 +48,18 @@ func NewOCSSnapStore(config *brtypes.SnapstoreConfig) (*S3SnapStore, error) {
 }
 
 func getOCSAuthOptions(prefix string) (*ocsAuthOptions, error) {
-	if _, isSet := os.LookupEnv(prefix + ocsCredentialFileJSONFile); isSet {
-		if filename := os.Getenv(prefix + ocsCredentialFileJSONFile); filename != "" {
-			ao, err := readOCSCredentialsJSON(filename)
-			if err != nil {
-				return nil, fmt.Errorf("error getting credentials using %v file", filename)
-			}
-			return ao, nil
-		}
-	}
-
-	if _, isSet := os.LookupEnv(prefix + ocsCredentialFile); isSet {
-		if dir := os.Getenv(prefix + ocsCredentialFile); dir != "" {
-			ao, err := readOCSCredentialFromDir(dir)
-			if err != nil {
-				return nil, fmt.Errorf("error getting credentials from %v directory", dir)
-			}
-			return ao, nil
-		}
-	}
-
-	// TODO: passing credentials through environment variable will be deprecated by "backup-restore v0.18.0"
-	if _, isSet := os.LookupEnv(prefix + ocsEndpoint); isSet {
-		ao, err := readOcsCredentialFromEnv()
+	if filename, isSet := os.LookupEnv(prefix + ocsCredentialFileJSONFile); isSet {
+		ao, err := readOCSCredentialsJSON(filename)
 		if err != nil {
-			return nil, fmt.Errorf("error getting credentials from env: %s", err.Error())
+			return nil, fmt.Errorf("error getting credentials using %v file", filename)
+		}
+		return ao, nil
+	}
+
+	if dir, isSet := os.LookupEnv(prefix + ocsCredentialFile); isSet {
+		ao, err := readOCSCredentialFromDir(dir)
+		if err != nil {
+			return nil, fmt.Errorf("error getting credentials from %v directory", dir)
 		}
 		return ao, nil
 	}
@@ -182,44 +157,6 @@ func ocsCredentialsFromJSON(jsonData []byte) (*ocsAuthOptions, error) {
 	}
 
 	return &ocsConfig, nil
-}
-
-func readOcsCredentialFromEnv() (*ocsAuthOptions, error) {
-	endpoint, err := GetEnvVarOrError(ocsEndpoint)
-	if err != nil {
-		return nil, err
-	}
-	accessKeyID, err := GetEnvVarOrError(ocsAccessKeyID)
-	if err != nil {
-		return nil, err
-	}
-	secretAccessKey, err := GetEnvVarOrError(ocsSecretAccessKey)
-	if err != nil {
-		return nil, err
-	}
-	region, err := GetEnvVarOrError(ocsRegion)
-	if err != nil {
-		return nil, err
-	}
-	disableSSL, err := GetEnvVarToBool(ocsDisableSSL)
-	if err != nil {
-		disableSSL = ocsDefaultDisableSSL
-	}
-	insecureSkipVerify, err := GetEnvVarToBool(ocsInsecureSkipVerify)
-	if err != nil {
-		insecureSkipVerify = ocsDefaultInsecureSkipVerify
-	}
-
-	ao := ocsAuthOptions{
-		Endpoint:           endpoint,
-		Region:             region,
-		DisableSSL:         disableSSL,
-		InsecureSkipVerify: insecureSkipVerify,
-		AccessKeyID:        accessKeyID,
-		SecretAccessKey:    secretAccessKey,
-	}
-
-	return &ao, nil
 }
 
 func ocsAuthOptionsToGenericS3(options ocsAuthOptions) s3AuthOptions {

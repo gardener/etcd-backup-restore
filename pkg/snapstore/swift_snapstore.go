@@ -101,24 +101,20 @@ func NewSwiftSnapStore(config *brtypes.SnapstoreConfig) (*SwiftSnapStore, error)
 
 func getClientOpts(isSource bool) (*clientconfig.ClientOpts, error) {
 	prefix := getEnvPrefixString(isSource)
-	if _, isSet := os.LookupEnv(prefix + swiftCredentialJSONFile); isSet {
-		if filename := os.Getenv(prefix + swiftCredentialJSONFile); filename != "" {
-			clientOpts, err := readSwiftCredentialsJSON(filename)
-			if err != nil {
-				return &clientconfig.ClientOpts{}, fmt.Errorf("error getting credentials using %v file", filename)
-			}
-			return clientOpts, nil
+	if filename, isSet := os.LookupEnv(prefix + swiftCredentialJSONFile); isSet {
+		clientOpts, err := readSwiftCredentialsJSON(filename)
+		if err != nil {
+			return &clientconfig.ClientOpts{}, fmt.Errorf("error getting credentials using %v file", filename)
 		}
+		return clientOpts, nil
 	}
 
-	if _, isSet := os.LookupEnv(prefix + swiftCredentialFile); isSet {
-		if dir := os.Getenv(prefix + swiftCredentialFile); dir != "" {
-			clientOpts, err := readSwiftCredentialFiles(dir)
-			if err != nil {
-				return &clientconfig.ClientOpts{}, fmt.Errorf("error getting credentials from %v directory", dir)
-			}
-			return clientOpts, nil
+	if dir, isSet := os.LookupEnv(prefix + swiftCredentialFile); isSet {
+		clientOpts, err := readSwiftCredentialFiles(dir)
+		if err != nil {
+			return &clientconfig.ClientOpts{}, fmt.Errorf("error getting credentials from %v directory", dir)
 		}
+		return clientOpts, nil
 	}
 
 	// If a neither a swiftCredentialFile nor a swiftCredentialJSONFile was found, fall back to

@@ -15,9 +15,7 @@ The procedure to provide credentials to access the cloud provider object store v
 
 * For `AWS S3`: 
    1. The secret file should be provided and it's file path should be made available as environment variables: `AWS_APPLICATION_CREDENTIALS` or `AWS_APPLICATION_CREDENTIALS_JSON`.
-   2. `AWS_REGION`, `AWS_SECRET_ACCESS_KEY` and `AWS_ACCESS_KEY_ID` should be made available as environment variables.
-   3. For `S3-compatible providers` such as MinIO, `AWS_ENDPOINT` and `AWS_FORCE_PATH_STYLE` can be made available as environment variables to
-   configure the S3 client to communicate to a non-AWS provider.
+   2. For `S3-compatible providers` such as MinIO, `AWS_ENDPOINT` and `AWS_FORCE_PATH_STYLE` can also be made available in a above file to configure the S3 client to communicate to a non-AWS provider.
 
 * For  `Google Cloud Storage`: 
    1. The service account json file should be provided in the `~/.gcp` as a `service-account-file.json` file.
@@ -25,22 +23,18 @@ The procedure to provide credentials to access the cloud provider object store v
 
 * For `Azure Blob storage`:
    1. The secret file should be provided and it's file path should be made available as environment variables: `AZURE_APPLICATION_CREDENTIALS` or `AZURE_APPLICATION_CREDENTIALS_JSON`.
-   2. `STORAGE_ACCOUNT` and `STORAGE_KEY` should be made available as environment variables.
 
 * For `Openstack Swift`:
   1. The secret file should be provided and file path should be made available as environment variables: `OPENSTACK_APPLICATION_CREDENTIALS` or `OPENSTACK_APPLICATION_CREDENTIALS_JSON`.
-  2. `OS_USERNAME`, `OS_PASSWORD`, `OS_AUTH_URL`, `OS_TENANT_ID` and `OS_DOMAIN_ID` or `OS_CLOUD` should be made available as environment variables. An optional `OS_REGION_NAME` can be use.
 
 * For `Alicloud OSS`:
   1. The secret file should be provided and file path should be made available as environment variables: `ALICLOUD_APPLICATION_CREDENTIALS` or `ALICLOUD_APPLICATION_CREDENTIALS_JSON`.
-  2. `ALICLOUD_ENDPOINT`, `ALICLOUD_ACCESS_KEY_ID`, `ALICLOUD_ACCESS_KEY_SECRET` should be made available as environment variables.
 
 * For `Dell EMC ECS`:
   1. `ECS_ENDPOINT`, `ECS_ACCESS_KEY_ID`, `ECS_SECRET_ACCESS_KEY` should be made available as environment variables. For development purposes, the environment variables `ECS_DISABLE_SSL` and `ECS_INSECURE_SKIP_VERIFY` can also be set to "true" or "false".
 
 * For `Openshift Container Storage (OCS)`:
   1. The secret file should be provided and file path should be made available as environment variables: `OPENSHIFT_APPLICATION_CREDENTIALS` or `OPENSHIFT_APPLICATION_CREDENTIALS_JSON`.
-  2. `OCS_ENDPOINT`, `OCS_REGION`, `OCS_ACCESS_KEY_ID`, `OCS_SECRET_ACCESS_KEY` should be made available as environment variables.
   For development purposes, the environment variables `OCS_DISABLE_SSL` and `OCS_INSECURE_SKIP_VERIFY` can also be set to "true" or "false".
 
 
