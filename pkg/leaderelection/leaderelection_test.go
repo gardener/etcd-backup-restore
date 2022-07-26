@@ -35,6 +35,8 @@ var _ = Describe("Etcd Cluster", func() {
 		stopLeaseRenewal      int
 		startSnapshotterCount int
 		stopSnapshotterCount  int
+		promoteLearnerCount   int
+		learnerToVotingMember int
 	)
 
 	BeforeEach(func() {
@@ -42,30 +44,38 @@ var _ = Describe("Etcd Cluster", func() {
 
 		leaderCallbacks := &brtypes.LeaderCallbacks{
 			OnStartedLeading: func(ctx context.Context) {
-				logger.Printf("starting snapshotter...")
+				logger.Info("starting snapshotter...")
 				startSnapshotterCount++
 			},
 			OnStoppedLeading: func() {
-				logger.Printf("stopping snapshotter...")
+				logger.Info("stopping snapshotter...")
 				stopSnapshotterCount++
 			},
 		}
 
 		memberLeaseCallbacks := &brtypes.MemberLeaseCallbacks{
 			StartLeaseRenewal: func() {
-				logger.Printf("started lease Renewal...")
+				logger.Info("started lease Renewal...")
 				startLeaseRenewal++
 			},
 			StopLeaseRenewal: func() {
-				logger.Printf("stopped lease Renewal...")
+				logger.Info("stopped lease Renewal...")
 				stopLeaseRenewal++
+			},
+		}
+
+		promoteCallback := &brtypes.PromoteLearnerCallback{
+			Promote: func(ctx context.Context, logger *logrus.Entry) {
+				logger.Info("promote a learner to voting member...")
+				learnerToVotingMember++
+				promoteLearnerCount++
 			},
 		}
 
 		config = brtypes.NewLeaderElectionConfig()
 		config.ReelectionPeriod = reelectionPeriod
 		config.EtcdConnectionTimeout = etcdConnectionTimeout
-		le, _ = NewLeaderElector(logger, etcdConnectionConfig, config, leaderCallbacks, memberLeaseCallbacks, nil)
+		le, _ = NewLeaderElector(logger, etcdConnectionConfig, config, leaderCallbacks, memberLeaseCallbacks, nil, promoteCallback)
 	})
 
 	Describe("LeaderElection", func() {
@@ -82,8 +92,8 @@ var _ = Describe("Etcd Cluster", func() {
 				ctx, cancel := context.WithTimeout(testCtx, mockTimeout)
 				defer cancel()
 
-				le.CheckLeadershipStatus = func(_ context.Context, _ *brtypes.EtcdConnectionConfig, _ time.Duration, _ *logrus.Entry) (bool, error) {
-					return false, fmt.Errorf("unable to connect to etcd")
+				le.CheckMemberStatus = func(_ context.Context, _ *brtypes.EtcdConnectionConfig, _ time.Duration, _ *logrus.Entry) (bool, bool, error) {
+					return false, false, fmt.Errorf("unable to connect to etcd")
 				}
 
 				err := le.Run(ctx)
@@ -99,8 +109,8 @@ var _ = Describe("Etcd Cluster", func() {
 				ctx, cancel := context.WithTimeout(testCtx, mockTimeout)
 				defer cancel()
 
-				le.CheckLeadershipStatus = func(_ context.Context, _ *brtypes.EtcdConnectionConfig, _ time.Duration, _ *logrus.Entry) (bool, error) {
-					return true, nil
+				le.CheckMemberStatus = func(_ context.Context, _ *brtypes.EtcdConnectionConfig, _ time.Duration, _ *logrus.Entry) (bool, bool, error) {
+					return true, false, nil
 				}
 
 				err := le.Run(ctx)
@@ -115,8 +125,8 @@ var _ = Describe("Etcd Cluster", func() {
 				ctx, cancel := context.WithTimeout(testCtx, mockTimeout)
 				defer cancel()
 
-				le.CheckLeadershipStatus = func(_ context.Context, _ *brtypes.EtcdConnectionConfig, _ time.Duration, _ *logrus.Entry) (bool, error) {
-					return false, nil
+				le.CheckMemberStatus = func(_ context.Context, _ *brtypes.EtcdConnectionConfig, _ time.Duration, _ *logrus.Entry) (bool, bool, error) {
+					return false, false, nil
 				}
 
 				err := le.Run(ctx)
@@ -132,11 +142,11 @@ var _ = Describe("Etcd Cluster", func() {
 				ctx, cancel := context.WithTimeout(testCtx, mockTimeout)
 				defer cancel()
 
-				le.CheckLeadershipStatus = func(_ context.Context, _ *brtypes.EtcdConnectionConfig, _ time.Duration, _ *logrus.Entry) (bool, error) {
+				le.CheckMemberStatus = func(_ context.Context, _ *brtypes.EtcdConnectionConfig, _ time.Duration, _ *logrus.Entry) (bool, bool, error) {
 					if startSnapshotterCount == 0 {
-						return true, nil
+						return true, false, nil
 					} else {
-						return false, nil
+						return false, false, nil
 					}
 				}
 
@@ -154,11 +164,11 @@ var _ = Describe("Etcd Cluster", func() {
 				ctx, cancel := context.WithTimeout(testCtx, mockTimeout)
 				defer cancel()
 
-				le.CheckLeadershipStatus = func(_ context.Context, _ *brtypes.EtcdConnectionConfig, _ time.Duration, _ *logrus.Entry) (bool, error) {
+				le.CheckMemberStatus = func(_ context.Context, _ *brtypes.EtcdConnectionConfig, _ time.Duration, _ *logrus.Entry) (bool, bool, error) {
 					if startSnapshotterCount == 0 {
-						return true, nil
+						return true, false, nil
 					} else {
-						return false, fmt.Errorf("currently there is no etcd leader present may be due to etcd quorum loss")
+						return false, false, fmt.Errorf("currently there is no etcd leader present may be due to etcd quorum loss")
 					}
 				}
 
@@ -168,6 +178,28 @@ var _ = Describe("Etcd Cluster", func() {
 				Expect(startSnapshotterCount).Should(Equal(minCount))
 				Expect(stopSnapshotterCount).Should(Equal(minCount))
 				Expect(stopLeaseRenewal).Should(Equal(minCount))
+			})
+		})
+
+		Context("Etcd member is leaner", func() {
+			It("Should promote the learner(non-voting) member to a voting member", func() {
+				minCount := 1
+
+				ctx, cancel := context.WithTimeout(testCtx, mockTimeout)
+				defer cancel()
+
+				le.CheckMemberStatus = func(_ context.Context, _ *brtypes.EtcdConnectionConfig, _ time.Duration, _ *logrus.Entry) (bool, bool, error) {
+					if learnerToVotingMember == 0 {
+						return false, true, nil
+					} else {
+						return false, false, nil
+					}
+				}
+
+				err := le.Run(ctx)
+				Expect(err).ShouldNot(HaveOccurred())
+				Expect(le.CurrentState).Should(Equal(StateFollower))
+				Expect(promoteLearnerCount).Should(Equal(minCount))
 			})
 		})
 	})

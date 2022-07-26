@@ -48,7 +48,12 @@ type MemberLeaseCallbacks struct {
 }
 
 // IsLeaderCallbackFunc is type declaration for callback function to Check LeadershipStatus.
-type IsLeaderCallbackFunc func(context.Context, *EtcdConnectionConfig, time.Duration, *logrus.Entry) (bool, error)
+type IsLeaderCallbackFunc func(context.Context, *EtcdConnectionConfig, time.Duration, *logrus.Entry) (bool, bool, error)
+
+// PromoteLearnerCallback is callback which is triggered when backup-restore wants to promote etcd learner to a voting member.
+type PromoteLearnerCallback struct {
+	Promote func(context.Context, *logrus.Entry)
+}
 
 // Config holds the LeaderElection config.
 type Config struct {

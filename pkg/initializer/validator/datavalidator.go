@@ -68,11 +68,7 @@ func (d *DataValidator) backendPath() string { return filepath.Join(d.snapDir(),
 func (d *DataValidator) Validate(mode Mode, failBelowRevision int64) (DataDirStatus, error) {
 	status, err := d.sanityCheck(failBelowRevision)
 	if status != DataDirectoryValid {
-		// TODO: To be removed when backup-restore supports restoration of single member in multi-node etcd cluster.
-		if d.OriginalClusterSize > 1 && !miscellaneous.IsBackupBucketEmpty(d.Config.SnapstoreConfig, d.Logger) {
-			return DataDirStatusUnknownInMultiNode, nil
-		}
-		return status, err
+		return d.checkStatus(status, err)
 	}
 
 	if mode == Full {
@@ -145,11 +141,6 @@ func (d *DataValidator) sanityCheck(failBelowRevision int64) (DataDirStatus, err
 		return DataDirectoryValid, nil
 	}
 
-	if d.OriginalClusterSize > 1 {
-		d.Logger.Info("Skipping check for revision consistency of etcd member as it will get in sync with etcd leader.")
-		return DataDirectoryValid, nil
-	}
-
 	etcdRevision, err := getLatestEtcdRevision(d.backendPath())
 	if err != nil && errors.Is(err, bolt.ErrTimeout) {
 		d.Logger.Errorf("another etcd process is using %v and holds the file lock", d.backendPath())
@@ -157,6 +148,11 @@ func (d *DataValidator) sanityCheck(failBelowRevision int64) (DataDirStatus, err
 	} else if err != nil {
 		d.Logger.Infof("unable to get current etcd revision from backend db file: %v", err)
 		return DataDirectoryCorrupt, nil
+	}
+
+	if d.OriginalClusterSize > 1 {
+		d.Logger.Info("Skipping check for revision consistency of etcd member as it will get in sync with etcd leader.")
+		return DataDirectoryValid, nil
 	}
 
 	d.Logger.Info("Checking for etcd revision consistency...")
@@ -171,6 +167,19 @@ func (d *DataValidator) sanityCheck(failBelowRevision int64) (DataDirStatus, err
 	}
 
 	return etcdRevisionStatus, err
+}
+
+// checkStatus checks/filter the status of sanity check.
+func (d *DataValidator) checkStatus(status DataDirStatus, err error) (DataDirStatus, error) {
+	if status == WrongVolumeMounted || status == FailToOpenBoltDBError {
+		return status, err
+	}
+
+	if d.OriginalClusterSize > 1 && !miscellaneous.IsBackupBucketEmpty(d.Config.SnapstoreConfig, d.Logger) {
+		return DataDirStatusInvalidInMultiNode, nil
+	}
+
+	return status, err
 }
 
 // checkForDataCorruption will check for corruption of different files used by etcd.

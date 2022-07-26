@@ -92,6 +92,7 @@ type HTTPHandler struct {
 	ServerTLSCertFile         string
 	ServerTLSKeyFile          string
 	HTTPHandlerMutex          *sync.Mutex
+	SnapstoreConfig           *brtypes.SnapstoreConfig
 }
 
 // healthCheck contains the HealthStatus of backup restore.
@@ -444,9 +445,20 @@ func (h *HTTPHandler) serveConfig(rw http.ResponseWriter, req *http.Request) {
 	domaiName = fmt.Sprintf("%s.%s.%s", svcName, namespace, "svc")
 	config["advertise-client-urls"] = fmt.Sprintf("%s://%s.%s:%s", protocol, podName, domaiName, clientPort)
 
-	config["initial-cluster-state"] = miscellaneous.GetInitialClusterState(req.Context(), *h.Logger, clientSet, podName, podNS)
-
 	config["initial-cluster"] = getInitialCluster(req.Context(), fmt.Sprint(config["initial-cluster"]), *h.EtcdConnectionConfig, protocol, clientPort, *h.Logger, podName)
+
+	clusterSize, err := miscellaneous.GetClusterSize(fmt.Sprint(config["initial-cluster"]))
+	if err != nil {
+		h.Logger.Warnf("Unable to determine the cluster size: %v", err)
+		rw.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	if clusterSize > 1 && h.SnapstoreConfig != nil && !miscellaneous.IsBackupBucketEmpty(h.SnapstoreConfig, h.Logger.Logger) {
+		config["initial-cluster-state"] = "existing"
+	} else {
+		config["initial-cluster-state"] = miscellaneous.GetInitialClusterState(req.Context(), *h.Logger, clientSet, podName, podNS)
+	}
 
 	data, err := yaml.Marshal(&config)
 	if err != nil {

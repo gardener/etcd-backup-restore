@@ -77,11 +77,6 @@ func (e *EtcdInitializer) Initialize(mode validator.Mode, failBelowRevision int6
 		return fmt.Errorf("error while initializing: %v", err)
 	}
 
-	if dataDirStatus == validator.DataDirStatusUnknownInMultiNode {
-		metrics.ValidationDurationSeconds.With(prometheus.Labels{metrics.LabelSucceeded: metrics.ValueSucceededFalse}).Observe(time.Since(start).Seconds())
-		return fmt.Errorf("failed to initialize data dir of cluster member in multi-node cluster")
-	}
-
 	if dataDirStatus == validator.FailBelowRevisionConsistencyError {
 		metrics.ValidationDurationSeconds.With(prometheus.Labels{metrics.LabelSucceeded: metrics.ValueSucceededFalse}).Observe(time.Since(start).Seconds())
 		return fmt.Errorf("failed to initialize since fail below revision check failed")
@@ -90,14 +85,45 @@ func (e *EtcdInitializer) Initialize(mode validator.Mode, failBelowRevision int6
 	metrics.ValidationDurationSeconds.With(prometheus.Labels{metrics.LabelSucceeded: metrics.ValueSucceededTrue}).Observe(time.Since(start).Seconds())
 
 	if dataDirStatus != validator.DataDirectoryValid {
-		start := time.Now()
-		restored, err := e.restoreCorruptData()
-		if err != nil {
-			metrics.RestorationDurationSeconds.With(prometheus.Labels{metrics.LabelSucceeded: metrics.ValueSucceededFalse}).Observe(time.Since(start).Seconds())
-			return fmt.Errorf("error while restoring corrupt data: %v", err)
-		}
-		if restored {
-			metrics.RestorationDurationSeconds.With(prometheus.Labels{metrics.LabelSucceeded: metrics.ValueSucceededTrue}).Observe(time.Since(start).Seconds())
+		if dataDirStatus == validator.DataDirStatusInvalidInMultiNode || (e.Validator.OriginalClusterSize > 1 && dataDirStatus == validator.DataDirectoryCorrupt) {
+			// Remove the member from the cluster
+			// Clean the data-dir
+			// Add a new member as a learner(non-voting member)
+			// Start a learner by providing config to etcd
+			// Promote the learner to voting member.
+
+			m := member.NewMemberControl(e.Config.EtcdConnectionConfig)
+			if err := retry.OnError(retry.DefaultBackoff, func(err error) bool {
+				return err != nil
+			}, func() error {
+				return m.RemoveMember(context.TODO())
+			}); err != nil {
+				return fmt.Errorf("failed to initialize: unable to remove the member %v", err)
+			}
+
+			if err := e.removeDir(e.Config.RestoreOptions.Config.RestoreDataDir); err != nil {
+				return fmt.Errorf("failed to initialize: unable to remove the data-dir %v", err)
+			}
+
+			if err := retry.OnError(retry.DefaultBackoff, func(err error) bool {
+				return err != nil
+			}, func() error {
+				return m.AddMemberAsLearner(context.TODO())
+			}); err != nil {
+				return fmt.Errorf("failed to initialize: unable to add the member as learner %v", err)
+			}
+
+		} else {
+			// For case: ClusterSize=1 or when multi-node cluster(ClusterSize>1) is bootstrap
+			start := time.Now()
+			restored, err := e.restoreCorruptData()
+			if err != nil {
+				metrics.RestorationDurationSeconds.With(prometheus.Labels{metrics.LabelSucceeded: metrics.ValueSucceededFalse}).Observe(time.Since(start).Seconds())
+				return fmt.Errorf("error while restoring corrupt data: %v", err)
+			}
+			if restored {
+				metrics.RestorationDurationSeconds.With(prometheus.Labels{metrics.LabelSucceeded: metrics.ValueSucceededTrue}).Observe(time.Since(start).Seconds())
+			}
 		}
 	}
 	return nil
