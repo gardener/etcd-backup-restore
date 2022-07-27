@@ -328,8 +328,9 @@ func GetEtcdSvcEndpoint() (string, error) {
 		return "", fmt.Errorf("total length of tokens is less than four")
 	}
 	protocol := tokens[0]
+	svcName := tokens[1]
 	peerPort := tokens[3]
-	return fmt.Sprintf("%s://%s:%s", protocol, "etcd-main-client", peerPort), nil
+	return fmt.Sprintf("%s://%s:%s", protocol, svcName, peerPort), nil
 }
 
 // ProbeEtcd probes the etcd endpoint to check if an etcd is available
