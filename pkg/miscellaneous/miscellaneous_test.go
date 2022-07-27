@@ -343,9 +343,10 @@ var _ = Describe("Miscellaneous Tests", func() {
 			statefulSetName = "etcd-test"
 			podName         = "etcd-test-0"
 			namespace       = "test_namespace"
+			emptyString     = ""
 		)
 		Context("In single-node etcd", func() {
-			It("Should return the cluster state as `new` ", func() {
+			It("Should return the cluster state as empty string ", func() {
 				sts = &appsv1.StatefulSet{
 					TypeMeta: metav1.TypeMeta{
 						Kind:       "StatefulSet",
@@ -368,11 +369,11 @@ var _ = Describe("Miscellaneous Tests", func() {
 				Expect(err).ShouldNot(HaveOccurred())
 
 				clusterState := GetInitialClusterState(testCtx, *logger, clientSet, podName, namespace)
-				Expect(clusterState).Should(Equal(ClusterStateNew))
+				Expect(clusterState).Should(Equal(emptyString))
 			})
 		})
 		Context("In multi-node etcd bootstrap", func() {
-			It("Should return the cluster state as `new` ", func() {
+			It("Should return the cluster state as empty string ", func() {
 				sts = &appsv1.StatefulSet{
 					TypeMeta: metav1.TypeMeta{
 						Kind:       "StatefulSet",
@@ -395,7 +396,7 @@ var _ = Describe("Miscellaneous Tests", func() {
 				Expect(err).ShouldNot(HaveOccurred())
 
 				clusterState := GetInitialClusterState(testCtx, *logger, clientSet, podName, namespace)
-				Expect(clusterState).Should(Equal(ClusterStateNew))
+				Expect(clusterState).Should(Equal(emptyString))
 			})
 		})
 		Context("In case of Scaling up from single node to multi-node etcd", func() {
