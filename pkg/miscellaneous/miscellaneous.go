@@ -464,7 +464,7 @@ func GetInitialClusterState(ctx context.Context, logger logrus.Entry, clientSet 
 		return ClusterStateExisting
 	}
 
-	return ClusterStateNew
+	return ""
 }
 
 // DoPromoteMember promotes a given learner to a voting member.
@@ -484,4 +484,19 @@ func DoPromoteMember(ctx context.Context, member *etcdserverpb.Member, cli etcdC
 		return nil
 	}
 	return err
+}
+
+// CheckLearner checks whether a learner(non-voting) member present or not.
+func CheckLearner(ctx context.Context, cli etcdClient.ClusterCloser) (bool, error) {
+	membersInfo, err := cli.MemberList(ctx)
+	if err != nil {
+		return false, fmt.Errorf("error listing members: %v", err)
+	}
+
+	for _, member := range membersInfo.Members {
+		if member.IsLearner {
+			return true, nil
+		}
+	}
+	return false, nil
 }

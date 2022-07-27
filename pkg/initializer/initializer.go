@@ -45,12 +45,15 @@ import (
 //		   - No snapshots are available, start etcd as a fresh installation.
 func (e *EtcdInitializer) Initialize(mode validator.Mode, failBelowRevision int64) error {
 	start := time.Now()
+	isPresent := false
+	var err error
+
 	//Etcd cluster scale-up case
 	if miscellaneous.IsMultiNode(e.Logger.WithField("actor", "initializer")) {
 		m := member.NewMemberControl(e.Config.EtcdConnectionConfig)
 		ctx := context.Background()
-		clusterMember, err := m.IsMemberInCluster(ctx)
-		if !clusterMember && err == nil {
+		isPresent, err = m.IsMemberInCluster(ctx)
+		if !isPresent && err == nil {
 			retry.OnError(retry.DefaultBackoff, func(err error) bool {
 				return err != nil
 			}, func() error {
@@ -86,33 +89,9 @@ func (e *EtcdInitializer) Initialize(mode validator.Mode, failBelowRevision int6
 
 	if dataDirStatus != validator.DataDirectoryValid {
 		if dataDirStatus == validator.DataDirStatusInvalidInMultiNode || (e.Validator.OriginalClusterSize > 1 && dataDirStatus == validator.DataDirectoryCorrupt) {
-			// Remove the member from the cluster
-			// Clean the data-dir
-			// Add a new member as a learner(non-voting member)
-			// Start a learner by providing config to etcd
-			// Promote the learner to voting member.
-
-			m := member.NewMemberControl(e.Config.EtcdConnectionConfig)
-			if err := retry.OnError(retry.DefaultBackoff, func(err error) bool {
-				return err != nil
-			}, func() error {
-				return m.RemoveMember(context.TODO())
-			}); err != nil {
-				return fmt.Errorf("failed to initialize: unable to remove the member %v", err)
-			}
-
-			if err := e.removeDir(e.Config.RestoreOptions.Config.RestoreDataDir); err != nil {
-				return fmt.Errorf("failed to initialize: unable to remove the data-dir %v", err)
-			}
-
-			if err := retry.OnError(retry.DefaultBackoff, func(err error) bool {
-				return err != nil
-			}, func() error {
-				return m.AddMemberAsLearner(context.TODO())
-			}); err != nil {
-				return fmt.Errorf("failed to initialize: unable to add the member as learner %v", err)
-			}
-
+			e.restoreInMultiNode()
+		} else if e.Validator.OriginalClusterSize > 1 && isPresent {
+			e.restoreInMultiNode()
 		} else {
 			// For case: ClusterSize=1 or when multi-node cluster(ClusterSize>1) is bootstrap
 			start := time.Now()
@@ -248,6 +227,36 @@ func (e *EtcdInitializer) removeDir(dirname string) error {
 	e.Logger.Infof("Removing directory(%s).", dirname)
 	if err := os.RemoveAll(filepath.Join(dirname)); err != nil {
 		return fmt.Errorf("failed to remove directory %s with err: %v", dirname, err)
+	}
+	return nil
+}
+
+// restoreInMultiNode
+// * Remove the member from the cluster
+// * Clean the data-dir of member that needs to be restored.
+// * Add a new member as a learner(non-voting member)
+// * Start a learner by providing config to etcd
+// * Promote the learner to voting member.
+func (e *EtcdInitializer) restoreInMultiNode() error {
+	m := member.NewMemberControl(e.Config.EtcdConnectionConfig)
+	if err := retry.OnError(retry.DefaultBackoff, func(err error) bool {
+		return err != nil
+	}, func() error {
+		return m.RemoveMember(context.TODO())
+	}); err != nil {
+		return fmt.Errorf("failed to initialize: unable to remove the member %v", err)
+	}
+
+	if err := e.removeDir(e.Config.RestoreOptions.Config.RestoreDataDir); err != nil {
+		return fmt.Errorf("failed to initialize: unable to remove the data-dir %v", err)
+	}
+
+	if err := retry.OnError(retry.DefaultBackoff, func(err error) bool {
+		return err != nil
+	}, func() error {
+		return m.AddMemberAsLearner(context.TODO())
+	}); err != nil {
+		return fmt.Errorf("failed to initialize: unable to add the member as learner %v", err)
 	}
 	return nil
 }

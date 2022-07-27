@@ -51,6 +51,9 @@ type Control interface {
 
 	// RemoveMember removes the member from the etcd cluster.
 	RemoveMember(context.Context) error
+
+	// IsLearnerPresent checks for the learner(non-voting) member in a cluster.
+	IsLearnerPresent(context.Context) (bool, error)
 }
 
 // memberControl holds the configuration for the mechanism of adding a new member to the cluster.
@@ -114,7 +117,7 @@ func (m *memberControl) AddMemberAsLearner(ctx context.Context) error {
 		return fmt.Errorf("error while adding member as a learner: %v", err)
 	}
 
-	m.logger.Infof("Added member %v to cluster as a learner", strconv.FormatUint(response.Header.GetMemberId(), 16))
+	m.logger.Infof("Added member %v to cluster as a learner", strconv.FormatUint(response.Member.GetID(), 16))
 	return nil
 }
 
@@ -156,8 +159,8 @@ func (m *memberControl) IsMemberInCluster(ctx context.Context) (bool, error) {
 		return false, fmt.Errorf("could not list any etcd members %w", err)
 	}
 
-	for _, y := range etcdMemberList.Members {
-		if y.Name == m.podName {
+	for _, member := range etcdMemberList.Members {
+		if member.GetName() == m.podName {
 			m.logger.Infof("Member %s part of running cluster", m.podName)
 			return true, nil
 		}
@@ -295,13 +298,29 @@ func (m *memberControl) RemoveMember(ctx context.Context) error {
 	return m.removeMemberFromCluster(ctx, cli, foundMember.GetID())
 }
 
+// IsLearnerPresent checks for the learner(non-voting) member in a cluster.
+func (m *memberControl) IsLearnerPresent(ctx context.Context) (bool, error) {
+	m.logger.Infof("Removing the %v member from cluster", m.podName)
+
+	cli, err := m.clientFactory.NewCluster()
+	if err != nil {
+		return false, fmt.Errorf("failed to build etcd cluster client : %v", err)
+	}
+	defer cli.Close()
+
+	ctx, cancel := context.WithTimeout(ctx, brtypes.DefaultEtcdConnectionTimeout)
+	defer cancel()
+
+	return miscellaneous.CheckLearner(ctx, cli)
+}
+
 // removeMemberFromCluster removes member of given ID from etcd cluster.
 func (m *memberControl) removeMemberFromCluster(ctx context.Context, client client.ClusterCloser, memberID uint64) error {
-	response, err := client.MemberRemove(ctx, memberID)
+	_, err := client.MemberRemove(ctx, memberID)
 	if err != nil {
 		return fmt.Errorf("unable to remove member [ID:%v] from the cluster: %v", strconv.FormatUint(memberID, 16), err)
 	}
 
-	m.logger.Infof("successfully removed member [ID: %v] from the cluster", strconv.FormatUint(response.Header.GetMemberId(), 16))
+	m.logger.Infof("successfully removed member [ID: %v] from the cluster", strconv.FormatUint(memberID, 16))
 	return nil
 }

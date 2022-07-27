@@ -40,8 +40,10 @@ import (
 	"github.com/ghodss/yaml"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/sirupsen/logrus"
+
 	"go.etcd.io/etcd/clientv3"
 	"k8s.io/client-go/util/retry"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 const (
@@ -454,11 +456,7 @@ func (h *HTTPHandler) serveConfig(rw http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	if clusterSize > 1 && h.SnapstoreConfig != nil && !miscellaneous.IsBackupBucketEmpty(h.SnapstoreConfig, h.Logger.Logger) {
-		config["initial-cluster-state"] = "existing"
-	} else {
-		config["initial-cluster-state"] = miscellaneous.GetInitialClusterState(req.Context(), *h.Logger, clientSet, podName, podNS)
-	}
+	config["initial-cluster-state"] = h.GetClusterState(req.Context(), clusterSize, clientSet, podName, podNS)
 
 	data, err := yaml.Marshal(&config)
 	if err != nil {
@@ -476,6 +474,32 @@ func (h *HTTPHandler) serveConfig(rw http.ResponseWriter, req *http.Request) {
 	http.ServeFile(rw, req, outputFileName)
 
 	h.Logger.Info("Served config for ETCD instance.")
+}
+
+// GetClusterState returns the Cluster state either `new` or `existing`.
+func (h *HTTPHandler) GetClusterState(ctx context.Context, clusterSize int, clientSet client.Client, podName string, podNS string) string {
+	if clusterSize == 1 {
+		return miscellaneous.ClusterStateNew
+	}
+
+	// clusterSize > 1
+	state := miscellaneous.GetInitialClusterState(ctx, *h.Logger, clientSet, podName, podNS)
+	if len(state) == 0 {
+		// Not a Scalup scenario.
+		// Either a multi-node bootstarp or a restoration of single member in multi-node.
+		m := member.NewMemberControl(h.EtcdConnectionConfig)
+
+		// check for a learner presence in a cluster.
+		// if a learner is present then return ClusterStateExisting else ClusterStateNew.
+		present, _ := m.IsLearnerPresent(ctx)
+		if present {
+			return miscellaneous.ClusterStateExisting
+		}
+		return miscellaneous.ClusterStateNew
+
+	}
+
+	return state
 }
 
 func getInitialCluster(ctx context.Context, initialCluster string, etcdConn brtypes.EtcdConnectionConfig, protocol string, clientPort string, logger logrus.Entry, podName string) string {
