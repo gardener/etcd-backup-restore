@@ -47,8 +47,8 @@ type MemberLeaseCallbacks struct {
 	StopLeaseRenewal func()
 }
 
-// IsLeaderCallbackFunc is type declaration for callback function to Check LeadershipStatus.
-type IsLeaderCallbackFunc func(context.Context, *EtcdConnectionConfig, time.Duration, *logrus.Entry) (bool, bool, error)
+// EtcdMemberStatusCallbackFunc is type declaration for callback function to Check Etcd member Status.
+type EtcdMemberStatusCallbackFunc func(context.Context, *EtcdConnectionConfig, time.Duration, *logrus.Entry) (bool, bool, error)
 
 // PromoteLearnerCallback is callback which is triggered when backup-restore wants to promote etcd learner to a voting member.
 type PromoteLearnerCallback struct {

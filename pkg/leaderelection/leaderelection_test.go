@@ -181,7 +181,7 @@ var _ = Describe("Etcd Cluster", func() {
 			})
 		})
 
-		Context("Etcd member is leaner", func() {
+		Context("Etcd member is learner", func() {
 			It("Should promote the learner(non-voting) member to a voting member", func() {
 				minCount := 1
 

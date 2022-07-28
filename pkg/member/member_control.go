@@ -300,7 +300,7 @@ func (m *memberControl) RemoveMember(ctx context.Context) error {
 
 // IsLearnerPresent checks for the learner(non-voting) member in a cluster.
 func (m *memberControl) IsLearnerPresent(ctx context.Context) (bool, error) {
-	m.logger.Infof("Removing the %v member from cluster", m.podName)
+	m.logger.Infof("checking the presence of a learner in a cluster...")
 
 	cli, err := m.clientFactory.NewCluster()
 	if err != nil {
@@ -311,7 +311,7 @@ func (m *memberControl) IsLearnerPresent(ctx context.Context) (bool, error) {
 	ctx, cancel := context.WithTimeout(ctx, brtypes.DefaultEtcdConnectionTimeout)
 	defer cancel()
 
-	return miscellaneous.CheckLearner(ctx, cli)
+	return miscellaneous.CheckIfLearnerPresent(ctx, cli)
 }
 
 // removeMemberFromCluster removes member of given ID from etcd cluster.

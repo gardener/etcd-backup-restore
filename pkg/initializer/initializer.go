@@ -45,15 +45,15 @@ import (
 //		   - No snapshots are available, start etcd as a fresh installation.
 func (e *EtcdInitializer) Initialize(mode validator.Mode, failBelowRevision int64) error {
 	start := time.Now()
-	isPresent := false
+	isEtcdMemberPresent := false
+	ctx := context.Background()
 	var err error
 
 	//Etcd cluster scale-up case
 	if miscellaneous.IsMultiNode(e.Logger.WithField("actor", "initializer")) {
 		m := member.NewMemberControl(e.Config.EtcdConnectionConfig)
-		ctx := context.Background()
-		isPresent, err = m.IsMemberInCluster(ctx)
-		if !isPresent && err == nil {
+		isEtcdMemberPresent, err = m.IsMemberInCluster(ctx)
+		if !isEtcdMemberPresent && err == nil {
 			retry.OnError(retry.DefaultBackoff, func(err error) bool {
 				return err != nil
 			}, func() error {
@@ -89,11 +89,11 @@ func (e *EtcdInitializer) Initialize(mode validator.Mode, failBelowRevision int6
 
 	if dataDirStatus != validator.DataDirectoryValid {
 		if dataDirStatus == validator.DataDirStatusInvalidInMultiNode || (e.Validator.OriginalClusterSize > 1 && dataDirStatus == validator.DataDirectoryCorrupt) {
-			e.restoreInMultiNode()
-		} else if e.Validator.OriginalClusterSize > 1 && isPresent {
-			e.restoreInMultiNode()
+			e.restoreInMultiNode(ctx)
+		} else if e.Validator.OriginalClusterSize > 1 && isEtcdMemberPresent {
+			e.restoreInMultiNode(ctx)
 		} else {
-			// For case: ClusterSize=1 or when multi-node cluster(ClusterSize>1) is bootstrap
+			// For case: ClusterSize=1 or when multi-node cluster(ClusterSize>1) is bootstrapped
 			start := time.Now()
 			restored, err := e.restoreCorruptData()
 			if err != nil {
@@ -235,28 +235,26 @@ func (e *EtcdInitializer) removeDir(dirname string) error {
 // * Remove the member from the cluster
 // * Clean the data-dir of member that needs to be restored.
 // * Add a new member as a learner(non-voting member)
-// * Start a learner by providing config to etcd
-// * Promote the learner to voting member.
-func (e *EtcdInitializer) restoreInMultiNode() error {
+func (e *EtcdInitializer) restoreInMultiNode(ctx context.Context) error {
 	m := member.NewMemberControl(e.Config.EtcdConnectionConfig)
 	if err := retry.OnError(retry.DefaultBackoff, func(err error) bool {
 		return err != nil
 	}, func() error {
-		return m.RemoveMember(context.TODO())
+		return m.RemoveMember(ctx)
 	}); err != nil {
-		return fmt.Errorf("failed to initialize: unable to remove the member %v", err)
+		return fmt.Errorf("unable to remove the member %v", err)
 	}
 
 	if err := e.removeDir(e.Config.RestoreOptions.Config.RestoreDataDir); err != nil {
-		return fmt.Errorf("failed to initialize: unable to remove the data-dir %v", err)
+		return fmt.Errorf("unable to remove the data-dir %v", err)
 	}
 
 	if err := retry.OnError(retry.DefaultBackoff, func(err error) bool {
 		return err != nil
 	}, func() error {
-		return m.AddMemberAsLearner(context.TODO())
+		return m.AddMemberAsLearner(ctx)
 	}); err != nil {
-		return fmt.Errorf("failed to initialize: unable to add the member as learner %v", err)
+		return fmt.Errorf("unable to add the member as learner %v", err)
 	}
 	return nil
 }

@@ -446,8 +446,8 @@ func IsBackupBucketEmpty(snapStoreConfig *brtypes.SnapstoreConfig, logger *logru
 	return true
 }
 
-// GetInitialClusterState returns the cluster state, either `new` or `existing`.
-func GetInitialClusterState(ctx context.Context, logger logrus.Entry, clientSet client.Client, podName string, podNS string) string {
+// GetInitialClusterStateIfScaleup checks if it is the Scale-up scenario and returns the cluster state either `new` or `existing`.
+func GetInitialClusterStateIfScaleup(ctx context.Context, logger logrus.Entry, clientSet client.Client, podName string, podNS string) string {
 	//Read sts spec for updated replicas to toggle `initial-cluster-state`
 	curSts := &appsv1.StatefulSet{}
 	errSts := clientSet.Get(ctx, client.ObjectKey{
@@ -486,8 +486,8 @@ func DoPromoteMember(ctx context.Context, member *etcdserverpb.Member, cli etcdC
 	return err
 }
 
-// CheckLearner checks whether a learner(non-voting) member present or not.
-func CheckLearner(ctx context.Context, cli etcdClient.ClusterCloser) (bool, error) {
+// CheckIfLearnerPresent checks whether a learner(non-voting) member present or not.
+func CheckIfLearnerPresent(ctx context.Context, cli etcdClient.ClusterCloser) (bool, error) {
 	membersInfo, err := cli.MemberList(ctx)
 	if err != nil {
 		return false, fmt.Errorf("error listing members: %v", err)

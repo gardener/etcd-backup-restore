@@ -368,7 +368,7 @@ var _ = Describe("Miscellaneous Tests", func() {
 				err := clientSet.Create(testCtx, sts)
 				Expect(err).ShouldNot(HaveOccurred())
 
-				clusterState := GetInitialClusterState(testCtx, *logger, clientSet, podName, namespace)
+				clusterState := GetInitialClusterStateIfScaleup(testCtx, *logger, clientSet, podName, namespace)
 				Expect(clusterState).Should(Equal(emptyString))
 			})
 		})
@@ -395,7 +395,7 @@ var _ = Describe("Miscellaneous Tests", func() {
 				err := clientSet.Create(testCtx, sts)
 				Expect(err).ShouldNot(HaveOccurred())
 
-				clusterState := GetInitialClusterState(testCtx, *logger, clientSet, podName, namespace)
+				clusterState := GetInitialClusterStateIfScaleup(testCtx, *logger, clientSet, podName, namespace)
 				Expect(clusterState).Should(Equal(emptyString))
 			})
 		})
@@ -422,7 +422,7 @@ var _ = Describe("Miscellaneous Tests", func() {
 				err := clientSet.Create(testCtx, sts)
 				Expect(err).ShouldNot(HaveOccurred())
 
-				clusterState := GetInitialClusterState(testCtx, *logger, clientSet, podName, namespace)
+				clusterState := GetInitialClusterStateIfScaleup(testCtx, *logger, clientSet, podName, namespace)
 				Expect(clusterState).Should(Equal(ClusterStateExisting))
 			})
 		})
@@ -452,7 +452,7 @@ var _ = Describe("Miscellaneous Tests", func() {
 				err := clientSet.Create(testCtx, sts)
 				Expect(err).ShouldNot(HaveOccurred())
 
-				clusterState := GetInitialClusterState(testCtx, *logger, clientSet, podName, wrongNamespace)
+				clusterState := GetInitialClusterStateIfScaleup(testCtx, *logger, clientSet, podName, wrongNamespace)
 				Expect(clusterState).Should(Equal(ClusterStateNew))
 			})
 		})

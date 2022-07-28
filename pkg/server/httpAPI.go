@@ -483,14 +483,15 @@ func (h *HTTPHandler) GetClusterState(ctx context.Context, clusterSize int, clie
 	}
 
 	// clusterSize > 1
-	state := miscellaneous.GetInitialClusterState(ctx, *h.Logger, clientSet, podName, podNS)
+	state := miscellaneous.GetInitialClusterStateIfScaleup(ctx, *h.Logger, clientSet, podName, podNS)
+
 	if len(state) == 0 {
-		// Not a Scalup scenario.
-		// Either a multi-node bootstarp or a restoration of single member in multi-node.
+		// Not a Scale-up scenario.
+		// Either a multi-node bootstrap or a restoration of single member in multi-node.
 		m := member.NewMemberControl(h.EtcdConnectionConfig)
 
-		// check for a learner presence in a cluster.
-		// if a learner is present then return ClusterStateExisting else ClusterStateNew.
+		// check whether a learner is present in the cluster
+		// if a learner is present then return `ClusterStateExisting` else `ClusterStateNew`.
 		present, _ := m.IsLearnerPresent(ctx)
 		if present {
 			return miscellaneous.ClusterStateExisting

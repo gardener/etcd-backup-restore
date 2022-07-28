@@ -52,11 +52,11 @@ type LeaderElector struct {
 	Callbacks            *brtypes.LeaderCallbacks
 	LeaseCallbacks       *brtypes.MemberLeaseCallbacks
 	PromoteCallback      *brtypes.PromoteLearnerCallback
-	CheckMemberStatus    brtypes.IsLeaderCallbackFunc
+	CheckMemberStatus    brtypes.EtcdMemberStatusCallbackFunc
 }
 
 // NewLeaderElector returns LeaderElector configurations.
-func NewLeaderElector(logger *logrus.Entry, etcdConnectionConfig *brtypes.EtcdConnectionConfig, leaderElectionConfig *brtypes.Config, callbacks *brtypes.LeaderCallbacks, memberLeaseCallbacks *brtypes.MemberLeaseCallbacks, checkLeadershipFunc brtypes.IsLeaderCallbackFunc, promoteCallback *brtypes.PromoteLearnerCallback) (*LeaderElector, error) {
+func NewLeaderElector(logger *logrus.Entry, etcdConnectionConfig *brtypes.EtcdConnectionConfig, leaderElectionConfig *brtypes.Config, callbacks *brtypes.LeaderCallbacks, memberLeaseCallbacks *brtypes.MemberLeaseCallbacks, memberStatusFunc brtypes.EtcdMemberStatusCallbackFunc, promoteCallback *brtypes.PromoteLearnerCallback) (*LeaderElector, error) {
 	return &LeaderElector{
 		logger:               logger.WithField("actor", "leader-elector"),
 		EtcdConnectionConfig: etcdConnectionConfig,
@@ -64,7 +64,7 @@ func NewLeaderElector(logger *logrus.Entry, etcdConnectionConfig *brtypes.EtcdCo
 		Config:               leaderElectionConfig,
 		Callbacks:            callbacks,
 		LeaseCallbacks:       memberLeaseCallbacks,
-		CheckMemberStatus:    checkLeadershipFunc,
+		CheckMemberStatus:    memberStatusFunc,
 		PromoteCallback:      promoteCallback,
 	}, nil
 }
@@ -149,7 +149,7 @@ func (le *LeaderElector) Run(ctx context.Context) error {
 				// If learner(non-voting member) is present in a cluster(size>1)
 				// then promote the learner to voting member.
 				if isLearner && le.PromoteCallback != nil {
-					le.logger.Info("found a learner(non-voting) member in a cluster...")
+					le.logger.Info("member is a learner(non-voting) member in the cluster...")
 					le.PromoteCallback.Promote(ctx, le.logger)
 				}
 			}
@@ -157,9 +157,9 @@ func (le *LeaderElector) Run(ctx context.Context) error {
 	}
 }
 
-// IsLeader checks whether the current instance of backup-restore is leader or not.
+// EtcdMemberStatus checks whether the current instance of backup-restore is leader or not.
 // It also returns the boolean indicating the presence of learner(non-voting) member.
-func IsLeader(ctx context.Context, etcdConnectionConfig *brtypes.EtcdConnectionConfig, etcdConnectionTimeout time.Duration, logger *logrus.Entry) (bool, bool, error) {
+func EtcdMemberStatus(ctx context.Context, etcdConnectionConfig *brtypes.EtcdConnectionConfig, etcdConnectionTimeout time.Duration, logger *logrus.Entry) (bool, bool, error) {
 	logger.Debug("checking the leadershipStatus...")
 	var endPoint string
 
