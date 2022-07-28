@@ -41,6 +41,7 @@ type EtcdConnectionConfig struct {
 	// Endpoints are the endpoints from which the backup will be take or defragmentation will be called.
 	// This need not be necessary match the entire etcd cluster.
 	Endpoints          []string          `json:"endpoints"`
+	ServiceEndpoints   []string          `json:"serviceEndpoints,omitempty"`
 	Username           string            `json:"username,omitempty"`
 	Password           string            `json:"password,omitempty"`
 	ConnectionTimeout  wrappers.Duration `json:"connectionTimeout,omitempty"`
@@ -69,6 +70,7 @@ func NewEtcdConnectionConfig() *EtcdConnectionConfig {
 // AddFlags adds the flags to flagset.
 func (c *EtcdConnectionConfig) AddFlags(fs *flag.FlagSet) {
 	fs.StringSliceVarP(&c.Endpoints, "endpoints", "e", c.Endpoints, "comma separated list of etcd endpoints")
+	fs.StringSliceVar(&c.ServiceEndpoints, "service-endpoints", c.ServiceEndpoints, "comma separated list of etcd endpoints that are used for etcd-backup-restore to connect to etcd through a (Kubernetes) service")
 	fs.StringVar(&c.Username, "etcd-username", c.Username, "etcd server username, if one is required")
 	fs.StringVar(&c.Password, "etcd-password", c.Password, "etcd server password, if one is required")
 	fs.DurationVar(&c.ConnectionTimeout.Duration, "etcd-connection-timeout", c.ConnectionTimeout.Duration, "etcd client connection timeout")

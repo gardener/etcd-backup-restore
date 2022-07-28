@@ -61,14 +61,9 @@ func NewMemberControl(etcdConnConfig *brtypes.EtcdConnectionConfig) Control {
 	var configFile string
 	logger := logrus.New().WithField("actor", "member-add")
 	etcdConn := *etcdConnConfig
-	svcEndpoint, err := miscellaneous.GetEtcdSvcEndpoint()
-	if err != nil {
-		logger.Errorf("Error getting etcd service endpoint %v", err)
-	}
-	if svcEndpoint != "" {
-		etcdConn.Endpoints = []string{svcEndpoint}
-	}
-	clientFactory := etcdutil.NewFactory(etcdConn)
+
+	// We want to use the service endpoint since we're only supposed to connect to ready etcd members.
+	clientFactory := etcdutil.NewFactory(etcdConn, client.UseServiceEndpoints(true))
 	podName, err := miscellaneous.GetEnvVarOrError("POD_NAME")
 	if err != nil {
 		logger.Fatalf("Error reading POD_NAME env var : %v", err)
