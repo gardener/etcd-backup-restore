@@ -21,6 +21,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/gardener/etcd-backup-restore/pkg/errors"
 	"github.com/gardener/etcd-backup-restore/pkg/initializer/validator"
 	"github.com/gardener/etcd-backup-restore/pkg/member"
 	"github.com/gardener/etcd-backup-restore/pkg/metrics"
@@ -89,9 +90,13 @@ func (e *EtcdInitializer) Initialize(mode validator.Mode, failBelowRevision int6
 
 	if dataDirStatus != validator.DataDirectoryValid {
 		if dataDirStatus == validator.DataDirStatusInvalidInMultiNode || (e.Validator.OriginalClusterSize > 1 && dataDirStatus == validator.DataDirectoryCorrupt) {
-			e.restoreInMultiNode(ctx)
+			if err := e.restoreInMultiNode(ctx); err != nil {
+				return err
+			}
 		} else if e.Validator.OriginalClusterSize > 1 && isEtcdMemberPresent {
-			e.restoreInMultiNode(ctx)
+			if err := e.restoreInMultiNode(ctx); err != nil {
+				return err
+			}
 		} else {
 			// For case: ClusterSize=1 or when multi-node cluster(ClusterSize>1) is bootstrapped
 			start := time.Now()
@@ -237,9 +242,7 @@ func (e *EtcdInitializer) removeDir(dirname string) error {
 // * Add a new member as a learner(non-voting member)
 func (e *EtcdInitializer) restoreInMultiNode(ctx context.Context) error {
 	m := member.NewMemberControl(e.Config.EtcdConnectionConfig)
-	if err := retry.OnError(retry.DefaultBackoff, func(err error) bool {
-		return err != nil
-	}, func() error {
+	if err := retry.OnError(retry.DefaultBackoff, errors.AnyError, func() error {
 		return m.RemoveMember(ctx)
 	}); err != nil {
 		return fmt.Errorf("unable to remove the member %v", err)
@@ -249,9 +252,7 @@ func (e *EtcdInitializer) restoreInMultiNode(ctx context.Context) error {
 		return fmt.Errorf("unable to remove the data-dir %v", err)
 	}
 
-	if err := retry.OnError(retry.DefaultBackoff, func(err error) bool {
-		return err != nil
-	}, func() error {
+	if err := retry.OnError(retry.DefaultBackoff, errors.AnyError, func() error {
 		return m.AddMemberAsLearner(ctx)
 	}); err != nil {
 		return fmt.Errorf("unable to add the member as learner %v", err)

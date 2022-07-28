@@ -430,7 +430,7 @@ var _ = Describe("Miscellaneous Tests", func() {
 		})
 	})
 
-	Describe("Get the Initial ClusterState", func() {
+	Describe("Get the Initial ClusterState for scale-up feature", func() {
 		var (
 			sts             *appsv1.StatefulSet
 			statefulSetName = "etcd-test"
@@ -438,7 +438,7 @@ var _ = Describe("Miscellaneous Tests", func() {
 			namespace       = "test_namespace"
 			emptyString     = ""
 		)
-		Context("In single-node etcd", func() {
+		Context("In single node etcd: no scale-up", func() {
 			It("Should return the cluster state as empty string ", func() {
 				sts = &appsv1.StatefulSet{
 					TypeMeta: metav1.TypeMeta{
@@ -465,7 +465,7 @@ var _ = Describe("Miscellaneous Tests", func() {
 				Expect(clusterState).Should(Equal(emptyString))
 			})
 		})
-		Context("In multi-node etcd bootstrap", func() {
+		Context("In multi-node etcd bootstrap: no scale-up", func() {
 			It("Should return the cluster state as empty string ", func() {
 				sts = &appsv1.StatefulSet{
 					TypeMeta: metav1.TypeMeta{

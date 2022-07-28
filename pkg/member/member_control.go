@@ -274,7 +274,7 @@ func (m *memberControl) UpdateMember(ctx context.Context, cli client.ClusterClos
 
 // RemoveMember removes the member from the etcd cluster.
 func (m *memberControl) RemoveMember(ctx context.Context) error {
-	m.logger.Infof("Removing the %v member from cluster", m.podName)
+	m.logger.Infof("Removing the %s member from cluster", m.podName)
 
 	cli, err := m.clientFactory.NewCluster()
 	if err != nil {
