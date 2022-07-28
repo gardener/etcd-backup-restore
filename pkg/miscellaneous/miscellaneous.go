@@ -468,7 +468,7 @@ func GetInitialClusterStateIfScaleup(ctx context.Context, logger logrus.Entry, c
 }
 
 // DoPromoteMember promotes a given learner to a voting member.
-func DoPromoteMember(ctx context.Context, member *etcdserverpb.Member, cli etcdClient.ClusterCloser, logger *logrus.Logger) error {
+func DoPromoteMember(ctx context.Context, member *etcdserverpb.Member, cli etcdClient.ClusterCloser, logger *logrus.Entry) error {
 	memPromoteCtx, cancel := context.WithTimeout(ctx, brtypes.DefaultEtcdConnectionTimeout)
 	defer cancel()
 

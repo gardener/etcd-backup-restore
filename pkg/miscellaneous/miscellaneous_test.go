@@ -274,6 +274,99 @@ var _ = Describe("Miscellaneous Tests", func() {
 			})
 		})
 
+		Context("MemberPromote API call succeeds", func() {
+			It("should not return error", func() {
+				etcdMember := &etcdserverpb.Member{
+					ID: dummyID,
+				}
+
+				clientCluster, err := factory.NewCluster()
+				Expect(err).ShouldNot(HaveOccurred())
+
+				cl.EXPECT().MemberPromote(gomock.Any(), gomock.Any()).Return(nil, nil)
+
+				err = DoPromoteMember(testCtx, etcdMember, clientCluster, logger)
+				Expect(err).ShouldNot(HaveOccurred())
+
+			})
+		})
+
+		Context("MemberPromote API call fails", func() {
+			It("should return error", func() {
+				etcdMember := &etcdserverpb.Member{
+					ID: dummyID,
+				}
+
+				clientCluster, err := factory.NewCluster()
+				Expect(err).ShouldNot(HaveOccurred())
+
+				cl.EXPECT().MemberPromote(gomock.Any(), gomock.Any()).Return(nil, fmt.Errorf("unable to connect to the dummy etcd"))
+
+				err = DoPromoteMember(testCtx, etcdMember, clientCluster, logger)
+				Expect(err).Should(HaveOccurred())
+			})
+		})
+
+		Context("Learner is present in a cluster", func() {
+			It("should return true", func() {
+
+				clientCluster, err := factory.NewCluster()
+				Expect(err).ShouldNot(HaveOccurred())
+
+				cl.EXPECT().MemberList(gomock.Any()).DoAndReturn(func(_ context.Context) (*clientv3.MemberListResponse, error) {
+					etcdMember1 := &etcdserverpb.Member{
+						ID:        dummyID,
+						IsLearner: true,
+					}
+
+					etcdMember2 := &etcdserverpb.Member{
+						ID:        dummyID + 1,
+						IsLearner: false,
+					}
+
+					response := new(clientv3.MemberListResponse)
+
+					response.Members = append(response.Members, etcdMember1, etcdMember2)
+					response.Members = []*etcdserverpb.Member{etcdMember1, etcdMember2}
+					return response, nil
+				})
+
+				isPresent, err := CheckIfLearnerPresent(testCtx, clientCluster)
+				Expect(isPresent).Should(BeTrue())
+				Expect(err).ShouldNot(HaveOccurred())
+			})
+		})
+
+		Context("Learner is not present in a cluster", func() {
+			It("should return false", func() {
+
+				clientCluster, err := factory.NewCluster()
+				Expect(err).ShouldNot(HaveOccurred())
+
+				cl.EXPECT().MemberList(gomock.Any()).DoAndReturn(func(_ context.Context) (*clientv3.MemberListResponse, error) {
+					etcdMember1 := &etcdserverpb.Member{
+						ID:        dummyID,
+						IsLearner: false,
+					}
+
+					etcdMember2 := &etcdserverpb.Member{
+						ID:        dummyID + 1,
+						IsLearner: false,
+					}
+
+					response := new(clientv3.MemberListResponse)
+
+					response.Members = append(response.Members, etcdMember1, etcdMember2)
+					response.Members = []*etcdserverpb.Member{etcdMember1, etcdMember2}
+					return response, nil
+				})
+
+				isPresent, err := CheckIfLearnerPresent(testCtx, clientCluster)
+				Expect(isPresent).Should(BeFalse())
+				Expect(err).ShouldNot(HaveOccurred())
+			})
+		})
+
 	})
 
 	Describe("BackupLeaderEndpoint", func() {

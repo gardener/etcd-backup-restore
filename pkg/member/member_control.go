@@ -246,7 +246,7 @@ func (m *memberControl) PromoteMember(ctx context.Context) error {
 		return ErrMissingMember
 	}
 
-	return miscellaneous.DoPromoteMember(ctx, foundMember, cli, m.logger.Logger)
+	return miscellaneous.DoPromoteMember(ctx, foundMember, cli, &m.logger)
 }
 
 func findMember(existingMembers []*etcdserverpb.Member, memberName string) *etcdserverpb.Member {
