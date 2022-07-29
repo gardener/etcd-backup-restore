@@ -89,11 +89,7 @@ func (e *EtcdInitializer) Initialize(mode validator.Mode, failBelowRevision int6
 	metrics.ValidationDurationSeconds.With(prometheus.Labels{metrics.LabelSucceeded: metrics.ValueSucceededTrue}).Observe(time.Since(start).Seconds())
 
 	if dataDirStatus != validator.DataDirectoryValid {
-		if dataDirStatus == validator.DataDirStatusInvalidInMultiNode || (e.Validator.OriginalClusterSize > 1 && dataDirStatus == validator.DataDirectoryCorrupt) {
-			if err := e.restoreInMultiNode(ctx); err != nil {
-				return err
-			}
-		} else if e.Validator.OriginalClusterSize > 1 && isEtcdMemberPresent {
+		if dataDirStatus == validator.DataDirStatusInvalidInMultiNode || (e.Validator.OriginalClusterSize > 1 && dataDirStatus == validator.DataDirectoryCorrupt) || (e.Validator.OriginalClusterSize > 1 && isEtcdMemberPresent) {
 			if err := e.restoreInMultiNode(ctx); err != nil {
 				return err
 			}

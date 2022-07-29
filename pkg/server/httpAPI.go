@@ -492,8 +492,7 @@ func (h *HTTPHandler) GetClusterState(ctx context.Context, clusterSize int, clie
 
 		// check whether a learner is present in the cluster
 		// if a learner is present then return `ClusterStateExisting` else `ClusterStateNew`.
-		present, _ := m.IsLearnerPresent(ctx)
-		if present {
+		if present, err := m.IsLearnerPresent(ctx); present && err == nil {
 			return miscellaneous.ClusterStateExisting
 		}
 		return miscellaneous.ClusterStateNew
