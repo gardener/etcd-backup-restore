@@ -31,6 +31,7 @@ import (
 	"sync/atomic"
 
 	"github.com/gardener/etcd-backup-restore/pkg/etcdutil"
+	"github.com/gardener/etcd-backup-restore/pkg/etcdutil/client"
 	"github.com/gardener/etcd-backup-restore/pkg/initializer"
 	"github.com/gardener/etcd-backup-restore/pkg/initializer/validator"
 	"github.com/gardener/etcd-backup-restore/pkg/member"
@@ -446,7 +447,7 @@ func (h *HTTPHandler) serveConfig(rw http.ResponseWriter, req *http.Request) {
 
 	config["initial-cluster-state"] = miscellaneous.GetInitialClusterState(req.Context(), *h.Logger, clientSet, podName, podNS)
 
-	config["initial-cluster"] = getInitialCluster(req.Context(), fmt.Sprint(config["initial-cluster"]), *h.EtcdConnectionConfig, protocol, clientPort, *h.Logger, podName)
+	config["initial-cluster"] = getInitialCluster(req.Context(), fmt.Sprint(config["initial-cluster"]), *h.EtcdConnectionConfig, *h.Logger, podName)
 
 	data, err := yaml.Marshal(&config)
 	if err != nil {
@@ -466,19 +467,13 @@ func (h *HTTPHandler) serveConfig(rw http.ResponseWriter, req *http.Request) {
 	h.Logger.Info("Served config for ETCD instance.")
 }
 
-func getInitialCluster(ctx context.Context, initialCluster string, etcdConn brtypes.EtcdConnectionConfig, protocol string, clientPort string, logger logrus.Entry, podName string) string {
-	//INITIAL_CLUSTER served via the etcd config must be tailored to the number of members in the cluster at that point. Else etcd complains with error "member count is unequal"
-	//One reason why we might want to have a strict ordering when members are joining the cluster
-	//addmember subcommand achieves this by making sure the pod with the previous index is running before attempting to add itself as a learner
-	svcEndpoint, err := miscellaneous.GetEtcdSvcEndpoint()
-	if err != nil {
-		logger.Errorf("Error getting etcd service endpoint %v", err)
-	}
-	if svcEndpoint != "" {
-		etcdConn.Endpoints = []string{svcEndpoint}
-	}
-	etcdConn.Endpoints = []string{svcEndpoint}
-	clientFactory := etcdutil.NewFactory(etcdConn)
+func getInitialCluster(ctx context.Context, initialCluster string, etcdConn brtypes.EtcdConnectionConfig, logger logrus.Entry, podName string) string {
+	// INITIAL_CLUSTER served via the etcd config must be tailored to the number of members in the cluster at that point. Else etcd complains with error "member count is unequal"
+	// One reason why we might want to have a strict ordering when members are joining the cluster
+	// addmember subcommand achieves this by making sure the pod with the previous index is running before attempting to add itself as a learner
+
+	// We want to use the service endpoint since we're only supposed to connect to ready etcd members.
+	clientFactory := etcdutil.NewFactory(etcdConn, client.UseServiceEndpoints(true))
 	cli, err := clientFactory.NewCluster()
 	if err != nil {
 		logger.Warnf("Error with NewCluster() : %v", err)

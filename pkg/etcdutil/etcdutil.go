@@ -34,16 +34,28 @@ import (
 )
 
 // NewFactory returns a Factory that constructs new clients using the supplied ETCD client configuration.
-func NewFactory(cfg brtypes.EtcdConnectionConfig) client.Factory {
-	var f = factoryImpl(cfg)
+func NewFactory(cfg brtypes.EtcdConnectionConfig, opts ...client.Option) client.Factory {
+	options := &client.Options{}
+	for _, opt := range opts {
+		opt.ApplyTo(options)
+	}
+
+	var f = factoryImpl{
+		EtcdConnectionConfig: cfg,
+		options:              options,
+	}
+
 	return &f
 }
 
 // factoryImpl implements the client.Factory interface by constructing new client objects.
-type factoryImpl brtypes.EtcdConnectionConfig
+type factoryImpl struct {
+	brtypes.EtcdConnectionConfig
+	options *client.Options
+}
 
 func (f *factoryImpl) NewClient() (*clientv3.Client, error) {
-	return GetTLSClientForEtcd((*brtypes.EtcdConnectionConfig)(f))
+	return GetTLSClientForEtcd(&f.EtcdConnectionConfig, f.options)
 }
 
 func (f *factoryImpl) NewCluster() (client.ClusterCloser, error) {
@@ -71,7 +83,7 @@ func NewClientFactory(fn brtypes.NewClientFactoryFunc, cfg brtypes.EtcdConnectio
 }
 
 // GetTLSClientForEtcd creates an etcd client using the TLS config params.
-func GetTLSClientForEtcd(tlsConfig *brtypes.EtcdConnectionConfig) (*clientv3.Client, error) {
+func GetTLSClientForEtcd(tlsConfig *brtypes.EtcdConnectionConfig, options *client.Options) (*clientv3.Client, error) {
 	// set tls if any one tls option set
 	var cfgtls *transport.TLSInfo
 	tlsinfo := transport.TLSInfo{}
@@ -90,8 +102,13 @@ func GetTLSClientForEtcd(tlsConfig *brtypes.EtcdConnectionConfig) (*clientv3.Cli
 		cfgtls = &tlsinfo
 	}
 
+	endpoints := tlsConfig.Endpoints
+	if options.UseServiceEndpoints && len(tlsConfig.ServiceEndpoints) > 0 {
+		endpoints = tlsConfig.ServiceEndpoints
+	}
+
 	cfg := &clientv3.Config{
-		Endpoints: tlsConfig.Endpoints,
+		Endpoints: endpoints,
 		Context:   context.TODO(), // TODO: Use the context comming as parameter.
 	}
 
