@@ -500,3 +500,14 @@ func CheckIfLearnerPresent(ctx context.Context, cli etcdClient.ClusterCloser) (b
 	}
 	return false, nil
 }
+
+// RemoveMemberFromCluster removes member of given ID from etcd cluster.
+func RemoveMemberFromCluster(ctx context.Context, cli etcdClient.ClusterCloser, memberID uint64, logger *logrus.Entry) error {
+	_, err := cli.MemberRemove(ctx, memberID)
+	if err != nil {
+		return fmt.Errorf("unable to remove member [ID:%v] from the cluster: %v", strconv.FormatUint(memberID, 16), err)
+	}
+
+	logger.Infof("successfully removed member [ID: %v] from the cluster", strconv.FormatUint(memberID, 16))
+	return nil
+}

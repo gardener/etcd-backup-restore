@@ -214,7 +214,7 @@ func (m *memberControl) updateMemberPeerAddress(ctx context.Context, cli client.
 	memberUpdateCtx, cancel := context.WithTimeout(ctx, EtcdTimeout)
 	defer cancel()
 
-	if _, err := cli.MemberUpdate(memberUpdateCtx, id, []string{memberURL}); err == nil {
+	if _, err = cli.MemberUpdate(memberUpdateCtx, id, []string{memberURL}); err == nil {
 		m.logger.Info("Successfully updated the member peer URL")
 		return nil
 	}
@@ -292,10 +292,10 @@ func (m *memberControl) RemoveMember(ctx context.Context) error {
 
 	foundMember := findMember(memberInfo.Members, m.podName)
 	if foundMember == nil {
-		return ErrMissingMember
+		return nil
 	}
 
-	return m.removeMemberFromCluster(ctx, cli, foundMember.GetID())
+	return miscellaneous.RemoveMemberFromCluster(ctx, cli, foundMember.GetID(), &m.logger)
 }
 
 // IsLearnerPresent checks for the learner(non-voting) member in a cluster.
@@ -312,15 +312,4 @@ func (m *memberControl) IsLearnerPresent(ctx context.Context) (bool, error) {
 	defer cancel()
 
 	return miscellaneous.CheckIfLearnerPresent(ctx, cli)
-}
-
-// removeMemberFromCluster removes member of given ID from etcd cluster.
-func (m *memberControl) removeMemberFromCluster(ctx context.Context, client client.ClusterCloser, memberID uint64) error {
-	_, err := client.MemberRemove(ctx, memberID)
-	if err != nil {
-		return fmt.Errorf("unable to remove member [ID:%v] from the cluster: %v", strconv.FormatUint(memberID, 16), err)
-	}
-
-	m.logger.Infof("successfully removed member [ID: %v] from the cluster", strconv.FormatUint(memberID, 16))
-	return nil
 }

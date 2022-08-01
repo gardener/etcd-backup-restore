@@ -367,6 +367,32 @@ var _ = Describe("Miscellaneous Tests", func() {
 			})
 		})
 
+		Context("Remove member from etcd cluster", func() {
+			It("should not return error", func() {
+
+				clientCluster, err := factory.NewCluster()
+				Expect(err).ShouldNot(HaveOccurred())
+
+				cl.EXPECT().MemberRemove(gomock.Any(), gomock.Any()).Return(nil, nil)
+
+				err = RemoveMemberFromCluster(testCtx, clientCluster, dummyID, logger)
+				Expect(err).ShouldNot(HaveOccurred())
+			})
+		})
+
+		Context("Unable to remove member from etcd cluster", func() {
+			It("should return error", func() {
+
+				clientCluster, err := factory.NewCluster()
+				Expect(err).ShouldNot(HaveOccurred())
+
+				cl.EXPECT().MemberRemove(gomock.Any(), gomock.Any()).Return(nil, fmt.Errorf("unable to connect dummy etcd"))
+
+				err = RemoveMemberFromCluster(testCtx, clientCluster, dummyID, logger)
+				Expect(err).Should(HaveOccurred())
+			})
+		})
+
 	})
 
 	Describe("BackupLeaderEndpoint", func() {
