@@ -145,7 +145,7 @@ func (b *BackupRestoreServer) Run(ctx context.Context) error {
 
 // startHTTPServer creates and starts the HTTP handler
 // with status 503 (Service Unavailable)
-func (b *BackupRestoreServer) startHTTPServer(initializer initializer.Initializer, storageProvider string, etcdConfig *brtypes.EtcdConnectionConfig, ssr *snapshotter.Snapshotter) *HTTPHandler {
+func (b *BackupRestoreServer) startHTTPServer(initializer initializer.Initializer, storageProvider string, etcdConfig *brtypes.EtcdConnectionConfig, snapstoreConfig *brtypes.SnapstoreConfig, ssr *snapshotter.Snapshotter) *HTTPHandler {
 	// Start http handler with Error state and wait till snapshotter is up
 	// and running before setting the status to OK.
 	handler := &HTTPHandler{
@@ -163,6 +163,7 @@ func (b *BackupRestoreServer) startHTTPServer(initializer initializer.Initialize
 		HTTPHandlerMutex:     &sync.Mutex{},
 		EtcdConnectionConfig: etcdConfig,
 		StorageProvider:      storageProvider,
+		SnapstoreConfig:      snapstoreConfig,
 	}
 	handler.SetStatus(http.StatusServiceUnavailable)
 	b.logger.Info("Registering the http request handlers...")
@@ -189,7 +190,7 @@ func (b *BackupRestoreServer) runServer(ctx context.Context, restoreOpts *brtype
 	}
 	etcdInitializer := initializer.NewInitializer(restoreOpts, snapstoreConfig, b.config.EtcdConnectionConfig, b.logger.Logger)
 
-	handler := b.startHTTPServer(etcdInitializer, b.config.SnapstoreConfig.Provider, b.config.EtcdConnectionConfig, nil)
+	handler := b.startHTTPServer(etcdInitializer, b.config.SnapstoreConfig.Provider, b.config.EtcdConnectionConfig, b.config.SnapstoreConfig, nil)
 	defer handler.Stop()
 
 	// Promotes member if it is a learner
@@ -291,10 +292,23 @@ func (b *BackupRestoreServer) runServer(ctx context.Context, restoreOpts *brtype
 		},
 	}
 
-	checkLeadershipFunc := leaderelection.IsLeader
+	promoteCallback := &brtypes.PromoteLearnerCallback{
+		Promote: func(ctx context.Context, logger *logrus.Entry) {
+			if restoreOpts.OriginalClusterSize > 1 {
+				m := member.NewMemberControl(b.config.EtcdConnectionConfig)
+				if err := m.PromoteMember(ctx); err == nil {
+					logger.Info("Successfully promoted the learner to a voting member...")
+				} else if err != nil {
+					logger.Errorf("unable to promote the learner to a voting member: %v", err)
+				}
+			}
+		},
+	}
+
+	checkLeadershipFunc := leaderelection.EtcdMemberStatus
 
 	b.logger.Infof("Creating leaderElector...")
-	le, err := leaderelection.NewLeaderElector(b.logger, b.config.EtcdConnectionConfig, b.config.LeaderElectionConfig, leaderCallbacks, memberLeaseCallbacks, checkLeadershipFunc)
+	le, err := leaderelection.NewLeaderElector(b.logger, b.config.EtcdConnectionConfig, b.config.LeaderElectionConfig, leaderCallbacks, memberLeaseCallbacks, checkLeadershipFunc, promoteCallback)
 	if err != nil {
 		return err
 	}

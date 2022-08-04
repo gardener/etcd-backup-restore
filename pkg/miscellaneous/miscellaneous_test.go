@@ -274,6 +274,125 @@ var _ = Describe("Miscellaneous Tests", func() {
 			})
 		})
 
+		Context("MemberPromote API call succeeds", func() {
+			It("should not return error", func() {
+				etcdMember := &etcdserverpb.Member{
+					ID: dummyID,
+				}
+
+				clientCluster, err := factory.NewCluster()
+				Expect(err).ShouldNot(HaveOccurred())
+
+				cl.EXPECT().MemberPromote(gomock.Any(), gomock.Any()).Return(nil, nil)
+
+				err = DoPromoteMember(testCtx, etcdMember, clientCluster, logger)
+				Expect(err).ShouldNot(HaveOccurred())
+
+			})
+		})
+
+		Context("MemberPromote API call fails", func() {
+			It("should return error", func() {
+				etcdMember := &etcdserverpb.Member{
+					ID: dummyID,
+				}
+
+				clientCluster, err := factory.NewCluster()
+				Expect(err).ShouldNot(HaveOccurred())
+
+				cl.EXPECT().MemberPromote(gomock.Any(), gomock.Any()).Return(nil, fmt.Errorf("unable to connect to the dummy etcd"))
+
+				err = DoPromoteMember(testCtx, etcdMember, clientCluster, logger)
+				Expect(err).Should(HaveOccurred())
+			})
+		})
+
+		Context("Learner is present in a cluster", func() {
+			It("should return true", func() {
+
+				clientCluster, err := factory.NewCluster()
+				Expect(err).ShouldNot(HaveOccurred())
+
+				cl.EXPECT().MemberList(gomock.Any()).DoAndReturn(func(_ context.Context) (*clientv3.MemberListResponse, error) {
+					etcdMember1 := &etcdserverpb.Member{
+						ID:        dummyID,
+						IsLearner: true,
+					}
+
+					etcdMember2 := &etcdserverpb.Member{
+						ID:        dummyID + 1,
+						IsLearner: false,
+					}
+
+					response := new(clientv3.MemberListResponse)
+
+					response.Members = append(response.Members, etcdMember1, etcdMember2)
+					response.Members = []*etcdserverpb.Member{etcdMember1, etcdMember2}
+					return response, nil
+				})
+
+				isPresent, err := CheckIfLearnerPresent(testCtx, clientCluster)
+				Expect(isPresent).Should(BeTrue())
+				Expect(err).ShouldNot(HaveOccurred())
+			})
+		})
+
+		Context("Learner is not present in a cluster", func() {
+			It("should return false", func() {
+
+				clientCluster, err := factory.NewCluster()
+				Expect(err).ShouldNot(HaveOccurred())
+
+				cl.EXPECT().MemberList(gomock.Any()).DoAndReturn(func(_ context.Context) (*clientv3.MemberListResponse, error) {
+					etcdMember1 := &etcdserverpb.Member{
+						ID:        dummyID,
+						IsLearner: false,
+					}
+
+					etcdMember2 := &etcdserverpb.Member{
+						ID:        dummyID + 1,
+						IsLearner: false,
+					}
+
+					response := new(clientv3.MemberListResponse)
+
+					response.Members = append(response.Members, etcdMember1, etcdMember2)
+					response.Members = []*etcdserverpb.Member{etcdMember1, etcdMember2}
+					return response, nil
+				})
+
+				isPresent, err := CheckIfLearnerPresent(testCtx, clientCluster)
+				Expect(isPresent).Should(BeFalse())
+				Expect(err).ShouldNot(HaveOccurred())
+			})
+		})
+
+		Context("Remove member from etcd cluster", func() {
+			It("should not return error", func() {
+
+				clientCluster, err := factory.NewCluster()
+				Expect(err).ShouldNot(HaveOccurred())
+
+				cl.EXPECT().MemberRemove(gomock.Any(), gomock.Any()).Return(nil, nil)
+
+				err = RemoveMemberFromCluster(testCtx, clientCluster, dummyID, logger)
+				Expect(err).ShouldNot(HaveOccurred())
+			})
+		})
+
+		Context("Unable to remove member from etcd cluster", func() {
+			It("should return error", func() {
+
+				clientCluster, err := factory.NewCluster()
+				Expect(err).ShouldNot(HaveOccurred())
+
+				cl.EXPECT().MemberRemove(gomock.Any(), gomock.Any()).Return(nil, fmt.Errorf("unable to connect dummy etcd"))
+
+				err = RemoveMemberFromCluster(testCtx, clientCluster, dummyID, logger)
+				Expect(err).Should(HaveOccurred())
+			})
+		})
+
 	})
 
 	Describe("BackupLeaderEndpoint", func() {
@@ -337,15 +456,16 @@ var _ = Describe("Miscellaneous Tests", func() {
 		})
 	})
 
-	Describe("Get the Initial ClusterState", func() {
+	Describe("Get the Initial ClusterState for scale-up feature", func() {
 		var (
 			sts             *appsv1.StatefulSet
 			statefulSetName = "etcd-test"
 			podName         = "etcd-test-0"
 			namespace       = "test_namespace"
+			emptyString     = ""
 		)
-		Context("In single-node etcd", func() {
-			It("Should return the cluster state as `new` ", func() {
+		Context("In single node etcd: no scale-up", func() {
+			It("Should return the cluster state as empty string ", func() {
 				sts = &appsv1.StatefulSet{
 					TypeMeta: metav1.TypeMeta{
 						Kind:       "StatefulSet",
@@ -367,12 +487,12 @@ var _ = Describe("Miscellaneous Tests", func() {
 				err := clientSet.Create(testCtx, sts)
 				Expect(err).ShouldNot(HaveOccurred())
 
-				clusterState := GetInitialClusterState(testCtx, *logger, clientSet, podName, namespace)
-				Expect(clusterState).Should(Equal(ClusterStateNew))
+				clusterState := GetInitialClusterStateIfScaleup(testCtx, *logger, clientSet, podName, namespace)
+				Expect(clusterState).Should(Equal(emptyString))
 			})
 		})
-		Context("In multi-node etcd bootstrap", func() {
-			It("Should return the cluster state as `new` ", func() {
+		Context("In multi-node etcd bootstrap: no scale-up", func() {
+			It("Should return the cluster state as empty string ", func() {
 				sts = &appsv1.StatefulSet{
 					TypeMeta: metav1.TypeMeta{
 						Kind:       "StatefulSet",
@@ -394,8 +514,8 @@ var _ = Describe("Miscellaneous Tests", func() {
 				err := clientSet.Create(testCtx, sts)
 				Expect(err).ShouldNot(HaveOccurred())
 
-				clusterState := GetInitialClusterState(testCtx, *logger, clientSet, podName, namespace)
-				Expect(clusterState).Should(Equal(ClusterStateNew))
+				clusterState := GetInitialClusterStateIfScaleup(testCtx, *logger, clientSet, podName, namespace)
+				Expect(clusterState).Should(Equal(emptyString))
 			})
 		})
 		Context("In case of Scaling up from single node to multi-node etcd", func() {
@@ -421,7 +541,7 @@ var _ = Describe("Miscellaneous Tests", func() {
 				err := clientSet.Create(testCtx, sts)
 				Expect(err).ShouldNot(HaveOccurred())
 
-				clusterState := GetInitialClusterState(testCtx, *logger, clientSet, podName, namespace)
+				clusterState := GetInitialClusterStateIfScaleup(testCtx, *logger, clientSet, podName, namespace)
 				Expect(clusterState).Should(Equal(ClusterStateExisting))
 			})
 		})
@@ -451,7 +571,7 @@ var _ = Describe("Miscellaneous Tests", func() {
 				err := clientSet.Create(testCtx, sts)
 				Expect(err).ShouldNot(HaveOccurred())
 
-				clusterState := GetInitialClusterState(testCtx, *logger, clientSet, podName, wrongNamespace)
+				clusterState := GetInitialClusterStateIfScaleup(testCtx, *logger, clientSet, podName, wrongNamespace)
 				Expect(clusterState).Should(Equal(ClusterStateNew))
 			})
 		})

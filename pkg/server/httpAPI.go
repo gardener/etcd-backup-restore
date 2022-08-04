@@ -40,8 +40,10 @@ import (
 	"github.com/ghodss/yaml"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/sirupsen/logrus"
+
 	"go.etcd.io/etcd/clientv3"
 	"k8s.io/client-go/util/retry"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 const (
@@ -92,6 +94,7 @@ type HTTPHandler struct {
 	ServerTLSCertFile         string
 	ServerTLSKeyFile          string
 	HTTPHandlerMutex          *sync.Mutex
+	SnapstoreConfig           *brtypes.SnapstoreConfig
 }
 
 // healthCheck contains the HealthStatus of backup restore.
@@ -444,9 +447,16 @@ func (h *HTTPHandler) serveConfig(rw http.ResponseWriter, req *http.Request) {
 	domaiName = fmt.Sprintf("%s.%s.%s", svcName, namespace, "svc")
 	config["advertise-client-urls"] = fmt.Sprintf("%s://%s.%s:%s", protocol, podName, domaiName, clientPort)
 
-	config["initial-cluster-state"] = miscellaneous.GetInitialClusterState(req.Context(), *h.Logger, clientSet, podName, podNS)
-
 	config["initial-cluster"] = getInitialCluster(req.Context(), fmt.Sprint(config["initial-cluster"]), *h.EtcdConnectionConfig, protocol, clientPort, *h.Logger, podName)
+
+	clusterSize, err := miscellaneous.GetClusterSize(fmt.Sprint(config["initial-cluster"]))
+	if err != nil {
+		h.Logger.Warnf("Unable to determine the cluster size: %v", err)
+		rw.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	config["initial-cluster-state"] = h.GetClusterState(req.Context(), clusterSize, clientSet, podName, podNS)
 
 	data, err := yaml.Marshal(&config)
 	if err != nil {
@@ -464,6 +474,32 @@ func (h *HTTPHandler) serveConfig(rw http.ResponseWriter, req *http.Request) {
 	http.ServeFile(rw, req, outputFileName)
 
 	h.Logger.Info("Served config for ETCD instance.")
+}
+
+// GetClusterState returns the Cluster state either `new` or `existing`.
+func (h *HTTPHandler) GetClusterState(ctx context.Context, clusterSize int, clientSet client.Client, podName string, podNS string) string {
+	if clusterSize == 1 {
+		return miscellaneous.ClusterStateNew
+	}
+
+	// clusterSize > 1
+	state := miscellaneous.GetInitialClusterStateIfScaleup(ctx, *h.Logger, clientSet, podName, podNS)
+
+	if len(state) == 0 {
+		// Not a Scale-up scenario.
+		// Either a multi-node bootstrap or a restoration of single member in multi-node.
+		m := member.NewMemberControl(h.EtcdConnectionConfig)
+
+		// check whether a learner is present in the cluster
+		// if a learner is present then return `ClusterStateExisting` else `ClusterStateNew`.
+		if present, err := m.IsLearnerPresent(ctx); present && err == nil {
+			return miscellaneous.ClusterStateExisting
+		}
+		return miscellaneous.ClusterStateNew
+
+	}
+
+	return state
 }
 
 func getInitialCluster(ctx context.Context, initialCluster string, etcdConn brtypes.EtcdConnectionConfig, protocol string, clientPort string, logger logrus.Entry, podName string) string {

@@ -21,6 +21,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/gardener/etcd-backup-restore/pkg/errors"
 	"github.com/gardener/etcd-backup-restore/pkg/initializer/validator"
 	"github.com/gardener/etcd-backup-restore/pkg/member"
 	"github.com/gardener/etcd-backup-restore/pkg/metrics"
@@ -45,12 +46,15 @@ import (
 //		   - No snapshots are available, start etcd as a fresh installation.
 func (e *EtcdInitializer) Initialize(mode validator.Mode, failBelowRevision int64) error {
 	start := time.Now()
+	isEtcdMemberPresent := false
+	ctx := context.Background()
+	var err error
+
 	//Etcd cluster scale-up case
 	if miscellaneous.IsMultiNode(e.Logger.WithField("actor", "initializer")) {
 		m := member.NewMemberControl(e.Config.EtcdConnectionConfig)
-		ctx := context.Background()
-		clusterMember, err := m.IsMemberInCluster(ctx)
-		if !clusterMember && err == nil {
+		isEtcdMemberPresent, err = m.IsMemberInCluster(ctx)
+		if !isEtcdMemberPresent && err == nil {
 			retry.OnError(retry.DefaultBackoff, func(err error) bool {
 				return err != nil
 			}, func() error {
@@ -77,11 +81,6 @@ func (e *EtcdInitializer) Initialize(mode validator.Mode, failBelowRevision int6
 		return fmt.Errorf("error while initializing: %v", err)
 	}
 
-	if dataDirStatus == validator.DataDirStatusUnknownInMultiNode {
-		metrics.ValidationDurationSeconds.With(prometheus.Labels{metrics.LabelSucceeded: metrics.ValueSucceededFalse}).Observe(time.Since(start).Seconds())
-		return fmt.Errorf("failed to initialize data dir of cluster member in multi-node cluster")
-	}
-
 	if dataDirStatus == validator.FailBelowRevisionConsistencyError {
 		metrics.ValidationDurationSeconds.With(prometheus.Labels{metrics.LabelSucceeded: metrics.ValueSucceededFalse}).Observe(time.Since(start).Seconds())
 		return fmt.Errorf("failed to initialize since fail below revision check failed")
@@ -90,14 +89,21 @@ func (e *EtcdInitializer) Initialize(mode validator.Mode, failBelowRevision int6
 	metrics.ValidationDurationSeconds.With(prometheus.Labels{metrics.LabelSucceeded: metrics.ValueSucceededTrue}).Observe(time.Since(start).Seconds())
 
 	if dataDirStatus != validator.DataDirectoryValid {
-		start := time.Now()
-		restored, err := e.restoreCorruptData()
-		if err != nil {
-			metrics.RestorationDurationSeconds.With(prometheus.Labels{metrics.LabelSucceeded: metrics.ValueSucceededFalse}).Observe(time.Since(start).Seconds())
-			return fmt.Errorf("error while restoring corrupt data: %v", err)
-		}
-		if restored {
-			metrics.RestorationDurationSeconds.With(prometheus.Labels{metrics.LabelSucceeded: metrics.ValueSucceededTrue}).Observe(time.Since(start).Seconds())
+		if dataDirStatus == validator.DataDirStatusInvalidInMultiNode || (e.Validator.OriginalClusterSize > 1 && dataDirStatus == validator.DataDirectoryCorrupt) || (e.Validator.OriginalClusterSize > 1 && isEtcdMemberPresent) {
+			if err := e.restoreInMultiNode(ctx); err != nil {
+				return err
+			}
+		} else {
+			// For case: ClusterSize=1 or when multi-node cluster(ClusterSize>1) is bootstrapped
+			start := time.Now()
+			restored, err := e.restoreCorruptData()
+			if err != nil {
+				metrics.RestorationDurationSeconds.With(prometheus.Labels{metrics.LabelSucceeded: metrics.ValueSucceededFalse}).Observe(time.Since(start).Seconds())
+				return fmt.Errorf("error while restoring corrupt data: %v", err)
+			}
+			if restored {
+				metrics.RestorationDurationSeconds.With(prometheus.Labels{metrics.LabelSucceeded: metrics.ValueSucceededTrue}).Observe(time.Since(start).Seconds())
+			}
 		}
 	}
 	return nil
@@ -222,6 +228,30 @@ func (e *EtcdInitializer) removeDir(dirname string) error {
 	e.Logger.Infof("Removing directory(%s).", dirname)
 	if err := os.RemoveAll(filepath.Join(dirname)); err != nil {
 		return fmt.Errorf("failed to remove directory %s with err: %v", dirname, err)
+	}
+	return nil
+}
+
+// restoreInMultiNode
+// * Remove the member from the cluster
+// * Clean the data-dir of member that needs to be restored.
+// * Add a new member as a learner(non-voting member)
+func (e *EtcdInitializer) restoreInMultiNode(ctx context.Context) error {
+	m := member.NewMemberControl(e.Config.EtcdConnectionConfig)
+	if err := retry.OnError(retry.DefaultBackoff, errors.AnyError, func() error {
+		return m.RemoveMember(ctx)
+	}); err != nil {
+		return fmt.Errorf("unable to remove the member %v", err)
+	}
+
+	if err := e.removeDir(e.Config.RestoreOptions.Config.RestoreDataDir); err != nil {
+		return fmt.Errorf("unable to remove the data-dir %v", err)
+	}
+
+	if err := retry.OnError(retry.DefaultBackoff, errors.AnyError, func() error {
+		return m.AddMemberAsLearner(ctx)
+	}); err != nil {
+		return fmt.Errorf("unable to add the member as learner %v", err)
 	}
 	return nil
 }

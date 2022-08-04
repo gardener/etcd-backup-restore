@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -41,11 +42,18 @@ type Control interface {
 	// IsMemberInCluster checks is the current members peer URL is already part of the etcd cluster
 	IsMemberInCluster(context.Context) (bool, error)
 
-	// PromoteMember promotes an etcd member from a learner to a voting member of the cluster. This will succeed if and only if learner is in a healthy state and the learner is in sync with leader
+	// PromoteMember promotes an etcd member from a learner to a voting member of the cluster.
+	// This will succeed if and only if learner is in a healthy state and the learner is in sync with leader.
 	PromoteMember(context.Context) error
 
 	// UpdateMember updates the peer address of a specified etcd cluster member.
 	UpdateMember(context.Context, client.ClusterCloser) error
+
+	// RemoveMember removes the member from the etcd cluster.
+	RemoveMember(context.Context) error
+
+	// IsLearnerPresent checks for the learner(non-voting) member in a cluster.
+	IsLearnerPresent(context.Context) (bool, error)
 }
 
 // memberControl holds the configuration for the mechanism of adding a new member to the cluster.
@@ -100,17 +108,16 @@ func (m *memberControl) AddMemberAsLearner(ctx context.Context) error {
 
 	memAddCtx, cancel := context.WithTimeout(ctx, EtcdTimeout)
 	defer cancel()
-	_, err = cli.MemberAddAsLearner(memAddCtx, []string{memberURL})
-
+	response, err := cli.MemberAddAsLearner(memAddCtx, []string{memberURL})
 	if err != nil {
 		if errors.Is(err, rpctypes.Error(rpctypes.ErrGRPCPeerURLExist)) || errors.Is(err, rpctypes.Error(rpctypes.ErrGRPCMemberExist)) {
 			m.logger.Infof("Member %s already part of etcd cluster", memberURL)
 			return nil
 		}
-		return fmt.Errorf("Error adding member as a learner: %v", err)
+		return fmt.Errorf("error while adding member as a learner: %v", err)
 	}
 
-	m.logger.Infof("Added member %s to cluster as a learner", memberURL)
+	m.logger.Infof("Added member %v to cluster as a learner", strconv.FormatUint(response.Member.GetID(), 16))
 	return nil
 }
 
@@ -152,8 +159,8 @@ func (m *memberControl) IsMemberInCluster(ctx context.Context) (bool, error) {
 		return false, fmt.Errorf("could not list any etcd members %w", err)
 	}
 
-	for _, y := range etcdMemberList.Members {
-		if y.Name == m.podName {
+	for _, member := range etcdMemberList.Members {
+		if member.GetName() == m.podName {
 			m.logger.Infof("Member %s part of running cluster", m.podName)
 			return true, nil
 		}
@@ -207,7 +214,7 @@ func (m *memberControl) updateMemberPeerAddress(ctx context.Context, cli client.
 	memberUpdateCtx, cancel := context.WithTimeout(ctx, EtcdTimeout)
 	defer cancel()
 
-	if _, err := cli.MemberUpdate(memberUpdateCtx, id, []string{memberURL}); err == nil {
+	if _, err = cli.MemberUpdate(memberUpdateCtx, id, []string{memberURL}); err == nil {
 		m.logger.Info("Successfully updated the member peer URL")
 		return nil
 	}
@@ -239,7 +246,7 @@ func (m *memberControl) PromoteMember(ctx context.Context) error {
 		return ErrMissingMember
 	}
 
-	return m.doPromoteMember(ctx, foundMember, cli)
+	return miscellaneous.DoPromoteMember(ctx, foundMember, cli, &m.logger)
 }
 
 func findMember(existingMembers []*etcdserverpb.Member, memberName string) *etcdserverpb.Member {
@@ -265,16 +272,44 @@ func (m *memberControl) UpdateMember(ctx context.Context, cli client.ClusterClos
 	return m.updateMemberPeerAddress(ctx, cli, membersInfo.Header.GetMemberId())
 }
 
-func (m *memberControl) doPromoteMember(ctx context.Context, member *etcdserverpb.Member, cli client.ClusterCloser) error {
-	memPromoteCtx, cancel := context.WithTimeout(ctx, brtypes.DefaultEtcdConnectionTimeout)
-	defer cancel()
-	_, err := cli.MemberPromote(memPromoteCtx, member.ID) //Member promote call will succeed only if member is in sync with leader, and will error out otherwise
-	if err == nil {                                       //Member successfully promoted
-		m.logger.Infof("Member %v with ID: %v has been promoted", member.GetName(), member.GetID())
-		return nil
-	} else if errors.Is(err, rpctypes.Error(rpctypes.ErrGRPCMemberNotLearner)) { //Member is not a learner
-		m.logger.Info("Member ", member.Name, " : ", member.ID, " already part of etcd cluster")
+// RemoveMember removes the member from the etcd cluster.
+func (m *memberControl) RemoveMember(ctx context.Context) error {
+	m.logger.Infof("Removing the %s member from cluster", m.podName)
+
+	cli, err := m.clientFactory.NewCluster()
+	if err != nil {
+		return fmt.Errorf("failed to build etcd cluster client : %v", err)
+	}
+	defer cli.Close()
+
+	memRemoveCtx, memRemoveCtxCancel := context.WithTimeout(ctx, brtypes.DefaultEtcdConnectionTimeout)
+	defer memRemoveCtxCancel()
+
+	memberInfo, err := cli.MemberList(memRemoveCtx)
+	if err != nil {
+		return fmt.Errorf("error listing members: %v", err)
+	}
+
+	foundMember := findMember(memberInfo.Members, m.podName)
+	if foundMember == nil {
 		return nil
 	}
-	return err
+
+	return miscellaneous.RemoveMemberFromCluster(memRemoveCtx, cli, foundMember.GetID(), &m.logger)
+}
+
+// IsLearnerPresent checks for the learner(non-voting) member in a cluster.
+func (m *memberControl) IsLearnerPresent(ctx context.Context) (bool, error) {
+	m.logger.Infof("checking the presence of a learner in a cluster...")
+
+	cli, err := m.clientFactory.NewCluster()
+	if err != nil {
+		return false, fmt.Errorf("failed to build etcd cluster client : %v", err)
+	}
+	defer cli.Close()
+
+	learnerCtx, learnerCtxCancel := context.WithTimeout(ctx, brtypes.DefaultEtcdConnectionTimeout)
+	defer learnerCtxCancel()
+
+	return miscellaneous.CheckIfLearnerPresent(learnerCtx, cli)
 }

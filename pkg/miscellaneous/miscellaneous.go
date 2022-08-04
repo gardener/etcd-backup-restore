@@ -16,12 +16,14 @@ package miscellaneous
 
 import (
 	"context"
+	errored "errors"
 	"fmt"
 	"net"
 	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -33,6 +35,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/sirupsen/logrus"
 	"go.etcd.io/etcd/embed"
+	"go.etcd.io/etcd/etcdserver/api/v3rpc/rpctypes"
+	"go.etcd.io/etcd/etcdserver/etcdserverpb"
 	"go.etcd.io/etcd/pkg/types"
 	"gopkg.in/yaml.v2"
 
@@ -302,9 +306,7 @@ func GetEnvVarOrError(varName string) (string, error) {
 
 // GetEtcdSvcEndpoint returns the endpoint to the etcd client service
 func GetEtcdSvcEndpoint() (string, error) {
-	var inputFileName string
-
-	inputFileName = GetConfigFilePath()
+	inputFileName := GetConfigFilePath()
 	if inputFileName != EtcdConfigFilePath {
 		// Return "" here to indicate to the caller to use the default svc endpoint.
 		// This is used for testing purposes where localhost is to be used as the endpoint
@@ -445,8 +447,8 @@ func IsBackupBucketEmpty(snapStoreConfig *brtypes.SnapstoreConfig, logger *logru
 	return true
 }
 
-// GetInitialClusterState returns the cluster state, either `new` or `existing`.
-func GetInitialClusterState(ctx context.Context, logger logrus.Entry, clientSet client.Client, podName string, podNS string) string {
+// GetInitialClusterStateIfScaleup checks if it is the Scale-up scenario and returns the cluster state either `new` or `existing`.
+func GetInitialClusterStateIfScaleup(ctx context.Context, logger logrus.Entry, clientSet client.Client, podName string, podNS string) string {
 	//Read sts spec for updated replicas to toggle `initial-cluster-state`
 	curSts := &appsv1.StatefulSet{}
 	errSts := clientSet.Get(ctx, client.ObjectKey{
@@ -463,5 +465,50 @@ func GetInitialClusterState(ctx context.Context, logger logrus.Entry, clientSet 
 		return ClusterStateExisting
 	}
 
-	return ClusterStateNew
+	return ""
+}
+
+// DoPromoteMember promotes a given learner to a voting member.
+func DoPromoteMember(ctx context.Context, member *etcdserverpb.Member, cli etcdClient.ClusterCloser, logger *logrus.Entry) error {
+	memPromoteCtx, cancel := context.WithTimeout(ctx, brtypes.DefaultEtcdConnectionTimeout)
+	defer cancel()
+
+	//Member promote call will succeed only if member is in sync with leader, and will error out otherwise
+	_, err := cli.MemberPromote(memPromoteCtx, member.ID)
+	if err == nil {
+		//Member successfully promoted
+		logger.Infof("Member %v with [ID: %v] has been promoted", member.GetName(), strconv.FormatUint(member.GetID(), 16))
+		return nil
+	} else if errored.Is(err, rpctypes.Error(rpctypes.ErrGRPCMemberNotLearner)) {
+		//Member is not a learner
+		logger.Info("Member ", member.Name, " : ", member.ID, " already a voting member of cluster.")
+		return nil
+	}
+	return err
+}
+
+// CheckIfLearnerPresent checks whether a learner(non-voting) member present or not.
+func CheckIfLearnerPresent(ctx context.Context, cli etcdClient.ClusterCloser) (bool, error) {
+	membersInfo, err := cli.MemberList(ctx)
+	if err != nil {
+		return false, fmt.Errorf("error listing members: %v", err)
+	}
+
+	for _, member := range membersInfo.Members {
+		if member.IsLearner {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// RemoveMemberFromCluster removes member of given ID from etcd cluster.
+func RemoveMemberFromCluster(ctx context.Context, cli etcdClient.ClusterCloser, memberID uint64, logger *logrus.Entry) error {
+	_, err := cli.MemberRemove(ctx, memberID)
+	if err != nil {
+		return fmt.Errorf("unable to remove member [ID:%v] from the cluster: %v", strconv.FormatUint(memberID, 16), err)
+	}
+
+	logger.Infof("successfully removed member [ID: %v] from the cluster", strconv.FormatUint(memberID, 16))
+	return nil
 }
