@@ -228,7 +228,6 @@ func (b *BackupRestoreServer) runServer(ctx context.Context, restoreOpts *brtype
 
 	leaderCallbacks := &brtypes.LeaderCallbacks{
 		OnStartedLeading: func(leCtx context.Context) {
-			ssrStopCh = make(chan struct{})
 			var err error
 			var defragCallBack defragmentor.CallbackFunc
 			if runServerWithSnapshotter {
