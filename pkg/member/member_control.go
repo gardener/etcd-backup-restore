@@ -282,10 +282,10 @@ func (m *memberControl) RemoveMember(ctx context.Context) error {
 	}
 	defer cli.Close()
 
-	ctx, cancel := context.WithTimeout(ctx, brtypes.DefaultEtcdConnectionTimeout)
-	defer cancel()
+	memRemoveCtx, memRemoveCtxCancel := context.WithTimeout(ctx, brtypes.DefaultEtcdConnectionTimeout)
+	defer memRemoveCtxCancel()
 
-	memberInfo, err := cli.MemberList(ctx)
+	memberInfo, err := cli.MemberList(memRemoveCtx)
 	if err != nil {
 		return fmt.Errorf("error listing members: %v", err)
 	}
@@ -295,7 +295,7 @@ func (m *memberControl) RemoveMember(ctx context.Context) error {
 		return nil
 	}
 
-	return miscellaneous.RemoveMemberFromCluster(ctx, cli, foundMember.GetID(), &m.logger)
+	return miscellaneous.RemoveMemberFromCluster(memRemoveCtx, cli, foundMember.GetID(), &m.logger)
 }
 
 // IsLearnerPresent checks for the learner(non-voting) member in a cluster.
@@ -308,8 +308,8 @@ func (m *memberControl) IsLearnerPresent(ctx context.Context) (bool, error) {
 	}
 	defer cli.Close()
 
-	ctx, cancel := context.WithTimeout(ctx, brtypes.DefaultEtcdConnectionTimeout)
-	defer cancel()
+	learnerCtx, learnerCtxCancel := context.WithTimeout(ctx, brtypes.DefaultEtcdConnectionTimeout)
+	defer learnerCtxCancel()
 
-	return miscellaneous.CheckIfLearnerPresent(ctx, cli)
+	return miscellaneous.CheckIfLearnerPresent(learnerCtx, cli)
 }
