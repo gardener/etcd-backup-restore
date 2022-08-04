@@ -304,37 +304,6 @@ func GetEnvVarOrError(varName string) (string, error) {
 	return value, nil
 }
 
-// GetEtcdSvcEndpoint returns the endpoint to the etcd client service
-func GetEtcdSvcEndpoint() (string, error) {
-	inputFileName := GetConfigFilePath()
-	if inputFileName != EtcdConfigFilePath {
-		// Return "" here to indicate to the caller to use the default svc endpoint.
-		// This is used for testing purposes where localhost is to be used as the endpoint
-		return "", nil
-	}
-
-	configYML, err := os.ReadFile(inputFileName)
-	if err != nil {
-		return "", fmt.Errorf("unable to read etcd config file: %v", err)
-	}
-
-	config := map[string]interface{}{}
-	err = yaml.Unmarshal([]byte(configYML), &config)
-	if err := yaml.Unmarshal([]byte(configYML), &config); err != nil {
-		return "", fmt.Errorf("unable to unmarshal etcd config yaml file: %v", err)
-	}
-
-	advClientURL := config["advertise-client-urls"]
-	tokens := strings.Split(fmt.Sprint(advClientURL), "@")
-	if len(tokens) < 4 {
-		return "", fmt.Errorf("total length of tokens is less than four")
-	}
-	protocol := tokens[0]
-	svcName := tokens[1]
-	peerPort := tokens[3]
-	return fmt.Sprintf("%s://%s:%s", protocol, svcName, peerPort), nil
-}
-
 // ProbeEtcd probes the etcd endpoint to check if an etcd is available
 func ProbeEtcd(ctx context.Context, clientFactory etcdClient.Factory, logger *logrus.Entry) error {
 	clientKV, err := clientFactory.NewKV()

@@ -40,7 +40,7 @@ const (
 )
 
 // NewClientFactoryFunc allows to define how to create a client.Factory
-type NewClientFactoryFunc func(cfg EtcdConnectionConfig) client.Factory
+type NewClientFactoryFunc func(cfg EtcdConnectionConfig, opts ...client.Option) client.Factory
 
 // RestoreOptions hold all snapshot restore related fields
 // Note: Please ensure DeepCopy and DeepCopyInto are properly implemented.
