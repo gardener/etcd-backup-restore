@@ -53,6 +53,9 @@ type Control interface {
 
 	// IsLearnerPresent checks for the learner(non-voting) member in a cluster.
 	IsLearnerPresent(context.Context) (bool, error)
+
+	// ClusterSizeExcludingLearnerdetermines the cluster size without considering the learners
+	ClusterSizeExcludingLearner(context.Context) (int, error)
 }
 
 // memberControl holds the configuration for the mechanism of adding a new member to the cluster.
@@ -296,4 +299,28 @@ func (m *memberControl) IsLearnerPresent(ctx context.Context) (bool, error) {
 	defer learnerCtxCancel()
 
 	return miscellaneous.CheckIfLearnerPresent(learnerCtx, cli)
+}
+
+// ClusterSizeExcludingLearnerdetermines the cluster size without considering the learners
+func (m *memberControl) ClusterSizeExcludingLearner(ctx context.Context) (int, error) {
+	m.logger.Infof("determining the cluster size except the learners...")
+
+	cli, err := m.clientFactory.NewCluster()
+	if err != nil {
+		return 0, fmt.Errorf("failed to build etcd cluster client : %v", err)
+	}
+
+	membersInfo, err := cli.MemberList(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("error listing members: %v", err)
+	}
+
+	count := 0
+	for _, member := range membersInfo.Members {
+		if member.IsLearner {
+			continue
+		}
+		count++
+	}
+	return count, nil
 }

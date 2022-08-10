@@ -43,6 +43,7 @@ import (
 	"k8s.io/utils/pointer"
 
 	appsv1 "k8s.io/api/apps/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
 	fake "sigs.k8s.io/controller-runtime/pkg/client/fake"
@@ -199,6 +200,20 @@ func GetKubernetesClientSetOrError() (client.Client, error) {
 	return cl, nil
 }
 
+// GetKubernetesClientSetWithSchemeOrError creates and returns a kubernetes clientset or an error if creation fails
+func GetKubernetesClientSetWithSchemeOrError(scheme *runtime.Scheme) (client.Client, error) {
+	var cl client.Client
+	restConfig, err := config.GetConfig()
+	if err != nil {
+		return nil, err
+	}
+	cl, err = client.New(restConfig, client.Options{Scheme: scheme})
+	if err != nil {
+		return nil, err
+	}
+	return cl, nil
+}
+
 // GetFakeKubernetesClientSet creates a fake client set. To be used for unit tests
 func GetFakeKubernetesClientSet() client.Client {
 	return fake.NewClientBuilder().Build()
@@ -342,34 +357,6 @@ func GetClusterSize(cluster string) (int, error) {
 	}
 
 	return len(clusterMap), nil
-}
-
-// IsMultiNode determines whether a pod is part of a multi node setup or not
-// This is determined by checking the `initial-cluster` of the etcd configmap to check the number of members expected
-func IsMultiNode(logger *logrus.Entry) bool {
-	inputFileName := GetConfigFilePath()
-
-	configYML, err := os.ReadFile(inputFileName)
-	if err != nil {
-		return false
-	}
-
-	config := map[string]interface{}{}
-	err = yaml.Unmarshal([]byte(configYML), &config)
-	if err := yaml.Unmarshal([]byte(configYML), &config); err != nil {
-		return false
-	}
-
-	initialClusterMap, err := GetClusterSize(fmt.Sprint(config["initial-cluster"]))
-	if err != nil {
-		logger.Fatal("initial cluster value for not present in etcd config file")
-	}
-
-	if initialClusterMap > 1 {
-		return true
-	}
-
-	return false
 }
 
 // SleepWithContext sleeps for a determined period while respecting a context

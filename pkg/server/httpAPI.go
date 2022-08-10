@@ -41,6 +41,8 @@ import (
 	"github.com/ghodss/yaml"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/sirupsen/logrus"
+	appsv1 "k8s.io/api/apps/v1"
+
 	"go.etcd.io/etcd/clientv3"
 	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -207,10 +209,7 @@ func (h *HTTPHandler) serveHealthz(rw http.ResponseWriter, req *http.Request) {
 	rw.WriteHeader(h.GetStatus())
 	healthCheck := &healthCheck{
 		HealthStatus: func() bool {
-			if h.GetStatus() == http.StatusOK {
-				return true
-			}
-			return false
+			return h.GetStatus() == http.StatusOK
 		}(),
 	}
 	json, err := json.Marshal(healthCheck)
@@ -447,7 +446,7 @@ func (h *HTTPHandler) serveConfig(rw http.ResponseWriter, req *http.Request) {
 	domaiName = fmt.Sprintf("%s.%s.%s", svcName, namespace, "svc")
 	config["advertise-client-urls"] = fmt.Sprintf("%s://%s.%s:%s", protocol, podName, domaiName, clientPort)
 
-	config["initial-cluster"] = getInitialCluster(req.Context(), fmt.Sprint(config["initial-cluster"]), *h.EtcdConnectionConfig, *h.Logger, podName)
+	config["initial-cluster"] = getInitialCluster(req.Context(), fmt.Sprint(config["initial-cluster"]), *h.EtcdConnectionConfig, protocol, clientPort, *h.Logger, podName)
 
 	clusterSize, err := miscellaneous.GetClusterSize(fmt.Sprint(config["initial-cluster"]))
 	if err != nil {
@@ -462,6 +461,12 @@ func (h *HTTPHandler) serveConfig(rw http.ResponseWriter, req *http.Request) {
 		return
 	}
 	config["initial-cluster-state"] = state
+
+	forceCluster := os.Getenv("FORCE_CLUSTER")
+	if forceCluster == "true" {
+		config["force-new-cluster"] = true
+	}
+	os.Setenv("FORCE_CLUSTER", "false")
 
 	data, err := yaml.Marshal(&config)
 	if err != nil {
@@ -510,12 +515,39 @@ func (h *HTTPHandler) GetClusterState(ctx context.Context, clusterSize int, clie
 	return *state, nil
 }
 
-func getInitialCluster(ctx context.Context, initialCluster string, etcdConn brtypes.EtcdConnectionConfig, logger logrus.Entry, podName string) string {
-	// INITIAL_CLUSTER served via the etcd config must be tailored to the number of members in the cluster at that point. Else etcd complains with error "member count is unequal"
-	// One reason why we might want to have a strict ordering when members are joining the cluster
-	// addmember subcommand achieves this by making sure the pod with the previous index is running before attempting to add itself as a learner
+func getInitialCluster(ctx context.Context, initialCluster string, etcdConn brtypes.EtcdConnectionConfig, protocol string, clientPort string, logger logrus.Entry, podName string) string {
+	//INITIAL_CLUSTER served via the etcd config must be tailored to the number of members in the cluster at that point. Else etcd complains with error "member count is unequal"
+	//One reason why we might want to have a strict ordering when members are joining the cluster
+	//addmember subcommand achieves this by making sure the pod with the previous index is running before attempting to add itself as a learner
 
-	// We want to use the service endpoint since we're only supposed to connect to ready etcd members.
+	//Test for quorum loss
+	clientSet, err := miscellaneous.GetKubernetesClientSetOrError()
+	if err != nil {
+		logger.Errorf("failed to create clientset: %v", err)
+	}
+
+	sts := &appsv1.StatefulSet{}
+	if err := clientSet.Get(ctx, client.ObjectKey{
+		Namespace: os.Getenv("POD_NAMESPACE"),
+		Name:      podName[:strings.LastIndex(podName, "-")],
+	}, sts); err != nil {
+		return fmt.Sprintf("Could not fetch etcd statefulset %v with error: %v", podName[:strings.LastIndex(podName, "-")], err)
+	}
+	stsSpecReplicas := *sts.Spec.Replicas
+
+	initialClusterURLs := strings.Split(initialCluster, ",")
+
+	if stsSpecReplicas == 1 && len(initialClusterURLs) > 1 {
+		//Quorum loss case
+		for _, y := range initialClusterURLs {
+			// Add member to `initial-cluster` only if already a cluster member
+			z := strings.Split(y, "=")
+			if z[0] == podName {
+				return y
+			}
+		}
+	}
+
 	clientFactory := etcdutil.NewFactory(etcdConn, etcdclient.UseServiceEndpoints(true))
 	cli, err := clientFactory.NewCluster()
 	if err != nil {
@@ -651,7 +683,6 @@ func (h *HTTPHandler) delegateReqToLeader(rw http.ResponseWriter, req *http.Requ
 	}
 	revProxyHandler := httputil.NewSingleHostReverseProxy(backupLeaderURL)
 	revProxyHandler.ServeHTTP(rw, req)
-	return
 }
 
 // IsBackupRestoreHealthy checks the whether the backup-restore of given backup-restore URL healthy or not.

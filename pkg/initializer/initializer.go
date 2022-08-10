@@ -17,8 +17,10 @@ package initializer
 import (
 	"context"
 	"fmt"
+	"io/ioutil"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/gardener/etcd-backup-restore/pkg/errors"
@@ -29,10 +31,16 @@ import (
 	"github.com/gardener/etcd-backup-restore/pkg/snapshot/restorer"
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
+	druidv1alpha1 "github.com/gardener/etcd-druid/api/v1alpha1"
+	"github.com/ghodss/yaml"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/sirupsen/logrus"
 	"go.uber.org/zap"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/util/retry"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 // Initialize has the following steps:
@@ -47,22 +55,95 @@ import (
 func (e *EtcdInitializer) Initialize(mode validator.Mode, failBelowRevision int64) error {
 	metrics.CurrentClusterSize.With(prometheus.Labels{}).Set(float64(e.Validator.OriginalClusterSize))
 	start := time.Now()
-	isEtcdMemberPresent := false
+	var isEtcdMemberPresent bool
 	ctx := context.Background()
 	var err error
 
-	//Etcd cluster scale-up case
-	if miscellaneous.IsMultiNode(e.Logger.WithField("actor", "initializer")) {
-		m := member.NewMemberControl(e.Config.EtcdConnectionConfig)
-		isEtcdMemberPresent, err = m.IsMemberInCluster(ctx)
-		if !isEtcdMemberPresent && err == nil {
-			retry.OnError(retry.DefaultBackoff, func(err error) bool {
-				return err != nil
-			}, func() error {
-				return m.AddMemberAsLearner(ctx)
-			})
-			// return here after adding member as no restoration or validation needed
-			return nil
+	var sc *runtime.Scheme = scheme.Scheme
+
+	//create kubectl client
+	if err := druidv1alpha1.AddToScheme(sc); err != nil {
+		fmt.Printf("failed to register scheme: %v", err)
+		os.Exit(1)
+	}
+
+	clientSet, err := miscellaneous.GetKubernetesClientSetWithSchemeOrError(sc)
+	if err != nil {
+		e.Logger.Warnf("Failed to create clientset: %v", err)
+		return nil
+	}
+
+	etcd := &druidv1alpha1.Etcd{}
+	//Read etcd
+	podName := os.Getenv("POD_NAME")
+	podNameSpace := os.Getenv("POD_NAMESPACE")
+	etcdName := podName[:strings.LastIndex(podName, "-")]
+	if err := clientSet.Get(ctx, client.ObjectKey{
+		Namespace: podNameSpace,
+		Name:      etcdName,
+	}, etcd); err != nil {
+		return &errors.EtcdError{
+			Message: fmt.Sprintf("Could not fetch etcd CR %v/%v with error: %v", etcdName, podNameSpace, err),
+		}
+	}
+
+	_, bootstrapCaseFound := etcd.Annotations["druid.gardener.cloud/bootstrap"]
+	_, quorumLossCaseFound := etcd.Annotations["druid.gardener.cloud/quorum-loss"]
+
+	if !bootstrapCaseFound {
+		inputFileName := miscellaneous.EtcdConfigFilePath
+		configYML, err := ioutil.ReadFile(inputFileName)
+		if err != nil {
+			return fmt.Errorf("unable to read etcd config file: %v", err)
+		}
+
+		config := map[string]interface{}{}
+		if err := yaml.Unmarshal([]byte(configYML), &config); err != nil {
+			return fmt.Errorf("unable to unmarshal etcd config yaml file: %v", err)
+		}
+
+		initialClusterURLs := strings.Split(fmt.Sprint(config["initial-cluster"]), ",")
+
+		// set the flag FORCE_CLUSTER=true if this instance is the first pod after quorum loss
+		if quorumLossCaseFound && podName == strings.Split(initialClusterURLs[0], "=")[0] {
+			// set environment variable to force start a cluster with the member
+			os.Setenv("FORCE_CLUSTER", "true")
+		} else {
+			if etcd.Spec.Replicas > 1 {
+				m := member.NewMemberControl(e.Config.EtcdConnectionConfig)
+				isEtcdMemberPresent, err = m.IsMemberInCluster(ctx)
+				if err != nil {
+					return fmt.Errorf("this member restarted but can't be determined whether it was part of the cluster: %v", err)
+				}
+
+				if !isEtcdMemberPresent {
+					backOff := wait.Backoff{
+						Steps:    100,
+						Duration: 30 * time.Second,
+						Factor:   5.0,
+						Jitter:   0.1,
+					}
+
+					retry.OnError(backOff, func(err error) bool {
+						return err != nil
+					}, func() error {
+						// check whether the cluster size without the learner is just one less than the member index found from the POD_NAME
+						size, err := m.ClusterSizeExcludingLearner(ctx)
+						if err != nil {
+							return err
+						}
+
+						// trick to add member as learner sequentially
+						if fmt.Sprint(size) == strings.Split(podName, "-")[2] {
+							return m.AddMemberAsLearner(ctx)
+						}
+
+						return fmt.Errorf("this member can't be added as learner yet because another member must be added before this member")
+					})
+					// return here after adding member as no restoration or validation needed
+					return nil
+				}
+			}
 		}
 	}
 
@@ -89,16 +170,17 @@ func (e *EtcdInitializer) Initialize(mode validator.Mode, failBelowRevision int6
 
 	metrics.ValidationDurationSeconds.With(prometheus.Labels{metrics.LabelSucceeded: metrics.ValueSucceededTrue}).Observe(time.Since(start).Seconds())
 
+	// bootstrap of the first member after quorum loss case as well as the bootstrap case come to this point
+	// so, check for quorum loss case and skip restoration using removing and adding member
 	if dataDirStatus != validator.DataDirectoryValid {
-		if dataDirStatus == validator.DataDirStatusInvalidInMultiNode || (e.Validator.OriginalClusterSize > 1 && dataDirStatus == validator.DataDirectoryCorrupt) || (e.Validator.OriginalClusterSize > 1 && isEtcdMemberPresent) {
-			start := time.Now()
+		if (dataDirStatus == validator.DataDirStatusInvalidInMultiNode || (e.Validator.OriginalClusterSize > 1 && dataDirStatus == validator.DataDirectoryCorrupt) || (e.Validator.OriginalClusterSize > 1 && isEtcdMemberPresent)) && !quorumLossCaseFound {
 			if err := e.restoreInMultiNode(ctx); err != nil {
 				metrics.RestorationDurationSeconds.With(prometheus.Labels{metrics.LabelRestorationKind: metrics.ValueRestoreSingleMemberInMultiNode, metrics.LabelSucceeded: metrics.ValueSucceededFalse}).Observe(time.Since(start).Seconds())
 				return err
 			}
 			metrics.RestorationDurationSeconds.With(prometheus.Labels{metrics.LabelRestorationKind: metrics.ValueRestoreSingleMemberInMultiNode, metrics.LabelSucceeded: metrics.ValueSucceededTrue}).Observe(time.Since(start).Seconds())
 		} else {
-			// For case: ClusterSize=1 or when multi-node cluster(ClusterSize>1) is bootstrapped
+			// for case: ClusterSize=1 or when multi-node cluster(ClusterSize>1) is bootstrapped
 			start := time.Now()
 			restored, err := e.restoreCorruptData()
 			if err != nil {

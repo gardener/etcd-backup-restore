@@ -62,6 +62,7 @@ var (
 	// runServerWithSnapshotter indicates whether to start server with or without snapshotter.
 	runServerWithSnapshotter bool = true
 	retryTimeout                  = 5 * time.Second
+	peerURLTLSEnabled        bool
 )
 
 const (
@@ -192,24 +193,6 @@ func (b *BackupRestoreServer) runServer(ctx context.Context, restoreOpts *brtype
 	defer handler.Stop()
 
 	metrics.CurrentClusterSize.With(prometheus.Labels{}).Set(float64(restoreOpts.OriginalClusterSize))
-	// Promotes member if it is a learner
-
-	if restoreOpts.OriginalClusterSize > 1 {
-		for {
-			select {
-			case <-ctx.Done():
-				b.logger.Info("Context cancelled. Stopping retry promoting member")
-				return ctx.Err()
-			default:
-			}
-			m := member.NewMemberControl(b.config.EtcdConnectionConfig)
-			err := m.PromoteMember(ctx)
-			if err == nil {
-				break
-			}
-			_ = miscellaneous.SleepWithContext(ctx, retryTimeout)
-		}
-	}
 
 	var memberPeerURL string
 
