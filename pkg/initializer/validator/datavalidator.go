@@ -54,6 +54,9 @@ var (
 
 	// ErrCorrupt is returned when a checking a data file finds errors.
 	ErrCorrupt = errors.New("invalid value")
+
+	// isBoltDBPanic is a flag which indicates the whether the panic occurs while opening the Bolt database.
+	isBoltDBPanic = false
 )
 
 func (d *DataValidator) memberDir() string { return filepath.Join(d.Config.DataDir, "member") }
@@ -141,6 +144,7 @@ func (d *DataValidator) sanityCheck(failBelowRevision int64) (DataDirStatus, err
 		return DataDirectoryValid, nil
 	}
 
+	d.Logger.Info("Checking for Etcd revision...")
 	etcdRevision, err := getLatestEtcdRevision(d.backendPath())
 	if err != nil && errors.Is(err, bolt.ErrTimeout) {
 		d.Logger.Errorf("another etcd process is using %v and holds the file lock", d.backendPath())
@@ -148,6 +152,13 @@ func (d *DataValidator) sanityCheck(failBelowRevision int64) (DataDirStatus, err
 	} else if err != nil {
 		d.Logger.Infof("unable to get current etcd revision from backend db file: %v", err)
 		return DataDirectoryCorrupt, nil
+	}
+
+	if isBoltDBPanic {
+		d.Logger.Info("Bolt database panic: database file found to be invalid.")
+		// reset the isBoltDBPanic
+		isBoltDBPanic = false
+		return BoltDBCorrupt, nil
 	}
 
 	if d.OriginalClusterSize > 1 {
@@ -205,6 +216,12 @@ func (d *DataValidator) checkForDataCorruption() error {
 			return err
 		}
 		return fmt.Errorf("invalid db files: %v", err)
+	}
+	if isBoltDBPanic {
+		d.Logger.Info("Bolt database panic: database file found to be invalid.")
+		// reset the isBoltDBPanic
+		isBoltDBPanic = false
+		return fmt.Errorf("invalid db files")
 	}
 	return nil
 }
@@ -272,6 +289,13 @@ func verifyDB(path string) error {
 	} else if _, err := os.Stat(path); os.IsNotExist(err) {
 		return ErrFileNotFound
 	}
+
+	defer func() {
+		if err := recover(); err != nil {
+			// set the flag: isBoltDBPanic
+			isBoltDBPanic = true
+		}
+	}()
 
 	// Open database.
 	db, err := bolt.Open(path, 0666, &bolt.Options{Timeout: timeoutToOpenBoltDB})
@@ -376,7 +400,7 @@ waitLoop:
 		case <-timer.C:
 			break waitLoop
 		default:
-			latestSyncedEtcdRevision, _ = getLatestSyncedRevision(clientKV)
+			latestSyncedEtcdRevision, _ = getLatestSyncedRevision(clientKV, d.Logger)
 			if latestSyncedEtcdRevision >= latestSnapshotRevision {
 				d.Logger.Infof("After starting embeddedEtcd backend DB file revision (%d) is greater than or equal to latest snapshot revision (%d): no data loss", latestSyncedEtcdRevision, latestSnapshotRevision)
 				break waitLoop
@@ -399,6 +423,13 @@ func getLatestEtcdRevision(path string) (int64, error) {
 	if _, err := os.Stat(path); err != nil {
 		return -1, fmt.Errorf("unable to stat backend db file: %v", err)
 	}
+
+	defer func() {
+		if err := recover(); err != nil {
+			// set the flag: isBoltDBPanic
+			isBoltDBPanic = true
+		}
+	}()
 
 	db, err := bolt.Open(path, 0400, &bolt.Options{Timeout: timeoutToOpenBoltDB, ReadOnly: true})
 	if err != nil {
@@ -433,14 +464,14 @@ func getLatestEtcdRevision(path string) (int64, error) {
 }
 
 // getLatestSyncedRevision finds out the latest revision on etcd db file when embedded etcd is started to double check the latest revision of etcd db file.
-func getLatestSyncedRevision(client client.KVCloser) (int64, error) {
+func getLatestSyncedRevision(client client.KVCloser, logger *logrus.Logger) (int64, error) {
 	var latestSyncedRevision int64
 
 	ctx, cancel := context.WithTimeout(context.TODO(), connectionTimeout)
 	defer cancel()
 	resp, err := client.Get(ctx, "", clientv3.WithLastRev()...)
 	if err != nil {
-		fmt.Printf("Failed to get the latest etcd revision: %v\n", err)
+		logger.Errorf("failed to get the latest etcd revision: %v\n", err)
 		return latestSyncedRevision, err
 	}
 	latestSyncedRevision = resp.Header.Revision

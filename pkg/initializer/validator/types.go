@@ -36,6 +36,8 @@ const (
 	DataDirectoryInvStruct
 	// DataDirectoryCorrupt indicates data directory is corrupt.
 	DataDirectoryCorrupt
+	// BoltDBCorrupt indicates Bolt database is corrupt.
+	BoltDBCorrupt
 	// DataDirectoryStatusUnknown indicates validator failed to check the data directory status.
 	DataDirectoryStatusUnknown
 	// DataDirStatusInvalidInMultiNode indicates validator failed to check the data directory status in multi-node etcd cluster.
