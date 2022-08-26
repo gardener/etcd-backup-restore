@@ -21,7 +21,9 @@ import (
 
 	"github.com/gardener/etcd-backup-restore/pkg/errors"
 	"github.com/gardener/etcd-backup-restore/pkg/etcdutil"
+	"github.com/gardener/etcd-backup-restore/pkg/metrics"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/sirupsen/logrus"
 )
 
@@ -149,6 +151,7 @@ func (le *LeaderElector) Run(ctx context.Context) error {
 				// If learner(non-voting member) is present in a cluster(size>1)
 				// then promote the learner to voting member.
 				if isLearner && le.PromoteCallback != nil {
+					metrics.IsLearner.With(prometheus.Labels{}).Set(1)
 					le.logger.Info("member is a learner(non-voting) member in the cluster...")
 					le.PromoteCallback.Promote(ctx, le.logger)
 				}

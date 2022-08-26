@@ -30,13 +30,22 @@ const (
 	ValueSucceededTrue = "true"
 	// ValueSucceededFalse is value False for metric label failed.
 	ValueSucceededFalse = "false"
+	// ValueRestoreSingleMemberInMN is value for metric of single member restoration in multi-node.
+	ValueRestoreSingleMemberInMN = "single_member"
+	// ValueRestoreSingleNode is value for metric of single node restoration.
+	ValueRestoreSingleNode = "single_node"
 	// LabelKind is a metrics label indicates kind of snapshot associated with metric.
 	LabelKind = "kind"
-	//LabelError is a metric error to indicate error occured
+	// LabelError is a metric error to indicate error occured.
 	LabelError = "error"
+	// LabelRestorationKind metric label indicates kind of restoration associated with metric.
+	LabelRestorationKind = "restore"
+	// LabelEndPoint is metric label for metric of etcd cluster endpoint.
+	LabelEndPoint = "endpoint"
 
 	namespaceEtcdBR      = "etcdbr"
 	subsystemSnapshot    = "snapshot"
+	subsystemRestore     = "restoration"
 	subsystemSnapstore   = "snapstore"
 	subsystemSnapshotter = "snapshotter"
 )
@@ -52,6 +61,11 @@ var (
 			ValueSucceededFalse,
 			ValueSucceededTrue,
 		},
+		LabelRestorationKind: {
+			ValueRestoreSingleMemberInMN,
+			ValueRestoreSingleNode,
+		},
+		LabelEndPoint: {""},
 	}
 
 	// GCSnapshotCounter is metric to count the garbage collected snapshots.
@@ -118,23 +132,26 @@ var (
 		},
 		[]string{LabelSucceeded},
 	)
-	// RestorationDurationSeconds is metric to expose the duration required to restore the data directory from snapshots in seconds.
+
+	// RestorationDurationSeconds is metric to expose the duration required to restore the etcd member.
 	RestorationDurationSeconds = prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
 			Namespace: namespaceEtcdBR,
-			Name:      "restoration_duration_seconds",
-			Help:      "Total latency distribution of restoring from snapshot.",
+			Subsystem: subsystemRestore,
+			Name:      "duration_seconds",
+			Help:      "Total latency distribution required to restore the etcd member.",
 		},
-		[]string{LabelSucceeded},
+		[]string{LabelRestorationKind, LabelSucceeded},
 	)
-	// DefragmentationDurationSeconds is metric to expose duration required to defragment snapshot.
+
+	// DefragmentationDurationSeconds is metric to expose duration required to defragment all the members of etcd cluster.
 	DefragmentationDurationSeconds = prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
 			Namespace: namespaceEtcdBR,
 			Name:      "defragmentation_duration_seconds",
-			Help:      "Total latency distribution of defragmentation of etcd.",
+			Help:      "Total latency distribution of defragmentation of each etcd cluster member.",
 		},
-		[]string{LabelSucceeded},
+		[]string{LabelSucceeded, LabelEndPoint},
 	)
 
 	// SnapstoreLatestDeltasTotal is metric to expose total number of delta snapshots taken since the latest full snapshot.
@@ -167,6 +184,66 @@ var (
 			Help:      "Total number of snapshotter errors.",
 		},
 		[]string{LabelError},
+	)
+
+	// CurrentClusterSize is metric to expose the current Etcd cluster size.
+	CurrentClusterSize = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Namespace: namespaceEtcdBR,
+			Name:      "cluster_size",
+			Help:      "Current Etcd cluster size.",
+		},
+		[]string{},
+	)
+
+	// IsLearner is metric to expose whether or not this member is a learner.
+	IsLearner = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Namespace: namespaceEtcdBR,
+			Name:      "is_learner",
+			Help:      "Whether or not this member is a learner. 1 if is, 0 otherwise",
+		},
+		[]string{},
+	)
+
+	// HasLearner is metric to expose whether or not this cluster has a learner.
+	HasLearner = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Namespace: namespaceEtcdBR,
+			Name:      "has_learner",
+			Help:      "Whether or not this cluster has a learner. 1 if is, 0 otherwise",
+		},
+		[]string{},
+	)
+
+	// AddLearnerDurationSeconds is metric to expose duration required to add member as a learner.
+	AddLearnerDurationSeconds = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Namespace: namespaceEtcdBR,
+			Name:      "add_learner_duration_seconds",
+			Help:      "Total latency to add the etcd member as a learner to the cluster.",
+		},
+		[]string{LabelSucceeded},
+	)
+
+	// MemberRemoveDurationSeconds is metric to expose duration required to remove a member from the cluster.
+	MemberRemoveDurationSeconds = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Namespace: namespaceEtcdBR,
+			Name:      "member_remove_duration_seconds",
+			Help:      "Total latency to remove the etcd member from the cluster.",
+		},
+		[]string{LabelSucceeded},
+	)
+
+	// MemberPromoteDurationSeconds is metric to expose duration required to promote the learner to the voting member.
+	MemberPromoteDurationSeconds = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Namespace: namespaceEtcdBR,
+			Name:      "member_promote_duration_seconds",
+			Help:      "Total latency to promote the learner to the voting member.",
+		},
+		[]string{LabelSucceeded},
 	)
 )
 
@@ -312,7 +389,8 @@ func init() {
 
 	// RestorationDurationSeconds
 	restorationDurationSecondsLabelValues := map[string][]string{
-		LabelSucceeded: labels[LabelSucceeded],
+		LabelSucceeded:       labels[LabelSucceeded],
+		LabelRestorationKind: labels[LabelRestorationKind],
 	}
 	restorationDurationSecondsCombinations := generateLabelCombinations(restorationDurationSecondsLabelValues)
 	for _, combination := range restorationDurationSecondsCombinations {
@@ -322,10 +400,38 @@ func init() {
 	// DefragmentationDurationSeconds
 	defragmentationDurationSecondsLabelValues := map[string][]string{
 		LabelSucceeded: labels[LabelSucceeded],
+		LabelEndPoint:  labels[LabelEndPoint],
 	}
 	defragmentationDurationSecondsCombinations := generateLabelCombinations(defragmentationDurationSecondsLabelValues)
 	for _, combination := range defragmentationDurationSecondsCombinations {
 		DefragmentationDurationSeconds.With(prometheus.Labels(combination))
+	}
+
+	// MemberRemoveDurationSeconds
+	MemberRemoveDurationSecondsLabelValues := map[string][]string{
+		LabelSucceeded: labels[LabelSucceeded],
+	}
+	MemberRemoveDurationSecondsCombinations := generateLabelCombinations(MemberRemoveDurationSecondsLabelValues)
+	for _, combination := range MemberRemoveDurationSecondsCombinations {
+		MemberRemoveDurationSeconds.With(prometheus.Labels(combination))
+	}
+
+	// AddLearnerDurationSeconds
+	AddLearnerDurationSecondsLabelValues := map[string][]string{
+		LabelSucceeded: labels[LabelSucceeded],
+	}
+	AddLearnerDurationSecondsCombinations := generateLabelCombinations(AddLearnerDurationSecondsLabelValues)
+	for _, combination := range AddLearnerDurationSecondsCombinations {
+		AddLearnerDurationSeconds.With(prometheus.Labels(combination))
+	}
+
+	// MemberPromoteDurationSeconds
+	MemberPromoteDurationSecondsLabelValues := map[string][]string{
+		LabelSucceeded: labels[LabelSucceeded],
+	}
+	MemberPromoteDurationSecondsCombinations := generateLabelCombinations(MemberPromoteDurationSecondsLabelValues)
+	for _, combination := range MemberPromoteDurationSecondsCombinations {
+		MemberPromoteDurationSeconds.With(prometheus.Labels(combination))
 	}
 
 	// SnapstoreLatestDeltasTotal
@@ -336,6 +442,15 @@ func init() {
 
 	//SnapshotterOperationFailure
 	SnapshotterOperationFailure.With(prometheus.Labels(map[string]string{LabelError: ""}))
+
+	//CurrentClusterSize
+	CurrentClusterSize.With(prometheus.Labels(map[string]string{}))
+
+	// IsLearner
+	IsLearner.With(prometheus.Labels(map[string]string{}))
+
+	// HasLearner
+	HasLearner.With(prometheus.Labels(map[string]string{}))
 
 	// Metrics have to be registered to be exposed:
 	prometheus.MustRegister(GCSnapshotCounter)
@@ -353,4 +468,11 @@ func init() {
 	prometheus.MustRegister(SnapstoreLatestDeltasRevisionsTotal)
 
 	prometheus.MustRegister(SnapshotterOperationFailure)
+
+	prometheus.MustRegister(CurrentClusterSize)
+	prometheus.MustRegister(IsLearner)
+	prometheus.MustRegister(HasLearner)
+	prometheus.MustRegister(MemberRemoveDurationSeconds)
+	prometheus.MustRegister(AddLearnerDurationSeconds)
+	prometheus.MustRegister(MemberPromoteDurationSeconds)
 }

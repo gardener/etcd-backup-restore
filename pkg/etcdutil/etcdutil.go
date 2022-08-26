@@ -154,12 +154,12 @@ func PerformDefragmentation(defragCtx context.Context, client client.Maintenance
 
 	start := time.Now()
 	if _, err := client.Defragment(defragCtx, endpoint); err != nil {
-		metrics.DefragmentationDurationSeconds.With(prometheus.Labels{metrics.LabelSucceeded: metrics.ValueSucceededFalse}).Observe(time.Since(start).Seconds())
-		logger.Errorf("Failed to defragment etcd member[%s] with error: %v", endpoint, err)
+		metrics.DefragmentationDurationSeconds.With(prometheus.Labels{metrics.LabelSucceeded: metrics.ValueSucceededFalse, metrics.LabelEndPoint: endpoint}).Observe(time.Since(start).Seconds())
+		logger.Errorf("failed to defragment etcd member[%s] with error: %v", endpoint, err)
 		return err
 	}
 
-	metrics.DefragmentationDurationSeconds.With(prometheus.Labels{metrics.LabelSucceeded: metrics.ValueSucceededTrue}).Observe(time.Since(start).Seconds())
+	metrics.DefragmentationDurationSeconds.With(prometheus.Labels{metrics.LabelSucceeded: metrics.ValueSucceededTrue, metrics.LabelEndPoint: endpoint}).Observe(time.Since(start).Seconds())
 	logger.Infof("Finished defragmenting etcd member[%s]", endpoint)
 	// Since below request for status races with other etcd operations. So, size returned in
 	// status might vary from the precise size just after defragmentation.
