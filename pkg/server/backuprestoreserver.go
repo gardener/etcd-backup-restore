@@ -263,7 +263,7 @@ func (b *BackupRestoreServer) runServer(ctx context.Context, restoreOpts *brtype
 				ssr.SsrStateMutex.Lock()
 				defer ssr.SsrStateMutex.Unlock()
 				if ssr.SsrState == brtypes.SnapshotterActive {
-					b.stopSnapshotter(handler)
+					ssrStopCh <- emptyStruct
 					b.logger.Info("backup-restore stops leading...")
 				}
 				handler.SetSnapshotterToNil()
