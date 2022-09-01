@@ -112,11 +112,13 @@ func (m *memberControl) AddMemberAsLearner(ctx context.Context) error {
 			m.logger.Infof("Member %s already part of etcd cluster", memberURL)
 			return nil
 		}
+		metrics.IsLearnerCountTotal.With(prometheus.Labels{metrics.LabelSucceeded: metrics.ValueSucceededFalse}).Inc()
 		metrics.AddLearnerDurationSeconds.With(prometheus.Labels{metrics.LabelSucceeded: metrics.ValueSucceededFalse}).Observe(time.Since(start).Seconds())
 		return fmt.Errorf("error while adding member as a learner: %v", err)
 	}
 
-	metrics.HasLearner.With(prometheus.Labels{}).Set(1)
+	metrics.IsLearnerCountTotal.With(prometheus.Labels{metrics.LabelSucceeded: metrics.ValueSucceededTrue}).Inc()
+	metrics.IsLearner.With(prometheus.Labels{}).Set(1)
 	metrics.AddLearnerDurationSeconds.With(prometheus.Labels{metrics.LabelSucceeded: metrics.ValueSucceededTrue}).Observe(time.Since(start).Seconds())
 	m.logger.Infof("Added member %v to cluster as a learner", strconv.FormatUint(response.Member.GetID(), 16))
 	return nil

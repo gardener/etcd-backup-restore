@@ -30,8 +30,8 @@ const (
 	ValueSucceededTrue = "true"
 	// ValueSucceededFalse is value False for metric label failed.
 	ValueSucceededFalse = "false"
-	// ValueRestoreSingleMemberInMN is value for metric of single member restoration in multi-node.
-	ValueRestoreSingleMemberInMN = "single_member"
+	// ValueRestoreSingleMemberInMultiNode is value for metric of single member restoration in multi-node.
+	ValueRestoreSingleMemberInMultiNode = "single_member"
 	// ValueRestoreSingleNode is value for metric of single node restoration.
 	ValueRestoreSingleNode = "single_node"
 	// LabelKind is a metrics label indicates kind of snapshot associated with metric.
@@ -62,7 +62,7 @@ var (
 			ValueSucceededTrue,
 		},
 		LabelRestorationKind: {
-			ValueRestoreSingleMemberInMN,
+			ValueRestoreSingleMemberInMultiNode,
 			ValueRestoreSingleNode,
 		},
 		LabelEndPoint: {""},
@@ -206,14 +206,14 @@ var (
 		[]string{},
 	)
 
-	// HasLearner is metric to expose whether or not this cluster has a learner.
-	HasLearner = prometheus.NewGaugeVec(
-		prometheus.GaugeOpts{
+	// IsLearnerCountTotal is metric to expose the total count when etcd member added as a learner.
+	IsLearnerCountTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
 			Namespace: namespaceEtcdBR,
-			Name:      "has_learner",
-			Help:      "Whether or not this cluster has a learner. 1 if is, 0 otherwise",
+			Name:      "is_learner_count_total",
+			Help:      "Total count when etcd member added as a learner.",
 		},
-		[]string{},
+		[]string{LabelSucceeded},
 	)
 
 	// AddLearnerDurationSeconds is metric to expose duration required to add member as a learner.
@@ -434,6 +434,15 @@ func init() {
 		MemberPromoteDurationSeconds.With(prometheus.Labels(combination))
 	}
 
+	// IsLearnerCountTotal
+	IsLearnerCounterLabelValues := map[string][]string{
+		LabelSucceeded: labels[LabelSucceeded],
+	}
+	IsLearnerCounterCombinations := generateLabelCombinations(IsLearnerCounterLabelValues)
+	for _, combination := range IsLearnerCounterCombinations {
+		IsLearnerCountTotal.With(prometheus.Labels(combination))
+	}
+
 	// SnapstoreLatestDeltasTotal
 	SnapstoreLatestDeltasTotal.With(prometheus.Labels(map[string]string{}))
 
@@ -448,9 +457,6 @@ func init() {
 
 	// IsLearner
 	IsLearner.With(prometheus.Labels(map[string]string{}))
-
-	// HasLearner
-	HasLearner.With(prometheus.Labels(map[string]string{}))
 
 	// Metrics have to be registered to be exposed:
 	prometheus.MustRegister(GCSnapshotCounter)
@@ -471,7 +477,7 @@ func init() {
 
 	prometheus.MustRegister(CurrentClusterSize)
 	prometheus.MustRegister(IsLearner)
-	prometheus.MustRegister(HasLearner)
+	prometheus.MustRegister(IsLearnerCountTotal)
 	prometheus.MustRegister(MemberRemoveDurationSeconds)
 	prometheus.MustRegister(AddLearnerDurationSeconds)
 	prometheus.MustRegister(MemberPromoteDurationSeconds)

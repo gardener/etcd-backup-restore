@@ -447,7 +447,6 @@ func DoPromoteMember(ctx context.Context, member *etcdserverpb.Member, cli etcdC
 	_, err := cli.MemberPromote(memPromoteCtx, member.ID)
 	if err == nil {
 		//Member successfully promoted
-		metrics.HasLearner.With(prometheus.Labels{}).Set(0)
 		metrics.MemberPromoteDurationSeconds.With(prometheus.Labels{metrics.LabelSucceeded: metrics.ValueSucceededTrue}).Observe(time.Since(start).Seconds())
 		logger.Infof("Member %v with [ID: %v] has been promoted", member.GetName(), strconv.FormatUint(member.GetID(), 16))
 		return nil
@@ -470,7 +469,6 @@ func CheckIfLearnerPresent(ctx context.Context, cli etcdClient.ClusterCloser) (b
 
 	for _, member := range membersInfo.Members {
 		if member.IsLearner {
-			metrics.HasLearner.With(prometheus.Labels{}).Set(1)
 			return true, nil
 		}
 	}
