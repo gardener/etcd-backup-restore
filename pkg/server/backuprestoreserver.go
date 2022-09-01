@@ -263,7 +263,7 @@ func (b *BackupRestoreServer) runServer(ctx context.Context, restoreOpts *brtype
 				ssr.SsrStateMutex.Lock()
 				defer ssr.SsrStateMutex.Unlock()
 				if ssr.SsrState == brtypes.SnapshotterActive {
-					ssrStopCh <- emptyStruct
+					b.stopSnapshotter(handler)
 					b.logger.Info("backup-restore stops leading...")
 				}
 				handler.SetSnapshotterToNil()
@@ -554,19 +554,26 @@ func (b *BackupRestoreServer) runEtcdProbeLoopWithSnapshotter(ctx context.Contex
 // probeEtcd will make the snapshotter probe for etcd endpoint to be available
 // before it starts taking regular snapshots.
 func (b *BackupRestoreServer) probeEtcd(ctx context.Context) error {
-	clientFactory := etcdutil.NewFactory(*b.config.EtcdConnectionConfig)
-	clientKV, err := clientFactory.NewKV()
+	var endPoint string
+	client, err := etcdutil.NewFactory(*b.config.EtcdConnectionConfig).NewMaintenance()
 	if err != nil {
 		return &errors.EtcdError{
-			Message: fmt.Sprintf("Failed to create etcd KV client: %v", err),
+			Message: fmt.Sprintf("failed to create etcd maintenance client: %v", err),
 		}
 	}
-	defer clientKV.Close()
+	defer client.Close()
 
 	ctx, cancel := context.WithTimeout(ctx, b.config.EtcdConnectionConfig.ConnectionTimeout.Duration)
 	defer cancel()
-	if _, err := clientKV.Get(ctx, "foo"); err != nil {
-		b.logger.Errorf("Failed to connect to etcd KV client: %v", err)
+
+	if len(b.config.EtcdConnectionConfig.Endpoints) > 0 {
+		endPoint = b.config.EtcdConnectionConfig.Endpoints[0]
+	} else {
+		return fmt.Errorf("etcd endpoints are not passed correctly")
+	}
+	_, err = client.Status(ctx, endPoint)
+	if err != nil {
+		b.logger.Errorf("failed to get status of etcd endPoint: %v with error: %v", endPoint, err)
 		return err
 	}
 	return nil
