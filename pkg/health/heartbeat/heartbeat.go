@@ -317,8 +317,9 @@ func RenewMemberLeasePeriodically(ctx context.Context, stopCh chan struct{}, hco
 		return fmt.Errorf("failed to create clientset: %v", err)
 	}
 
-	metadata := make(map[string]string)
-	metadata[PeerUrlTLSEnabledKey] = strconv.FormatBool(peerUrlTLSEnabled)
+        metadata := map[string]string{
+           PeerUrlTLSEnabledKey: strconv.FormatBool(peerUrlTLSEnabled)
+        }
 
 	hb, err := NewHeartbeat(logger, etcdConfig, clientSet, metadata)
 	if err != nil {
