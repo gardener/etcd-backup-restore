@@ -162,7 +162,7 @@ func (b *BackupRestoreServer) startHTTPServer(initializer initializer.Initialize
 		EnableProfiling:      b.config.ServerConfig.EnableProfiling,
 		ReqCh:                make(chan struct{}),
 		AckCh:                make(chan struct{}),
-		EnableTLS:            (b.config.ServerConfig.TLSCertFile != "" && b.config.ServerConfig.TLSKeyFile != ""),
+		EnableTLS:            b.config.ServerConfig.TLSCertFile != "" && b.config.ServerConfig.TLSKeyFile != "",
 		ServerTLSCertFile:    b.config.ServerConfig.TLSCertFile,
 		ServerTLSKeyFile:     b.config.ServerConfig.TLSKeyFile,
 		HTTPHandlerMutex:     &sync.Mutex{},
@@ -200,6 +200,7 @@ func (b *BackupRestoreServer) runServer(ctx context.Context, restoreOpts *brtype
 
 	metrics.CurrentClusterSize.With(prometheus.Labels{}).Set(float64(restoreOpts.OriginalClusterSize))
 	// Promotes member if it is a learner
+
 	var peerURLTLSEnabled bool
 	if restoreOpts.OriginalClusterSize > 1 {
 		for {
@@ -216,7 +217,7 @@ func (b *BackupRestoreServer) runServer(ctx context.Context, restoreOpts *brtype
 			}
 			miscellaneous.SleepWithContext(ctx, retryTimeout)
 		}
-		peerURLTLSEnabled = true
+		peerURLTLSEnabled = isPeerURLsTLSEnabled(restoreOpts.PeerURLs)
 	} else {
 		// when OriginalClusterSize = 1
 		m := member.NewMemberControl(b.config.EtcdConnectionConfig)
@@ -231,8 +232,12 @@ func (b *BackupRestoreServer) runServer(ctx context.Context, restoreOpts *brtype
 			if err != nil {
 				return err
 			}
-			peerURLTLSEnabled, err = isPeerURLTLSEnabled(memberPeerURL)
-			return err
+			peerURL, err := url.Parse(memberPeerURL)
+			if err != nil {
+				return err
+			}
+			peerURLTLSEnabled = isPeerURLsTLSEnabled([]url.URL{*peerURL})
+			return nil
 		})
 		if err != nil {
 			b.logger.Error("unable to update the member")
@@ -634,10 +639,11 @@ func (b *BackupRestoreServer) stopSnapshotter(handler *HTTPHandler) {
 	<-handler.AckCh
 }
 
-func isPeerURLTLSEnabled(memberPeerURL string) (bool, error) {
-	peerURL, err := url.Parse(memberPeerURL)
-	if err != nil {
-		return false, err
+func isPeerURLsTLSEnabled(peerURLs []url.URL) bool {
+	peerURLTLSEnabled := true
+	for _, peerURL := range peerURLs {
+		tlsEnabled := peerURL.Scheme == https
+		peerURLTLSEnabled = peerURLTLSEnabled && tlsEnabled
 	}
-	return peerURL.Scheme == https, nil
+	return peerURLTLSEnabled
 }

@@ -193,13 +193,12 @@ func getMemberPeerURL(configFile string, podName string) (string, error) {
 	return peerURL, nil
 }
 
-func parsePeerURL(peerURL, podName string) (string, error) {
-	tokens := strings.Split(peerURL, "@")
+func parsePeerURL(initialAdvertisePeerURLs, podName string) (string, error) {
+	tokens := strings.Split(initialAdvertisePeerURLs, "@")
 	if len(tokens) < 4 {
-		return "", fmt.Errorf("invalid peer URL : %s", peerURL)
+		return "", fmt.Errorf("invalid peer URL : %s", initialAdvertisePeerURLs)
 	}
 	domaiName := fmt.Sprintf("%s.%s.%s", tokens[1], tokens[2], "svc")
-
 	return fmt.Sprintf("%s://%s.%s:%s", tokens[0], podName, domaiName, tokens[3]), nil
 }
 
@@ -261,7 +260,7 @@ func findMember(existingMembers []*etcdserverpb.Member, memberName string) *etcd
 	return nil
 }
 
-// UpdateMemberPeerUrl updates the peer address of a specified etcd cluster member.
+// UpdateMemberPeerURL updates the peer address of a specified etcd cluster member.
 func (m *memberControl) UpdateMemberPeerURL(ctx context.Context, cli client.ClusterCloser) (string, error) {
 	m.logger.Infof("Attempting to update the member Info: %v", m.podName)
 	ctx, cancel := context.WithTimeout(ctx, brtypes.DefaultEtcdConnectionTimeout)
