@@ -928,8 +928,8 @@ func corruptEtcdDir() error {
 	return os.RemoveAll(etcdDir)
 }
 
-//takeValidSnaps saves valid snaps in the v1 prefix dir of snapstore so that restorer could restore from them
-//TODO: Consider removing when backward compatibility no longer needed
+// takeValidSnaps saves valid snaps in the v1 prefix dir of snapstore so that restorer could restore from them
+// TODO: Consider removing when backward compatibility no longer needed
 func takeValidSnaps(logger *logrus.Entry, container string, resp *utils.EtcdDataPopulationResponse, deltaSnapshotPeriod time.Duration, endpoints []string, mode int, backupVersion int) error {
 	//Here we run the snapshotter to take snapshots. The snapshotter by default stores the snaps in the v2 directory.
 	//We then move those snaps into the v1 dir under a 'Backup-xxxxxx' dir
@@ -1026,8 +1026,8 @@ func takeValidSnaps(logger *logrus.Entry, container string, resp *utils.EtcdData
 	return nil
 }
 
-//takeInvalidV1Snaps saves an invalid snap in the v1 prefix dir of the snapstore
-//TODO: Consider removing when backward compatibility no longer needed
+// takeInvalidV1Snaps saves an invalid snap in the v1 prefix dir of the snapstore
+// TODO: Consider removing when backward compatibility no longer needed
 func takeInvalidV1Snaps(container string) error {
 	//V1 snapstore object
 	store, err := snapstore.GetSnapstore(&brtypes.SnapstoreConfig{Container: container, Provider: "Local", Prefix: "v2"})

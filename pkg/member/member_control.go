@@ -48,8 +48,8 @@ type Control interface {
 	// This will succeed if and only if learner is in a healthy state and the learner is in sync with leader.
 	PromoteMember(context.Context) error
 
-	// UpdateMemberPeerUrl updates the peer address of a specified etcd cluster member.
-	UpdateMemberPeerUrl(context.Context, client.ClusterCloser) (string, error)
+	// UpdateMemberPeerURL updates the peer address of a specified etcd cluster member.
+	UpdateMemberPeerURL(context.Context, client.ClusterCloser) (string, error)
 
 	// RemoveMember removes the member from the etcd cluster.
 	RemoveMember(context.Context) error
@@ -262,7 +262,7 @@ func findMember(existingMembers []*etcdserverpb.Member, memberName string) *etcd
 }
 
 // UpdateMemberPeerUrl updates the peer address of a specified etcd cluster member.
-func (m *memberControl) UpdateMemberPeerUrl(ctx context.Context, cli client.ClusterCloser) (string, error) {
+func (m *memberControl) UpdateMemberPeerURL(ctx context.Context, cli client.ClusterCloser) (string, error) {
 	m.logger.Infof("Attempting to update the member Info: %v", m.podName)
 	ctx, cancel := context.WithTimeout(ctx, brtypes.DefaultEtcdConnectionTimeout)
 	defer cancel()

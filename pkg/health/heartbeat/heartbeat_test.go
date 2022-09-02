@@ -63,7 +63,7 @@ var _ = Describe("Heartbeat", func() {
 		})
 		Context("With valid config and metadata", func() {
 			BeforeEach(func() {
-				metadata[heartbeat.PeerUrlTLSEnabledKey] = "true"
+				metadata[heartbeat.PeerURLTLSEnabledKey] = "true"
 			})
 			It("should not return error", func() {
 				_, err := heartbeat.NewHeartbeat(logger, etcdConnectionConfig, miscellaneous.GetFakeKubernetesClientSet(), metadata)
@@ -284,7 +284,7 @@ var _ = Describe("Heartbeat", func() {
 						Namespace: os.Getenv("POD_NAMESPACE"),
 					},
 				}
-				metadata = map[string]string{heartbeat.PeerUrlTLSEnabledKey: "true"}
+				metadata = map[string]string{heartbeat.PeerURLTLSEnabledKey: "true"}
 			})
 			AfterEach(func() {
 				Expect(os.Unsetenv("POD_NAME")).To(Succeed())
@@ -311,7 +311,7 @@ var _ = Describe("Heartbeat", func() {
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(l.Spec.HolderIdentity).ToNot(BeNil())
 				Expect(l.Annotations).ToNot(BeEmpty())
-				Expect(l.Annotations[heartbeat.PeerUrlTLSEnabledKey]).To(Equal("true"))
+				Expect(l.Annotations[heartbeat.PeerURLTLSEnabledKey]).To(Equal("true"))
 				err = clientSet.Delete(context.TODO(), l)
 				Expect(err).ShouldNot(HaveOccurred())
 				err = clientSet.Delete(context.TODO(), pod)
