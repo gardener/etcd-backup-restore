@@ -442,10 +442,13 @@ func DoPromoteMember(ctx context.Context, member *etcdserverpb.Member, cli etcdC
 	memPromoteCtx, cancel := context.WithTimeout(ctx, brtypes.DefaultEtcdConnectionTimeout)
 	defer cancel()
 
+	start := time.Now()
 	//Member promote call will succeed only if member is in sync with leader, and will error out otherwise
 	_, err := cli.MemberPromote(memPromoteCtx, member.ID)
 	if err == nil {
 		//Member successfully promoted
+		metrics.IsLearner.With(prometheus.Labels{}).Set(0)
+		metrics.MemberPromoteDurationSeconds.With(prometheus.Labels{metrics.LabelSucceeded: metrics.ValueSucceededTrue}).Observe(time.Since(start).Seconds())
 		logger.Infof("Member %v with [ID: %v] has been promoted", member.GetName(), strconv.FormatUint(member.GetID(), 16))
 		return nil
 	} else if errored.Is(err, rpctypes.Error(rpctypes.ErrGRPCMemberNotLearner)) {
@@ -453,6 +456,8 @@ func DoPromoteMember(ctx context.Context, member *etcdserverpb.Member, cli etcdC
 		logger.Info("Member ", member.Name, " : ", member.ID, " already a voting member of cluster.")
 		return nil
 	}
+
+	metrics.MemberPromoteDurationSeconds.With(prometheus.Labels{metrics.LabelSucceeded: metrics.ValueSucceededFalse}).Observe(time.Since(start).Seconds())
 	return err
 }
 
@@ -473,11 +478,14 @@ func CheckIfLearnerPresent(ctx context.Context, cli etcdClient.ClusterCloser) (b
 
 // RemoveMemberFromCluster removes member of given ID from etcd cluster.
 func RemoveMemberFromCluster(ctx context.Context, cli etcdClient.ClusterCloser, memberID uint64, logger *logrus.Entry) error {
+	start := time.Now()
 	_, err := cli.MemberRemove(ctx, memberID)
 	if err != nil {
+		metrics.MemberRemoveDurationSeconds.With(prometheus.Labels{metrics.LabelSucceeded: metrics.ValueSucceededFalse}).Observe(time.Since(start).Seconds())
 		return fmt.Errorf("unable to remove member [ID:%v] from the cluster: %v", strconv.FormatUint(memberID, 16), err)
 	}
 
+	metrics.MemberRemoveDurationSeconds.With(prometheus.Labels{metrics.LabelSucceeded: metrics.ValueSucceededTrue}).Observe(time.Since(start).Seconds())
 	logger.Infof("successfully removed member [ID: %v] from the cluster", strconv.FormatUint(memberID, 16))
 	return nil
 }
