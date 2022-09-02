@@ -132,7 +132,7 @@ var _ = Describe("Membercontrol", func() {
 
 				cl.EXPECT().MemberUpdate(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil)
 
-				err = m.UpdateMember(context.TODO(), client)
+				err = m.UpdateMemberPeerUrl(context.TODO(), client)
 				Expect(err).ShouldNot(HaveOccurred())
 			})
 		})
@@ -161,7 +161,7 @@ var _ = Describe("Membercontrol", func() {
 
 				cl.EXPECT().MemberUpdate(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, fmt.Errorf("unable to connect to dummy etcd"))
 
-				err = m.UpdateMember(context.TODO(), client)
+				err = m.UpdateMemberPeerUrl(context.TODO(), client)
 				Expect(err).Should(HaveOccurred())
 			})
 		})
