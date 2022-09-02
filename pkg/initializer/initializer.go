@@ -36,14 +36,14 @@ import (
 )
 
 // Initialize has the following steps:
-//   * Check if data directory exists.
-//     - If data directory exists
-//       * Check for data corruption.
-//			- If data directory is in corrupted state, clear the data directory.
-//     - If data directory does not exist.
-//       * Check if Latest snapshot available.
-//		   - Try to perform an Etcd data restoration from the latest snapshot.
-//		   - No snapshots are available, start etcd as a fresh installation.
+//   - Check if data directory exists.
+//   - If data directory exists
+//   - Check for data corruption.
+//   - If data directory is in corrupted state, clear the data directory.
+//   - If data directory does not exist.
+//   - Check if Latest snapshot available.
+//   - Try to perform an Etcd data restoration from the latest snapshot.
+//   - No snapshots are available, start etcd as a fresh installation.
 func (e *EtcdInitializer) Initialize(mode validator.Mode, failBelowRevision int64) error {
 	metrics.CurrentClusterSize.With(prometheus.Labels{}).Set(float64(e.Validator.OriginalClusterSize))
 	start := time.Now()
@@ -113,7 +113,7 @@ func (e *EtcdInitializer) Initialize(mode validator.Mode, failBelowRevision int6
 	return nil
 }
 
-//NewInitializer creates an etcd initializer object.
+// NewInitializer creates an etcd initializer object.
 func NewInitializer(options *brtypes.RestoreOptions, snapstoreConfig *brtypes.SnapstoreConfig, etcdConnectionConfig *brtypes.EtcdConnectionConfig, logger *logrus.Logger) *EtcdInitializer {
 	zapLogger, _ := zap.NewProduction()
 	etcdInit := &EtcdInitializer{

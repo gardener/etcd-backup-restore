@@ -191,7 +191,7 @@ func ContextWithWaitGroup(parent context.Context, wg *sync.WaitGroup) context.Co
 }
 
 // ContextWithGracePeriod returns a new context, whose Done channel is closed when parent
-//context is closed with additional <gracePeriod>.
+// context is closed with additional <gracePeriod>.
 func ContextWithGracePeriod(parent context.Context, gracePeriod time.Duration) context.Context {
 	ctx, cancel := context.WithCancel(context.TODO())
 	go func() {

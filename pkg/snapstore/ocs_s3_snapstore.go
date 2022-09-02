@@ -177,7 +177,7 @@ func isOCSConfigEmpty(config ocsAuthOptions) error {
 	return fmt.Errorf("ocs s3 credentials: region, secretAccessKey, endpoint or accessKeyID is missing")
 }
 
-//OCSSnapStoreHash calculates and returns the hash of OCS snapstore secret.
+// OCSSnapStoreHash calculates and returns the hash of OCS snapstore secret.
 func OCSSnapStoreHash(config *brtypes.SnapstoreConfig) (string, error) {
 	ao, err := getOCSAuthOptions("")
 	if err != nil {

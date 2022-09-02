@@ -910,7 +910,7 @@ func prepareStoreForBackwardCompatibleGC(forTime time.Time, storeContainer strin
 	return store, snapstoreConfig
 }
 
-//validateLimitBasedSnapshots verifies whether the snapshot list after being garbage collected using the limit-based configuration is a valid snapshot list
+// validateLimitBasedSnapshots verifies whether the snapshot list after being garbage collected using the limit-based configuration is a valid snapshot list
 func validateLimitBasedSnapshots(list brtypes.SnapList, maxBackups uint, mode string) {
 	incr := false
 	fullSnapCount := 0
