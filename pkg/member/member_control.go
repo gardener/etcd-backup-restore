@@ -181,7 +181,7 @@ func getMemberPeerURL(configFile string, podName string) (string, error) {
 	}
 
 	config := map[string]interface{}{}
-	if err := yaml.Unmarshal([]byte(configYML), &config); err != nil {
+	if err := yaml.Unmarshal(configYML, &config); err != nil {
 		return "", fmt.Errorf("unable to unmarshal etcd config yaml file: %v", err)
 	}
 

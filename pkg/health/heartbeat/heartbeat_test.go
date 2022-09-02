@@ -156,8 +156,8 @@ var _ = Describe("Heartbeat", func() {
 				}
 			})
 			AfterEach(func() {
-				os.Unsetenv("POD_NAME")
-				os.Unsetenv("POD_NAMESPACE")
+				Expect(os.Unsetenv("POD_NAME")).To(Succeed())
+				Expect(os.Unsetenv("POD_NAMESPACE")).To(Succeed())
 			})
 			It("Should renew and correctly update holder identity of delta snapshot lease when delta snapshot list is passed", func() {
 				Expect(os.Getenv("POD_NAME")).Should(Equal("test_pod"))
@@ -262,8 +262,8 @@ var _ = Describe("Heartbeat", func() {
 		)
 		Context("With corresponding member lease present", func() {
 			BeforeEach(func() {
-				os.Setenv("POD_NAME", "test_pod")
-				os.Setenv("POD_NAMESPACE", "test_namespace")
+				Expect(os.Setenv("POD_NAME", "test_pod")).To(Succeed())
+				Expect(os.Setenv("POD_NAMESPACE", "test_namespace")).To(Succeed())
 				lease = &v1.Lease{
 					TypeMeta: metav1.TypeMeta{
 						Kind:       "Lease",
@@ -284,15 +284,15 @@ var _ = Describe("Heartbeat", func() {
 						Namespace: os.Getenv("POD_NAMESPACE"),
 					},
 				}
-				metadata = map[string]string{}
+				metadata = map[string]string{heartbeat.PeerUrlTLSEnabledKey: "true"}
 			})
 			AfterEach(func() {
-				os.Unsetenv("POD_NAME")
-				os.Unsetenv("POD_NAMESPACE")
+				Expect(os.Unsetenv("POD_NAME")).To(Succeed())
+				Expect(os.Unsetenv("POD_NAMESPACE")).To(Succeed())
 			})
 			It("Should correctly update the member lease", func() {
 				clientSet := miscellaneous.GetFakeKubernetesClientSet()
-				heartbeat, err := heartbeat.NewHeartbeat(logger, etcdConnectionConfig, clientSet, metadata)
+				hb, err := heartbeat.NewHeartbeat(logger, etcdConnectionConfig, clientSet, metadata)
 				Expect(err).ShouldNot(HaveOccurred())
 
 				err = clientSet.Create(context.TODO(), lease)
@@ -300,7 +300,7 @@ var _ = Describe("Heartbeat", func() {
 				err = clientSet.Create(context.TODO(), pod)
 				Expect(err).ShouldNot(HaveOccurred())
 
-				err = heartbeat.RenewMemberLease(context.TODO())
+				err = hb.RenewMemberLease(context.TODO())
 				Expect(err).ShouldNot(HaveOccurred())
 
 				l := &v1.Lease{}
@@ -310,7 +310,8 @@ var _ = Describe("Heartbeat", func() {
 				}, l)
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(l.Spec.HolderIdentity).ToNot(BeNil())
-
+				Expect(l.Annotations).ToNot(BeEmpty())
+				Expect(l.Annotations[heartbeat.PeerUrlTLSEnabledKey]).To(Equal("true"))
 				err = clientSet.Delete(context.TODO(), l)
 				Expect(err).ShouldNot(HaveOccurred())
 				err = clientSet.Delete(context.TODO(), pod)
@@ -319,12 +320,12 @@ var _ = Describe("Heartbeat", func() {
 		})
 		Context("With corresponding member lease not present", func() {
 			BeforeEach(func() {
-				os.Setenv("POD_NAME", "test_pod")
-				os.Setenv("POD_NAMESPACE", "test_namespace")
+				Expect(os.Setenv("POD_NAME", "test_pod")).To(Succeed())
+				Expect(os.Setenv("POD_NAMESPACE", "test_namespace")).To(Succeed())
 			})
 			AfterEach(func() {
-				os.Unsetenv("POD_NAME")
-				os.Unsetenv("POD_NAMESPACE")
+				Expect(os.Unsetenv("POD_NAME")).To(Succeed())
+				Expect(os.Unsetenv("POD_NAMESPACE")).To(Succeed())
 			})
 			It("Should return an error", func() {
 				heartbeat, err := heartbeat.NewHeartbeat(logger, etcdConnectionConfig, miscellaneous.GetFakeKubernetesClientSet(), metadata)
@@ -351,7 +352,7 @@ var _ = Describe("Heartbeat", func() {
 		})
 		Context("With fail to create clientset", func() {
 			It("Should return an error", func() {
-				err := heartbeat.RenewMemberLeasePeriodically(testCtx, mmStopCh, hConfig, logger, etcdConnectionConfig, "https://etcd-main-0:2379")
+				err := heartbeat.RenewMemberLeasePeriodically(testCtx, mmStopCh, hConfig, logger, etcdConnectionConfig, true)
 				Expect(err).Should(HaveOccurred())
 			})
 		})

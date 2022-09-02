@@ -228,7 +228,10 @@ func (b *BackupRestoreServer) runServer(ctx context.Context, restoreOpts *brtype
 				return err
 			}
 			memberPeerURL, err := m.UpdateMemberPeerUrl(ctx, cli)
-			peerUrlTLSEnabled = isPeerUrlTLSEnabled(memberPeerURL)
+			if err != nil {
+				return err
+			}
+			peerUrlTLSEnabled, err = isPeerUrlTLSEnabled(memberPeerURL)
 			return err
 		})
 		if err != nil {
@@ -631,10 +634,10 @@ func (b *BackupRestoreServer) stopSnapshotter(handler *HTTPHandler) {
 	<-handler.AckCh
 }
 
-func isPeerUrlTLSEnabled(memberPeerUrl string) bool {
+func isPeerUrlTLSEnabled(memberPeerUrl string) (bool, error) {
 	peerUrl, err := url.Parse(memberPeerUrl)
 	if err != nil {
-		return false
+		return false, err
 	}
-	return peerUrl.Scheme == https
+	return peerUrl.Scheme == https, nil
 }

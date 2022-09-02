@@ -23,6 +23,9 @@ var _ = Describe("Membercontrol", func() {
 		factory              *mockfactory.MockFactory
 		cl                   *mockfactory.MockClusterCloser
 	)
+	const (
+		podName = "test-pod"
+	)
 
 	BeforeEach(func() {
 		etcdConnectionConfig = brtypes.NewEtcdConnectionConfig()
@@ -31,7 +34,7 @@ var _ = Describe("Membercontrol", func() {
 		etcdConnectionConfig.SnapshotTimeout.Duration = 30 * time.Second
 		etcdConnectionConfig.DefragTimeout.Duration = 30 * time.Second
 
-		os.Setenv("POD_NAME", "test-pod")
+		os.Setenv("POD_NAME", podName)
 
 		ctrl = gomock.NewController(GinkgoT())
 		factory = mockfactory.NewMockFactory(ctrl)
@@ -132,8 +135,10 @@ var _ = Describe("Membercontrol", func() {
 
 				cl.EXPECT().MemberUpdate(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil)
 
-				err = m.UpdateMemberPeerUrl(context.TODO(), client)
+				peerUrl, err := m.UpdateMemberPeerUrl(context.TODO(), client)
 				Expect(err).ShouldNot(HaveOccurred())
+				expectedPeerUrl := fmt.Sprintf("http://%s.%s.%s.svc:2380", podName, "etcd-main-peer", "default")
+				Expect(peerUrl).To(Equal(expectedPeerUrl))
 			})
 		})
 
@@ -161,7 +166,7 @@ var _ = Describe("Membercontrol", func() {
 
 				cl.EXPECT().MemberUpdate(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, fmt.Errorf("unable to connect to dummy etcd"))
 
-				err = m.UpdateMemberPeerUrl(context.TODO(), client)
+				_, err = m.UpdateMemberPeerUrl(context.TODO(), client)
 				Expect(err).Should(HaveOccurred())
 			})
 		})
