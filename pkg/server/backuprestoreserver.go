@@ -298,7 +298,6 @@ func (b *BackupRestoreServer) runServer(ctx context.Context, restoreOpts *brtype
 			if restoreOpts.OriginalClusterSize > 1 {
 				m := member.NewMemberControl(b.config.EtcdConnectionConfig)
 				if err := m.PromoteMember(ctx); err == nil {
-					metrics.IsLearner.With(prometheus.Labels{}).Set(0)
 					logger.Info("Successfully promoted the learner to a voting member...")
 				} else if err != nil {
 					logger.Errorf("unable to promote the learner to a voting member: %v", err)
