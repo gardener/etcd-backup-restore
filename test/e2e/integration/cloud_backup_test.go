@@ -41,7 +41,7 @@ func startEtcd() (*Cmd, *chan error) {
 		"--advertise-client-urls=http://0.0.0.0:2379",
 		"--listen-client-urls=http://0.0.0.0:2379",
 		"--initial-cluster=etcd1=http://0.0.0.0:2380",
-		"--initial-advertise-peer-urls=http@etcd-main-peer@default:2380",
+		"--initial-advertise-peer-urls=http://0.0.0.0:2380",
 		"--initial-cluster-state=new",
 		"--initial-cluster-token=new",
 		"--log-outputs=stdout"}
@@ -149,9 +149,10 @@ var _ = Describe("CloudBackup", func() {
 
 		err := os.WriteFile(outfile, []byte(etcdConfigYaml), 0755)
 		Expect(err).ShouldNot(HaveOccurred())
-		os.Setenv("ETCD_CONF", outfile)
+		Expect(os.Setenv("ETCD_CONF", outfile)).To(Succeed())
 		// Required as the config file for embedded ETCD fetches ETCD instance name from the POD_NAME variable
-		os.Setenv("POD_NAME", "etcd1")
+		Expect(os.Setenv("POD_NAME", "etcd1")).To(Succeed())
+		Expect(os.Setenv("POD_NAMESPACE", "etcd-test")).To(Succeed())
 	})
 
 	Describe("Regular backups", func() {
@@ -168,7 +169,7 @@ var _ = Describe("CloudBackup", func() {
 			snapList, err := store.List()
 			Expect(err).ShouldNot(HaveOccurred())
 			for _, snap := range snapList {
-				store.Delete(*snap)
+				Expect(store.Delete(*snap)).To(Succeed())
 			}
 
 			cmdEtcd, etcdErrChan = startEtcd()
