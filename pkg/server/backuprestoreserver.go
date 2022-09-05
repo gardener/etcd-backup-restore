@@ -107,7 +107,7 @@ func (b *BackupRestoreServer) Run(ctx context.Context) error {
 	if err != nil {
 		b.logger.WithFields(logrus.Fields{
 			"configFile": etcdConfigPath,
-		}).Fatal("failed to read etcd config file")
+		}).Fatalf("failed to read etcd config file: %v", err)
 		return err
 	}
 
@@ -122,7 +122,7 @@ func (b *BackupRestoreServer) Run(ctx context.Context) error {
 		b.logger.WithFields(logrus.Fields{
 			"podName":                     podName,
 			"initial-advertise-peer-urls": initialAdvertisePeerURLs,
-		}).Fatal("failed to parse initial-advertise-peer-urls")
+		}).Fatalf("failed to parse initial-advertise-peer-urls: %v", err)
 	}
 
 	initialClusterSize, err := miscellaneous.GetClusterSize(fmt.Sprint(config["initial-cluster"]))
