@@ -98,15 +98,15 @@ func NewBackupRestoreServer(logger *logrus.Logger, config *BackupRestoreComponen
 
 // Run starts the backup restore server.
 func (b *BackupRestoreServer) Run(ctx context.Context) error {
-	var inputFileName string
+	var etcdConfigPath string
 	var err error
 
-	inputFileName = miscellaneous.GetConfigFilePath()
+	etcdConfigPath = miscellaneous.GetConfigFilePath()
 
-	config, err := miscellaneous.ReadConfigFileAsMap(inputFileName)
+	config, err := miscellaneous.ReadConfigFileAsMap(etcdConfigPath)
 	if err != nil {
 		b.logger.WithFields(logrus.Fields{
-			"configFile": inputFileName,
+			"configFile": etcdConfigPath,
 		}).Fatal("failed to read etcd config file")
 		return err
 	}
