@@ -140,7 +140,7 @@ enable-v2: false
 quota-backend-bytes: 1073741824
 listen-client-urls: http://0.0.0.0:2379
 advertise-client-urls: http://0.0.0.0:2379
-initial-advertise-peer-urls: http@etcd-main-peer@default:2380,
+initial-advertise-peer-urls: http@etcd-main-peer@default@2380,
 initial-cluster: etcd1=http://0.0.0.0:2380
 initial-cluster-token: new
 initial-cluster-state: new
