@@ -18,6 +18,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"path/filepath"
 	"reflect"
 	"time"
 
@@ -573,6 +574,61 @@ var _ = Describe("Miscellaneous Tests", func() {
 
 				clusterState := GetInitialClusterStateIfScaleup(testCtx, *logger, clientSet, podName, wrongNamespace)
 				Expect(clusterState).Should(Equal(ClusterStateNew))
+			})
+		})
+	})
+	Describe("parse peer urls config", func() {
+		var (
+			initialAdPeerURL string
+			podName          string
+		)
+		BeforeEach(func() {
+			podName = "etcd-test-pod-0"
+		})
+		Context("parse peer url", func() {
+			It("parsing well-defined initial-advertise-peer-urls", func() {
+				initialAdPeerURL = "https@etcd-events-peer@shoot--dev--test@2380"
+				peerURL, err := ParsePeerURL(initialAdPeerURL, podName)
+				Expect(err).To(BeNil())
+				Expect(peerURL).To(Equal("https://etcd-test-pod-0.etcd-events-peer.shoot--dev--test.svc:2380"))
+			})
+			It("parsing malformed initial-advertise-peer-urls", func() {
+				initialAdPeerURL = "https@etcd-events-peer@shoot--dev--test"
+				_, err := ParsePeerURL(initialAdPeerURL, podName)
+				Expect(err).ToNot(BeNil())
+			})
+		})
+	})
+	Describe("read config file into a map", func() {
+		const testdataPath = "testdata"
+		var (
+			configPath string
+		)
+		Context("valid config file", func() {
+			BeforeEach(func() {
+				configPath = filepath.Join(testdataPath, "valid_config.yaml")
+			})
+			It("test read and parse yaml", func() {
+				configAsMap, err := ReadConfigFileAsMap(configPath)
+				Expect(err).To(BeNil())
+				Expect(configAsMap).ToNot(BeNil())
+				Expect(configAsMap["name"]).To(Equal("etcd-57c38d")) //just testing one property
+			})
+		})
+		Context("invalid file path", func() {
+			It("test read and parse for a non-existent path", func() {
+				configPath = "file-does-not-exist.yaml"
+				_, err := ReadConfigFileAsMap(configPath)
+				Expect(err).ToNot(BeNil())
+			})
+		})
+		Context("invalid yaml file", func() {
+			BeforeEach(func() {
+				configPath = filepath.Join(testdataPath, "invalid_config.yaml")
+			})
+			It("test read and parse an invalid config yaml", func() {
+				_, err := ReadConfigFileAsMap(configPath)
+				Expect(err).ToNot(BeNil())
 			})
 		})
 	})

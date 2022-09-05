@@ -1,0 +1,27 @@
+advertise-client-urls: https@etcd-events-peer@shoot--dev--test@2379
+auto-compaction-mode: periodic
+  auto-compaction-retention: 30m
+client-transport-security:
+  auto-tls: false
+  cert-file: /var/etcd/ssl/client/server/tls.crt
+  client-cert-auth: true
+  key-file: /var/etcd/ssl/client/server/tls.key
+  trusted-ca-file: /var/etcd/ssl/client/ca/bundle.crt
+data-dir: /var/etcd/data/new.etcd
+enable-v2: false
+initial-advertise-peer-urls: https@etcd-events-peer@shoot--dev--test@2380
+initial-cluster: "etcd-events-0=https://etcd-events-0.etcd-events-peer.shoot--dev--test.svc:2380,etcd-events-1=https://etcd-events-1.etcd-events-peer.shoot--dev--test.svc:2380,etcd-events-2=https://etcd-events-2.etcd-events-peer.shoot--dev--test.svc:2380"
+initial-cluster-state: new
+initial-cluster-token: etcd-cluster
+listen-client-urls: "https://0.0.0.0:2379"
+listen-peer-urls: "https://0.0.0.0:2380"
+metrics: basic
+name: etcd-57c38d
+peer-transport-security:
+  auto-tls: false
+  cert-file: /var/etcd/ssl/peer/server/tls.crt
+  client-cert-auth: true
+  key-file: /var/etcd/ssl/peer/server/tls.key
+  trusted-ca-file: /var/etcd/ssl/peer/ca/bundle.crt
+quota-backend-bytes: 8589934592
+snapshot-count: 75000

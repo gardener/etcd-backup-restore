@@ -489,3 +489,27 @@ func RemoveMemberFromCluster(ctx context.Context, cli etcdClient.ClusterCloser, 
 	logger.Infof("successfully removed member [ID: %v] from the cluster", strconv.FormatUint(memberID, 16))
 	return nil
 }
+
+// ReadConfigFileAsMap reads the config file given a path and converts it into a map[string]interface{}
+func ReadConfigFileAsMap(path string) (map[string]interface{}, error) {
+	configYML, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("unable to read etcd c file at path: %s : %v", path, err)
+	}
+
+	c := map[string]interface{}{}
+	if err := yaml.Unmarshal(configYML, &c); err != nil {
+		return nil, fmt.Errorf("unable to unmarshal etcd c yaml file at path: %s : %v", path, err)
+	}
+	return c, nil
+}
+
+// ParsePeerURL forms a PeerURL, given podName by parsing the initial-advertise-peer-urls
+func ParsePeerURL(initialAdvertisePeerURLs, podName string) (string, error) {
+	tokens := strings.Split(initialAdvertisePeerURLs, "@")
+	if len(tokens) < 4 {
+		return "", fmt.Errorf("invalid peer URL : %s", initialAdvertisePeerURLs)
+	}
+	domaiName := fmt.Sprintf("%s.%s.%s", tokens[1], tokens[2], "svc")
+	return fmt.Sprintf("%s://%s.%s:%s", tokens[0], podName, domaiName, tokens[3]), nil
+}

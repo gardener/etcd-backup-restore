@@ -4,9 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/gardener/etcd-backup-restore/pkg/etcdutil"
@@ -19,7 +17,6 @@ import (
 	"go.etcd.io/etcd/clientv3"
 	"go.etcd.io/etcd/etcdserver/api/v3rpc/rpctypes"
 	"go.etcd.io/etcd/etcdserver/etcdserverpb"
-	"gopkg.in/yaml.v2"
 	"k8s.io/client-go/util/retry"
 )
 
@@ -175,31 +172,16 @@ func (m *memberControl) IsMemberInCluster(ctx context.Context) (bool, error) {
 }
 
 func getMemberPeerURL(configFile string, podName string) (string, error) {
-	configYML, err := os.ReadFile(configFile)
+	config, err := miscellaneous.ReadConfigFileAsMap(configFile)
 	if err != nil {
-		return "", fmt.Errorf("unable to read etcd config file: %v", err)
+		return "", err
 	}
-
-	config := map[string]interface{}{}
-	if err := yaml.Unmarshal(configYML, &config); err != nil {
-		return "", fmt.Errorf("unable to unmarshal etcd config yaml file: %v", err)
-	}
-
 	initAdPeerURL := config["initial-advertise-peer-urls"]
-	peerURL, err := parsePeerURL(initAdPeerURL.(string), podName)
+	peerURL, err := miscellaneous.ParsePeerURL(initAdPeerURL.(string), podName)
 	if err != nil {
 		return "", fmt.Errorf("could not parse peer URL from the config file : %v", err)
 	}
 	return peerURL, nil
-}
-
-func parsePeerURL(initialAdvertisePeerURLs, podName string) (string, error) {
-	tokens := strings.Split(initialAdvertisePeerURLs, "@")
-	if len(tokens) < 4 {
-		return "", fmt.Errorf("invalid peer URL : %s", initialAdvertisePeerURLs)
-	}
-	domaiName := fmt.Sprintf("%s.%s.%s", tokens[1], tokens[2], "svc")
-	return fmt.Sprintf("%s://%s.%s:%s", tokens[0], podName, domaiName, tokens[3]), nil
 }
 
 // doUpdateMemberPeerAddress updated the peer address of a specified etcd member
