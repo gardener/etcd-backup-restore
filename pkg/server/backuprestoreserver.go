@@ -19,28 +19,26 @@ import (
 	"fmt"
 	"net"
 	"net/http"
-	"os"
+	"net/url"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/gardener/etcd-backup-restore/pkg/backoff"
 	"github.com/gardener/etcd-backup-restore/pkg/common"
-	"github.com/gardener/etcd-backup-restore/pkg/leaderelection"
-	"github.com/gardener/etcd-backup-restore/pkg/metrics"
-	"github.com/gardener/etcd-backup-restore/pkg/miscellaneous"
-	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
-	"github.com/ghodss/yaml"
-
 	"github.com/gardener/etcd-backup-restore/pkg/defragmentor"
 	"github.com/gardener/etcd-backup-restore/pkg/errors"
 	"github.com/gardener/etcd-backup-restore/pkg/etcdutil"
 	"github.com/gardener/etcd-backup-restore/pkg/health/heartbeat"
 	"github.com/gardener/etcd-backup-restore/pkg/health/membergarbagecollector"
 	"github.com/gardener/etcd-backup-restore/pkg/initializer"
+	"github.com/gardener/etcd-backup-restore/pkg/leaderelection"
 	"github.com/gardener/etcd-backup-restore/pkg/member"
+	"github.com/gardener/etcd-backup-restore/pkg/metrics"
+	"github.com/gardener/etcd-backup-restore/pkg/miscellaneous"
 	"github.com/gardener/etcd-backup-restore/pkg/snapshot/snapshotter"
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
+	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 
 	"github.com/prometheus/client_golang/prometheus"
 	cron "github.com/robfig/cron/v3"
@@ -64,6 +62,11 @@ var (
 	// runServerWithSnapshotter indicates whether to start server with or without snapshotter.
 	runServerWithSnapshotter bool = true
 	retryTimeout                  = 5 * time.Second
+	peerURLTLSEnabled        bool
+)
+
+const (
+	https = "https"
 )
 
 // NewBackupRestoreServer return new backup restore server.
@@ -95,21 +98,31 @@ func NewBackupRestoreServer(logger *logrus.Logger, config *BackupRestoreComponen
 
 // Run starts the backup restore server.
 func (b *BackupRestoreServer) Run(ctx context.Context) error {
-	var inputFileName string
+	var etcdConfigPath string
 	var err error
 
-	inputFileName = miscellaneous.GetConfigFilePath()
+	etcdConfigPath = miscellaneous.GetConfigFilePath()
 
-	configYML, err := os.ReadFile(inputFileName)
+	config, err := miscellaneous.ReadConfigFileAsMap(etcdConfigPath)
 	if err != nil {
-		b.logger.Fatalf("Unable to read etcd config file: %v", err)
+		b.logger.WithFields(logrus.Fields{
+			"configFile": etcdConfigPath,
+		}).Fatalf("failed to read etcd config file: %v", err)
 		return err
 	}
 
-	config := map[string]interface{}{}
-	if err := yaml.Unmarshal([]byte(configYML), &config); err != nil {
-		b.logger.Fatalf("Unable to unmarshal etcd config yaml file: %v", err)
-		return err
+	podName, err := miscellaneous.GetEnvVarOrError("POD_NAME")
+	if err != nil {
+		b.logger.Fatalf("Error reading POD_NAME env var : %v", err)
+	}
+
+	initialAdvertisePeerURLs := config["initial-advertise-peer-urls"].(string)
+	peerURLTLSEnabled, err = isPeerURLTLSEnabled(initialAdvertisePeerURLs, podName)
+	if err != nil {
+		b.logger.WithFields(logrus.Fields{
+			"podName":                     podName,
+			"initial-advertise-peer-urls": initialAdvertisePeerURLs,
+		}).Fatalf("failed to parse initial-advertise-peer-urls: %v", err)
 	}
 
 	initialClusterSize, err := miscellaneous.GetClusterSize(fmt.Sprint(config["initial-cluster"]))
@@ -157,7 +170,7 @@ func (b *BackupRestoreServer) startHTTPServer(initializer initializer.Initialize
 		EnableProfiling:      b.config.ServerConfig.EnableProfiling,
 		ReqCh:                make(chan struct{}),
 		AckCh:                make(chan struct{}),
-		EnableTLS:            (b.config.ServerConfig.TLSCertFile != "" && b.config.ServerConfig.TLSKeyFile != ""),
+		EnableTLS:            b.config.ServerConfig.TLSCertFile != "" && b.config.ServerConfig.TLSKeyFile != "",
 		ServerTLSCertFile:    b.config.ServerConfig.TLSCertFile,
 		ServerTLSKeyFile:     b.config.ServerConfig.TLSKeyFile,
 		HTTPHandlerMutex:     &sync.Mutex{},
@@ -195,6 +208,7 @@ func (b *BackupRestoreServer) runServer(ctx context.Context, restoreOpts *brtype
 
 	metrics.CurrentClusterSize.With(prometheus.Labels{}).Set(float64(restoreOpts.OriginalClusterSize))
 	// Promotes member if it is a learner
+
 	if restoreOpts.OriginalClusterSize > 1 {
 		for {
 			select {
@@ -208,7 +222,7 @@ func (b *BackupRestoreServer) runServer(ctx context.Context, restoreOpts *brtype
 			if err == nil {
 				break
 			}
-			miscellaneous.SleepWithContext(ctx, retryTimeout)
+			_ = miscellaneous.SleepWithContext(ctx, retryTimeout)
 		}
 	} else {
 		// when OriginalClusterSize = 1
@@ -220,7 +234,8 @@ func (b *BackupRestoreServer) runServer(ctx context.Context, restoreOpts *brtype
 			if err != nil {
 				return err
 			}
-			return m.UpdateMember(ctx, cli)
+			_, err = m.UpdateMemberPeerURL(ctx, cli)
+			return err
 		})
 		if err != nil {
 			b.logger.Error("unable to update the member")
@@ -280,7 +295,7 @@ func (b *BackupRestoreServer) runServer(ctx context.Context, restoreOpts *brtype
 			mmStopCh = make(chan struct{})
 			if b.config.HealthConfig.MemberLeaseRenewalEnabled {
 				go func() {
-					if err := heartbeat.RenewMemberLeasePeriodically(ctx, mmStopCh, b.config.HealthConfig, b.logger, b.config.EtcdConnectionConfig); err != nil {
+					if err := heartbeat.RenewMemberLeasePeriodically(ctx, mmStopCh, b.config.HealthConfig, b.logger, b.config.EtcdConnectionConfig, peerURLTLSEnabled); err != nil {
 						b.logger.Fatalf("failed RenewMemberLeases: %v", err)
 					}
 				}()
@@ -320,7 +335,7 @@ func (b *BackupRestoreServer) runServer(ctx context.Context, restoreOpts *brtype
 
 	if b.config.HealthConfig.MemberLeaseRenewalEnabled {
 		go func() {
-			if err := heartbeat.RenewMemberLeasePeriodically(ctx, mmStopCh, b.config.HealthConfig, b.logger, b.config.EtcdConnectionConfig); err != nil {
+			if err := heartbeat.RenewMemberLeasePeriodically(ctx, mmStopCh, b.config.HealthConfig, b.logger, b.config.EtcdConnectionConfig, peerURLTLSEnabled); err != nil {
 				b.logger.Fatalf("failed RenewMemberLeases: %v", err)
 			}
 		}()
@@ -620,4 +635,16 @@ func (b *BackupRestoreServer) stopSnapshotter(handler *HTTPHandler) {
 	handler.ReqCh <- emptyStruct
 	handler.Logger.Info("Waiting for acknowledgment...")
 	<-handler.AckCh
+}
+
+func isPeerURLTLSEnabled(initialAdvertisePeerURLs string, podName string) (bool, error) {
+	rawPeerURL, err := miscellaneous.ParsePeerURL(initialAdvertisePeerURLs, podName)
+	if err != nil {
+		return false, err
+	}
+	peerURL, err := url.Parse(rawPeerURL)
+	if err != nil {
+		return false, err
+	}
+	return peerURL.Scheme == https, nil
 }

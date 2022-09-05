@@ -4,9 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/gardener/etcd-backup-restore/pkg/etcdutil"
@@ -19,7 +17,6 @@ import (
 	"go.etcd.io/etcd/clientv3"
 	"go.etcd.io/etcd/etcdserver/api/v3rpc/rpctypes"
 	"go.etcd.io/etcd/etcdserver/etcdserverpb"
-	"gopkg.in/yaml.v2"
 	"k8s.io/client-go/util/retry"
 )
 
@@ -48,8 +45,8 @@ type Control interface {
 	// This will succeed if and only if learner is in a healthy state and the learner is in sync with leader.
 	PromoteMember(context.Context) error
 
-	// UpdateMember updates the peer address of a specified etcd cluster member.
-	UpdateMember(context.Context, client.ClusterCloser) error
+	// UpdateMemberPeerURL updates the peer address of a specified etcd cluster member.
+	UpdateMemberPeerURL(context.Context, client.ClusterCloser) (string, error)
 
 	// RemoveMember removes the member from the etcd cluster.
 	RemoveMember(context.Context) error
@@ -92,7 +89,7 @@ func NewMemberControl(etcdConnConfig *brtypes.EtcdConnectionConfig) Control {
 // AddMemberAsLearner add a member as a learner to the etcd cluster
 func (m *memberControl) AddMemberAsLearner(ctx context.Context) error {
 	//Add member as learner to cluster
-	memberURL, err := getMemberURL(m.configFile, m.podName)
+	memberURL, err := getMemberPeerURL(m.configFile, m.podName)
 	if err != nil {
 		m.logger.Fatalf("Error fetching etcd member URL : %v", err)
 	}
@@ -174,54 +171,38 @@ func (m *memberControl) IsMemberInCluster(ctx context.Context) (bool, error) {
 	return false, nil
 }
 
-func getMemberURL(configFile string, podName string) (string, error) {
-	configYML, err := os.ReadFile(configFile)
+func getMemberPeerURL(configFile string, podName string) (string, error) {
+	config, err := miscellaneous.ReadConfigFileAsMap(configFile)
 	if err != nil {
-		return "", fmt.Errorf("unable to read etcd config file: %v", err)
+		return "", err
 	}
-
-	config := map[string]interface{}{}
-	if err := yaml.Unmarshal([]byte(configYML), &config); err != nil {
-		return "", fmt.Errorf("unable to unmarshal etcd config yaml file: %v", err)
-	}
-
 	initAdPeerURL := config["initial-advertise-peer-urls"]
-	peerURL, err := parsePeerURL(initAdPeerURL.(string), podName)
+	peerURL, err := miscellaneous.ParsePeerURL(initAdPeerURL.(string), podName)
 	if err != nil {
 		return "", fmt.Errorf("could not parse peer URL from the config file : %v", err)
 	}
 	return peerURL, nil
 }
 
-func parsePeerURL(peerURL, podName string) (string, error) {
-	tokens := strings.Split(peerURL, "@")
-	if len(tokens) < 4 {
-		return "", fmt.Errorf("invalid peer URL : %s", peerURL)
-	}
-	domaiName := fmt.Sprintf("%s.%s.%s", tokens[1], tokens[2], "svc")
-
-	return fmt.Sprintf("%s://%s.%s:%s", tokens[0], podName, domaiName, tokens[3]), nil
-}
-
-// updateMemberPeerAddress updated the peer address of a specified etcd member
-func (m *memberControl) updateMemberPeerAddress(ctx context.Context, cli client.ClusterCloser, id uint64) error {
+// doUpdateMemberPeerAddress updated the peer address of a specified etcd member
+func (m *memberControl) doUpdateMemberPeerAddress(ctx context.Context, cli client.ClusterCloser, id uint64) (string, error) {
 	// Already existing clusters have `http://localhost:2380` as the peer address. This needs to explicitly updated to the new address
 	// TODO: Remove this peer address updation logic on etcd-br v0.20.0
 	m.logger.Infof("Updating member peer URL for %s", m.podName)
 
-	memberURL, err := getMemberURL(m.configFile, m.podName)
+	memberPeerURL, err := getMemberPeerURL(m.configFile, m.podName)
 	if err != nil {
-		return fmt.Errorf("could not fetch member URL : %v", err)
+		return "", fmt.Errorf("could not fetch member URL : %v", err)
 	}
 
 	memberUpdateCtx, cancel := context.WithTimeout(ctx, EtcdTimeout)
 	defer cancel()
 
-	if _, err = cli.MemberUpdate(memberUpdateCtx, id, []string{memberURL}); err == nil {
+	if _, err = cli.MemberUpdate(memberUpdateCtx, id, []string{memberPeerURL}); err == nil {
 		m.logger.Info("Successfully updated the member peer URL")
-		return nil
+		return memberPeerURL, nil
 	}
-	return err
+	return "", err
 }
 
 // PromoteMember promotes an etcd member from a learner to a voting member of the cluster. This will succeed only if its logs are caught up with the leader
@@ -261,18 +242,18 @@ func findMember(existingMembers []*etcdserverpb.Member, memberName string) *etcd
 	return nil
 }
 
-// UpdateMember updates the peer address of a specified etcd cluster member.
-func (m *memberControl) UpdateMember(ctx context.Context, cli client.ClusterCloser) error {
+// UpdateMemberPeerURL updates the peer address of a specified etcd cluster member.
+func (m *memberControl) UpdateMemberPeerURL(ctx context.Context, cli client.ClusterCloser) (string, error) {
 	m.logger.Infof("Attempting to update the member Info: %v", m.podName)
 	ctx, cancel := context.WithTimeout(ctx, brtypes.DefaultEtcdConnectionTimeout)
 	defer cancel()
 
 	membersInfo, err := cli.MemberList(ctx)
 	if err != nil {
-		return fmt.Errorf("error listing members: %v", err)
+		return "", fmt.Errorf("error listing members: %v", err)
 	}
 
-	return m.updateMemberPeerAddress(ctx, cli, membersInfo.Header.GetMemberId())
+	return m.doUpdateMemberPeerAddress(ctx, cli, membersInfo.Header.GetMemberId())
 }
 
 // RemoveMember removes the member from the etcd cluster.

@@ -36,6 +36,8 @@ import (
 const (
 	podName      = "POD_NAME"
 	podNamespace = "POD_NAMESPACE"
+	// PeerURLTLSEnabledKey is the name of the annotation that will be added to the lease and will indicate whether TLS has been enabled for peer URL
+	PeerURLTLSEnabledKey = "member.etcd.gardener.cloud/tls-enabled"
 )
 
 // Heartbeat contains information to perform regular heart beats in a Kubernetes cluster.
@@ -46,10 +48,11 @@ type Heartbeat struct {
 	k8sClient      client.Client
 	podName        string
 	podNamespace   string
+	metadata       map[string]string // metadata is currently added as annotations to the k8s lease object
 }
 
 // NewHeartbeat returns the heartbeat object.
-func NewHeartbeat(logger *logrus.Entry, etcdConfig *brtypes.EtcdConnectionConfig, clientSet client.Client) (*Heartbeat, error) {
+func NewHeartbeat(logger *logrus.Entry, etcdConfig *brtypes.EtcdConnectionConfig, clientSet client.Client, metadata map[string]string) (*Heartbeat, error) {
 	if etcdConfig == nil {
 		return nil, &errors.EtcdError{
 			Message: "nil etcd config passed, can not create heartbeat",
@@ -74,6 +77,7 @@ func NewHeartbeat(logger *logrus.Entry, etcdConfig *brtypes.EtcdConnectionConfig
 		k8sClient:    clientSet,
 		podName:      memberName,
 		podNamespace: namespace,
+		metadata:     metadata,
 	}, nil
 }
 
@@ -129,6 +133,13 @@ func (hb *Heartbeat) RenewMemberLease(ctx context.Context) error {
 	renewedMemberLease.Spec.HolderIdentity = &memberID
 	renewedTime := time.Now()
 	renewedMemberLease.Spec.RenewTime = &metav1.MicroTime{Time: renewedTime}
+	// Update only keys from metadata
+	if renewedMemberLease.Annotations == nil {
+		renewedMemberLease.Annotations = map[string]string{}
+	}
+	for k, v := range hb.metadata {
+		renewedMemberLease.Annotations[k] = v
+	}
 
 	err = hb.k8sClient.Patch(ctx, renewedMemberLease, client.MergeFrom(memberLease))
 	if err != nil {
@@ -306,14 +317,18 @@ func DeltaSnapshotCaseLeaseUpdate(ctx context.Context, logger *logrus.Entry, k8s
 }
 
 // RenewMemberLeasePeriodically has a timer and will periodically call RenewMemberLeases to renew the member lease until stopped
-func RenewMemberLeasePeriodically(ctx context.Context, stopCh chan struct{}, hconfig *brtypes.HealthConfig, logger *logrus.Entry, etcdConfig *brtypes.EtcdConnectionConfig) error {
+func RenewMemberLeasePeriodically(ctx context.Context, stopCh chan struct{}, hconfig *brtypes.HealthConfig, logger *logrus.Entry, etcdConfig *brtypes.EtcdConnectionConfig, peerURLTLSEnabled bool) error {
 
 	clientSet, err := miscellaneous.GetKubernetesClientSetOrError()
 	if err != nil {
 		return fmt.Errorf("failed to create clientset: %v", err)
 	}
 
-	hb, err := NewHeartbeat(logger, etcdConfig, clientSet)
+	metadata := map[string]string{
+		PeerURLTLSEnabledKey: strconv.FormatBool(peerURLTLSEnabled),
+	}
+
+	hb, err := NewHeartbeat(logger, etcdConfig, clientSet, metadata)
 	if err != nil {
 		return fmt.Errorf("failed to initialize new heartbeat: %v", err)
 	}

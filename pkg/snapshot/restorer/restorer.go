@@ -127,7 +127,7 @@ func (r *Restorer) Restore(ro brtypes.RestoreOptions, m member.Control) (*embed.
 			return e, err
 		}
 		defer clientCluster.Close()
-		m.UpdateMember(context.TODO(), clientCluster)
+		m.UpdateMemberPeerURL(context.TODO(), clientCluster)
 	}
 	return e, nil
 }

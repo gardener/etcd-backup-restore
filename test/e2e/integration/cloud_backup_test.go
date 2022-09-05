@@ -132,26 +132,27 @@ var _ = Describe("CloudBackup", func() {
 		// Create and place a ETCD config yaml
 		outfile := "/tmp/etcd.conf.yaml"
 		etcdConfigYaml := `# Human-readable name for this member.
-    name: etcd1
-    data-dir: ` + os.Getenv("ETCD_DATA_DIR") + `
-    metrics: extensive
-    snapshot-count: 75000
-    enable-v2: false
-    quota-backend-bytes: 1073741824
-    listen-client-urls: http://0.0.0.0:2379
-    advertise-client-urls: http://0.0.0.0:2379
-    initial-advertise-peer-urls: http://0.0.0.0:2380
-    initial-cluster: etcd1=http://0.0.0.0:2380
-    initial-cluster-token: new
-    initial-cluster-state: new
-    auto-compaction-mode: periodic
-    auto-compaction-retention: 30m`
+name: etcd1
+data-dir: ` + os.Getenv("ETCD_DATA_DIR") + `
+metrics: extensive
+snapshot-count: 75000
+enable-v2: false
+quota-backend-bytes: 1073741824
+listen-client-urls: http://0.0.0.0:2379
+advertise-client-urls: http://0.0.0.0:2379
+initial-advertise-peer-urls: http@etcd-main-peer@default@2380
+initial-cluster: etcd1=http://0.0.0.0:2380
+initial-cluster-token: new
+initial-cluster-state: new
+auto-compaction-mode: periodic
+auto-compaction-retention: 30m`
 
 		err := os.WriteFile(outfile, []byte(etcdConfigYaml), 0755)
 		Expect(err).ShouldNot(HaveOccurred())
-		os.Setenv("ETCD_CONF", outfile)
+		Expect(os.Setenv("ETCD_CONF", outfile)).To(Succeed())
 		// Required as the config file for embedded ETCD fetches ETCD instance name from the POD_NAME variable
-		os.Setenv("POD_NAME", "etcd1")
+		Expect(os.Setenv("POD_NAME", "etcd1")).To(Succeed())
+		Expect(os.Setenv("POD_NAMESPACE", "etcd-test")).To(Succeed())
 	})
 
 	Describe("Regular backups", func() {
@@ -168,7 +169,7 @@ var _ = Describe("CloudBackup", func() {
 			snapList, err := store.List()
 			Expect(err).ShouldNot(HaveOccurred())
 			for _, snap := range snapList {
-				store.Delete(*snap)
+				Expect(store.Delete(*snap)).To(Succeed())
 			}
 
 			cmdEtcd, etcdErrChan = startEtcd()
