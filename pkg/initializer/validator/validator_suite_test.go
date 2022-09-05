@@ -38,12 +38,6 @@ var (
 	etcdRevision int64
 )
 
-// fileInfo holds file information such as file name and file path
-type fileInfo struct {
-	name string
-	path string
-}
-
 func TestValidator(t *testing.T) {
 	RegisterFailHandler(Fail)
 	RunSpecs(t, "Validator Suite")
