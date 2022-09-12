@@ -523,7 +523,7 @@ func getInitialCluster(ctx context.Context, initialCluster string, etcdConn brty
 	//Test for quorum loss
 	clientSet, err := miscellaneous.GetKubernetesClientSetOrError()
 	if err != nil {
-		logger.Errorf("failed to create clientset: %v", err)
+		logger.Fatalf("failed to create clientset: %v", err)
 	}
 
 	sts := &appsv1.StatefulSet{}

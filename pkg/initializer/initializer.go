@@ -63,14 +63,12 @@ func (e *EtcdInitializer) Initialize(mode validator.Mode, failBelowRevision int6
 
 	//create kubectl client
 	if err := druidv1alpha1.AddToScheme(sc); err != nil {
-		fmt.Printf("failed to register scheme: %v", err)
-		os.Exit(1)
+		e.Logger.Fatalf("failed to register scheme: %v", err)
 	}
 
 	clientSet, err := miscellaneous.GetKubernetesClientSetWithSchemeOrError(sc)
 	if err != nil {
-		e.Logger.Warnf("Failed to create clientset: %v", err)
-		return nil
+		e.Logger.Fatalf("Failed to create clientset: %v", err)
 	}
 
 	etcd := &druidv1alpha1.Etcd{}
@@ -124,11 +122,9 @@ func (e *EtcdInitializer) Initialize(mode validator.Mode, failBelowRevision int6
 						Jitter:   0.1,
 					}
 
-					retry.OnError(backOff, func(err error) bool {
-						return err != nil
-					}, func() error {
+					retry.OnError(backOff, errors.AnyError, func() error {
 						// check whether the cluster size without the learner is just one less than the member index found from the POD_NAME
-						size, err := m.ClusterSizeExcludingLearner(ctx)
+						size, err := m.ClusterVotingMemberCount(ctx)
 						if err != nil {
 							return err
 						}

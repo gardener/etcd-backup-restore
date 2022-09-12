@@ -200,7 +200,7 @@ func GetKubernetesClientSetOrError() (client.Client, error) {
 	return cl, nil
 }
 
-// GetKubernetesClientSetWithSchemeOrError creates and returns a kubernetes clientset or an error if creation fails
+// GetKubernetesClientSetWithSchemeOrError creates and returns a kubernetes clientset using the given scheme or an error if creation fails
 func GetKubernetesClientSetWithSchemeOrError(scheme *runtime.Scheme) (client.Client, error) {
 	var cl client.Client
 	restConfig, err := config.GetConfig()
