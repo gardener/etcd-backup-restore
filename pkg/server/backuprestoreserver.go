@@ -363,7 +363,7 @@ func (b *BackupRestoreServer) runEtcdProbeLoopWithSnapshotter(ctx context.Contex
 			err = b.probeEtcd(ctx)
 		}
 		if err != nil {
-			b.logger.Errorf("Failed to probe etcd: %v", err)
+			b.logger.Errorf("failed to probe etcd: %v", err)
 			handler.SetStatus(http.StatusServiceUnavailable)
 			continue
 		}
@@ -570,6 +570,7 @@ func (b *BackupRestoreServer) runEtcdProbeLoopWithSnapshotter(ctx context.Contex
 // probeEtcd will make the snapshotter probe for etcd endpoint to be available
 // before it starts taking regular snapshots.
 func (b *BackupRestoreServer) probeEtcd(ctx context.Context) error {
+	b.logger.Info("Probing Etcd...")
 	var endPoint string
 	client, err := etcdutil.NewFactory(*b.config.EtcdConnectionConfig).NewMaintenance()
 	if err != nil {
@@ -579,7 +580,7 @@ func (b *BackupRestoreServer) probeEtcd(ctx context.Context) error {
 	}
 	defer client.Close()
 
-	ctx, cancel := context.WithTimeout(ctx, b.config.EtcdConnectionConfig.ConnectionTimeout.Duration)
+	ctx, cancel := context.WithTimeout(ctx, brtypes.DefaultEtcdStatusConnecTimeout)
 	defer cancel()
 
 	if len(b.config.EtcdConnectionConfig.Endpoints) > 0 {
@@ -587,11 +588,12 @@ func (b *BackupRestoreServer) probeEtcd(ctx context.Context) error {
 	} else {
 		return fmt.Errorf("etcd endpoints are not passed correctly")
 	}
-	_, err = client.Status(ctx, endPoint)
-	if err != nil {
+
+	if _, err := client.Status(ctx, endPoint); err != nil {
 		b.logger.Errorf("failed to get status of etcd endPoint: %v with error: %v", endPoint, err)
 		return err
 	}
+
 	return nil
 }
 
