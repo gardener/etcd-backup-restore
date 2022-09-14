@@ -463,10 +463,9 @@ var _ = Describe("Miscellaneous Tests", func() {
 			statefulSetName = "etcd-test"
 			podName         = "etcd-test-0"
 			namespace       = "test_namespace"
-			emptyString     = ""
 		)
 		Context("In single node etcd: no scale-up", func() {
-			It("Should return the cluster state as empty string ", func() {
+			It("Should return the cluster state as nil", func() {
 				sts = &appsv1.StatefulSet{
 					TypeMeta: metav1.TypeMeta{
 						Kind:       "StatefulSet",
@@ -488,12 +487,13 @@ var _ = Describe("Miscellaneous Tests", func() {
 				err := clientSet.Create(testCtx, sts)
 				Expect(err).ShouldNot(HaveOccurred())
 
-				clusterState := GetInitialClusterStateIfScaleup(testCtx, *logger, clientSet, podName, namespace)
-				Expect(clusterState).Should(Equal(emptyString))
+				clusterState, err := GetInitialClusterStateIfScaleup(testCtx, *logger, clientSet, podName, namespace)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(clusterState).To(BeNil())
 			})
 		})
 		Context("In multi-node etcd bootstrap: no scale-up", func() {
-			It("Should return the cluster state as empty string ", func() {
+			It("Should return the cluster state as nil", func() {
 				sts = &appsv1.StatefulSet{
 					TypeMeta: metav1.TypeMeta{
 						Kind:       "StatefulSet",
@@ -515,8 +515,9 @@ var _ = Describe("Miscellaneous Tests", func() {
 				err := clientSet.Create(testCtx, sts)
 				Expect(err).ShouldNot(HaveOccurred())
 
-				clusterState := GetInitialClusterStateIfScaleup(testCtx, *logger, clientSet, podName, namespace)
-				Expect(clusterState).Should(Equal(emptyString))
+				clusterState, err := GetInitialClusterStateIfScaleup(testCtx, *logger, clientSet, podName, namespace)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(clusterState).Should(BeNil())
 			})
 		})
 		Context("In case of Scaling up from single node to multi-node etcd", func() {
@@ -542,13 +543,14 @@ var _ = Describe("Miscellaneous Tests", func() {
 				err := clientSet.Create(testCtx, sts)
 				Expect(err).ShouldNot(HaveOccurred())
 
-				clusterState := GetInitialClusterStateIfScaleup(testCtx, *logger, clientSet, podName, namespace)
+				clusterState, err := GetInitialClusterStateIfScaleup(testCtx, *logger, clientSet, podName, namespace)
+				Expect(err).ToNot(HaveOccurred())
 				Expect(clusterState).Should(Equal(ClusterStateExisting))
 			})
 		})
 
 		Context("Unable to fetch statefulset", func() {
-			It("Should return clusterState as `new` ", func() {
+			It("Should return error", func() {
 				sts = &appsv1.StatefulSet{
 					TypeMeta: metav1.TypeMeta{
 						Kind:       "StatefulSet",
@@ -572,8 +574,8 @@ var _ = Describe("Miscellaneous Tests", func() {
 				err := clientSet.Create(testCtx, sts)
 				Expect(err).ShouldNot(HaveOccurred())
 
-				clusterState := GetInitialClusterStateIfScaleup(testCtx, *logger, clientSet, podName, wrongNamespace)
-				Expect(clusterState).Should(Equal(ClusterStateNew))
+				_, err = GetInitialClusterStateIfScaleup(testCtx, *logger, clientSet, podName, wrongNamespace)
+				Expect(err).To(HaveOccurred())
 			})
 		})
 	})

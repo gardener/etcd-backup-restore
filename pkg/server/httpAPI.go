@@ -41,7 +41,6 @@ import (
 	"github.com/ghodss/yaml"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/sirupsen/logrus"
-
 	"go.etcd.io/etcd/clientv3"
 	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -456,8 +455,13 @@ func (h *HTTPHandler) serveConfig(rw http.ResponseWriter, req *http.Request) {
 		rw.WriteHeader(http.StatusInternalServerError)
 		return
 	}
-
-	config["initial-cluster-state"] = h.GetClusterState(req.Context(), clusterSize, clientSet, podName, podNS)
+	state, err := h.GetClusterState(req.Context(), clusterSize, clientSet, podName, podNS)
+	if err != nil {
+		h.Logger.Warnf("failed to get cluster state %v", err)
+		rw.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	config["initial-cluster-state"] = state
 
 	data, err := yaml.Marshal(&config)
 	if err != nil {
@@ -478,15 +482,18 @@ func (h *HTTPHandler) serveConfig(rw http.ResponseWriter, req *http.Request) {
 }
 
 // GetClusterState returns the Cluster state either `new` or `existing`.
-func (h *HTTPHandler) GetClusterState(ctx context.Context, clusterSize int, client client.Client, podName string, podNS string) string {
+func (h *HTTPHandler) GetClusterState(ctx context.Context, clusterSize int, client client.Client, podName string, podNS string) (string, error) {
 	if clusterSize == 1 {
-		return miscellaneous.ClusterStateNew
+		return miscellaneous.ClusterStateNew, nil
 	}
 
 	// clusterSize > 1
-	state := miscellaneous.GetInitialClusterStateIfScaleup(ctx, *h.Logger, client, podName, podNS)
+	state, err := miscellaneous.GetInitialClusterStateIfScaleup(ctx, *h.Logger, client, podName, podNS)
+	if err != nil {
+		return "", err
+	}
 
-	if len(state) == 0 {
+	if state == nil {
 		// Not a Scale-up scenario.
 		// Either a multi-node bootstrap or a restoration of single member in multi-node.
 		m := member.NewMemberControl(h.EtcdConnectionConfig)
@@ -494,13 +501,13 @@ func (h *HTTPHandler) GetClusterState(ctx context.Context, clusterSize int, clie
 		// check whether a learner is present in the cluster
 		// if a learner is present then return `ClusterStateExisting` else `ClusterStateNew`.
 		if present, err := m.IsLearnerPresent(ctx); present && err == nil {
-			return miscellaneous.ClusterStateExisting
+			return miscellaneous.ClusterStateExisting, nil
 		}
-		return miscellaneous.ClusterStateNew
+		return miscellaneous.ClusterStateNew, nil
 
 	}
 
-	return state
+	return *state, nil
 }
 
 func getInitialCluster(ctx context.Context, initialCluster string, etcdConn brtypes.EtcdConnectionConfig, logger logrus.Entry, podName string) string {
