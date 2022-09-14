@@ -264,7 +264,7 @@ func (b *BackupRestoreServer) runServer(ctx context.Context, restoreOpts *brtype
 				// set "http handler" with the latest snapshotter object
 				handler.SetSnapshotter(ssr)
 				defragCallBack = ssr.TriggerFullSnapshot
-				go handleSsrStopRequest(leCtx, handler, ssr, ackCh, ssrStopCh)
+				go handleSsrStopRequest(leCtx, handler, ssr, ackCh, ssrStopCh, b.logger)
 			}
 			go b.runEtcdProbeLoopWithSnapshotter(leCtx, handler, ssr, ss, ssrStopCh, ackCh)
 			go defragmentor.DefragDataPeriodically(leCtx, b.config.EtcdConnectionConfig, b.defragmentationSchedule, defragCallBack, b.logger)
@@ -607,12 +607,13 @@ func handleAckState(handler *HTTPHandler, ackCh chan struct{}) {
 }
 
 // handleSsrStopRequest responds to handlers request and stop interrupt.
-func handleSsrStopRequest(ctx context.Context, handler *HTTPHandler, ssr *snapshotter.Snapshotter, ackCh, ssrStopCh chan struct{}) {
+func handleSsrStopRequest(ctx context.Context, handler *HTTPHandler, ssr *snapshotter.Snapshotter, ackCh, ssrStopCh chan struct{}, logger *logrus.Entry) {
 	for {
 		var ok bool
 		select {
 		case _, ok = <-handler.ReqCh:
 		case _, ok = <-ctx.Done():
+			logger.Info("Stopping handleSsrStopRequest...")
 		}
 
 		ssr.SsrStateMutex.Lock()
