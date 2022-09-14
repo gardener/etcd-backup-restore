@@ -220,7 +220,7 @@ func (ssr *Snapshotter) TriggerDeltaSnapshot() (*brtypes.Snapshot, error) {
 		return nil, fmt.Errorf("snapshotter is not active")
 	}
 	if ssr.config.DeltaSnapshotPeriod.Duration < brtypes.DeltaSnapshotIntervalThreshold {
-		return nil, fmt.Errorf("Found delta snapshot interval %s less than %v. Delta snapshotting is disabled. ", ssr.config.DeltaSnapshotPeriod.Duration, time.Duration(brtypes.DeltaSnapshotIntervalThreshold))
+		return nil, fmt.Errorf("found delta snapshot interval %s less than %v. Delta snapshotting is disabled. ", ssr.config.DeltaSnapshotPeriod.Duration, time.Duration(brtypes.DeltaSnapshotIntervalThreshold))
 	}
 	ssr.logger.Info("Triggering out of schedule delta snapshot...")
 	ssr.deltaSnapshotReqCh <- emptyStruct
@@ -231,6 +231,7 @@ func (ssr *Snapshotter) TriggerDeltaSnapshot() (*brtypes.Snapshot, error) {
 // stop stops the snapshotter. Once stopped any subsequent calls will
 // not have any effect.
 func (ssr *Snapshotter) stop() {
+	ssr.logger.Info("Closing the Snapshotter...")
 	ssr.SsrStateMutex.Lock()
 	if ssr.fullSnapshotTimer != nil {
 		ssr.fullSnapshotTimer.Stop()
