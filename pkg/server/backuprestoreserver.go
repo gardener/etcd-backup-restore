@@ -226,11 +226,8 @@ func (b *BackupRestoreServer) runServer(ctx context.Context, restoreOpts *brtype
 		}
 	}
 
-	// when OriginalClusterSize = 1
 	m := member.NewMemberControl(b.config.EtcdConnectionConfig)
-	err := retry.OnError(retry.DefaultBackoff, func(err error) bool {
-		return err != nil
-	}, func() error {
+	err := retry.OnError(retry.DefaultBackoff, errors.AnyError, func() error {
 		cli, err := etcdutil.NewFactory(*b.config.EtcdConnectionConfig).NewCluster()
 		if err != nil {
 			return err
