@@ -547,7 +547,7 @@ var _ = Describe("Miscellaneous Tests", func() {
 					UpdatedReplicas: 3,
 				}
 				sts.Annotations = map[string]string{
-					"gardener.cloud/scaled-to-multi-node": "",
+					scaledToMultiNodeAnnotationKey: "",
 				}
 			})
 

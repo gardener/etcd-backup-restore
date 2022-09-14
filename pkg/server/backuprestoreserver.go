@@ -236,7 +236,7 @@ func (b *BackupRestoreServer) runServer(ctx context.Context, restoreOpts *brtype
 		return err
 	})
 	if err != nil {
-		b.logger.Error("unable to update the member")
+		b.logger.Error("unable to update the member: %v", err)
 	}
 
 	leaderCallbacks := &brtypes.LeaderCallbacks{
