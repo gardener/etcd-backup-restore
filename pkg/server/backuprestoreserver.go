@@ -224,22 +224,22 @@ func (b *BackupRestoreServer) runServer(ctx context.Context, restoreOpts *brtype
 			}
 			_ = miscellaneous.SleepWithContext(ctx, retryTimeout)
 		}
-	} else {
-		// when OriginalClusterSize = 1
-		m := member.NewMemberControl(b.config.EtcdConnectionConfig)
-		err := retry.OnError(retry.DefaultBackoff, func(err error) bool {
-			return err != nil
-		}, func() error {
-			cli, err := etcdutil.NewFactory(*b.config.EtcdConnectionConfig).NewCluster()
-			if err != nil {
-				return err
-			}
-			_, err = m.UpdateMemberPeerURL(ctx, cli)
-			return err
-		})
+	}
+
+	// when OriginalClusterSize = 1
+	m := member.NewMemberControl(b.config.EtcdConnectionConfig)
+	err := retry.OnError(retry.DefaultBackoff, func(err error) bool {
+		return err != nil
+	}, func() error {
+		cli, err := etcdutil.NewFactory(*b.config.EtcdConnectionConfig).NewCluster()
 		if err != nil {
-			b.logger.Error("unable to update the member")
+			return err
 		}
+		_, err = m.UpdateMemberPeerURL(ctx, cli)
+		return err
+	})
+	if err != nil {
+		b.logger.Error("unable to update the member")
 	}
 
 	leaderCallbacks := &brtypes.LeaderCallbacks{
