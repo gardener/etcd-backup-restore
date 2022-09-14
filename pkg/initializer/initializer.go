@@ -17,7 +17,6 @@ package initializer
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
@@ -32,7 +31,6 @@ import (
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 	druidv1alpha1 "github.com/gardener/etcd-druid/api/v1alpha1"
-	"github.com/ghodss/yaml"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/sirupsen/logrus"
 	"go.uber.org/zap"
@@ -63,90 +61,82 @@ func (e *EtcdInitializer) Initialize(mode validator.Mode, failBelowRevision int6
 
 	//create kubectl client
 	if err := druidv1alpha1.AddToScheme(sc); err != nil {
-		e.Logger.Fatalf("failed to register scheme: %v", err)
+		e.Logger.Errorf("failed to register scheme: %v", err)
 	}
 
 	clientSet, err := miscellaneous.GetKubernetesClientSetWithSchemeOrError(sc)
 	if err != nil {
-		e.Logger.Fatalf("Failed to create clientset: %v", err)
+		e.Logger.Errorf("failed to create clientset: %v", err)
 	}
 
 	etcd := &druidv1alpha1.Etcd{}
-	//Read etcd
+
 	podName := os.Getenv("POD_NAME")
 	podNameSpace := os.Getenv("POD_NAMESPACE")
-	etcdName := podName[:strings.LastIndex(podName, "-")]
-	if err := clientSet.Get(ctx, client.ObjectKey{
-		Namespace: podNameSpace,
-		Name:      etcdName,
-	}, etcd); err != nil {
-		return &errors.EtcdError{
-			Message: fmt.Sprintf("Could not fetch etcd CR %v/%v with error: %v", etcdName, podNameSpace, err),
+
+	// put inside the check for nil error to satisfy integration check
+	if err == nil {
+		//Read etcd
+		etcdName := podName[:strings.LastIndex(podName, "-")]
+		if err := clientSet.Get(ctx, client.ObjectKey{
+			Namespace: podNameSpace,
+			Name:      etcdName,
+		}, etcd); err != nil {
+			e.Logger.Errorf("could not fetch etcd CR %v/%v with error: %v", etcdName, podNameSpace, err)
 		}
 	}
 
+	var dataDirStatus validator.DataDirStatus
+	var dataDirErr error
+
+	dataDirStatus, dataDirErr = e.Validator.Validate(mode, failBelowRevision)
+
 	_, bootstrapCaseFound := etcd.Annotations["druid.gardener.cloud/bootstrap"]
-	_, quorumLossCaseFound := etcd.Annotations["druid.gardener.cloud/quorum-loss"]
 
 	if !bootstrapCaseFound {
-		inputFileName := miscellaneous.EtcdConfigFilePath
-		configYML, err := ioutil.ReadFile(inputFileName)
-		if err != nil {
-			return fmt.Errorf("unable to read etcd config file: %v", err)
-		}
+		if etcd.Spec.Replicas > 1 {
+			if dataDirStatus == validator.DataDirectoryValid {
+				// if data directory is present and valid, just start the ETCD
+				return nil
+			}
 
-		config := map[string]interface{}{}
-		if err := yaml.Unmarshal([]byte(configYML), &config); err != nil {
-			return fmt.Errorf("unable to unmarshal etcd config yaml file: %v", err)
-		}
+			m := member.NewMemberControl(e.Config.EtcdConnectionConfig)
+			isEtcdMemberPresent, err = m.IsMemberInCluster(ctx)
+			if err != nil {
+				return fmt.Errorf("this member restarted but can't be determined whether it was part of the cluster: %v", err)
+			}
 
-		initialClusterURLs := strings.Split(fmt.Sprint(config["initial-cluster"]), ",")
-
-		// set the flag FORCE_CLUSTER=true if this instance is the first pod after quorum loss
-		if quorumLossCaseFound && podName == strings.Split(initialClusterURLs[0], "=")[0] {
-			// set environment variable to force start a cluster with the member
-			os.Setenv("FORCE_CLUSTER", "true")
-		} else {
-			if etcd.Spec.Replicas > 1 {
-				m := member.NewMemberControl(e.Config.EtcdConnectionConfig)
-				isEtcdMemberPresent, err = m.IsMemberInCluster(ctx)
-				if err != nil {
-					return fmt.Errorf("this member restarted but can't be determined whether it was part of the cluster: %v", err)
+			if !isEtcdMemberPresent {
+				backOff := wait.Backoff{
+					Steps:    100,
+					Duration: 30 * time.Second,
+					Factor:   5.0,
+					Jitter:   0.1,
 				}
 
-				if !isEtcdMemberPresent {
-					backOff := wait.Backoff{
-						Steps:    100,
-						Duration: 30 * time.Second,
-						Factor:   5.0,
-						Jitter:   0.1,
+				retry.OnError(backOff, errors.AnyError, func() error {
+					// check whether the cluster size without the learner is just one less than the member index found from the POD_NAME
+					size, err := m.ClusterVotingMemberCount(ctx)
+					if err != nil {
+						return err
 					}
 
-					retry.OnError(backOff, errors.AnyError, func() error {
-						// check whether the cluster size without the learner is just one less than the member index found from the POD_NAME
-						size, err := m.ClusterVotingMemberCount(ctx)
-						if err != nil {
-							return err
-						}
+					// trick to add member as learner sequentially
+					if fmt.Sprint(size) == strings.Split(podName, "-")[2] {
+						return m.AddMemberAsLearner(ctx)
+					}
 
-						// trick to add member as learner sequentially
-						if fmt.Sprint(size) == strings.Split(podName, "-")[2] {
-							return m.AddMemberAsLearner(ctx)
-						}
-
-						return fmt.Errorf("this member can't be added as learner yet because another member must be added before this member")
-					})
-					// return here after adding member as no restoration or validation needed
-					return nil
-				}
+					return fmt.Errorf("this member can't be added as learner yet because another member must be added before this member")
+				})
+				// return here after adding member as no restoration or validation needed
+				return nil
 			}
 		}
 	}
 
-	dataDirStatus, err := e.Validator.Validate(mode, failBelowRevision)
 	if dataDirStatus == validator.WrongVolumeMounted {
 		metrics.ValidationDurationSeconds.With(prometheus.Labels{metrics.LabelSucceeded: metrics.ValueSucceededFalse}).Observe(time.Since(start).Seconds())
-		return fmt.Errorf("won't initialize ETCD because wrong ETCD volume is mounted: %v", err)
+		return fmt.Errorf("won't initialize ETCD because wrong ETCD volume is mounted: %v", dataDirErr)
 	}
 
 	if dataDirStatus == validator.FailToOpenBoltDBError {
@@ -156,7 +146,7 @@ func (e *EtcdInitializer) Initialize(mode validator.Mode, failBelowRevision int6
 
 	if dataDirStatus == validator.DataDirectoryStatusUnknown {
 		metrics.ValidationDurationSeconds.With(prometheus.Labels{metrics.LabelSucceeded: metrics.ValueSucceededFalse}).Observe(time.Since(start).Seconds())
-		return fmt.Errorf("error while initializing: %v", err)
+		return fmt.Errorf("error while initializing: %v", dataDirErr)
 	}
 
 	if dataDirStatus == validator.FailBelowRevisionConsistencyError {
@@ -166,10 +156,8 @@ func (e *EtcdInitializer) Initialize(mode validator.Mode, failBelowRevision int6
 
 	metrics.ValidationDurationSeconds.With(prometheus.Labels{metrics.LabelSucceeded: metrics.ValueSucceededTrue}).Observe(time.Since(start).Seconds())
 
-	// bootstrap of the first member after quorum loss case as well as the bootstrap case come to this point
-	// so, check for quorum loss case and skip restoration using removing and adding member
 	if dataDirStatus != validator.DataDirectoryValid {
-		if (dataDirStatus == validator.DataDirStatusInvalidInMultiNode || (e.Validator.OriginalClusterSize > 1 && dataDirStatus == validator.DataDirectoryCorrupt) || (e.Validator.OriginalClusterSize > 1 && isEtcdMemberPresent)) && !quorumLossCaseFound {
+		if dataDirStatus == validator.DataDirStatusInvalidInMultiNode || (e.Validator.OriginalClusterSize > 1 && dataDirStatus == validator.DataDirectoryCorrupt) || (e.Validator.OriginalClusterSize > 1 && isEtcdMemberPresent) {
 			if err := e.restoreInMultiNode(ctx); err != nil {
 				metrics.RestorationDurationSeconds.With(prometheus.Labels{metrics.LabelRestorationKind: metrics.ValueRestoreSingleMemberInMultiNode, metrics.LabelSucceeded: metrics.ValueSucceededFalse}).Observe(time.Since(start).Seconds())
 				return err

@@ -462,12 +462,6 @@ func (h *HTTPHandler) serveConfig(rw http.ResponseWriter, req *http.Request) {
 	}
 	config["initial-cluster-state"] = state
 
-	forceCluster := os.Getenv("FORCE_CLUSTER")
-	if forceCluster == "true" {
-		config["force-new-cluster"] = true
-	}
-	os.Setenv("FORCE_CLUSTER", "false")
-
 	data, err := yaml.Marshal(&config)
 	if err != nil {
 		h.Logger.Warnf("Unable to marshal data to etcd config yaml file: %v", err)
