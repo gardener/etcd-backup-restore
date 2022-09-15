@@ -62,7 +62,6 @@ var (
 	// runServerWithSnapshotter indicates whether to start server with or without snapshotter.
 	runServerWithSnapshotter bool = true
 	retryTimeout                  = 5 * time.Second
-	//peerURLTLSEnabled        bool
 )
 
 const (
