@@ -3,34 +3,42 @@ package server
 import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
+	"github.com/sirupsen/logrus"
 )
 
 var _ = Describe("backrestoreserver tests", func() {
-	const podName = "etcd-test-pod-0"
 	var (
-		initialAdvertisePeerURLs string
+		memberPeerURL string
+		brServer      *BackupRestoreServer
+		err           error
 	)
+
+	BeforeEach(func() {
+		brServer, err = NewBackupRestoreServer(logrus.New(), &BackupRestoreComponentConfig{})
+		Expect(err).ToNot(HaveOccurred())
+	})
 
 	Describe("testing isPeerURLTLSEnabled", func() {
 		Context("testing with non-TLS enabled peer url", func() {
 			BeforeEach(func() {
-				initialAdvertisePeerURLs = "http@etcd-main-peer@default@2380"
+				memberPeerURL = "http://etcd-main-peer.default.svc:2380"
 			})
 			It("test", func() {
-				enabled, err := isPeerURLTLSEnabled(initialAdvertisePeerURLs, podName)
+				enabled := brServer.isPeerURLTLSEnabled(memberPeerURL)
 				Expect(err).To(BeNil())
 				Expect(enabled).To(BeFalse())
 			})
 
 		})
+
 		Context("testing with TLS enabled peer url", func() {
 			BeforeEach(func() {
-				initialAdvertisePeerURLs = "https@etcd-main-peer@default@2380"
+				memberPeerURL = "https://etcd-main-peer.default.svc:2380"
 			})
 			It("test", func() {
-				enabled, err := isPeerURLTLSEnabled(initialAdvertisePeerURLs, podName)
+				enabled := brServer.isPeerURLTLSEnabled(memberPeerURL)
 				Expect(err).To(BeNil())
-				Expect(enabled).To(BeFalse())
+				Expect(enabled).To(BeTrue())
 			})
 		})
 	})
