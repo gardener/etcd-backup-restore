@@ -62,7 +62,7 @@ var (
 	// runServerWithSnapshotter indicates whether to start server with or without snapshotter.
 	runServerWithSnapshotter bool = true
 	retryTimeout                  = 5 * time.Second
-	peerURLTLSEnabled        bool
+	//peerURLTLSEnabled        bool
 )
 
 const (
@@ -111,19 +111,19 @@ func (b *BackupRestoreServer) Run(ctx context.Context) error {
 		return err
 	}
 
-	podName, err := miscellaneous.GetEnvVarOrError("POD_NAME")
-	if err != nil {
-		b.logger.Fatalf("Error reading POD_NAME env var : %v", err)
-	}
-
-	initialAdvertisePeerURLs := config["initial-advertise-peer-urls"].(string)
-	peerURLTLSEnabled, err = isPeerURLTLSEnabled(initialAdvertisePeerURLs, podName)
-	if err != nil {
-		b.logger.WithFields(logrus.Fields{
-			"podName":                     podName,
-			"initial-advertise-peer-urls": initialAdvertisePeerURLs,
-		}).Fatalf("failed to parse initial-advertise-peer-urls: %v", err)
-	}
+	//podName, err := miscellaneous.GetEnvVarOrError("POD_NAME")
+	//if err != nil {
+	//	b.logger.Fatalf("Error reading POD_NAME env var : %v", err)
+	//}
+	//
+	//initialAdvertisePeerURLs := config["initial-advertise-peer-urls"].(string)
+	//peerURLTLSEnabled, err = isPeerURLTLSEnabled(initialAdvertisePeerURLs, podName)
+	//if err != nil {
+	//	b.logger.WithFields(logrus.Fields{
+	//		"podName":                     podName,
+	//		"initial-advertise-peer-urls": initialAdvertisePeerURLs,
+	//	}).Fatalf("failed to parse initial-advertise-peer-urls: %v", err)
+	//}
 
 	initialClusterSize, err := miscellaneous.GetClusterSize(fmt.Sprint(config["initial-cluster"]))
 	if err != nil {
@@ -226,18 +226,25 @@ func (b *BackupRestoreServer) runServer(ctx context.Context, restoreOpts *brtype
 		}
 	}
 
+	var memberPeerURL string
+
 	m := member.NewMemberControl(b.config.EtcdConnectionConfig)
 	err := retry.OnError(retry.DefaultBackoff, errors.AnyError, func() error {
 		cli, err := etcdutil.NewFactory(*b.config.EtcdConnectionConfig).NewCluster()
 		if err != nil {
 			return err
 		}
-		_, err = m.UpdateMemberPeerURL(ctx, cli)
-		return err
+		memberPeerURL, err = m.UpdateMemberPeerURL(ctx, cli)
+		if err != nil {
+			return err
+		}
+		return nil
 	})
 	if err != nil {
-		b.logger.Errorf("unable to update the member: %v", err)
+		return fmt.Errorf("failed to update member peer url: %w", err)
 	}
+
+	peerURLTLSEnabled := b.isPeerURLTLSEnabled(memberPeerURL)
 
 	leaderCallbacks := &brtypes.LeaderCallbacks{
 		OnStartedLeading: func(leCtx context.Context) {
@@ -637,14 +644,12 @@ func (b *BackupRestoreServer) stopSnapshotter(handler *HTTPHandler) {
 	<-handler.AckCh
 }
 
-func isPeerURLTLSEnabled(initialAdvertisePeerURLs string, podName string) (bool, error) {
-	rawPeerURL, err := miscellaneous.ParsePeerURL(initialAdvertisePeerURLs, podName)
+func (b *BackupRestoreServer) isPeerURLTLSEnabled(memberPeerURL string) bool {
+	peerURL, err := url.Parse(memberPeerURL)
 	if err != nil {
-		return false, err
+		b.logger.WithFields(logrus.Fields{
+			"memberPeerURL": memberPeerURL,
+		}).Fatalf("malformed member peer url: %v", err)
 	}
-	peerURL, err := url.Parse(rawPeerURL)
-	if err != nil {
-		return false, err
-	}
-	return peerURL.Scheme == https, nil
+	return peerURL.Scheme == https
 }
