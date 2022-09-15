@@ -111,20 +111,6 @@ func (b *BackupRestoreServer) Run(ctx context.Context) error {
 		return err
 	}
 
-	//podName, err := miscellaneous.GetEnvVarOrError("POD_NAME")
-	//if err != nil {
-	//	b.logger.Fatalf("Error reading POD_NAME env var : %v", err)
-	//}
-	//
-	//initialAdvertisePeerURLs := config["initial-advertise-peer-urls"].(string)
-	//peerURLTLSEnabled, err = isPeerURLTLSEnabled(initialAdvertisePeerURLs, podName)
-	//if err != nil {
-	//	b.logger.WithFields(logrus.Fields{
-	//		"podName":                     podName,
-	//		"initial-advertise-peer-urls": initialAdvertisePeerURLs,
-	//	}).Fatalf("failed to parse initial-advertise-peer-urls: %v", err)
-	//}
-
 	initialClusterSize, err := miscellaneous.GetClusterSize(fmt.Sprint(config["initial-cluster"]))
 	if err != nil {
 		b.logger.Fatal("Please provide initial cluster value for embedded ETCD")
