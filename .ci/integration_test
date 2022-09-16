@@ -136,7 +136,7 @@ function create_etcd_data_directory() {
 }
 
 function get_aws_existing_region() {
-  export REGION=`cat ${HOME}/.aws/config | grep -e "^.*region.*$" | awk '{print $3}'`
+  export REGION=`cat ${HOME}/.aws/config | grep -e "^.*region.*$" | sed "s/^.*region[ ]*=[ ]*//"`
 }
 
 #############################
