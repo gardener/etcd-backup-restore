@@ -39,6 +39,8 @@ import (
 	"go.etcd.io/etcd/etcdserver/etcdserverpb"
 	"go.etcd.io/etcd/pkg/types"
 	"gopkg.in/yaml.v2"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/utils/pointer"
 
 	appsv1 "k8s.io/api/apps/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -416,25 +418,30 @@ func IsBackupBucketEmpty(snapStoreConfig *brtypes.SnapstoreConfig, logger *logru
 	return true
 }
 
+const scaledToMultiNodeAnnotationKey = "gardener.cloud/scaled-to-multi-node"
+
 // GetInitialClusterStateIfScaleup checks if it is the Scale-up scenario and returns the cluster state either `new` or `existing`.
-func GetInitialClusterStateIfScaleup(ctx context.Context, logger logrus.Entry, clientSet client.Client, podName string, podNS string) string {
+func GetInitialClusterStateIfScaleup(ctx context.Context, logger logrus.Entry, clientSet client.Client, podName string, podNS string) (*string, error) {
 	//Read sts spec for updated replicas to toggle `initial-cluster-state`
 	curSts := &appsv1.StatefulSet{}
-	errSts := clientSet.Get(ctx, client.ObjectKey{
+	err := clientSet.Get(ctx, client.ObjectKey{
 		Namespace: podNS,
 		Name:      podName[:strings.LastIndex(podName, "-")],
 	}, curSts)
-	if errSts != nil {
-		logger.Warn("error fetching etcd sts ", errSts)
-		return ClusterStateNew
+	if err != nil {
+		logger.Warn("error fetching etcd sts ", err)
+		return nil, err
 	}
 
-	//TODO: achieve this without an sts?
+	if metav1.HasAnnotation(curSts.ObjectMeta, scaledToMultiNodeAnnotationKey) {
+		return pointer.StringPtr(ClusterStateExisting), nil
+	}
+
+	// fallback - preserves backward compatibility
 	if *curSts.Spec.Replicas > 1 && *curSts.Spec.Replicas > curSts.Status.UpdatedReplicas {
-		return ClusterStateExisting
+		return pointer.StringPtr(ClusterStateExisting), nil
 	}
-
-	return ""
+	return nil, nil
 }
 
 // DoPromoteMember promotes a given learner to a voting member.

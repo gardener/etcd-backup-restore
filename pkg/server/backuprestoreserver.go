@@ -62,7 +62,6 @@ var (
 	// runServerWithSnapshotter indicates whether to start server with or without snapshotter.
 	runServerWithSnapshotter bool = true
 	retryTimeout                  = 5 * time.Second
-	peerURLTLSEnabled        bool
 )
 
 const (
@@ -109,20 +108,6 @@ func (b *BackupRestoreServer) Run(ctx context.Context) error {
 			"configFile": etcdConfigPath,
 		}).Fatalf("failed to read etcd config file: %v", err)
 		return err
-	}
-
-	podName, err := miscellaneous.GetEnvVarOrError("POD_NAME")
-	if err != nil {
-		b.logger.Fatalf("Error reading POD_NAME env var : %v", err)
-	}
-
-	initialAdvertisePeerURLs := config["initial-advertise-peer-urls"].(string)
-	peerURLTLSEnabled, err = isPeerURLTLSEnabled(initialAdvertisePeerURLs, podName)
-	if err != nil {
-		b.logger.WithFields(logrus.Fields{
-			"podName":                     podName,
-			"initial-advertise-peer-urls": initialAdvertisePeerURLs,
-		}).Fatalf("failed to parse initial-advertise-peer-urls: %v", err)
 	}
 
 	initialClusterSize, err := miscellaneous.GetClusterSize(fmt.Sprint(config["initial-cluster"]))
@@ -224,23 +209,27 @@ func (b *BackupRestoreServer) runServer(ctx context.Context, restoreOpts *brtype
 			}
 			_ = miscellaneous.SleepWithContext(ctx, retryTimeout)
 		}
-	} else {
-		// when OriginalClusterSize = 1
-		m := member.NewMemberControl(b.config.EtcdConnectionConfig)
-		err := retry.OnError(retry.DefaultBackoff, func(err error) bool {
-			return err != nil
-		}, func() error {
-			cli, err := etcdutil.NewFactory(*b.config.EtcdConnectionConfig).NewCluster()
-			if err != nil {
-				return err
-			}
-			_, err = m.UpdateMemberPeerURL(ctx, cli)
-			return err
-		})
-		if err != nil {
-			b.logger.Error("unable to update the member")
-		}
 	}
+
+	var memberPeerURL string
+
+	m := member.NewMemberControl(b.config.EtcdConnectionConfig)
+	err := retry.OnError(retry.DefaultBackoff, errors.AnyError, func() error {
+		cli, err := etcdutil.NewFactory(*b.config.EtcdConnectionConfig).NewCluster()
+		if err != nil {
+			return err
+		}
+		memberPeerURL, err = m.UpdateMemberPeerURL(ctx, cli)
+		if err != nil {
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("failed to update member peer url: %w", err)
+	}
+
+	peerURLTLSEnabled := b.isPeerURLTLSEnabled(memberPeerURL)
 
 	leaderCallbacks := &brtypes.LeaderCallbacks{
 		OnStartedLeading: func(leCtx context.Context) {
@@ -264,7 +253,7 @@ func (b *BackupRestoreServer) runServer(ctx context.Context, restoreOpts *brtype
 				// set "http handler" with the latest snapshotter object
 				handler.SetSnapshotter(ssr)
 				defragCallBack = ssr.TriggerFullSnapshot
-				go handleSsrStopRequest(leCtx, handler, ssr, ackCh, ssrStopCh)
+				go handleSsrStopRequest(leCtx, handler, ssr, ackCh, ssrStopCh, b.logger)
 			}
 			go b.runEtcdProbeLoopWithSnapshotter(leCtx, handler, ssr, ss, ssrStopCh, ackCh)
 			go defragmentor.DefragDataPeriodically(leCtx, b.config.EtcdConnectionConfig, b.defragmentationSchedule, defragCallBack, b.logger)
@@ -363,7 +352,7 @@ func (b *BackupRestoreServer) runEtcdProbeLoopWithSnapshotter(ctx context.Contex
 			err = b.probeEtcd(ctx)
 		}
 		if err != nil {
-			b.logger.Errorf("Failed to probe etcd: %v", err)
+			b.logger.Errorf("failed to probe etcd: %v", err)
 			handler.SetStatus(http.StatusServiceUnavailable)
 			continue
 		}
@@ -570,6 +559,7 @@ func (b *BackupRestoreServer) runEtcdProbeLoopWithSnapshotter(ctx context.Contex
 // probeEtcd will make the snapshotter probe for etcd endpoint to be available
 // before it starts taking regular snapshots.
 func (b *BackupRestoreServer) probeEtcd(ctx context.Context) error {
+	b.logger.Info("Probing Etcd...")
 	var endPoint string
 	client, err := etcdutil.NewFactory(*b.config.EtcdConnectionConfig).NewMaintenance()
 	if err != nil {
@@ -579,7 +569,7 @@ func (b *BackupRestoreServer) probeEtcd(ctx context.Context) error {
 	}
 	defer client.Close()
 
-	ctx, cancel := context.WithTimeout(ctx, b.config.EtcdConnectionConfig.ConnectionTimeout.Duration)
+	ctx, cancel := context.WithTimeout(ctx, brtypes.DefaultEtcdStatusConnecTimeout)
 	defer cancel()
 
 	if len(b.config.EtcdConnectionConfig.Endpoints) > 0 {
@@ -587,11 +577,12 @@ func (b *BackupRestoreServer) probeEtcd(ctx context.Context) error {
 	} else {
 		return fmt.Errorf("etcd endpoints are not passed correctly")
 	}
-	_, err = client.Status(ctx, endPoint)
-	if err != nil {
+
+	if _, err := client.Status(ctx, endPoint); err != nil {
 		b.logger.Errorf("failed to get status of etcd endPoint: %v with error: %v", endPoint, err)
 		return err
 	}
+
 	return nil
 }
 
@@ -605,12 +596,13 @@ func handleAckState(handler *HTTPHandler, ackCh chan struct{}) {
 }
 
 // handleSsrStopRequest responds to handlers request and stop interrupt.
-func handleSsrStopRequest(ctx context.Context, handler *HTTPHandler, ssr *snapshotter.Snapshotter, ackCh, ssrStopCh chan struct{}) {
+func handleSsrStopRequest(ctx context.Context, handler *HTTPHandler, ssr *snapshotter.Snapshotter, ackCh, ssrStopCh chan struct{}, logger *logrus.Entry) {
 	for {
 		var ok bool
 		select {
 		case _, ok = <-handler.ReqCh:
 		case _, ok = <-ctx.Done():
+			logger.Info("Stopping handleSsrStopRequest...")
 		}
 
 		ssr.SsrStateMutex.Lock()
@@ -637,14 +629,12 @@ func (b *BackupRestoreServer) stopSnapshotter(handler *HTTPHandler) {
 	<-handler.AckCh
 }
 
-func isPeerURLTLSEnabled(initialAdvertisePeerURLs string, podName string) (bool, error) {
-	rawPeerURL, err := miscellaneous.ParsePeerURL(initialAdvertisePeerURLs, podName)
+func (b *BackupRestoreServer) isPeerURLTLSEnabled(memberPeerURL string) bool {
+	peerURL, err := url.Parse(memberPeerURL)
 	if err != nil {
-		return false, err
+		b.logger.WithFields(logrus.Fields{
+			"memberPeerURL": memberPeerURL,
+		}).Fatalf("malformed member peer url: %v", err)
 	}
-	peerURL, err := url.Parse(rawPeerURL)
-	if err != nil {
-		return false, err
-	}
-	return peerURL.Scheme == https, nil
+	return peerURL.Scheme == https
 }

@@ -27,8 +27,8 @@ import (
 const (
 	// DefaultReelectionPeriod defines default time period for Reelection.
 	DefaultReelectionPeriod = 5 * time.Second
-	// DefaultEtcdConnecTimeout defines default ConnectionTimeout for etcd client.
-	DefaultEtcdConnecTimeout = 5 * time.Second
+	// DefaultEtcdStatusConnecTimeout defines default ConnectionTimeout for etcd client to get Etcd endpoint status.
+	DefaultEtcdStatusConnecTimeout = 5 * time.Second
 )
 
 // LeaderCallbacks are callbacks that are triggered to start/stop the snapshottter when leader's currentState changes.
@@ -67,7 +67,7 @@ type Config struct {
 func NewLeaderElectionConfig() *Config {
 	return &Config{
 		ReelectionPeriod:      wrappers.Duration{Duration: DefaultReelectionPeriod},
-		EtcdConnectionTimeout: wrappers.Duration{Duration: DefaultEtcdConnecTimeout},
+		EtcdConnectionTimeout: wrappers.Duration{Duration: DefaultEtcdStatusConnecTimeout},
 	}
 }
 
