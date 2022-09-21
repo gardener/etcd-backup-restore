@@ -226,7 +226,7 @@ func (b *BackupRestoreServer) runServer(ctx context.Context, restoreOpts *brtype
 		return nil
 	})
 	if err != nil {
-		return fmt.Errorf("failed to update member peer url: %w", err)
+		b.logger.Errorf("failed to update member peer url: %v", err)
 	}
 
 	peerURLTLSEnabled := b.isPeerURLTLSEnabled(memberPeerURL)
