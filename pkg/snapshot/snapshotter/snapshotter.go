@@ -178,7 +178,7 @@ func (ssr *Snapshotter) Run(stopCh <-chan struct{}, startWithFullSnapshot bool) 
 				return nil
 			}
 			if err != nil {
-				return fmt.Errorf("Failed to collect events for first delta snapshot(s): %v", err)
+				return fmt.Errorf("failed to collect events for first delta snapshot(s): %v", err)
 			}
 		}
 		if err := ssr.resetFullSnapshotTimer(); err != nil {
@@ -600,6 +600,7 @@ func newEvent(e *clientv3.Event) *event {
 func (ssr *Snapshotter) snapshotEventHandler(stopCh <-chan struct{}) error {
 	leaseUpdateCtx, leaseUpdateCancel := context.WithCancel(context.TODO())
 	defer leaseUpdateCancel()
+	ssr.logger.Info("Starting the Snapshot EventHandler.")
 	for {
 		select {
 		case isFinal := <-ssr.fullSnapshotReqCh:
@@ -684,6 +685,7 @@ func (ssr *Snapshotter) snapshotEventHandler(stopCh <-chan struct{}) error {
 			}
 
 		case <-stopCh:
+			ssr.logger.Info("Closing the Snapshot EventHandler.")
 			leaseUpdateCancel()
 			ssr.cleanupInMemoryEvents()
 			return nil

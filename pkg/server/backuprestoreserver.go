@@ -263,14 +263,8 @@ func (b *BackupRestoreServer) runServer(ctx context.Context, restoreOpts *brtype
 			}
 		},
 		OnStoppedLeading: func() {
-			// stops the running snapshotter
 			if runServerWithSnapshotter {
-				ssr.SsrStateMutex.Lock()
-				defer ssr.SsrStateMutex.Unlock()
-				if ssr.SsrState == brtypes.SnapshotterActive {
-					ssrStopCh <- emptyStruct
-					b.logger.Info("backup-restore stops leading...")
-				}
+				b.logger.Info("backup-restore stops leading...")
 				handler.SetSnapshotterToNil()
 
 				// TODO @ishan16696: For Multi-node etcd HTTP status need to be set to `StatusServiceUnavailable` only when backup-restore is in "StateUnknown".
@@ -559,7 +553,7 @@ func (b *BackupRestoreServer) runEtcdProbeLoopWithSnapshotter(ctx context.Contex
 // probeEtcd will make the snapshotter probe for etcd endpoint to be available
 // before it starts taking regular snapshots.
 func (b *BackupRestoreServer) probeEtcd(ctx context.Context) error {
-	b.logger.Info("Probing Etcd...")
+	b.logger.Info("Probing Etcd by checking etcd status ...")
 	var endPoint string
 	client, err := etcdutil.NewFactory(*b.config.EtcdConnectionConfig).NewMaintenance()
 	if err != nil {
@@ -597,12 +591,13 @@ func handleAckState(handler *HTTPHandler, ackCh chan struct{}) {
 
 // handleSsrStopRequest responds to handlers request and stop interrupt.
 func handleSsrStopRequest(ctx context.Context, handler *HTTPHandler, ssr *snapshotter.Snapshotter, ackCh, ssrStopCh chan struct{}, logger *logrus.Entry) {
+	logger.Info("Starting the handleSsrStopRequest handler...")
 	for {
 		var ok bool
 		select {
 		case _, ok = <-handler.ReqCh:
 		case _, ok = <-ctx.Done():
-			logger.Info("Stopping handleSsrStopRequest...")
+			logger.Infof("handleSsrStopRequest: %v", ctx.Err())
 		}
 
 		ssr.SsrStateMutex.Lock()
@@ -615,6 +610,7 @@ func handleSsrStopRequest(ctx context.Context, handler *HTTPHandler, ssr *snapsh
 			ackCh <- emptyStruct
 		}
 		if !ok {
+			logger.Info("Stopping handleSsrStopRequest handler...")
 			return
 		}
 	}
