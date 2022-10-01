@@ -15,6 +15,7 @@ import (
 	"net/textproto"
 	"strings"
 	"sync"
+	"time"
 
 	"google.golang.org/api/googleapi"
 )
@@ -55,7 +56,7 @@ func (cs *contentSniffer) Read(p []byte) (n int, err error) {
 	return cs.r.Read(p)
 }
 
-// ContentType returns the sniffed content type, and whether the content type was succesfully sniffed.
+// ContentType returns the sniffed content type, and whether the content type was successfully sniffed.
 func (cs *contentSniffer) ContentType() (string, bool) {
 	if cs.sniffed {
 		return cs.ctype, cs.ctype != ""
@@ -88,7 +89,7 @@ func DetermineContentType(media io.Reader, ctype string) (io.Reader, string) {
 		return media, ctype
 	}
 
-	// For backwards compatability, allow clients to set content
+	// For backwards compatibility, allow clients to set content
 	// type by providing a ContentTyper for media.
 	if typer, ok := media.(googleapi.ContentTyper); ok {
 		return media, typer.ContentType()
@@ -217,12 +218,13 @@ func PrepareUpload(media io.Reader, chunkSize int) (r io.Reader, mb *MediaBuffer
 // code only.
 type MediaInfo struct {
 	// At most one of Media and MediaBuffer will be set.
-	media           io.Reader
-	buffer          *MediaBuffer
-	singleChunk     bool
-	mType           string
-	size            int64 // mediaSize, if known.  Used only for calls to progressUpdater_.
-	progressUpdater googleapi.ProgressUpdater
+	media              io.Reader
+	buffer             *MediaBuffer
+	singleChunk        bool
+	mType              string
+	size               int64 // mediaSize, if known.  Used only for calls to progressUpdater_.
+	progressUpdater    googleapi.ProgressUpdater
+	chunkRetryDeadline time.Duration
 }
 
 // NewInfoFromMedia should be invoked from the Media method of a call. It returns a
@@ -234,6 +236,7 @@ func NewInfoFromMedia(r io.Reader, options []googleapi.MediaOption) *MediaInfo {
 	if !opts.ForceEmptyContentType {
 		r, mi.mType = DetermineContentType(r, opts.ContentType)
 	}
+	mi.chunkRetryDeadline = opts.ChunkRetryDeadline
 	mi.media, mi.buffer, mi.singleChunk = PrepareUpload(r, opts.ChunkSize)
 	return mi
 }
@@ -286,13 +289,12 @@ func (mi *MediaInfo) UploadRequest(reqHeaders http.Header, body io.Reader) (newB
 		// be retried because the data is stored in the MediaBuffer.
 		media, _, _, _ = mi.buffer.Chunk()
 	}
+	toCleanup := []io.Closer{}
 	if media != nil {
 		fb := readerFunc(body)
 		fm := readerFunc(media)
 		combined, ctype := CombineBodyMedia(body, "application/json", media, mi.mType)
-		toCleanup := []io.Closer{
-			combined,
-		}
+		toCleanup = append(toCleanup, combined)
 		if fb != nil && fm != nil {
 			getBody = func() (io.ReadCloser, error) {
 				rb := ioutil.NopCloser(fb())
@@ -306,17 +308,29 @@ func (mi *MediaInfo) UploadRequest(reqHeaders http.Header, body io.Reader) (newB
 				return r, nil
 			}
 		}
-		cleanup = func() {
-			for _, closer := range toCleanup {
-				_ = closer.Close()
-			}
-
-		}
 		reqHeaders.Set("Content-Type", ctype)
 		body = combined
 	}
 	if mi.buffer != nil && mi.mType != "" && !mi.singleChunk {
+		// This happens when initiating a resumable upload session.
+		// The initial request contains a JSON body rather than media.
+		// It can be retried with a getBody function that re-creates the request body.
+		fb := readerFunc(body)
+		if fb != nil {
+			getBody = func() (io.ReadCloser, error) {
+				rb := ioutil.NopCloser(fb())
+				toCleanup = append(toCleanup, rb)
+				return rb, nil
+			}
+		}
 		reqHeaders.Set("X-Upload-Content-Type", mi.mType)
+	}
+	// Ensure that any bodies created in getBody are cleaned up.
+	cleanup = func() {
+		for _, closer := range toCleanup {
+			_ = closer.Close()
+		}
+
 	}
 	return body, getBody, cleanup
 }
@@ -356,6 +370,7 @@ func (mi *MediaInfo) ResumableUpload(locURI string) *ResumableUpload {
 				mi.progressUpdater(curr, mi.size)
 			}
 		},
+		ChunkRetryDeadline: mi.chunkRetryDeadline,
 	}
 }
 
