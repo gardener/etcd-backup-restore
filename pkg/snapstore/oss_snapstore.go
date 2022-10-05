@@ -62,6 +62,7 @@ type OSSSnapStore struct {
 	bucket                  OSSBucket
 	multiPart               sync.Mutex
 	maxParallelChunkUploads uint
+	minChunkSize            int64
 	tempDir                 string
 }
 
@@ -71,10 +72,10 @@ func NewOSSSnapStore(config *brtypes.SnapstoreConfig) (*OSSSnapStore, error) {
 	if err != nil {
 		return nil, err
 	}
-	return newOSSFromAuthOpt(config.Container, config.Prefix, config.TempDir, config.MaxParallelChunkUploads, *ao)
+	return newOSSFromAuthOpt(config.Container, config.Prefix, config.TempDir, config.MaxParallelChunkUploads, config.MinChunkSize, *ao)
 }
 
-func newOSSFromAuthOpt(bucket, prefix, tempDir string, maxParallelChunkUploads uint, ao authOptions) (*OSSSnapStore, error) {
+func newOSSFromAuthOpt(bucket, prefix, tempDir string, maxParallelChunkUploads uint, minChunkSize int64, ao authOptions) (*OSSSnapStore, error) {
 	client, err := oss.New(ao.Endpoint, ao.AccessID, ao.AccessKey)
 	if err != nil {
 		return nil, err
@@ -85,15 +86,16 @@ func newOSSFromAuthOpt(bucket, prefix, tempDir string, maxParallelChunkUploads u
 		return nil, err
 	}
 
-	return NewOSSFromBucket(prefix, tempDir, maxParallelChunkUploads, bucketOSS), nil
+	return NewOSSFromBucket(prefix, tempDir, maxParallelChunkUploads, minChunkSize, bucketOSS), nil
 }
 
 // NewOSSFromBucket will create the new OSS snapstore object from OSS bucket
-func NewOSSFromBucket(prefix, tempDir string, maxParallelChunkUploads uint, bucket OSSBucket) *OSSSnapStore {
+func NewOSSFromBucket(prefix, tempDir string, maxParallelChunkUploads uint, minChunkSize int64, bucket OSSBucket) *OSSSnapStore {
 	return &OSSSnapStore{
 		prefix:                  prefix,
 		bucket:                  bucket,
 		maxParallelChunkUploads: maxParallelChunkUploads,
+		minChunkSize:            minChunkSize,
 		tempDir:                 tempDir,
 	}
 }
@@ -130,7 +132,7 @@ func (s *OSSSnapStore) Save(snap brtypes.Snapshot, rc io.ReadCloser) error {
 	}
 
 	var (
-		chunkSize  = int64(math.Max(float64(minChunkSize), float64(size/ossNoOfChunk)))
+		chunkSize  = int64(math.Max(float64(s.minChunkSize), float64(size/ossNoOfChunk)))
 		noOfChunks = size / chunkSize
 	)
 	if size%chunkSize != 0 {

@@ -46,6 +46,7 @@ type GCSSnapStore struct {
 	bucket string
 	// maxParallelChunkUploads hold the maximum number of parallel chunk uploads allowed.
 	maxParallelChunkUploads uint
+	minChunkSize            int64
 	tempDir                 string
 }
 
@@ -71,16 +72,17 @@ func NewGCSSnapStore(config *brtypes.SnapstoreConfig) (*GCSSnapStore, error) {
 	}
 	gcsClient := stiface.AdaptClient(cli)
 
-	return NewGCSSnapStoreFromClient(config.Container, config.Prefix, config.TempDir, config.MaxParallelChunkUploads, gcsClient), nil
+	return NewGCSSnapStoreFromClient(config.Container, config.Prefix, config.TempDir, config.MaxParallelChunkUploads, config.MinChunkSize, gcsClient), nil
 }
 
 // NewGCSSnapStoreFromClient create new GCSSnapStore from shared configuration with specified bucket.
-func NewGCSSnapStoreFromClient(bucket, prefix, tempDir string, maxParallelChunkUploads uint, cli stiface.Client) *GCSSnapStore {
+func NewGCSSnapStoreFromClient(bucket, prefix, tempDir string, maxParallelChunkUploads uint, minChunkSize int64, cli stiface.Client) *GCSSnapStore {
 	return &GCSSnapStore{
 		prefix:                  prefix,
 		client:                  cli,
 		bucket:                  bucket,
 		maxParallelChunkUploads: maxParallelChunkUploads,
+		minChunkSize:            minChunkSize,
 		tempDir:                 tempDir,
 	}
 }
@@ -110,7 +112,7 @@ func (s *GCSSnapStore) Save(snap brtypes.Snapshot, rc io.ReadCloser) error {
 	}
 
 	var (
-		chunkSize  = int64(math.Max(float64(minChunkSize), float64(size/gcsNoOfChunk)))
+		chunkSize  = int64(math.Max(float64(s.minChunkSize), float64(size/gcsNoOfChunk)))
 		noOfChunks = size / chunkSize
 	)
 	if size%chunkSize != 0 {

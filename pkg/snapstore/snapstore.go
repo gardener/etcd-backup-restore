@@ -17,9 +17,6 @@ package snapstore
 import "time"
 
 const (
-	// minChunkSize is set to 5Mib since it is lower chunk size limit for AWS.
-	minChunkSize int64 = 5 * (1 << 20) //5 MiB
-
 	// chunkUploadTimeout is timeout for uploading chunk.
 	chunkUploadTimeout = 180 * time.Second
 	// providerConnectionTimeout is timeout for connection/short queries to cloud provider.

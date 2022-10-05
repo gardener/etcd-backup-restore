@@ -68,6 +68,7 @@ type S3SnapStore struct {
 	multiPart sync.Mutex
 	// maxParallelChunkUploads hold the maximum number of parallel chunk uploads allowed.
 	maxParallelChunkUploads uint
+	minChunkSize            int64
 	tempDir                 string
 }
 
@@ -77,17 +78,17 @@ func NewS3SnapStore(config *brtypes.SnapstoreConfig) (*S3SnapStore, error) {
 	if err != nil {
 		return nil, err
 	}
-	return newS3FromSessionOpt(config.Container, config.Prefix, config.TempDir, config.MaxParallelChunkUploads, credentials)
+	return newS3FromSessionOpt(config.Container, config.Prefix, config.TempDir, config.MaxParallelChunkUploads, config.MinChunkSize, credentials)
 }
 
 // newS3FromSessionOpt will create the new S3 snapstore object from S3 session options
-func newS3FromSessionOpt(bucket, prefix, tempDir string, maxParallelChunkUploads uint, so session.Options) (*S3SnapStore, error) {
+func newS3FromSessionOpt(bucket, prefix, tempDir string, maxParallelChunkUploads uint, minChunkSize int64, so session.Options) (*S3SnapStore, error) {
 	sess, err := session.NewSessionWithOptions(so)
 	if err != nil {
 		return nil, fmt.Errorf("new AWS session failed: %v", err)
 	}
 	cli := s3.New(sess)
-	return NewS3FromClient(bucket, prefix, tempDir, maxParallelChunkUploads, cli), nil
+	return NewS3FromClient(bucket, prefix, tempDir, maxParallelChunkUploads, minChunkSize, cli), nil
 }
 
 func getSessionOptions(prefixString string) (session.Options, error) {
@@ -270,12 +271,13 @@ func readAWSCredentialFromDir(dirname string) (*awsCredentials, error) {
 }
 
 // NewS3FromClient will create the new S3 snapstore object from S3 client
-func NewS3FromClient(bucket, prefix, tempDir string, maxParallelChunkUploads uint, cli s3iface.S3API) *S3SnapStore {
+func NewS3FromClient(bucket, prefix, tempDir string, maxParallelChunkUploads uint, minChunkSize int64, cli s3iface.S3API) *S3SnapStore {
 	return &S3SnapStore{
 		bucket:                  bucket,
 		prefix:                  prefix,
 		client:                  cli,
 		maxParallelChunkUploads: maxParallelChunkUploads,
+		minChunkSize:            minChunkSize,
 		tempDir:                 tempDir,
 	}
 }
@@ -328,7 +330,7 @@ func (s *S3SnapStore) Save(snap brtypes.Snapshot, rc io.ReadCloser) error {
 	logrus.Infof("Successfully initiated the multipart upload with upload ID : %s", *uploadOutput.UploadId)
 
 	var (
-		chunkSize  = int64(math.Max(float64(minChunkSize), float64(size/s3NoOfChunk)))
+		chunkSize  = int64(math.Max(float64(s.minChunkSize), float64(size/s3NoOfChunk)))
 		noOfChunks = size / chunkSize
 	)
 	if size%chunkSize != 0 {

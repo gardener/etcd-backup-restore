@@ -44,7 +44,7 @@ func NewOCSSnapStore(config *brtypes.SnapstoreConfig) (*S3SnapStore, error) {
 		return nil, err
 	}
 
-	return newGenericS3FromAuthOpt(config.Container, config.Prefix, config.TempDir, config.MaxParallelChunkUploads, ocsAuthOptionsToGenericS3(*credentials))
+	return newGenericS3FromAuthOpt(config.Container, config.Prefix, config.TempDir, config.MaxParallelChunkUploads, config.MinChunkSize, ocsAuthOptionsToGenericS3(*credentials))
 }
 
 func getOCSAuthOptions(prefix string) (*ocsAuthOptions, error) {
