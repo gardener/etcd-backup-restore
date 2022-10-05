@@ -60,8 +60,8 @@ const (
 
 	backupFormatVersion = "v2"
 
-	// minChunkSize is set to 5Mib since it is lower chunk size limit for AWS.
-	minChunkSize int64 = 5 * (1 << 20) //5 MiB
+	// MinChunkSize is set to 5Mib since it is lower chunk size limit for AWS.
+	MinChunkSize int64 = 5 * (1 << 20) //5 MiB
 )
 
 // SnapStore is the interface to be implemented for different
@@ -194,7 +194,7 @@ func (c *SnapstoreConfig) addFlags(fs *flag.FlagSet, parameterPrefix string) {
 	fs.StringVar(&c.Container, parameterPrefix+"store-container", c.Container, "container which will be used as snapstore")
 	fs.StringVar(&c.Prefix, parameterPrefix+"store-prefix", c.Prefix, "prefix or directory inside container under which snapstore is created")
 	fs.UintVar(&c.MaxParallelChunkUploads, parameterPrefix+"max-parallel-chunk-uploads", c.MaxParallelChunkUploads, "maximum number of parallel chunk uploads allowed")
-	fs.Int64Var(&c.MinChunkSize, parameterPrefix+"min-chunk-size", minChunkSize, "Minimum size for multipart upload chunk")
+	fs.Int64Var(&c.MinChunkSize, parameterPrefix+"min-chunk-size", c.MinChunkSize, "Minimum size for multipart upload chunk")
 	fs.StringVar(&c.TempDir, parameterPrefix+"snapstore-temp-directory", c.TempDir, "temporary directory for processing")
 }
 
@@ -203,7 +203,7 @@ func (c *SnapstoreConfig) Validate() error {
 	if c.MaxParallelChunkUploads <= 0 {
 		return fmt.Errorf("max parallel chunk uploads should be greater than zero")
 	}
-	if c.MinChunkSize < minChunkSize {
+	if c.MinChunkSize < MinChunkSize {
 		return fmt.Errorf("min size for multi-part upload chunk should be greater than 5 MiB")
 	}
 	return nil

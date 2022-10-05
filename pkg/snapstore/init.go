@@ -22,6 +22,7 @@ import (
 func NewSnapstoreConfig() *brtypes.SnapstoreConfig {
 	return &brtypes.SnapstoreConfig{
 		MaxParallelChunkUploads: 5,
+		MinChunkSize:            brtypes.MinChunkSize,
 		TempDir:                 "/tmp",
 	}
 }
