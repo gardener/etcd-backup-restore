@@ -16,6 +16,8 @@ package server
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -207,10 +209,7 @@ func (h *HTTPHandler) serveHealthz(rw http.ResponseWriter, req *http.Request) {
 	rw.WriteHeader(h.GetStatus())
 	healthCheck := &healthCheck{
 		HealthStatus: func() bool {
-			if h.GetStatus() == http.StatusOK {
-				return true
-			}
-			return false
+			return h.GetStatus() == http.StatusOK
 		}(),
 	}
 	json, err := json.Marshal(healthCheck)
@@ -636,7 +635,7 @@ func (h *HTTPHandler) delegateReqToLeader(rw http.ResponseWriter, req *http.Requ
 		return
 	}
 
-	isHealthy, err := IsBackupRestoreHealthy(backupLeaderEndPoint + "/healthz")
+	isHealthy, err := IsBackupRestoreHealthy(backupLeaderEndPoint+"/healthz", h.EnableTLS, h.EtcdConnectionConfig.CaFile)
 	if err != nil {
 		h.Logger.Warnf("Unable to check backup leader health: %v", err)
 		rw.WriteHeader(http.StatusMethodNotAllowed)
@@ -649,16 +648,52 @@ func (h *HTTPHandler) delegateReqToLeader(rw http.ResponseWriter, req *http.Requ
 		rw.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
+
+	h.Logger.Infof("backup-restore leader with url [%v] is healthy", backupLeaderURL)
+
+	// create the reverse Proxy
 	revProxyHandler := httputil.NewSingleHostReverseProxy(backupLeaderURL)
+
+	if h.EnableTLS {
+		caCertPool := x509.NewCertPool()
+
+		caCert, err := os.ReadFile(h.EtcdConnectionConfig.CaFile)
+		if err != nil {
+			return
+		}
+		caCertPool.AppendCertsFromPEM(caCert)
+		revProxyHandler.Transport = &http.Transport{
+			TLSClientConfig: &tls.Config{
+				RootCAs: caCertPool,
+			},
+		}
+	}
+
 	revProxyHandler.ServeHTTP(rw, req)
-	return
 }
 
 // IsBackupRestoreHealthy checks the whether the backup-restore of given backup-restore URL healthy or not.
-func IsBackupRestoreHealthy(backupRestoreURL string) (bool, error) {
+func IsBackupRestoreHealthy(backupRestoreURL string, TLSEnabled bool, rootCA string) (bool, error) {
 	var health healthCheck
+	client := &http.Client{}
 
-	response, err := http.Get(backupRestoreURL)
+	if TLSEnabled {
+		caCertPool := x509.NewCertPool()
+
+		caCert, err := os.ReadFile(rootCA)
+		if err != nil {
+			return false, err
+		}
+		caCertPool.AppendCertsFromPEM(caCert)
+
+		client.Transport = &http.Transport{
+			TLSClientConfig: &tls.Config{
+				RootCAs: caCertPool,
+			},
+		}
+	}
+
+	response, err := client.Get(backupRestoreURL)
 	if err != nil {
 		return false, err
 	}
