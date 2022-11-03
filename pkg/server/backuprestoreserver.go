@@ -252,7 +252,6 @@ func (b *BackupRestoreServer) runServer(ctx context.Context, restoreOpts *brtype
 
 				// set "http handler" with the latest snapshotter object
 				handler.SetSnapshotter(ssr)
-				defragCallBack = ssr.TriggerFullSnapshot
 				go handleSsrStopRequest(leCtx, handler, ssr, ackCh, ssrStopCh, b.logger)
 			}
 			go b.runEtcdProbeLoopWithSnapshotter(leCtx, handler, ssr, ss, ssrStopCh, ackCh)
