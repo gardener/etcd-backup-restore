@@ -30,7 +30,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"sync/atomic"
 
 	"github.com/gardener/etcd-backup-restore/pkg/etcdutil"
 	etcdclient "github.com/gardener/etcd-backup-restore/pkg/etcdutil/client"
@@ -232,15 +231,7 @@ func (h *HTTPHandler) serveInitialize(rw http.ResponseWriter, req *http.Request)
 		go func() {
 			var mode validator.Mode
 
-			// This is needed to stop the currently running snapshotter.
-			if h.Snapshotter != nil {
-				h.SetStatus(http.StatusServiceUnavailable)
-				atomic.StoreUint32(&h.AckState, HandlerAckWaiting)
-				h.Logger.Info("Changed handler state.")
-				h.ReqCh <- emptyStruct
-				h.Logger.Info("Waiting for acknowledgment...")
-				<-h.AckCh
-			}
+			h.SetStatus(http.StatusServiceUnavailable)
 
 			failBelowRevisionStr := req.URL.Query().Get("failbelowrevision")
 			h.Logger.Infof("Validation failBelowRevision: %s", failBelowRevisionStr)
