@@ -36,9 +36,7 @@ func NewBackupRestoreComponentConfig() *BackupRestoreComponentConfig {
 		SnapstoreConfig:          snapstore.NewSnapstoreConfig(),
 		CompressionConfig:        compressor.NewCompressorConfig(),
 		RestorationConfig:        brtypes.NewRestorationConfig(),
-		OwnerCheckConfig:         brtypes.NewOwnerCheckConfig(),
 		DefragmentationSchedule:  defaultDefragmentationSchedule,
-		EtcdProcessName:          defaultEtcdProcessName,
 		HealthConfig:             brtypes.NewHealthConfig(),
 		LeaderElectionConfig:     brtypes.NewLeaderElectionConfig(),
 		ExponentialBackoffConfig: brtypes.NewExponentialBackOffConfig(),
@@ -53,14 +51,12 @@ func (c *BackupRestoreComponentConfig) AddFlags(fs *flag.FlagSet) {
 	c.SnapstoreConfig.AddFlags(fs)
 	c.RestorationConfig.AddFlags(fs)
 	c.CompressionConfig.AddFlags(fs)
-	c.OwnerCheckConfig.AddFlags(fs)
 	c.HealthConfig.AddFlags(fs)
 	c.LeaderElectionConfig.AddFlags(fs)
 	c.ExponentialBackoffConfig.AddFlags(fs)
 
 	// Miscellaneous
 	fs.StringVar(&c.DefragmentationSchedule, "defragmentation-schedule", c.DefragmentationSchedule, "schedule to defragment etcd data directory")
-	fs.StringVar(&c.EtcdProcessName, "etcd-process-name", c.EtcdProcessName, "name of the etcd process")
 }
 
 // Validate validates the config.
@@ -81,9 +77,6 @@ func (c *BackupRestoreComponentConfig) Validate() error {
 		return err
 	}
 	if err := c.CompressionConfig.Validate(); err != nil {
-		return err
-	}
-	if err := c.OwnerCheckConfig.Validate(); err != nil {
 		return err
 	}
 	if err := c.HealthConfig.Validate(); err != nil {
