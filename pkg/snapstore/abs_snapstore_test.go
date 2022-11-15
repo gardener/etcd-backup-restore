@@ -45,7 +45,7 @@ func newFakeABSSnapstore() brtypes.SnapStore {
 	Expect(err).ShouldNot(HaveOccurred())
 	serviceURL := azblob.NewServiceURL(*u, p)
 	containerURL := serviceURL.NewContainerURL(bucket)
-	a, err := GetABSSnapstoreFromClient(bucket, prefixV2, "/tmp", 5, &containerURL)
+	a, err := GetABSSnapstoreFromClient(bucket, prefixV2, "/tmp", 5, brtypes.MinChunkSize, &containerURL)
 	Expect(err).ShouldNot(HaveOccurred())
 	return a
 }
