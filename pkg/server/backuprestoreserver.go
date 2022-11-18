@@ -492,9 +492,7 @@ func (b *BackupRestoreServer) runEtcdProbeLoopWithSnapshotter(ctx context.Contex
 			}
 
 			// Set snapshotter state to Active
-			ssr.SsrStateMutex.Lock()
-			ssr.SsrState = brtypes.SnapshotterActive
-			ssr.SsrStateMutex.Unlock()
+			ssr.SetSnapshotterActive()
 
 			// Start owner check watchdog
 			var ownerCheckWatchdog common.Watchdog

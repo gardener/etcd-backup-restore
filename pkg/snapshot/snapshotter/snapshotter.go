@@ -241,6 +241,7 @@ func (ssr *Snapshotter) stop() {
 		ssr.deltaSnapshotTimer.Stop()
 		ssr.deltaSnapshotTimer = nil
 	}
+	ssr.SetSnapshotterInactive()
 	ssr.closeEtcdClient()
 }
 
@@ -697,9 +698,7 @@ func (ssr *Snapshotter) snapshotEventHandler(stopCh <-chan struct{}) error {
 
 		case <-stopCh:
 			ssr.logger.Info("Closing the Snapshot EventHandler.")
-			leaseUpdateCancel()
 			ssr.cleanupInMemoryEvents()
-			ssr.SetSnapshotterInactive()
 			return nil
 		}
 	}
