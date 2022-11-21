@@ -232,7 +232,7 @@ func (ssr *Snapshotter) TriggerDeltaSnapshot() (*brtypes.Snapshot, error) {
 // not have any effect.
 func (ssr *Snapshotter) stop() {
 	ssr.logger.Info("Closing the Snapshotter...")
-	ssr.SsrStateMutex.Lock()
+
 	if ssr.fullSnapshotTimer != nil {
 		ssr.fullSnapshotTimer.Stop()
 		ssr.fullSnapshotTimer = nil
@@ -241,10 +241,22 @@ func (ssr *Snapshotter) stop() {
 		ssr.deltaSnapshotTimer.Stop()
 		ssr.deltaSnapshotTimer = nil
 	}
+	ssr.SetSnapshotterInactive()
 	ssr.closeEtcdClient()
+}
 
+// SetSnapshotterInactive set the snapshotter state to Inactive.
+func (ssr *Snapshotter) SetSnapshotterInactive() {
+	ssr.SsrStateMutex.Lock()
+	defer ssr.SsrStateMutex.Unlock()
 	ssr.SsrState = brtypes.SnapshotterInactive
-	ssr.SsrStateMutex.Unlock()
+}
+
+// SetSnapshotterActive set the snapshotter state to active.
+func (ssr *Snapshotter) SetSnapshotterActive() {
+	ssr.SsrStateMutex.Lock()
+	defer ssr.SsrStateMutex.Unlock()
+	ssr.SsrState = brtypes.SnapshotterActive
 }
 
 func (ssr *Snapshotter) closeEtcdClient() {
@@ -686,7 +698,6 @@ func (ssr *Snapshotter) snapshotEventHandler(stopCh <-chan struct{}) error {
 
 		case <-stopCh:
 			ssr.logger.Info("Closing the Snapshot EventHandler.")
-			leaseUpdateCancel()
 			ssr.cleanupInMemoryEvents()
 			return nil
 		}

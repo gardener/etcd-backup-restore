@@ -252,7 +252,6 @@ func (b *BackupRestoreServer) runServer(ctx context.Context, restoreOpts *brtype
 
 				// set "http handler" with the latest snapshotter object
 				handler.SetSnapshotter(ssr)
-				defragCallBack = ssr.TriggerFullSnapshot
 				go handleSsrStopRequest(leCtx, handler, ssr, ackCh, ssrStopCh, b.logger)
 			}
 			go b.runEtcdProbeLoopWithSnapshotter(leCtx, handler, ssr, ss, ssrStopCh, ackCh)
@@ -493,9 +492,7 @@ func (b *BackupRestoreServer) runEtcdProbeLoopWithSnapshotter(ctx context.Contex
 			}
 
 			// Set snapshotter state to Active
-			ssr.SsrStateMutex.Lock()
-			ssr.SsrState = brtypes.SnapshotterActive
-			ssr.SsrStateMutex.Unlock()
+			ssr.SetSnapshotterActive()
 
 			// Start owner check watchdog
 			var ownerCheckWatchdog common.Watchdog
