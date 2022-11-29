@@ -204,7 +204,7 @@ func (c *SnapstoreConfig) Validate() error {
 		return fmt.Errorf("max parallel chunk uploads should be greater than zero")
 	}
 	if c.MinChunkSize < MinChunkSize {
-		return fmt.Errorf("min chunk size for multi-part chunk upload should be greater than 5 MiB")
+		return fmt.Errorf("min chunk size for multi-part chunk upload should be greater than or equal to 5 MiB")
 	}
 	return nil
 }
