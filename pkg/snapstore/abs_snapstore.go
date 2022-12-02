@@ -44,6 +44,7 @@ type ABSSnapStore struct {
 	prefix       string
 	// maxParallelChunkUploads hold the maximum number of parallel chunk uploads allowed.
 	maxParallelChunkUploads uint
+	minChunkSize            int64
 	tempDir                 string
 }
 
@@ -75,7 +76,8 @@ func NewABSSnapStore(config *brtypes.SnapstoreConfig) (*ABSSnapStore, error) {
 	}
 	serviceURL := azblob.NewServiceURL(*u, p)
 	containerURL := serviceURL.NewContainerURL(config.Container)
-	return GetABSSnapstoreFromClient(config.Container, config.Prefix, config.TempDir, config.MaxParallelChunkUploads, &containerURL)
+
+	return GetABSSnapstoreFromClient(config.Container, config.Prefix, config.TempDir, config.MaxParallelChunkUploads, config.MinChunkSize, &containerURL)
 }
 
 func getCredentials(prefixString string) (string, string, error) {
@@ -149,7 +151,7 @@ func readABSCredentialFiles(dirname string) (*absCredentials, error) {
 }
 
 // GetABSSnapstoreFromClient returns a new ABS object for a given container using the supplied storageClient
-func GetABSSnapstoreFromClient(container, prefix, tempDir string, maxParallelChunkUploads uint, containerURL *azblob.ContainerURL) (*ABSSnapStore, error) {
+func GetABSSnapstoreFromClient(container, prefix, tempDir string, maxParallelChunkUploads uint, minChunkSize int64, containerURL *azblob.ContainerURL) (*ABSSnapStore, error) {
 	// Check if supplied container exists
 	ctx, cancel := context.WithTimeout(context.TODO(), providerConnectionTimeout)
 	defer cancel()
@@ -168,6 +170,7 @@ func GetABSSnapstoreFromClient(container, prefix, tempDir string, maxParallelChu
 		prefix:                  prefix,
 		containerURL:            containerURL,
 		maxParallelChunkUploads: maxParallelChunkUploads,
+		minChunkSize:            minChunkSize,
 		tempDir:                 tempDir,
 	}, nil
 }
@@ -236,7 +239,7 @@ func (a *ABSSnapStore) Save(snap brtypes.Snapshot, rc io.ReadCloser) error {
 	}
 
 	var (
-		chunkSize  = minChunkSize
+		chunkSize  = a.minChunkSize
 		noOfChunks = size / chunkSize
 	)
 	if size%chunkSize != 0 {

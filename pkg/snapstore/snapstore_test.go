@@ -102,29 +102,29 @@ var _ = Describe("Save, List, Fetch, Delete from mock snapstore", func() {
 		expectedVal5 = []byte("value5")
 
 		snapstores = map[string]brtypes.SnapStore{
-			"s3": NewS3FromClient(bucket, prefixV2, "/tmp", 5, &mockS3Client{
+			"s3": NewS3FromClient(bucket, prefixV2, "/tmp", 5, brtypes.MinChunkSize, &mockS3Client{
 				objects:          objectMap,
 				prefix:           prefixV2,
 				multiPartUploads: map[string]*[][]byte{},
 			}),
-			"swift": NewSwiftSnapstoreFromClient(bucket, prefixV2, "/tmp", 5, fake.ServiceClient()),
+			"swift": NewSwiftSnapstoreFromClient(bucket, prefixV2, "/tmp", 5, brtypes.MinChunkSize, fake.ServiceClient()),
 			"ABS":   newFakeABSSnapstore(),
-			"GCS": NewGCSSnapStoreFromClient(bucket, prefixV2, "/tmp", 5, &mockGCSClient{
+			"GCS": NewGCSSnapStoreFromClient(bucket, prefixV2, "/tmp", 5, brtypes.MinChunkSize, &mockGCSClient{
 				objects: objectMap,
 				prefix:  prefixV2,
 			}),
-			"OSS": NewOSSFromBucket(prefixV2, "/tmp", 5, &mockOSSBucket{
+			"OSS": NewOSSFromBucket(prefixV2, "/tmp", 5, brtypes.MinChunkSize, &mockOSSBucket{
 				objects:          objectMap,
 				prefix:           prefixV2,
 				multiPartUploads: map[string]*[][]byte{},
 				bucketName:       bucket,
 			}),
-			"ECS": NewS3FromClient(bucket, prefixV2, "/tmp", 5, &mockS3Client{
+			"ECS": NewS3FromClient(bucket, prefixV2, "/tmp", 5, brtypes.MinChunkSize, &mockS3Client{
 				objects:          objectMap,
 				prefix:           prefixV2,
 				multiPartUploads: map[string]*[][]byte{},
 			}),
-			"OCS": NewS3FromClient(bucket, prefixV2, "/tmp", 5, &mockS3Client{
+			"OCS": NewS3FromClient(bucket, prefixV2, "/tmp", 5, brtypes.MinChunkSize, &mockS3Client{
 				objects:          objectMap,
 				prefix:           prefixV2,
 				multiPartUploads: map[string]*[][]byte{},

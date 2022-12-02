@@ -49,6 +49,7 @@ type SwiftSnapStore struct {
 	bucket string
 	// maxParallelChunkUploads hold the maximum number of parallel chunk uploads allowed.
 	maxParallelChunkUploads uint
+	minChunkSize            int64
 	tempDir                 string
 }
 
@@ -95,7 +96,7 @@ func NewSwiftSnapStore(config *brtypes.SnapstoreConfig) (*SwiftSnapStore, error)
 
 	}
 
-	return NewSwiftSnapstoreFromClient(config.Container, config.Prefix, config.TempDir, config.MaxParallelChunkUploads, client), nil
+	return NewSwiftSnapstoreFromClient(config.Container, config.Prefix, config.TempDir, config.MaxParallelChunkUploads, config.MinChunkSize, client), nil
 
 }
 
@@ -234,12 +235,13 @@ func readSwiftCredentialDir(dirname string) (*swiftCredentials, error) {
 }
 
 // NewSwiftSnapstoreFromClient will create the new Swift snapstore object from Swift client
-func NewSwiftSnapstoreFromClient(bucket, prefix, tempDir string, maxParallelChunkUploads uint, cli *gophercloud.ServiceClient) *SwiftSnapStore {
+func NewSwiftSnapstoreFromClient(bucket, prefix, tempDir string, maxParallelChunkUploads uint, minChunkSize int64, cli *gophercloud.ServiceClient) *SwiftSnapStore {
 	return &SwiftSnapStore{
 		bucket:                  bucket,
 		prefix:                  prefix,
 		client:                  cli,
 		maxParallelChunkUploads: maxParallelChunkUploads,
+		minChunkSize:            minChunkSize,
 		tempDir:                 tempDir,
 	}
 }
@@ -269,7 +271,7 @@ func (s *SwiftSnapStore) Save(snap brtypes.Snapshot, rc io.ReadCloser) error {
 	}
 
 	var (
-		chunkSize  = int64(math.Max(float64(minChunkSize), float64(size/swiftNoOfChunk)))
+		chunkSize  = int64(math.Max(float64(s.minChunkSize), float64(size/swiftNoOfChunk)))
 		noOfChunks = size / chunkSize
 	)
 	if size%chunkSize != 0 {

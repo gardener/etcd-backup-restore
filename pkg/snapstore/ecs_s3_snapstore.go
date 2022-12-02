@@ -35,7 +35,7 @@ func NewECSSnapStore(config *brtypes.SnapstoreConfig) (*S3SnapStore, error) {
 	if err != nil {
 		return nil, err
 	}
-	return newGenericS3FromAuthOpt(config.Container, config.Prefix, config.TempDir, config.MaxParallelChunkUploads, ao)
+	return newGenericS3FromAuthOpt(config.Container, config.Prefix, config.TempDir, config.MaxParallelChunkUploads, config.MinChunkSize, ao)
 }
 
 // ecsAuthOptionsFromEnv gets ECS provider configuration from environment variables.
