@@ -17,7 +17,6 @@ package server
 import (
 	"context"
 	"fmt"
-	"net"
 	"net/http"
 	"net/url"
 	"sync"
@@ -25,7 +24,6 @@ import (
 	"time"
 
 	"github.com/gardener/etcd-backup-restore/pkg/backoff"
-	"github.com/gardener/etcd-backup-restore/pkg/common"
 	"github.com/gardener/etcd-backup-restore/pkg/defragmentor"
 	"github.com/gardener/etcd-backup-restore/pkg/errors"
 	"github.com/gardener/etcd-backup-restore/pkg/etcdutil"
@@ -44,7 +42,6 @@ import (
 	cron "github.com/robfig/cron/v3"
 	"github.com/sirupsen/logrus"
 	"go.etcd.io/etcd/pkg/types"
-	"k8s.io/apimachinery/pkg/util/clock"
 	"k8s.io/client-go/util/retry"
 )
 
@@ -52,8 +49,6 @@ import (
 type BackupRestoreServer struct {
 	logger                  *logrus.Entry
 	config                  *BackupRestoreComponentConfig
-	ownerChecker            common.Checker
-	etcdProcessKiller       common.ProcessKiller
 	defragmentationSchedule cron.Schedule
 	backoffConfig           *backoff.ExponentialBackoff
 }
@@ -71,13 +66,6 @@ const (
 // NewBackupRestoreServer return new backup restore server.
 func NewBackupRestoreServer(logger *logrus.Logger, config *BackupRestoreComponentConfig) (*BackupRestoreServer, error) {
 	serverLogger := logger.WithField("actor", "backup-restore-server")
-	occ := config.OwnerCheckConfig
-	var ownerChecker common.Checker
-	if occ.OwnerName != "" && occ.OwnerID != "" {
-		resolver := common.NewCachingResolver(net.DefaultResolver, clock.RealClock{}, occ.OwnerCheckDNSCacheTTL.Duration)
-		ownerChecker = common.NewOwnerChecker(occ.OwnerName, occ.OwnerID, occ.OwnerCheckTimeout.Duration, resolver, serverLogger)
-	}
-	etcdProcessKiller := common.NewNamedProcessKiller(config.EtcdProcessName, common.NewGopsutilProcessLister(), serverLogger)
 	defragmentationSchedule, err := cron.ParseStandard(config.DefragmentationSchedule)
 	if err != nil {
 		// Ideally this case should not occur, since this check is done at the config validaitions.
@@ -88,8 +76,6 @@ func NewBackupRestoreServer(logger *logrus.Logger, config *BackupRestoreComponen
 	return &BackupRestoreServer{
 		logger:                  serverLogger,
 		config:                  config,
-		ownerChecker:            ownerChecker,
-		etcdProcessKiller:       etcdProcessKiller,
 		defragmentationSchedule: defragmentationSchedule,
 		backoffConfig:           exponentialBackoffConfig,
 	}, nil
@@ -330,9 +316,8 @@ func (b *BackupRestoreServer) runServer(ctx context.Context, restoreOpts *brtype
 // for the case when backup-restore becomes leading sidecar.
 func (b *BackupRestoreServer) runEtcdProbeLoopWithSnapshotter(ctx context.Context, handler *HTTPHandler, ssr *snapshotter.Snapshotter, ss brtypes.SnapStore, ssrStopCh chan struct{}, ackCh chan struct{}) {
 	var (
-		err                               error
-		initialDeltaSnapshotTaken         bool
-		killEtcdBeforeTakingFinalSnapshot bool
+		err                       error
+		initialDeltaSnapshotTaken bool
 	)
 
 	for {
@@ -361,60 +346,6 @@ func (b *BackupRestoreServer) runEtcdProbeLoopWithSnapshotter(ctx context.Contex
 		}
 
 		if runServerWithSnapshotter {
-			if b.ownerChecker != nil {
-				// Check if the actual owner ID matches the expected one
-				// If the check returns false, take a final full snapshot if needed.
-				// If the check returns an error continue with normal operation
-				b.logger.Debugf("Checking owner before starting snapshotter...")
-				result, err := b.ownerChecker.Check(ctx)
-				if err != nil {
-					b.logger.Errorf("ownerChecker check fails: %v", err)
-				} else if !result {
-					handler.SetStatus(http.StatusServiceUnavailable)
-					// If owner check was previously successful, but is now failed, kill the etcd process before attempting
-					// to take a final snapshot to ensure that any open connections from kube-apiserver are terminated
-					if killEtcdBeforeTakingFinalSnapshot {
-						if _, err := b.etcdProcessKiller.Kill(ctx); err != nil {
-							b.logger.Errorf("Could not kill etcd process: %v", err)
-							// only attempt to take final snapshot if process was successfully killed.
-							continue
-						}
-						killEtcdBeforeTakingFinalSnapshot = false
-					}
-					// If the previous full snapshot doesn't exist or is not marked as final, take a final full snapshot
-					if ssr.PrevFullSnapshot == nil || !ssr.PrevFullSnapshot.IsFinal {
-						b.logger.Infof("Taking final full snapshot...")
-						var snapshot *brtypes.Snapshot
-						if snapshot, err = ssr.TakeFullSnapshotAndResetTimer(true); err != nil {
-							b.logger.Errorf("Could not take final full snapshot: %v", err)
-							continue
-						}
-						if b.config.HealthConfig.SnapshotLeaseRenewalEnabled {
-							leaseUpdatectx, cancel := context.WithTimeout(ctx, brtypes.LeaseUpdateTimeoutDuration)
-							defer cancel()
-							if err = heartbeat.FullSnapshotCaseLeaseUpdate(leaseUpdatectx, b.logger, snapshot, ssr.K8sClientset, b.config.HealthConfig.FullSnapshotLeaseName, b.config.HealthConfig.DeltaSnapshotLeaseName); err != nil {
-								b.logger.Warnf("Snapshot lease update failed : %v", err)
-							}
-						}
-					}
-
-					// Wait for the configured interval before making another attempt
-					b.logger.Infof("Waiting for %s...", b.config.OwnerCheckConfig.OwnerCheckInterval.Duration)
-					select {
-					case <-ctx.Done():
-						b.logger.Info("Shutting down...")
-						return
-					case <-time.After(b.config.OwnerCheckConfig.OwnerCheckInterval.Duration):
-					}
-
-					continue
-				}
-
-				// At this point owner check was successful, so set killEtcdBeforeTakingFinalSnapshot to true.
-				// The etcd process will be killed before taking a final snapshot if the owner check fails.
-				killEtcdBeforeTakingFinalSnapshot = true
-			}
-
 			// set server's healthz endpoint status to OK so that
 			// etcd is marked as ready to serve traffic
 			handler.SetStatus(http.StatusOK)
@@ -494,15 +425,6 @@ func (b *BackupRestoreServer) runEtcdProbeLoopWithSnapshotter(ctx context.Contex
 			// Set snapshotter state to Active
 			ssr.SetSnapshotterActive()
 
-			// Start owner check watchdog
-			var ownerCheckWatchdog common.Watchdog
-			if b.ownerChecker != nil {
-				ownerCheckWatchdog = common.NewCheckerActionWatchdog(b.ownerChecker, common.ActionFunc(func(ctx context.Context) {
-					b.stopSnapshotter(handler)
-				}), b.config.OwnerCheckConfig.OwnerCheckInterval.Duration, clock.RealClock{}, b.logger)
-				ownerCheckWatchdog.Start(ctx)
-			}
-
 			// Start garbage collector
 			gcStopCh := make(chan struct{})
 			b.logger.Info("Starting the garbage collector...")
@@ -528,12 +450,6 @@ func (b *BackupRestoreServer) runEtcdProbeLoopWithSnapshotter(ctx context.Contex
 
 			// Stop garbage collector
 			close(gcStopCh)
-
-			if b.ownerChecker != nil {
-				// Stop owner check watchdog
-				ownerCheckWatchdog.Stop()
-			}
-
 		} else {
 			// for the case when snapshotter is not configured
 
