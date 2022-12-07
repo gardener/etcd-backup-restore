@@ -43,6 +43,7 @@ require (
 	golang.org/x/lint v0.0.0-20201208152925-83fdc39ff7b5 // indirect
 	google.golang.org/api v0.15.0
 	google.golang.org/grpc v1.28.1 // indirect
+	gopkg.in/yaml.v2 v2.3.0
 	helm.sh/helm/v3 v3.4.0 //v3.2.4
 	k8s.io/api v0.20.6
 	k8s.io/apiextensions-apiserver v0.20.6 // indirect
@@ -51,8 +52,6 @@ require (
 	k8s.io/utils v0.0.0-20210111153108-fddb29f9d009
 	sigs.k8s.io/controller-runtime v0.8.3
 )
-
-require gopkg.in/yaml.v2 v2.3.0
 
 require (
 	github.com/Azure/go-ansiterm v0.0.0-20170929234023-d6e3b3328b78 // indirect
