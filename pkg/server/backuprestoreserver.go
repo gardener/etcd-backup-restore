@@ -193,20 +193,18 @@ func (b *BackupRestoreServer) runServer(ctx context.Context, restoreOpts *brtype
 	}
 
 	m := member.NewMemberControl(b.config.EtcdConnectionConfig)
-	err := retry.OnError(retry.DefaultBackoff, errors.AnyError, func() error {
+	if err := retry.OnError(retry.DefaultBackoff, errors.AnyError, func() error {
 		cli, err := etcdutil.NewFactory(*b.config.EtcdConnectionConfig).NewCluster()
 		if err != nil {
 			return err
 		}
 		defer cli.Close()
 
-		err = m.UpdateMemberPeerURL(ctx, cli)
-		if err != nil {
+		if err := m.UpdateMemberPeerURL(ctx, cli); err != nil {
 			return err
 		}
 		return nil
-	})
-	if err != nil {
+	}); err != nil {
 		b.logger.Errorf("failed to update member peer url: %v", err)
 	}
 
