@@ -18,6 +18,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
 	"path/filepath"
 	"reflect"
 	"time"
@@ -657,6 +658,66 @@ var _ = Describe("Miscellaneous Tests", func() {
 			It("test read and parse an invalid config yaml", func() {
 				_, err := ReadConfigFileAsMap(configPath)
 				Expect(err).ToNot(BeNil())
+			})
+		})
+	})
+
+	Describe("Checking IsPeerURLTLSEnabled", func() {
+		var (
+			outfile = "/tmp/etcd.conf.yaml"
+		)
+		BeforeEach(func() {
+			Expect(os.Setenv("POD_NAME", "test_pod")).To(Succeed())
+			Expect(os.Setenv("ETCD_CONF", outfile)).To(Succeed())
+		})
+		AfterEach(func() {
+			Expect(os.Unsetenv("POD_NAME")).To(Succeed())
+			Expect(os.Unsetenv("ETCD_CONF")).To(Succeed())
+		})
+
+		Context("with non-TLS enabled peer url", func() {
+			BeforeEach(func() {
+				etcdConfigYaml := `name: etcd1
+initial-advertise-peer-urls: http@etcd-main-peer@default@2380
+initial-cluster: etcd1=http://0.0.0.0:2380`
+				err := os.WriteFile(outfile, []byte(etcdConfigYaml), 0755)
+				Expect(err).ShouldNot(HaveOccurred())
+			})
+			It("should return false", func() {
+				enabled, err := IsPeerURLTLSEnabled()
+				Expect(err).To(BeNil())
+				Expect(enabled).To(BeFalse())
+			})
+
+		})
+
+		Context("with TLS enabled peer url", func() {
+			BeforeEach(func() {
+				etcdConfigYaml := `name: etcd1
+initial-advertise-peer-urls: https@etcd-main-peer@default@2380
+initial-cluster: etcd1=https://0.0.0.0:2380`
+				err := os.WriteFile(outfile, []byte(etcdConfigYaml), 0755)
+				Expect(err).ShouldNot(HaveOccurred())
+			})
+			It("should return true", func() {
+				enabled, err := IsPeerURLTLSEnabled()
+				Expect(err).To(BeNil())
+				Expect(enabled).To(BeTrue())
+			})
+		})
+
+		Context("with empty peer url passed", func() {
+			BeforeEach(func() {
+				etcdConfigYaml := `name: etcd1
+initial-advertise-peer-urls: ""
+initial-cluster: etcd1=http://0.0.0.0:2380`
+				err := os.WriteFile(outfile, []byte(etcdConfigYaml), 0755)
+				Expect(err).ShouldNot(HaveOccurred())
+			})
+			It("should return error", func() {
+				enabled, err := IsPeerURLTLSEnabled()
+				Expect(err).Should(HaveOccurred())
+				Expect(enabled).To(BeFalse())
 			})
 		})
 	})

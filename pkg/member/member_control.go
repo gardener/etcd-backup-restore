@@ -46,7 +46,7 @@ type Control interface {
 	PromoteMember(context.Context) error
 
 	// UpdateMemberPeerURL updates the peer address of a specified etcd cluster member.
-	UpdateMemberPeerURL(context.Context, client.ClusterCloser) (string, error)
+	UpdateMemberPeerURL(context.Context, client.ClusterCloser) error
 
 	// RemoveMember removes the member from the etcd cluster.
 	RemoveMember(context.Context) error
@@ -185,14 +185,13 @@ func getMemberPeerURL(configFile string, podName string) (string, error) {
 }
 
 // doUpdateMemberPeerAddress updated the peer address of a specified etcd member
-func (m *memberControl) doUpdateMemberPeerAddress(ctx context.Context, cli client.ClusterCloser, id uint64) (string, error) {
-	// Already existing clusters have `http://localhost:2380` as the peer address. This needs to explicitly updated to the new address
-	// TODO: Remove this peer address updation logic on etcd-br v0.20.0
+func (m *memberControl) doUpdateMemberPeerAddress(ctx context.Context, cli client.ClusterCloser, id uint64) error {
+	// Already existing clusters or cluster after restoration have `http://localhost:2380` as the peer address. This needs to explicitly updated to the correct peer address.
 	m.logger.Infof("Updating member peer URL for %s", m.podName)
 
 	memberPeerURL, err := getMemberPeerURL(m.configFile, m.podName)
 	if err != nil {
-		return "", fmt.Errorf("could not fetch member URL : %v", err)
+		return fmt.Errorf("could not fetch member URL : %v", err)
 	}
 
 	memberUpdateCtx, cancel := context.WithTimeout(ctx, EtcdTimeout)
@@ -200,9 +199,9 @@ func (m *memberControl) doUpdateMemberPeerAddress(ctx context.Context, cli clien
 
 	if _, err = cli.MemberUpdate(memberUpdateCtx, id, []string{memberPeerURL}); err == nil {
 		m.logger.Info("Successfully updated the member peer URL")
-		return memberPeerURL, nil
+		return nil
 	}
-	return "", err
+	return err
 }
 
 // PromoteMember promotes an etcd member from a learner to a voting member of the cluster. This will succeed only if its logs are caught up with the leader
@@ -243,14 +242,14 @@ func findMember(existingMembers []*etcdserverpb.Member, memberName string) *etcd
 }
 
 // UpdateMemberPeerURL updates the peer address of a specified etcd cluster member.
-func (m *memberControl) UpdateMemberPeerURL(ctx context.Context, cli client.ClusterCloser) (string, error) {
+func (m *memberControl) UpdateMemberPeerURL(ctx context.Context, cli client.ClusterCloser) error {
 	m.logger.Infof("Attempting to update the member Info: %v", m.podName)
 	ctx, cancel := context.WithTimeout(ctx, brtypes.DefaultEtcdConnectionTimeout)
 	defer cancel()
 
 	membersInfo, err := cli.MemberList(ctx)
 	if err != nil {
-		return "", fmt.Errorf("error listing members: %v", err)
+		return fmt.Errorf("error listing members: %v", err)
 	}
 
 	return m.doUpdateMemberPeerAddress(ctx, cli, membersInfo.Header.GetMemberId())
