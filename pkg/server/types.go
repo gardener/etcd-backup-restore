@@ -22,7 +22,6 @@ import (
 const (
 	defaultServerPort              = 8080
 	defaultDefragmentationSchedule = "0 0 */3 * *"
-	defaultEtcdProcessName         = "etcd"
 )
 
 // BackupRestoreComponentConfig holds the component configuration.
