@@ -529,15 +529,6 @@ func handleSsrStopRequest(ctx context.Context, handler *HTTPHandler, ssr *snapsh
 	}
 }
 
-func (b *BackupRestoreServer) stopSnapshotter(handler *HTTPHandler) {
-	b.logger.Infof("Stopping snapshotter...")
-	atomic.StoreUint32(&handler.AckState, HandlerAckWaiting)
-	handler.Logger.Info("Changing handler state...")
-	handler.ReqCh <- emptyStruct
-	handler.Logger.Info("Waiting for acknowledgment...")
-	<-handler.AckCh
-}
-
 func (b *BackupRestoreServer) isPeerURLTLSEnabled(memberPeerURL string) bool {
 	peerURL, err := url.Parse(memberPeerURL)
 	if err != nil {
