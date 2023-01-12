@@ -353,16 +353,12 @@ func (b *BackupRestoreServer) runEtcdProbeLoopWithSnapshotter(ctx context.Contex
 			// the delta snapshot memory limit), after which a full snapshot
 			// is taken and the regular snapshot schedule comes into effect.
 
-			// TODO: write code to find out if prev full snapshot is older than it is
-			// supposed to be, according to the given cron schedule, instead of the
-			// hard-coded "24 hours" full snapshot interval
-
 			// Temporary fix for missing alternate full snapshots for Gardener shoots
 			// with hibernation schedule set: change value from 24 ot 23.5 to
 			// accommodate for slight pod spin-up delays on shoot wake-up
 			const recentFullSnapshotPeriodInHours = 23.5
 			initialDeltaSnapshotTaken = false
-			if ssr.PrevFullSnapshot != nil && !ssr.PrevFullSnapshot.IsFinal && time.Since(ssr.PrevFullSnapshot.CreatedOn).Hours() <= recentFullSnapshotPeriodInHours {
+			if ssr.PrevFullSnapshot != nil && !ssr.PrevFullSnapshot.IsFinal && !ssr.IsScheduledFullSnapshotMissed() {
 				ssrStopped, err := ssr.CollectEventsSincePrevSnapshot(ssrStopCh)
 				if ssrStopped {
 					b.logger.Info("Snapshotter stopped.")

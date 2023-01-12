@@ -42,6 +42,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
+const (
+	recentFullSnapshotPeriodInHours = 23.5
+)
+
 var (
 	emptyStruct   struct{}
 	snapstoreHash = make(map[string]interface{})
@@ -104,7 +108,7 @@ func NewSnapshotter(logger *logrus.Entry, config *brtypes.SnapshotterConfig, sto
 	sdl, err := cron.ParseStandard(config.FullSnapshotSchedule)
 	if err != nil {
 		// Ideally this should be validated before.
-		return nil, fmt.Errorf("invalid schedule provied %s : %v", config.FullSnapshotSchedule, err)
+		return nil, fmt.Errorf("invalid full snapshot schedule provided %s : %v", config.FullSnapshotSchedule, err)
 	}
 
 	var prevSnapshot *brtypes.Snapshot
@@ -473,12 +477,12 @@ func (ssr *Snapshotter) TakeDeltaSnapshot() (*brtypes.Snapshot, error) {
 	defer rc.Close()
 
 	if err := ssr.store.Save(*snap, rc); err != nil {
-		timeTaken := time.Now().Sub(startTime).Seconds()
+		timeTaken := time.Since(startTime).Seconds()
 		metrics.SnapshotDurationSeconds.With(prometheus.Labels{metrics.LabelKind: brtypes.SnapshotKindDelta, metrics.LabelSucceeded: metrics.ValueSucceededFalse}).Observe(timeTaken)
 		ssr.logger.Errorf("Error saving delta snapshots. %v", err)
 		return nil, err
 	}
-	timeTaken := time.Now().Sub(startTime).Seconds()
+	timeTaken := time.Since(startTime).Seconds()
 	metrics.SnapshotDurationSeconds.With(prometheus.Labels{metrics.LabelKind: brtypes.SnapshotKindDelta, metrics.LabelSucceeded: metrics.ValueSucceededTrue}).Observe(timeTaken)
 	logrus.Infof("Total time to save delta snapshot: %f seconds.", timeTaken)
 	ssr.prevSnapshot = snap
@@ -739,4 +743,21 @@ func (ssr *Snapshotter) checkSnapstoreSecretUpdate() bool {
 	//update the map with latest newSnapstoreHash
 	snapstoreHash[ssr.snapstoreConfig.Provider] = newSnapstoreSecretHash
 	return true
+}
+
+// IsScheduledFullSnapshotMissed checked whether the last scheduled full-snapshot was missed or not.
+func (ssr *Snapshotter) IsScheduledFullSnapshotMissed() bool {
+	if time.Since(ssr.PrevFullSnapshot.CreatedOn).Hours() > recentFullSnapshotPeriodInHours {
+		return true
+	}
+
+	now := time.Now()
+	nextSnapSchedule := ssr.schedule.Next(now)
+	timeLeftToTakeNextSnap := nextSnapSchedule.Sub(now)
+
+	if miscellaneous.GetPrevDayScheduledSnapTime(nextSnapSchedule) == ssr.PrevFullSnapshot.CreatedOn {
+		return false
+	}
+
+	return timeLeftToTakeNextSnap.Hours()+time.Since(ssr.PrevFullSnapshot.CreatedOn).Hours() > recentFullSnapshotPeriodInHours
 }

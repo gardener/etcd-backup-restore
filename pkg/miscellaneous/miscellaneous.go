@@ -550,3 +550,16 @@ func IsPeerURLTLSEnabled() (bool, error) {
 
 	return peerURL.Scheme == https, nil
 }
+
+// GetPrevDayScheduledSnapTime returns the previous day schedule snapshot time.
+func GetPrevDayScheduledSnapTime(nextSnapSchedule time.Time) time.Time {
+	return time.Date(
+		nextSnapSchedule.Year(),
+		nextSnapSchedule.Month(),
+		nextSnapSchedule.Day()-1,
+		nextSnapSchedule.Hour(),
+		nextSnapSchedule.Minute(),
+		nextSnapSchedule.Second(),
+		nextSnapSchedule.Nanosecond(),
+		nextSnapSchedule.Location())
+}
