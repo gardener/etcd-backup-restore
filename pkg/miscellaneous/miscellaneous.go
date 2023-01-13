@@ -561,5 +561,6 @@ func GetPrevDayScheduledSnapTime(nextSnapSchedule time.Time) time.Time {
 		nextSnapSchedule.Minute(),
 		nextSnapSchedule.Second(),
 		nextSnapSchedule.Nanosecond(),
-		nextSnapSchedule.Location())
+		nextSnapSchedule.Location(),
+	)
 }

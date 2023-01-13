@@ -745,7 +745,7 @@ func (ssr *Snapshotter) checkSnapstoreSecretUpdate() bool {
 	return true
 }
 
-// IsScheduledFullSnapshotMissed checked whether the last scheduled full-snapshot was missed or not.
+// IsScheduledFullSnapshotMissed checked whether the last scheduled full-snapshot is missed or scheduled full-snapshot can be missed.
 func (ssr *Snapshotter) IsScheduledFullSnapshotMissed() bool {
 	if time.Since(ssr.PrevFullSnapshot.CreatedOn).Hours() > recentFullSnapshotPeriodInHours {
 		return true
@@ -759,5 +759,6 @@ func (ssr *Snapshotter) IsScheduledFullSnapshotMissed() bool {
 		return false
 	}
 
+	// to check whether schedule full-snapshot can be missed.
 	return timeLeftToTakeNextSnap.Hours()+time.Since(ssr.PrevFullSnapshot.CreatedOn).Hours() > recentFullSnapshotPeriodInHours
 }
