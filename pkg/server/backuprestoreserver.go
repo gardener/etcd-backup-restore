@@ -353,12 +353,9 @@ func (b *BackupRestoreServer) runEtcdProbeLoopWithSnapshotter(ctx context.Contex
 			// the delta snapshot memory limit), after which a full snapshot
 			// is taken and the regular snapshot schedule comes into effect.
 
-			// Temporary fix for missing alternate full snapshots for Gardener shoots
-			// with hibernation schedule set: change value from 24 ot 23.5 to
-			// accommodate for slight pod spin-up delays on shoot wake-up
-			const recentFullSnapshotPeriodInHours = 23.5
+			fullSnapshotMaxTimeWindowInHours := ssr.GetFullSnapshotMaxTimeWindow(b.config.SnapshotterConfig.FullSnapshotSchedule)
 			initialDeltaSnapshotTaken = false
-			if ssr.PrevFullSnapshot != nil && !ssr.PrevFullSnapshot.IsFinal && !ssr.IsScheduledFullSnapshotMissed() {
+			if ssr.PrevFullSnapshot != nil && !ssr.PrevFullSnapshot.IsFinal && !ssr.WasScheduledFullSnapshotMissed(fullSnapshotMaxTimeWindowInHours) && !ssr.IsNextFullSnapCrossTimeWindow(fullSnapshotMaxTimeWindowInHours) {
 				ssrStopped, err := ssr.CollectEventsSincePrevSnapshot(ssrStopCh)
 				if ssrStopped {
 					b.logger.Info("Snapshotter stopped.")
@@ -419,7 +416,7 @@ func (b *BackupRestoreServer) runEtcdProbeLoopWithSnapshotter(ctx context.Contex
 
 			// Start snapshotter
 			b.logger.Infof("Starting snapshotter...")
-			startWithFullSnapshot := ssr.PrevFullSnapshot == nil || ssr.PrevFullSnapshot.IsFinal || !(time.Since(ssr.PrevFullSnapshot.CreatedOn).Hours() <= recentFullSnapshotPeriodInHours)
+			startWithFullSnapshot := ssr.PrevFullSnapshot == nil || ssr.PrevFullSnapshot.IsFinal || ssr.WasScheduledFullSnapshotMissed(fullSnapshotMaxTimeWindowInHours) || ssr.IsNextFullSnapCrossTimeWindow(fullSnapshotMaxTimeWindowInHours)
 			if err := ssr.Run(ssrStopCh, startWithFullSnapshot); err != nil {
 				if etcdErr, ok := err.(*errors.EtcdError); ok {
 					metrics.SnapshotterOperationFailure.With(prometheus.Labels{metrics.LabelError: etcdErr.Error()}).Inc()

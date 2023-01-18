@@ -338,18 +338,20 @@ var _ = Describe("Snapshotter", func() {
 
 	Describe("Scenarios to take full-snapshot during startup", func() {
 		var (
-			ssr         *Snapshotter
-			currentMin  int
-			currentHour int
+			ssr                    *Snapshotter
+			currentMin             int
+			currentHour            int
+			fullSnapshotTimeWindow float64
 		)
 		BeforeEach(func() {
+			fullSnapshotTimeWindow = 24
 			currentHour = time.Now().Hour()
 			currentMin = time.Now().Minute()
 			snapstoreConfig = &brtypes.SnapstoreConfig{Container: path.Join(outputDir, "default.bkp")}
 			store, err = snapstore.GetSnapstore(snapstoreConfig)
 			Expect(err).ShouldNot(HaveOccurred())
 		})
-		Context("Previous full snapshot was taken more than 24hrs before, so FullSnapshot missed", func() {
+		Context("Previous full snapshot was taken more than 24hrs before", func() {
 			It("should return true", func() {
 				snapshotterConfig := &brtypes.SnapshotterConfig{
 					FullSnapshotSchedule: fmt.Sprintf("%d %d * * *", (currentMin+1)%60, (currentHour+2)%24),
@@ -362,12 +364,12 @@ var _ = Describe("Snapshotter", func() {
 				ssr.PrevFullSnapshot = &brtypes.Snapshot{
 					CreatedOn: time.Date(time.Now().Year(), time.Now().Month(), time.Now().Day()-2, currentHour, currentMin, 0, 0, time.Local),
 				}
-				isFullSnapMissed := ssr.IsScheduledFullSnapshotMissed()
+				isFullSnapMissed := ssr.WasScheduledFullSnapshotMissed(fullSnapshotTimeWindow)
 				Expect(isFullSnapMissed).Should(BeTrue())
 			})
 		})
 
-		Context("Previous full snapshot was taken exactly at scheduled snapshot time, no FullSnapshot missed", func() {
+		Context("Previous full snapshot was taken exactly at scheduled snapshot time, no FullSnapshot was missed", func() {
 			It("should return false", func() {
 				snapshotterConfig := &brtypes.SnapshotterConfig{
 					FullSnapshotSchedule: fmt.Sprintf("%d %d * * *", (currentMin+1)%60, (currentHour+2)%24),
@@ -380,12 +382,12 @@ var _ = Describe("Snapshotter", func() {
 				ssr.PrevFullSnapshot = &brtypes.Snapshot{
 					CreatedOn: time.Date(time.Now().Year(), time.Now().Month(), time.Now().Day()-1, (currentHour+2)%24, (currentMin+1)%60, 0, 0, time.Local),
 				}
-				isFullSnapMissed := ssr.IsScheduledFullSnapshotMissed()
+				isFullSnapMissed := ssr.WasScheduledFullSnapshotMissed(fullSnapshotTimeWindow)
 				Expect(isFullSnapMissed).Should(BeFalse())
 			})
 		})
 
-		Context("Previous snapshot was taken within 24hrs and not gonna missed schedule fullsnapshot", func() {
+		Context("Previous snapshot was taken within 24hrs and next schedule full-snapshot will be taken within 24hs of time window", func() {
 			It("should return false", func() {
 				scheduleHour := (currentHour + 4) % 24
 				snapshotterConfig := &brtypes.SnapshotterConfig{
@@ -395,16 +397,16 @@ var _ = Describe("Snapshotter", func() {
 				ssr, err = NewSnapshotter(logger, snapshotterConfig, store, etcdConnectionConfig, compressionConfig, healthConfig, snapstoreConfig)
 				Expect(err).ShouldNot(HaveOccurred())
 
-				// Previous full snapshot was taken 4hrs 10 mins before startup
+				// Previous full snapshot was taken 4hrs 10 mins before startup of backup-restore
 				ssr.PrevFullSnapshot = &brtypes.Snapshot{
 					CreatedOn: time.Date(time.Now().Year(), time.Now().Month(), time.Now().Day(), (currentHour-4)%24, (currentMin-10)%60, 0, 0, time.Local),
 				}
-				isFullSnapMissed := ssr.IsScheduledFullSnapshotMissed()
+				isFullSnapMissed := ssr.IsNextFullSnapCrossTimeWindow(fullSnapshotTimeWindow)
 				Expect(isFullSnapMissed).Should(BeFalse())
 			})
 		})
 
-		Context("Previous snapshot was taken within 24hrs and gonna miss 24hrs of schedule fullsnapshot window", func() {
+		Context("Previous snapshot was taken within 24hrs and next schedule full-snapshot can cross 24hs of time window", func() {
 			It("should return true", func() {
 				scheduleHour := (currentHour + 8) % 24
 				snapshotterConfig := &brtypes.SnapshotterConfig{
@@ -414,11 +416,11 @@ var _ = Describe("Snapshotter", func() {
 				ssr, err = NewSnapshotter(logger, snapshotterConfig, store, etcdConnectionConfig, compressionConfig, healthConfig, snapstoreConfig)
 				Expect(err).ShouldNot(HaveOccurred())
 
-				// Previous full snapshot was taken 18hrs(<24hrs) before startup
+				// Previous full snapshot was taken 18hrs(<24hrs) before startup of backup-restore
 				ssr.PrevFullSnapshot = &brtypes.Snapshot{
 					CreatedOn: time.Date(time.Now().Year(), time.Now().Month(), time.Now().Day(), (currentHour-18)%24, (currentMin)%60, 0, 0, time.Local),
 				}
-				isFullSnapMissed := ssr.IsScheduledFullSnapshotMissed()
+				isFullSnapMissed := ssr.IsNextFullSnapCrossTimeWindow(fullSnapshotTimeWindow)
 				Expect(isFullSnapMissed).Should(BeTrue())
 			})
 		})

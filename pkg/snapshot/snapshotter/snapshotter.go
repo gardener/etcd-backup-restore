@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"io"
 	"path"
+	"strings"
 	"sync"
 	"time"
 
@@ -43,7 +44,12 @@ import (
 )
 
 const (
-	recentFullSnapshotPeriodInHours = 23.5
+	Min                                 = 0 // Minutes field
+	Hour                                = 1 // Hours field
+	DayOfMonth                          = 2 // Day of month field
+	Month                               = 3 // Month field
+	DayOfWeek                           = 4 // Day of week field
+	defaultFullSnapMaxTimeWindowInHours = 23.5
 )
 
 var (
@@ -745,20 +751,41 @@ func (ssr *Snapshotter) checkSnapstoreSecretUpdate() bool {
 	return true
 }
 
-// IsScheduledFullSnapshotMissed checked whether the last scheduled full-snapshot is missed or scheduled full-snapshot can be missed.
-func (ssr *Snapshotter) IsScheduledFullSnapshotMissed() bool {
-	if time.Since(ssr.PrevFullSnapshot.CreatedOn).Hours() > recentFullSnapshotPeriodInHours {
+// WasScheduledFullSnapshotMissed checks whether the last full-snapshot was missed or not.
+func (ssr *Snapshotter) WasScheduledFullSnapshotMissed(timeWindow float64) bool {
+	if time.Since(ssr.PrevFullSnapshot.CreatedOn).Hours() > timeWindow {
 		return true
 	}
 
 	now := time.Now()
 	nextSnapSchedule := ssr.schedule.Next(now)
+
+	return miscellaneous.GetPrevDayScheduledSnapTime(nextSnapSchedule) != ssr.PrevFullSnapshot.CreatedOn
+}
+
+// IsNextFullSnapCrossTimeWindow checks whether the next schedule full-snapshot can be taken within the time window or not.
+func (ssr *Snapshotter) IsNextFullSnapCrossTimeWindow(timeWindow float64) bool {
+	now := time.Now()
+	nextSnapSchedule := ssr.schedule.Next(now)
 	timeLeftToTakeNextSnap := nextSnapSchedule.Sub(now)
 
-	if miscellaneous.GetPrevDayScheduledSnapTime(nextSnapSchedule) == ssr.PrevFullSnapshot.CreatedOn {
-		return false
+	return timeLeftToTakeNextSnap.Hours()+time.Since(ssr.PrevFullSnapshot.CreatedOn).Hours() > timeWindow
+}
+
+// GetFullSnapshotMaxTimeWindow returns the maximum time period in hours for which backup-restore must have atleast 1 full-snapshot.
+func (ssr *Snapshotter) GetFullSnapshotMaxTimeWindow(fullSnapScheduleSpec string) float64 {
+	// Split on whitespace.
+	schedule := strings.Fields(fullSnapScheduleSpec)
+	ssr.logger.Infof("schedule: %v", schedule)
+	if len(schedule) < 5 {
+		return defaultFullSnapMaxTimeWindowInHours
 	}
 
-	// to check whether schedule full-snapshot can be missed.
-	return timeLeftToTakeNextSnap.Hours()+time.Since(ssr.PrevFullSnapshot.CreatedOn).Hours() > recentFullSnapshotPeriodInHours
+	if schedule[DayOfMonth] == "*" && schedule[DayOfWeek] == "*" {
+		ssr.logger.Infof("defaultFullSnapMaxTimeWindowInHours: %v", defaultFullSnapMaxTimeWindowInHours)
+		return defaultFullSnapMaxTimeWindowInHours
+	} else if schedule[DayOfWeek] != "*" {
+		return defaultFullSnapMaxTimeWindowInHours * 7
+	}
+	return defaultFullSnapMaxTimeWindowInHours
 }
