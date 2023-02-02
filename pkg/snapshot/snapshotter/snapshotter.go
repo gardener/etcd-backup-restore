@@ -753,7 +753,7 @@ func (ssr *Snapshotter) checkSnapstoreSecretUpdate() bool {
 
 // IsTakingFullSnapRequiresAtStartup checks whether to take a full-snapshot or not during startup of backup-restore.
 func (ssr *Snapshotter) IsTakingFullSnapRequiresAtStartup(timeWindow float64) bool {
-	if time.Since(ssr.PrevFullSnapshot.CreatedOn).Hours() > timeWindow {
+	if ssr.PrevFullSnapshot == nil || ssr.PrevFullSnapshot.IsFinal || time.Since(ssr.PrevFullSnapshot.CreatedOn).Hours() > timeWindow {
 		return true
 	}
 

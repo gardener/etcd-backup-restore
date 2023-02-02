@@ -355,7 +355,7 @@ func (b *BackupRestoreServer) runEtcdProbeLoopWithSnapshotter(ctx context.Contex
 
 			fullSnapshotMaxTimeWindowInHours := ssr.GetFullSnapshotMaxTimeWindow(b.config.SnapshotterConfig.FullSnapshotSchedule)
 			initialFullSnapshotTaken = false
-			if ssr.PrevFullSnapshot == nil || ssr.PrevFullSnapshot.IsFinal || ssr.IsTakingFullSnapRequiresAtStartup(fullSnapshotMaxTimeWindowInHours) {
+			if ssr.IsTakingFullSnapRequiresAtStartup(fullSnapshotMaxTimeWindowInHours) {
 				// need to take a full snapshot here
 				var snapshot *brtypes.Snapshot
 				metrics.SnapshotRequired.With(prometheus.Labels{metrics.LabelKind: brtypes.SnapshotKindDelta}).Set(0)
@@ -416,7 +416,7 @@ func (b *BackupRestoreServer) runEtcdProbeLoopWithSnapshotter(ctx context.Contex
 
 			// Start snapshotter
 			b.logger.Infof("Starting snapshotter...")
-			startWithFullSnapshot := ssr.PrevFullSnapshot == nil || ssr.PrevFullSnapshot.IsFinal || ssr.IsTakingFullSnapRequiresAtStartup(fullSnapshotMaxTimeWindowInHours)
+			startWithFullSnapshot := ssr.IsTakingFullSnapRequiresAtStartup(fullSnapshotMaxTimeWindowInHours)
 			if err := ssr.Run(ssrStopCh, startWithFullSnapshot); err != nil {
 				if etcdErr, ok := err.(*errors.EtcdError); ok {
 					metrics.SnapshotterOperationFailure.With(prometheus.Labels{metrics.LabelError: etcdErr.Error()}).Inc()
