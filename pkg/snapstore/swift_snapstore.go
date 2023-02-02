@@ -19,6 +19,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"io/fs"
 	"math"
 	"os"
 	"path"
@@ -37,9 +38,11 @@ import (
 )
 
 const (
-	envPrefixSource         = "SOURCE_OS_"
-	swiftCredentialFile     = "OPENSTACK_APPLICATION_CREDENTIALS"
-	swiftCredentialJSONFile = "OPENSTACK_APPLICATION_CREDENTIALS_JSON"
+	envPrefixSource                 = "SOURCE_OS_"
+	authTypePassword                = "password"
+	authTypeV3ApplicationCredential = "v3applicationcredential"
+	swiftCredentialFile             = "OPENSTACK_APPLICATION_CREDENTIALS"
+	swiftCredentialJSONFile         = "OPENSTACK_APPLICATION_CREDENTIALS_JSON"
 )
 
 // SwiftSnapStore is snapstore with Openstack Swift as backend
@@ -53,14 +56,26 @@ type SwiftSnapStore struct {
 	tempDir                 string
 }
 
+type applicationCredential struct {
+	ApplicationCredentialID     string `json:"applicationCredentialID"`
+	ApplicationCredentialName   string `json:"applicationCredentialName"`
+	ApplicationCredentialSecret string `json:"applicationCredentialSecret"`
+}
+
+type passwordCredential struct {
+	Password string `json:"password"`
+	Username string `json:"username"`
+}
+
 type swiftCredentials struct {
+	AuthType   string `json:"authType"`
 	AuthURL    string `json:"authURL"`
 	BucketName string `json:"bucketName"`
 	DomainName string `json:"domainName"`
-	Password   string `json:"password"`
 	Region     string `json:"region"`
 	TenantName string `json:"tenantName"`
-	Username   string `json:"username"`
+	passwordCredential
+	applicationCredential
 }
 
 const (
@@ -138,6 +153,22 @@ func readSwiftCredentialsJSON(filename string) (*clientconfig.ClientOpts, error)
 	}
 
 	os.Setenv("OS_TENANT_NAME", cred.TenantName)
+
+	if cred.AuthType == authTypeV3ApplicationCredential {
+		return &clientconfig.ClientOpts{
+			AuthType: authTypeV3ApplicationCredential,
+			AuthInfo: &clientconfig.AuthInfo{
+				AuthURL:                     cred.AuthURL,
+				DomainName:                  cred.DomainName,
+				ApplicationCredentialID:     cred.ApplicationCredentialID,
+				ApplicationCredentialName:   cred.ApplicationCredentialName,
+				ApplicationCredentialSecret: cred.ApplicationCredentialSecret,
+			},
+			RegionName: cred.Region,
+		}, nil
+	}
+
+	// if authType == authTypePassword
 	return &clientconfig.ClientOpts{
 		AuthInfo: &clientconfig.AuthInfo{
 			AuthURL:    cred.AuthURL,
@@ -160,6 +191,11 @@ func swiftCredentialsFromJSON(filename string) (*swiftCredentials, error) {
 	if err := json.Unmarshal(jsonData, cred); err != nil {
 		return nil, err
 	}
+
+	if cred.AuthType, err = getSwiftCredentialAuthTypeFromJSON(cred.ApplicationCredentialSecret, cred.Username); err != nil {
+		return cred, err
+	}
+
 	return cred, nil
 }
 
@@ -170,6 +206,22 @@ func readSwiftCredentialFiles(dirname string) (*clientconfig.ClientOpts, error) 
 	}
 
 	os.Setenv("OS_TENANT_NAME", cred.TenantName)
+
+	if cred.AuthType == authTypeV3ApplicationCredential {
+		return &clientconfig.ClientOpts{
+			AuthType: authTypeV3ApplicationCredential,
+			AuthInfo: &clientconfig.AuthInfo{
+				AuthURL:                     cred.AuthURL,
+				DomainName:                  cred.DomainName,
+				ApplicationCredentialID:     cred.ApplicationCredentialID,
+				ApplicationCredentialName:   cred.ApplicationCredentialName,
+				ApplicationCredentialSecret: cred.ApplicationCredentialSecret,
+			},
+			RegionName: cred.Region,
+		}, nil
+	}
+
+	// if authType == authTypePassword
 	return &clientconfig.ClientOpts{
 		AuthInfo: &clientconfig.AuthInfo{
 			AuthURL:    cred.AuthURL,
@@ -181,50 +233,74 @@ func readSwiftCredentialFiles(dirname string) (*clientconfig.ClientOpts, error) 
 	}, nil
 }
 
-func readSwiftCredentialDir(dirname string) (*swiftCredentials, error) {
+func readSwiftCredentialDir(dirName string) (*swiftCredentials, error) {
 	cred := &swiftCredentials{}
-	files, err := os.ReadDir(dirname)
+	files, err := os.ReadDir(dirName)
 	if err != nil {
 		return nil, err
 	}
 
+	if cred.AuthType, err = getSwiftCredentialAuthType(files); err != nil {
+		return cred, err
+	}
+
 	for _, file := range files {
-		if file.Name() == "authURL" {
-			data, err := os.ReadFile(dirname + "/authURL")
+		switch file.Name() {
+		case "authURL":
+			data, err := os.ReadFile(dirName + "/authURL")
 			if err != nil {
 				return nil, err
 			}
 			cred.AuthURL = string(data)
-		} else if file.Name() == "domainName" {
-			data, err := os.ReadFile(dirname + "/domainName")
+
+		case "domainName":
+			data, err := os.ReadFile(dirName + "/domainName")
 			if err != nil {
 				return nil, err
 			}
 			cred.DomainName = string(data)
-		} else if file.Name() == "password" {
-			data, err := os.ReadFile(dirname + "/password")
+		case "password":
+			data, err := os.ReadFile(dirName + "/password")
 			if err != nil {
 				return nil, err
 			}
 			cred.Password = string(data)
-		} else if file.Name() == "region" {
-			data, err := os.ReadFile(dirname + "/region")
+		case "region":
+			data, err := os.ReadFile(dirName + "/region")
 			if err != nil {
 				return nil, err
 			}
 			cred.Region = string(data)
-		} else if file.Name() == "tenantName" {
-			data, err := os.ReadFile(dirname + "/tenantName")
+		case "tenantName":
+			data, err := os.ReadFile(dirName + "/tenantName")
 			if err != nil {
 				return nil, err
 			}
 			cred.TenantName = string(data)
-		} else if file.Name() == "username" {
-			data, err := os.ReadFile(dirname + "/username")
+		case "username":
+			data, err := os.ReadFile(dirName + "/username")
 			if err != nil {
 				return nil, err
 			}
 			cred.Username = string(data)
+		case "applicationCredentialID":
+			data, err := os.ReadFile(dirName + "/applicationCredentialID")
+			if err != nil {
+				return nil, err
+			}
+			cred.ApplicationCredentialID = string(data)
+		case "applicationCredentialName":
+			data, err := os.ReadFile(dirName + "/applicationCredentialName")
+			if err != nil {
+				return nil, err
+			}
+			cred.ApplicationCredentialName = string(data)
+		case "applicationCredentialSecret":
+			data, err := os.ReadFile(dirName + "/applicationCredentialSecret")
+			if err != nil {
+				return nil, err
+			}
+			cred.ApplicationCredentialSecret = string(data)
 		}
 	}
 
@@ -440,13 +516,49 @@ func SwiftSnapStoreHash(config *brtypes.SnapstoreConfig) (string, error) {
 }
 
 func getSwiftHash(config *swiftCredentials) string {
-	data := fmt.Sprintf("%s%s%s%s%s", config.AuthURL, config.TenantName, config.Username, config.DomainName, config.Password)
+	var data string
+	if config.AuthType == authTypeV3ApplicationCredential {
+		data = fmt.Sprintf("%s%s%s%s%s%s", config.AuthURL, config.TenantName, config.ApplicationCredentialID, config.DomainName, config.ApplicationCredentialName, config.ApplicationCredentialSecret)
+	} else {
+		// config.AuthType == authTypePassword
+		data = fmt.Sprintf("%s%s%s%s%s", config.AuthURL, config.TenantName, config.Username, config.DomainName, config.Password)
+	}
 	return getHash(data)
 }
 
 func isSwiftConfigEmpty(config *swiftCredentials) error {
-	if len(config.AuthURL) != 0 && len(config.TenantName) != 0 && len(config.Password) != 0 && len(config.Username) != 0 && len(config.DomainName) != 0 {
-		return nil
+	if config.AuthType == authTypePassword {
+		if len(config.AuthURL) != 0 && len(config.TenantName) != 0 && len(config.Password) != 0 && len(config.Username) != 0 && len(config.DomainName) != 0 {
+			return nil
+		}
+	} else if config.AuthType == authTypeV3ApplicationCredential {
+		if len(config.AuthURL) != 0 && len(config.TenantName) != 0 && len(config.DomainName) != 0 && len(config.ApplicationCredentialID) != 0 && len(config.ApplicationCredentialName) != 0 && len(config.ApplicationCredentialSecret) != 0 {
+			return nil
+		}
 	}
 	return fmt.Errorf("openstack swift credentials are not passed correctly")
+}
+
+func getSwiftCredentialAuthType(files []fs.DirEntry) (string, error) {
+
+	for _, file := range files {
+		switch file.Name() {
+		case "password", "username":
+			return authTypePassword, nil
+		case "applicationCredentialSecret", "applicationCredentialID":
+			return authTypeV3ApplicationCredential, nil
+		}
+	}
+	return "", fmt.Errorf("unable to decide the authType: openstack swift credentials are not passed correctly")
+}
+
+func getSwiftCredentialAuthTypeFromJSON(appCredSecret string, password string) (string, error) {
+	if len(appCredSecret) != 0 && len(password) != 0 {
+		return "", fmt.Errorf("unable to decide the authType: openstack swift credentials are not passed correctly")
+	} else if len(appCredSecret) != 0 {
+		return authTypeV3ApplicationCredential, nil
+	} else if len(password) != 0 {
+		return authTypePassword, nil
+	}
+	return "", fmt.Errorf("unable to decide the authType: openstack swift credentials are not passed correctly")
 }
