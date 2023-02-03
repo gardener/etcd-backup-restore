@@ -317,7 +317,11 @@ func DeltaSnapshotCaseLeaseUpdate(ctx context.Context, logger *logrus.Entry, k8s
 }
 
 // RenewMemberLeasePeriodically has a timer and will periodically call RenewMemberLeases to renew the member lease until stopped
-func RenewMemberLeasePeriodically(ctx context.Context, stopCh chan struct{}, hconfig *brtypes.HealthConfig, logger *logrus.Entry, etcdConfig *brtypes.EtcdConnectionConfig, peerURLTLSEnabled bool) error {
+func RenewMemberLeasePeriodically(ctx context.Context, stopCh chan struct{}, hconfig *brtypes.HealthConfig, logger *logrus.Entry, etcdConfig *brtypes.EtcdConnectionConfig) error {
+	peerURLTLSEnabled, err := miscellaneous.IsPeerURLTLSEnabled()
+	if err != nil {
+		return fmt.Errorf("unable to check peer TLS enabled or not: %v", err)
+	}
 
 	clientSet, err := miscellaneous.GetKubernetesClientSetOrError()
 	if err != nil {

@@ -352,7 +352,7 @@ var _ = Describe("Heartbeat", func() {
 		})
 		Context("With fail to create clientset", func() {
 			It("Should return an error", func() {
-				err := heartbeat.RenewMemberLeasePeriodically(testCtx, mmStopCh, hConfig, logger, etcdConnectionConfig, true)
+				err := heartbeat.RenewMemberLeasePeriodically(testCtx, mmStopCh, hConfig, logger, etcdConnectionConfig)
 				Expect(err).Should(HaveOccurred())
 			})
 		})
