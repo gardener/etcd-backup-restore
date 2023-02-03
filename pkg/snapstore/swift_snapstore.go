@@ -304,7 +304,7 @@ func readSwiftCredentialDir(dirName string) (*swiftCredentials, error) {
 		}
 	}
 
-	if err := isSwiftConfigEmpty(cred); err != nil {
+	if err := isSwiftConfigCorrect(cred); err != nil {
 		return nil, err
 	}
 	return cred, nil
@@ -526,8 +526,10 @@ func getSwiftHash(config *swiftCredentials) string {
 	return getHash(data)
 }
 
-func isSwiftConfigEmpty(config *swiftCredentials) error {
-	if config.AuthType == authTypePassword {
+func isSwiftConfigCorrect(config *swiftCredentials) error {
+	if (len(config.ApplicationCredentialSecret) != 0 || len(config.ApplicationCredentialID) != 0) && (len(config.Password) != 0 || len(config.Username) != 0) {
+		return fmt.Errorf("openstack swift credentials are not passed correctly")
+	} else if config.AuthType == authTypePassword {
 		if len(config.AuthURL) != 0 && len(config.TenantName) != 0 && len(config.Password) != 0 && len(config.Username) != 0 && len(config.DomainName) != 0 {
 			return nil
 		}
