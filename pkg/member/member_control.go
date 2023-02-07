@@ -178,7 +178,7 @@ func getMemberPeerURL(configFile string, podName string) (string, error) {
 	}
 	initAdPeerURL := config["initial-advertise-peer-urls"]
 	if initAdPeerURL == nil {
-		return "", errors.New("initial-advertise-peer-urls must be set in etcd config.")
+		return "", errors.New("initial-advertise-peer-urls must be set in etcd config")
 	}
 	peerURL, err := miscellaneous.ParsePeerURL(initAdPeerURL.(string), podName)
 	if err != nil {
