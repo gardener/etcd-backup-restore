@@ -1146,7 +1146,7 @@ k8s.io/cli-runtime/pkg/kustomize/k8sdeps/transformer/patch
 k8s.io/cli-runtime/pkg/kustomize/k8sdeps/validator
 k8s.io/cli-runtime/pkg/printers
 k8s.io/cli-runtime/pkg/resource
-# k8s.io/client-go v11.0.1-0.20190409021438-1a26190bd76a+incompatible => k8s.io/client-go v0.19.6
+# k8s.io/client-go v0.20.6 => k8s.io/client-go v0.19.6
 ## explicit; go 1.15
 k8s.io/client-go/discovery
 k8s.io/client-go/discovery/cached/disk
