@@ -18,7 +18,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"net/url"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -57,10 +56,6 @@ var (
 	// runServerWithSnapshotter indicates whether to start server with or without snapshotter.
 	runServerWithSnapshotter bool = true
 	retryTimeout                  = 5 * time.Second
-)
-
-const (
-	https = "https"
 )
 
 // NewBackupRestoreServer return new backup restore server.
@@ -197,25 +192,21 @@ func (b *BackupRestoreServer) runServer(ctx context.Context, restoreOpts *brtype
 		}
 	}
 
-	var memberPeerURL string
-
 	m := member.NewMemberControl(b.config.EtcdConnectionConfig)
-	err := retry.OnError(retry.DefaultBackoff, errors.AnyError, func() error {
+	if err := retry.OnError(retry.DefaultBackoff, errors.AnyError, func() error {
 		cli, err := etcdutil.NewFactory(*b.config.EtcdConnectionConfig).NewCluster()
 		if err != nil {
 			return err
 		}
-		memberPeerURL, err = m.UpdateMemberPeerURL(ctx, cli)
-		if err != nil {
+		defer cli.Close()
+
+		if err := m.UpdateMemberPeerURL(ctx, cli); err != nil {
 			return err
 		}
 		return nil
-	})
-	if err != nil {
+	}); err != nil {
 		b.logger.Errorf("failed to update member peer url: %v", err)
 	}
-
-	peerURLTLSEnabled := b.isPeerURLTLSEnabled(memberPeerURL)
 
 	leaderCallbacks := &brtypes.LeaderCallbacks{
 		OnStartedLeading: func(leCtx context.Context) {
@@ -263,7 +254,7 @@ func (b *BackupRestoreServer) runServer(ctx context.Context, restoreOpts *brtype
 			mmStopCh = make(chan struct{})
 			if b.config.HealthConfig.MemberLeaseRenewalEnabled {
 				go func() {
-					if err := heartbeat.RenewMemberLeasePeriodically(ctx, mmStopCh, b.config.HealthConfig, b.logger, b.config.EtcdConnectionConfig, peerURLTLSEnabled); err != nil {
+					if err := heartbeat.RenewMemberLeasePeriodically(ctx, mmStopCh, b.config.HealthConfig, b.logger, b.config.EtcdConnectionConfig); err != nil {
 						b.logger.Fatalf("failed RenewMemberLeases: %v", err)
 					}
 				}()
@@ -303,7 +294,7 @@ func (b *BackupRestoreServer) runServer(ctx context.Context, restoreOpts *brtype
 
 	if b.config.HealthConfig.MemberLeaseRenewalEnabled {
 		go func() {
-			if err := heartbeat.RenewMemberLeasePeriodically(ctx, mmStopCh, b.config.HealthConfig, b.logger, b.config.EtcdConnectionConfig, peerURLTLSEnabled); err != nil {
+			if err := heartbeat.RenewMemberLeasePeriodically(ctx, mmStopCh, b.config.HealthConfig, b.logger, b.config.EtcdConnectionConfig); err != nil {
 				b.logger.Fatalf("failed RenewMemberLeases: %v", err)
 			}
 		}()
@@ -527,14 +518,4 @@ func handleSsrStopRequest(ctx context.Context, handler *HTTPHandler, ssr *snapsh
 			return
 		}
 	}
-}
-
-func (b *BackupRestoreServer) isPeerURLTLSEnabled(memberPeerURL string) bool {
-	peerURL, err := url.Parse(memberPeerURL)
-	if err != nil {
-		b.logger.WithFields(logrus.Fields{
-			"memberPeerURL": memberPeerURL,
-		}).Fatalf("malformed member peer url: %v", err)
-	}
-	return peerURL.Scheme == https
 }

@@ -57,6 +57,8 @@ const (
 	ClusterStateNew = "new"
 	// ClusterStateExisting defines the "existing" state of etcd cluster.
 	ClusterStateExisting = "existing"
+
+	https = "https"
 )
 
 // GetLatestFullSnapshotAndDeltaSnapList returns the latest snapshot
@@ -501,12 +503,12 @@ func RemoveMemberFromCluster(ctx context.Context, cli etcdClient.ClusterCloser, 
 func ReadConfigFileAsMap(path string) (map[string]interface{}, error) {
 	configYML, err := os.ReadFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("unable to read etcd c file at path: %s : %v", path, err)
+		return nil, fmt.Errorf("unable to read etcd config file at path: %s : %v", path, err)
 	}
 
 	c := map[string]interface{}{}
 	if err := yaml.Unmarshal(configYML, &c); err != nil {
-		return nil, fmt.Errorf("unable to unmarshal etcd c yaml file at path: %s : %v", path, err)
+		return nil, fmt.Errorf("unable to unmarshal etcd config yaml file at path: %s : %v", path, err)
 	}
 	return c, nil
 }
@@ -519,4 +521,32 @@ func ParsePeerURL(initialAdvertisePeerURLs, podName string) (string, error) {
 	}
 	domaiName := fmt.Sprintf("%s.%s.%s", tokens[1], tokens[2], "svc")
 	return fmt.Sprintf("%s://%s.%s:%s", tokens[0], podName, domaiName, tokens[3]), nil
+}
+
+// IsPeerURLTLSEnabled checks whether the peer address is TLS enabled or not.
+func IsPeerURLTLSEnabled() (bool, error) {
+	podName, err := GetEnvVarOrError("POD_NAME")
+	if err != nil {
+		return false, err
+	}
+
+	configFile := GetConfigFilePath()
+
+	config, err := ReadConfigFileAsMap(configFile)
+	if err != nil {
+		return false, err
+	}
+	initAdPeerURL := config["initial-advertise-peer-urls"]
+
+	memberPeerURL, err := ParsePeerURL(initAdPeerURL.(string), podName)
+	if err != nil {
+		return false, err
+	}
+
+	peerURL, err := url.Parse(memberPeerURL)
+	if err != nil {
+		return false, err
+	}
+
+	return peerURL.Scheme == https, nil
 }

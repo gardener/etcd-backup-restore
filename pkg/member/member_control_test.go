@@ -135,10 +135,8 @@ var _ = Describe("Membercontrol", func() {
 
 				cl.EXPECT().MemberUpdate(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil)
 
-				peerUrl, err := m.UpdateMemberPeerURL(context.TODO(), client)
+				err = m.UpdateMemberPeerURL(context.TODO(), client)
 				Expect(err).ShouldNot(HaveOccurred())
-				expectedPeerUrl := fmt.Sprintf("http://%s.%s.%s.svc:2380", podName, "etcd-main-peer", "default")
-				Expect(peerUrl).To(Equal(expectedPeerUrl))
 			})
 		})
 
@@ -166,7 +164,7 @@ var _ = Describe("Membercontrol", func() {
 
 				cl.EXPECT().MemberUpdate(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, fmt.Errorf("unable to connect to dummy etcd"))
 
-				_, err = m.UpdateMemberPeerURL(context.TODO(), client)
+				err = m.UpdateMemberPeerURL(context.TODO(), client)
 				Expect(err).Should(HaveOccurred())
 			})
 		})
