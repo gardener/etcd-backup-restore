@@ -768,7 +768,6 @@ func (ssr *Snapshotter) WasScheduledFullSnapshotMissed(timeWindow float64) bool 
 	now := time.Now()
 	nextSnapSchedule := ssr.schedule.Next(now)
 
-	ssr.logger.Infof(" previous schedule: %v", miscellaneous.GetPrevScheduledSnapTime(nextSnapSchedule, timeWindow))
 	if miscellaneous.GetPrevScheduledSnapTime(nextSnapSchedule, timeWindow) == ssr.PrevFullSnapshot.CreatedOn {
 		ssr.logger.Info("previous full snapshot was taken at scheduled time, skipping the full snapshot at startup")
 		return false

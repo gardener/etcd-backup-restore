@@ -704,7 +704,7 @@ var _ = Describe("Snapshotter", func() {
 			fullSnapshotTimeWindow float64
 		)
 		BeforeEach(func() {
-			fullSnapshotTimeWindow = 23.5
+			fullSnapshotTimeWindow = 24
 			currentHour = time.Now().Hour()
 			currentMin = time.Now().Minute()
 			snapstoreConfig = &brtypes.SnapstoreConfig{Container: path.Join(outputDir, "default.bkp")}
