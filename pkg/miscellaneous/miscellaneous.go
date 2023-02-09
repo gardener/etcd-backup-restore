@@ -357,7 +357,6 @@ func IsMultiNode(logger *logrus.Entry) bool {
 	}
 
 	config := map[string]interface{}{}
-	err = yaml.Unmarshal([]byte(configYML), &config)
 	if err := yaml.Unmarshal([]byte(configYML), &config); err != nil {
 		return false
 	}
@@ -551,13 +550,14 @@ func IsPeerURLTLSEnabled() (bool, error) {
 	return peerURL.Scheme == https, nil
 }
 
-// GetPrevDayScheduledSnapTime returns the previous day schedule snapshot time.
-func GetPrevDayScheduledSnapTime(nextSnapSchedule time.Time) time.Time {
+// GetPrevScheduledSnapTime returns the previous schedule snapshot time.
+// TODO: Previous full snapshot time should be calculated on basis of previous cron schedule of full snapshot.
+func GetPrevScheduledSnapTime(nextSnapSchedule time.Time, timeWindow float64) time.Time {
 	return time.Date(
 		nextSnapSchedule.Year(),
 		nextSnapSchedule.Month(),
-		nextSnapSchedule.Day()-1,
-		nextSnapSchedule.Hour(),
+		nextSnapSchedule.Day(),
+		nextSnapSchedule.Hour()-int(timeWindow),
 		nextSnapSchedule.Minute(),
 		nextSnapSchedule.Second(),
 		nextSnapSchedule.Nanosecond(),

@@ -599,7 +599,7 @@ var _ = Describe("Snapshotter", func() {
 
 				// No previous snapshot was taken
 				ssr.PrevFullSnapshot = nil
-				isFullSnapMissed := ssr.IsTakingFullSnapRequiresAtStartup(fullSnapshotTimeWindow)
+				isFullSnapMissed := ssr.IsFullSnapshotRequiredAtStartup(fullSnapshotTimeWindow)
 				Expect(isFullSnapMissed).Should(BeTrue())
 			})
 		})
@@ -616,7 +616,7 @@ var _ = Describe("Snapshotter", func() {
 				ssr.PrevFullSnapshot = &brtypes.Snapshot{
 					IsFinal: true,
 				}
-				isFullSnapMissed := ssr.IsTakingFullSnapRequiresAtStartup(fullSnapshotTimeWindow)
+				isFullSnapMissed := ssr.IsFullSnapshotRequiredAtStartup(fullSnapshotTimeWindow)
 				Expect(isFullSnapMissed).Should(BeTrue())
 			})
 		})
@@ -633,7 +633,7 @@ var _ = Describe("Snapshotter", func() {
 				ssr.PrevFullSnapshot = &brtypes.Snapshot{
 					CreatedOn: time.Date(time.Now().Year(), time.Now().Month(), time.Now().Day()-2, currentHour, currentMin, 0, 0, time.Local),
 				}
-				isFullSnapMissed := ssr.IsTakingFullSnapRequiresAtStartup(fullSnapshotTimeWindow)
+				isFullSnapMissed := ssr.IsFullSnapshotRequiredAtStartup(fullSnapshotTimeWindow)
 				Expect(isFullSnapMissed).Should(BeTrue())
 			})
 		})
@@ -652,7 +652,7 @@ var _ = Describe("Snapshotter", func() {
 					CreatedOn: time.Date(time.Now().Year(), time.Now().Month(), time.Now().Day()-1, (currentHour+2)%24, (currentMin+1)%60, 0, 0, time.Local),
 				}
 
-				isFullSnapMissed := ssr.IsTakingFullSnapRequiresAtStartup(fullSnapshotTimeWindow)
+				isFullSnapMissed := ssr.IsFullSnapshotRequiredAtStartup(fullSnapshotTimeWindow)
 				Expect(isFullSnapMissed).Should(BeFalse())
 			})
 		})
@@ -671,7 +671,7 @@ var _ = Describe("Snapshotter", func() {
 				ssr.PrevFullSnapshot = &brtypes.Snapshot{
 					CreatedOn: time.Date(time.Now().Year(), time.Now().Month(), time.Now().Day(), (currentHour-4)%24, (currentMin-10)%60, 0, 0, time.Local),
 				}
-				isFullSnapCanBeMissed := ssr.IsTakingFullSnapRequiresAtStartup(fullSnapshotTimeWindow)
+				isFullSnapCanBeMissed := ssr.IsFullSnapshotRequiredAtStartup(fullSnapshotTimeWindow)
 				Expect(isFullSnapCanBeMissed).Should(BeFalse())
 			})
 		})
@@ -690,7 +690,7 @@ var _ = Describe("Snapshotter", func() {
 				ssr.PrevFullSnapshot = &brtypes.Snapshot{
 					CreatedOn: time.Date(time.Now().Year(), time.Now().Month(), time.Now().Day(), (currentHour-18)%24, (currentMin)%60, 0, 0, time.Local),
 				}
-				isFullSnapCanBeMissed := ssr.IsTakingFullSnapRequiresAtStartup(fullSnapshotTimeWindow)
+				isFullSnapCanBeMissed := ssr.IsFullSnapshotRequiredAtStartup(fullSnapshotTimeWindow)
 				Expect(isFullSnapCanBeMissed).Should(BeTrue())
 			})
 		})
