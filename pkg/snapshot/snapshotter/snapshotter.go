@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"io"
 	"path"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -792,10 +793,14 @@ func (ssr *Snapshotter) GetFullSnapshotMaxTimeWindow(fullSnapScheduleSpec string
 		return defaultFullSnapMaxTimeWindow
 	}
 
-	if schedule[dayOfMonth] == "*" && schedule[dayOfWeek] == "*" {
+	if schedule[dayOfMonth] == "*" && schedule[dayOfWeek] == "*" && !strings.Contains(schedule[hour], "/") {
 		return defaultFullSnapMaxTimeWindow
 	} else if schedule[dayOfWeek] != "*" {
 		return defaultFullSnapMaxTimeWindow * 7
+	} else if schedule[dayOfMonth] == "*" && schedule[dayOfWeek] == "*" && strings.Contains(schedule[hour], "/") {
+		if timeWindow, err := strconv.ParseFloat(schedule[hour][strings.Index(schedule[hour], "/")+1:], 64); err == nil {
+			return timeWindow
+		}
 	}
 
 	return defaultFullSnapMaxTimeWindow

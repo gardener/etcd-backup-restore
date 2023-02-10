@@ -738,6 +738,22 @@ var _ = Describe("Snapshotter", func() {
 				Expect(timeWindow).Should(Equal(fullSnapshotTimeWindow * 7))
 			})
 		})
+
+		Context("Full snapshot schedule for every 4 hours", func() {
+			It("should return 4 hours of timeWindow", func() {
+				// every 4 hour
+				scheduleHour := 4
+				snapshotterConfig := &brtypes.SnapshotterConfig{
+					FullSnapshotSchedule: fmt.Sprintf("%d */%d * * *", 0, scheduleHour),
+				}
+
+				ssr, err = NewSnapshotter(logger, snapshotterConfig, store, etcdConnectionConfig, compressionConfig, healthConfig, snapstoreConfig)
+				Expect(err).ShouldNot(HaveOccurred())
+
+				timeWindow := ssr.GetFullSnapshotMaxTimeWindow(snapshotterConfig.FullSnapshotSchedule)
+				Expect(timeWindow).Should(Equal(float64(scheduleHour)))
+			})
+		})
 	})
 
 })
