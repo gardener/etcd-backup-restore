@@ -307,8 +307,8 @@ func (b *BackupRestoreServer) runServer(ctx context.Context, restoreOpts *brtype
 // for the case when backup-restore becomes leading sidecar.
 func (b *BackupRestoreServer) runEtcdProbeLoopWithSnapshotter(ctx context.Context, handler *HTTPHandler, ssr *snapshotter.Snapshotter, ss brtypes.SnapStore, ssrStopCh chan struct{}, ackCh chan struct{}) {
 	var (
-		err                       error
-		initialDeltaSnapshotTaken bool
+		err                      error
+		initialFullSnapshotTaken bool
 	)
 
 	for {
@@ -353,16 +353,32 @@ func (b *BackupRestoreServer) runEtcdProbeLoopWithSnapshotter(ctx context.Contex
 			// the delta snapshot memory limit), after which a full snapshot
 			// is taken and the regular snapshot schedule comes into effect.
 
-			// TODO: write code to find out if prev full snapshot is older than it is
-			// supposed to be, according to the given cron schedule, instead of the
-			// hard-coded "24 hours" full snapshot interval
+			fullSnapshotMaxTimeWindowInHours := ssr.GetFullSnapshotMaxTimeWindow(b.config.SnapshotterConfig.FullSnapshotSchedule)
+			initialFullSnapshotTaken = false
+			if ssr.IsFullSnapshotRequiredAtStartup(fullSnapshotMaxTimeWindowInHours) {
+				// need to take a full snapshot here
+				var snapshot *brtypes.Snapshot
+				metrics.SnapshotRequired.With(prometheus.Labels{metrics.LabelKind: brtypes.SnapshotKindDelta}).Set(0)
+				metrics.SnapshotRequired.With(prometheus.Labels{metrics.LabelKind: brtypes.SnapshotKindFull}).Set(1)
+				if snapshot, err = ssr.TakeFullSnapshotAndResetTimer(false); err != nil {
+					metrics.SnapshotterOperationFailure.With(prometheus.Labels{metrics.LabelError: err.Error()}).Inc()
+					b.logger.Errorf("Failed to take substitute first full snapshot: %v", err)
+					continue
+				}
+				initialFullSnapshotTaken = true
+				if b.config.HealthConfig.SnapshotLeaseRenewalEnabled {
+					leaseUpdatectx, cancel := context.WithTimeout(ctx, brtypes.LeaseUpdateTimeoutDuration)
+					defer cancel()
+					if err = heartbeat.FullSnapshotCaseLeaseUpdate(leaseUpdatectx, b.logger, snapshot, ssr.K8sClientset, b.config.HealthConfig.FullSnapshotLeaseName, b.config.HealthConfig.DeltaSnapshotLeaseName); err != nil {
+						b.logger.Warnf("Snapshot lease update failed : %v", err)
+					}
+				}
+				if b.backoffConfig.Start {
+					b.backoffConfig.ResetExponentialBackoff()
+				}
+			}
 
-			// Temporary fix for missing alternate full snapshots for Gardener shoots
-			// with hibernation schedule set: change value from 24 ot 23.5 to
-			// accommodate for slight pod spin-up delays on shoot wake-up
-			const recentFullSnapshotPeriodInHours = 23.5
-			initialDeltaSnapshotTaken = false
-			if ssr.PrevFullSnapshot != nil && !ssr.PrevFullSnapshot.IsFinal && time.Since(ssr.PrevFullSnapshot.CreatedOn).Hours() <= recentFullSnapshotPeriodInHours {
+			if !initialFullSnapshotTaken {
 				ssrStopped, err := ssr.CollectEventsSincePrevSnapshot(ssrStopCh)
 				if ssrStopped {
 					b.logger.Info("Snapshotter stopped.")
@@ -375,7 +391,6 @@ func (b *BackupRestoreServer) runEtcdProbeLoopWithSnapshotter(ctx context.Contex
 						b.logger.Warnf("Failed to take first delta snapshot: snapshotter failed with error: %v", err)
 						continue
 					}
-					initialDeltaSnapshotTaken = true
 					if b.config.HealthConfig.SnapshotLeaseRenewalEnabled {
 						leaseUpdatectx, cancel := context.WithTimeout(ctx, brtypes.LeaseUpdateTimeoutDuration)
 						defer cancel()
@@ -391,28 +406,6 @@ func (b *BackupRestoreServer) runEtcdProbeLoopWithSnapshotter(ctx context.Contex
 				}
 			}
 
-			if !initialDeltaSnapshotTaken {
-				// need to take a full snapshot here
-				var snapshot *brtypes.Snapshot
-				metrics.SnapshotRequired.With(prometheus.Labels{metrics.LabelKind: brtypes.SnapshotKindDelta}).Set(0)
-				metrics.SnapshotRequired.With(prometheus.Labels{metrics.LabelKind: brtypes.SnapshotKindFull}).Set(1)
-				if snapshot, err = ssr.TakeFullSnapshotAndResetTimer(false); err != nil {
-					metrics.SnapshotterOperationFailure.With(prometheus.Labels{metrics.LabelError: err.Error()}).Inc()
-					b.logger.Errorf("Failed to take substitute first full snapshot: %v", err)
-					continue
-				}
-				if b.config.HealthConfig.SnapshotLeaseRenewalEnabled {
-					leaseUpdatectx, cancel := context.WithTimeout(ctx, brtypes.LeaseUpdateTimeoutDuration)
-					defer cancel()
-					if err = heartbeat.FullSnapshotCaseLeaseUpdate(leaseUpdatectx, b.logger, snapshot, ssr.K8sClientset, b.config.HealthConfig.FullSnapshotLeaseName, b.config.HealthConfig.DeltaSnapshotLeaseName); err != nil {
-						b.logger.Warnf("Snapshot lease update failed : %v", err)
-					}
-				}
-				if b.backoffConfig.Start {
-					b.backoffConfig.ResetExponentialBackoff()
-				}
-			}
-
 			// Set snapshotter state to Active
 			ssr.SetSnapshotterActive()
 
@@ -423,7 +416,7 @@ func (b *BackupRestoreServer) runEtcdProbeLoopWithSnapshotter(ctx context.Contex
 
 			// Start snapshotter
 			b.logger.Infof("Starting snapshotter...")
-			startWithFullSnapshot := ssr.PrevFullSnapshot == nil || ssr.PrevFullSnapshot.IsFinal || !(time.Since(ssr.PrevFullSnapshot.CreatedOn).Hours() <= recentFullSnapshotPeriodInHours)
+			startWithFullSnapshot := ssr.IsFullSnapshotRequiredAtStartup(fullSnapshotMaxTimeWindowInHours)
 			if err := ssr.Run(ssrStopCh, startWithFullSnapshot); err != nil {
 				if etcdErr, ok := err.(*errors.EtcdError); ok {
 					metrics.SnapshotterOperationFailure.With(prometheus.Labels{metrics.LabelError: etcdErr.Error()}).Inc()

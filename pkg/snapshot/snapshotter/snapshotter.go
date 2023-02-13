@@ -22,6 +22,8 @@ import (
 	"fmt"
 	"io"
 	"path"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -40,6 +42,15 @@ import (
 	"github.com/sirupsen/logrus"
 	"go.etcd.io/etcd/clientv3"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+)
+
+const (
+	min                          = iota // Minutes field
+	hour                                // Hours field
+	dayOfMonth                          // Day of month field
+	month                               // Month field
+	dayOfWeek                           // Day of week field
+	defaultFullSnapMaxTimeWindow = 24   // default full snapshot time window in hours
 )
 
 var (
@@ -104,7 +115,7 @@ func NewSnapshotter(logger *logrus.Entry, config *brtypes.SnapshotterConfig, sto
 	sdl, err := cron.ParseStandard(config.FullSnapshotSchedule)
 	if err != nil {
 		// Ideally this should be validated before.
-		return nil, fmt.Errorf("invalid schedule provied %s : %v", config.FullSnapshotSchedule, err)
+		return nil, fmt.Errorf("invalid full snapshot schedule provided %s : %v", config.FullSnapshotSchedule, err)
 	}
 
 	var prevSnapshot *brtypes.Snapshot
@@ -473,12 +484,12 @@ func (ssr *Snapshotter) TakeDeltaSnapshot() (*brtypes.Snapshot, error) {
 	defer rc.Close()
 
 	if err := ssr.store.Save(*snap, rc); err != nil {
-		timeTaken := time.Now().Sub(startTime).Seconds()
+		timeTaken := time.Since(startTime).Seconds()
 		metrics.SnapshotDurationSeconds.With(prometheus.Labels{metrics.LabelKind: brtypes.SnapshotKindDelta, metrics.LabelSucceeded: metrics.ValueSucceededFalse}).Observe(timeTaken)
 		ssr.logger.Errorf("Error saving delta snapshots. %v", err)
 		return nil, err
 	}
-	timeTaken := time.Now().Sub(startTime).Seconds()
+	timeTaken := time.Since(startTime).Seconds()
 	metrics.SnapshotDurationSeconds.With(prometheus.Labels{metrics.LabelKind: brtypes.SnapshotKindDelta, metrics.LabelSucceeded: metrics.ValueSucceededTrue}).Observe(timeTaken)
 	logrus.Infof("Total time to save delta snapshot: %f seconds.", timeTaken)
 	ssr.prevSnapshot = snap
@@ -739,4 +750,58 @@ func (ssr *Snapshotter) checkSnapstoreSecretUpdate() bool {
 	//update the map with latest newSnapstoreHash
 	snapstoreHash[ssr.snapstoreConfig.Provider] = newSnapstoreSecretHash
 	return true
+}
+
+// IsFullSnapshotRequiredAtStartup checks whether to take a full snapshot or not during the startup of backup-restore.
+func (ssr *Snapshotter) IsFullSnapshotRequiredAtStartup(timeWindow float64) bool {
+	if ssr.PrevFullSnapshot == nil || ssr.PrevFullSnapshot.IsFinal || time.Since(ssr.PrevFullSnapshot.CreatedOn).Hours() > timeWindow {
+		return true
+	}
+
+	if !ssr.WasScheduledFullSnapshotMissed(timeWindow) {
+		return false
+	}
+	return ssr.IsNextFullSnapshotBeyondTimeWindow(timeWindow)
+}
+
+// WasScheduledFullSnapshotMissed determines whether the preceding full-snapshot was missed or not.
+func (ssr *Snapshotter) WasScheduledFullSnapshotMissed(timeWindow float64) bool {
+	now := time.Now()
+	nextSnapSchedule := ssr.schedule.Next(now)
+
+	if miscellaneous.GetPrevScheduledSnapTime(nextSnapSchedule, timeWindow) == ssr.PrevFullSnapshot.CreatedOn {
+		ssr.logger.Info("previous full snapshot was taken at scheduled time, skipping the full snapshot at startup")
+		return false
+	}
+	return true
+}
+
+// IsNextFullSnapshotBeyondTimeWindow determines whether the next scheduled full snapshot will exceed the given time window or not.
+func (ssr *Snapshotter) IsNextFullSnapshotBeyondTimeWindow(timeWindow float64) bool {
+	now := time.Now()
+	nextSnapSchedule := ssr.schedule.Next(now)
+	timeLeftToTakeNextSnap := nextSnapSchedule.Sub(now)
+
+	return timeLeftToTakeNextSnap.Hours()+time.Since(ssr.PrevFullSnapshot.CreatedOn).Hours() > timeWindow
+}
+
+// GetFullSnapshotMaxTimeWindow returns the maximum time period in hours for which backup-restore must take atleast one full snapshot.
+func (ssr *Snapshotter) GetFullSnapshotMaxTimeWindow(fullSnapScheduleSpec string) float64 {
+	// Split on whitespace.
+	schedule := strings.Fields(fullSnapScheduleSpec)
+	if len(schedule) < 5 {
+		return defaultFullSnapMaxTimeWindow
+	}
+
+	if schedule[dayOfWeek] != "*" {
+		return defaultFullSnapMaxTimeWindow * 7
+	}
+
+	if schedule[dayOfMonth] == "*" && schedule[dayOfWeek] == "*" && strings.Contains(schedule[hour], "/") {
+		if timeWindow, err := strconv.ParseFloat(schedule[hour][strings.Index(schedule[hour], "/")+1:], 64); err == nil {
+			return timeWindow
+		}
+	}
+
+	return defaultFullSnapMaxTimeWindow
 }
