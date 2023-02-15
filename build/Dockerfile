@@ -12,14 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM golang:1.19.3 as builder 
+FROM golang:1.19.5 as builder
 
 WORKDIR /go/src/github.com/gardener/backup-restore
 COPY . .
 
 RUN make build
 
-FROM alpine:3.15.6 
+FROM alpine:3.15.7
 
 RUN apk add --update bash curl
 
