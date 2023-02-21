@@ -17,12 +17,14 @@ package copier
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/gardener/etcd-backup-restore/pkg/miscellaneous"
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 
+	"github.com/hashicorp/go-multierror"
 	"github.com/sirupsen/logrus"
 )
 
@@ -138,18 +140,54 @@ func (c *Copier) copyBackups() error {
 		destSnapshotsMap[snapshot.SnapName] = snapshot
 	}
 
+	// find snapshots missing in destination
+	var snapshotsToCopy brtypes.SnapList
 	for _, snapshot := range sourceSnapshot {
-		// Copy all the snapshots (if not already copied)
 		if _, ok := destSnapshotsMap[snapshot.SnapName]; !ok {
-			c.logger.Infof("Copying %s snapshot %s...", snapshot.Kind, snapshot.SnapName)
-			if err := c.copySnapshot(snapshot); err != nil {
-				return err
-			}
+			snapshotsToCopy = append(snapshotsToCopy, snapshot)
 		} else {
 			c.logger.Infof("Skipping %s snapshot %s as it already exists", snapshot.Kind, snapshot.SnapName)
 		}
 	}
-	return nil
+
+	if len(snapshotsToCopy) == 0 {
+		return nil
+	}
+
+	// copy all missing snapshots in parallel
+	var (
+		wg        sync.WaitGroup
+		errors    = make(chan error)
+		allErrors error
+	)
+
+	for _, s := range snapshotsToCopy {
+		snapshot := s
+		wg.Add(1)
+
+		go func() {
+			defer wg.Done()
+
+			c.logger.Infof("Copying %s snapshot %s...", snapshot.Kind, snapshot.SnapName)
+			if err := c.copySnapshot(snapshot); err != nil {
+				errors <- err
+				return
+			}
+
+			c.logger.Infof("Successfully copied %s snapshot %s...", snapshot.Kind, snapshot.SnapName)
+		}()
+	}
+
+	go func() {
+		defer close(errors)
+		wg.Wait()
+	}()
+
+	for err := range errors {
+		allErrors = multierror.Append(allErrors, err)
+	}
+
+	return allErrors
 }
 
 func (c *Copier) getSnapshots() (brtypes.SnapList, error) {
