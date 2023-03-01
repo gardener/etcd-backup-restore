@@ -3,8 +3,8 @@ module github.com/gardener/etcd-backup-restore
 go 1.19
 
 require (
-	cloud.google.com/go v0.51.0
-	cloud.google.com/go/storage v1.0.0
+	cloud.google.com/go v0.65.0
+	cloud.google.com/go/storage v1.10.0
 	github.com/Azure/azure-pipeline-go v0.2.2
 	github.com/Azure/azure-storage-blob-go v0.8.0
 	github.com/Azure/go-autorest/autorest v0.10.1 // indirect
@@ -31,7 +31,7 @@ require (
 	github.com/mitchellh/reflectwalk v1.0.1 // indirect
 	github.com/onsi/ginkgo v1.14.2
 	github.com/onsi/gomega v1.10.5
-	github.com/prometheus/client_golang v1.7.1
+	github.com/prometheus/client_golang v1.14.0
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/sirupsen/logrus v1.8.1
 	github.com/spf13/cobra v1.1.1
@@ -41,9 +41,9 @@ require (
 	go.uber.org/atomic v1.6.0 // indirect
 	go.uber.org/zap v1.15.0
 	golang.org/x/lint v0.0.0-20201208152925-83fdc39ff7b5 // indirect
-	google.golang.org/api v0.15.0
-	google.golang.org/grpc v1.28.1 // indirect
-	gopkg.in/yaml.v2 v2.3.0
+	google.golang.org/api v0.30.0
+	google.golang.org/grpc v1.31.0 // indirect
+	gopkg.in/yaml.v2 v2.4.0
 	helm.sh/helm/v3 v3.4.0 //v3.2.4
 	k8s.io/api v0.20.6
 	k8s.io/apiextensions-apiserver v0.20.6 // indirect
@@ -66,7 +66,7 @@ require (
 	github.com/PuerkitoBio/urlesc v0.0.0-20170810143723-de5bf2ad4578 // indirect
 	github.com/asaskevich/govalidator v0.0.0-20200428143746-21a406dcc535 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
-	github.com/cespare/xxhash/v2 v2.1.1 // indirect
+	github.com/cespare/xxhash/v2 v2.1.2 // indirect
 	github.com/containerd/cgroups v0.0.0-20190919134610-bf292b21730f // indirect
 	github.com/containerd/containerd v1.3.4 // indirect
 	github.com/containerd/continuity v0.0.0-20200107194136-26c1120b8d41 // indirect
@@ -96,10 +96,10 @@ require (
 	github.com/go-openapi/swag v0.19.5 // indirect
 	github.com/gobwas/glob v0.2.3 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
-	github.com/golang/groupcache v0.0.0-20191227052852-215e87163ea7 // indirect
-	github.com/golang/protobuf v1.5.0 // indirect
+	github.com/golang/groupcache v0.0.0-20200121045136-8c9f03a8e57e // indirect
+	github.com/golang/protobuf v1.5.2 // indirect
 	github.com/google/btree v1.0.0 // indirect
-	github.com/google/go-cmp v0.5.5 // indirect
+	github.com/google/go-cmp v0.5.8 // indirect
 	github.com/google/gofuzz v1.1.0 // indirect
 	github.com/google/uuid v1.1.2 // indirect
 	github.com/googleapis/gax-go/v2 v2.0.5 // indirect
@@ -114,7 +114,7 @@ require (
 	github.com/jmespath/go-jmespath v0.3.0 // indirect
 	github.com/jmoiron/sqlx v1.2.0 // indirect
 	github.com/jonboulle/clockwork v0.1.0 // indirect
-	github.com/json-iterator/go v1.1.10 // indirect
+	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/jstemmer/go-junit-report v0.9.1 // indirect
 	github.com/lann/builder v0.0.0-20180802200727-47ae307949d0 // indirect
 	github.com/lann/ps v0.0.0-20150810152359-62de8c46ede0 // indirect
@@ -126,7 +126,7 @@ require (
 	github.com/mitchellh/go-wordwrap v1.0.0 // indirect
 	github.com/moby/term v0.0.0-20200312100748-672ec06f55cd // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
-	github.com/modern-go/reflect2 v1.0.1 // indirect
+	github.com/modern-go/reflect2 v1.0.2 // indirect
 	github.com/morikuni/aec v1.0.0 // indirect
 	github.com/nxadm/tail v1.4.4 // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect
@@ -134,9 +134,9 @@ require (
 	github.com/opencontainers/runc v0.1.1 // indirect
 	github.com/peterbourgon/diskv v2.0.1+incompatible // indirect
 	github.com/pkg/errors v0.9.1 // indirect
-	github.com/prometheus/client_model v0.2.0 // indirect
-	github.com/prometheus/common v0.10.0 // indirect
-	github.com/prometheus/procfs v0.2.0 // indirect
+	github.com/prometheus/client_model v0.3.0 // indirect
+	github.com/prometheus/common v0.37.0 // indirect
+	github.com/prometheus/procfs v0.8.0 // indirect
 	github.com/rubenv/sql-migrate v0.0.0-20200616145509-8d140a17f351 // indirect
 	github.com/russross/blackfriday v1.5.2 // indirect
 	github.com/soheilhy/cmux v0.1.4 // indirect
@@ -147,28 +147,26 @@ require (
 	github.com/xeipuuv/gojsonreference v0.0.0-20180127040603-bd5ef7bd5415 // indirect
 	github.com/xeipuuv/gojsonschema v1.2.0 // indirect
 	github.com/xiang90/probing v0.0.0-20190116061207-43a291ad63a2 // indirect
-	go.opencensus.io v0.22.2 // indirect
+	go.opencensus.io v0.22.4 // indirect
 	go.uber.org/multierr v1.5.0 // indirect
 	golang.org/x/crypto v0.0.0-20201221181555-eec23a3978ad // indirect
-	golang.org/x/exp v0.0.0-20191227195350-da58074b4299 // indirect
 	golang.org/x/mod v0.3.0 // indirect
-	golang.org/x/net v0.0.0-20201224014010-6772e930b67b // indirect
-	golang.org/x/oauth2 v0.0.0-20191202225959-858c2ad4c8b6 // indirect
-	golang.org/x/sync v0.0.0-20201020160332-67f06af15bc9 // indirect
-	golang.org/x/sys v0.0.0-20210816074244-15123e1e1f71 // indirect
-	golang.org/x/term v0.0.0-20201126162022-7de9c90e9dd1 // indirect
-	golang.org/x/text v0.3.4 // indirect
+	golang.org/x/net v0.0.0-20220225172249-27dd8689420f // indirect
+	golang.org/x/oauth2 v0.0.0-20220223155221-ee480838109b // indirect
+	golang.org/x/sync v0.0.0-20220601150217-0de741cfad7f // indirect
+	golang.org/x/sys v0.0.0-20220520151302-bc2c85ada10a // indirect
+	golang.org/x/term v0.0.0-20210927222741-03fcf44c2211 // indirect
+	golang.org/x/text v0.3.7 // indirect
 	golang.org/x/time v0.0.0-20200630173020-3af7569d3a1e // indirect
 	golang.org/x/tools v0.0.0-20210106214847-113979e3529a // indirect
 	golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1 // indirect
 	google.golang.org/appengine v1.6.6 // indirect
 	google.golang.org/genproto v0.0.0-20201110150050-8816d57aaa9a // indirect
-	google.golang.org/protobuf v1.26.0 // indirect
+	google.golang.org/protobuf v1.28.1 // indirect
 	gopkg.in/gorp.v1 v1.7.2 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/tomb.v1 v1.0.0-20141024135613-dd632973f1e7 // indirect
 	gopkg.in/yaml.v3 v3.0.0-20200615113413-eeeca48fe776 // indirect
-	honnef.co/go/tools v0.0.1-2019.2.3 // indirect
 	k8s.io/cli-runtime v0.19.2 // indirect
 	k8s.io/component-base v0.20.6 // indirect
 	k8s.io/klog/v2 v2.4.0 // indirect
