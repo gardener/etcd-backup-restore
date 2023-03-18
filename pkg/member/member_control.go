@@ -110,7 +110,7 @@ func (m *memberControl) AddMemberAsLearner(ctx context.Context, dataDir string) 
 		if err := os.RemoveAll(filepath.Join(dataDir)); err != nil {
 			return fmt.Errorf("failed to remove directory %s with err: %v", dataDir, err)
 		}
-	} else if err != nil && !os.IsNotExist(err) {
+	} else if !os.IsNotExist(err) {
 		return err
 	}
 
