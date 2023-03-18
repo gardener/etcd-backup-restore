@@ -62,7 +62,15 @@ func (e *EtcdInitializer) Initialize(mode validator.Mode, failBelowRevision int6
 		isScaleup, err := m.IsClusterScaledUp(ctx, clientSet)
 		if isScaleup && err == nil {
 			retry.OnError(retry.DefaultBackoff, errors.AnyError, func() error {
-				return m.AddMemberAsLearner(ctx)
+				// Additional safety check before adding a learner
+				if _, err := os.Stat(e.Config.RestoreOptions.Config.DataDir); err == nil {
+					if err := os.RemoveAll(filepath.Join(e.Config.RestoreOptions.Config.DataDir)); err != nil {
+						return fmt.Errorf("failed to remove directory %s with err: %v", e.Config.RestoreOptions.Config.DataDir, err)
+					}
+				} else if !os.IsNotExist(err) {
+					return err
+				}
+				return m.AddMemberAsLearner(ctx, e.Config.RestoreOptions.Config.DataDir)
 			})
 			// return here after adding non-voting member(learner) as no restoration or validation needed
 			return nil
@@ -258,7 +266,7 @@ func (e *EtcdInitializer) restoreInMultiNode(ctx context.Context) error {
 	}
 
 	if err := retry.OnError(retry.DefaultBackoff, errors.AnyError, func() error {
-		return m.AddMemberAsLearner(ctx)
+		return m.AddMemberAsLearner(ctx, e.Config.RestoreOptions.Config.DataDir)
 	}); err != nil {
 		return fmt.Errorf("unable to add the member as learner %v", err)
 	}

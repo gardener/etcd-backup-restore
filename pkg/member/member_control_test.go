@@ -84,7 +84,7 @@ var _ = Describe("Membercontrol", func() {
 		Context("Member is not already part of the cluster", func() {
 			It("Should add member to the cluster as a learner", func() {
 				mem := member.NewMemberControl(etcdConnectionConfig)
-				err := mem.AddMemberAsLearner(context.TODO())
+				err := mem.AddMemberAsLearner(context.TODO(), os.Getenv("ETCD_DATA_DIR"))
 				Expect(err).To(BeNil())
 				present, err := mem.IsLearnerPresent(context.TODO())
 				Expect(err).To(BeNil())
