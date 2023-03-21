@@ -4,8 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
 	"strconv"
 	"time"
 
@@ -42,7 +40,7 @@ var (
 // Control interface defines the functionalities needed to manipulate a member in the etcd cluster
 type Control interface {
 	// AddMemberAsLearner add a new member as a learner to the etcd cluster
-	AddMemberAsLearner(context.Context, string) error
+	AddMemberAsLearner(context.Context) error
 
 	// IsClusterScaledUp determines whether a etcd cluster is getting scale-up or not.
 	IsClusterScaledUp(context.Context, client.Client) (bool, error)
@@ -104,16 +102,7 @@ func NewMemberControl(etcdConnConfig *brtypes.EtcdConnectionConfig) Control {
 }
 
 // AddMemberAsLearner add a member as a learner to the etcd cluster
-func (m *memberControl) AddMemberAsLearner(ctx context.Context, dataDir string) error {
-	// Additional safety check before adding a learner
-	if _, err := os.Stat(dataDir); err == nil {
-		if err := os.RemoveAll(filepath.Join(dataDir)); err != nil {
-			return fmt.Errorf("failed to remove directory %s with err: %v", dataDir, err)
-		}
-	} else if !os.IsNotExist(err) {
-		return err
-	}
-
+func (m *memberControl) AddMemberAsLearner(ctx context.Context) error {
 	//Add member as learner to cluster
 	memberURL, err := getMemberPeerURL(m.configFile, m.podName)
 	if err != nil {

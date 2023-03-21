@@ -37,8 +37,6 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 	Expect(err).ShouldNot(HaveOccurred())
 	var data []byte
 	return data
-	// logger.Logger.Out = io.Discard
-	// return nil
 }, func(data []byte) {})
 
 var _ = SynchronizedAfterSuite(func() {}, func() {

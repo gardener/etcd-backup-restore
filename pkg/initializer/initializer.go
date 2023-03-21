@@ -61,7 +61,7 @@ func (e *EtcdInitializer) Initialize(mode validator.Mode, failBelowRevision int6
 		m := member.NewMemberControl(e.Config.EtcdConnectionConfig)
 		isScaleup, err := m.IsClusterScaledUp(ctx, clientSet)
 		if isScaleup && err == nil {
-			retry.OnError(retry.DefaultBackoff, errors.AnyError, func() error {
+			retry.OnError(retry.DefaultBackoff, errors.CheckErrorForNil, func() error {
 				// Additional safety check before adding a learner
 				if _, err := os.Stat(e.Config.RestoreOptions.Config.DataDir); err == nil {
 					if err := os.RemoveAll(filepath.Join(e.Config.RestoreOptions.Config.DataDir)); err != nil {
@@ -70,7 +70,7 @@ func (e *EtcdInitializer) Initialize(mode validator.Mode, failBelowRevision int6
 				} else if !os.IsNotExist(err) {
 					return err
 				}
-				return m.AddMemberAsLearner(ctx, e.Config.RestoreOptions.Config.DataDir)
+				return m.AddMemberAsLearner(ctx)
 			})
 			// return here after adding non-voting member(learner) as no restoration or validation needed
 			return nil
@@ -255,7 +255,7 @@ func (e *EtcdInitializer) removeDir(dirname string) error {
 // * Add a new member as a learner(non-voting member)
 func (e *EtcdInitializer) restoreInMultiNode(ctx context.Context) error {
 	m := member.NewMemberControl(e.Config.EtcdConnectionConfig)
-	if err := retry.OnError(retry.DefaultBackoff, errors.AnyError, func() error {
+	if err := retry.OnError(retry.DefaultBackoff, errors.CheckErrorForNil, func() error {
 		return m.RemoveMember(ctx)
 	}); err != nil {
 		return fmt.Errorf("unable to remove the member %v", err)
@@ -265,8 +265,16 @@ func (e *EtcdInitializer) restoreInMultiNode(ctx context.Context) error {
 		return fmt.Errorf("unable to remove the data-dir %v", err)
 	}
 
-	if err := retry.OnError(retry.DefaultBackoff, errors.AnyError, func() error {
-		return m.AddMemberAsLearner(ctx, e.Config.RestoreOptions.Config.DataDir)
+	if err := retry.OnError(retry.DefaultBackoff, errors.CheckErrorForNil, func() error {
+		// Additional safety check before adding a learner
+		if _, err := os.Stat(e.Config.RestoreOptions.Config.DataDir); err == nil {
+			if err := os.RemoveAll(filepath.Join(e.Config.RestoreOptions.Config.DataDir)); err != nil {
+				return fmt.Errorf("failed to remove directory %s with err: %v", e.Config.RestoreOptions.Config.DataDir, err)
+			}
+		} else if !os.IsNotExist(err) {
+			return err
+		}
+		return m.AddMemberAsLearner(ctx)
 	}); err != nil {
 		return fmt.Errorf("unable to add the member as learner %v", err)
 	}

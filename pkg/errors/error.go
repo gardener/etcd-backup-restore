@@ -34,7 +34,7 @@ func (e *SnapstoreError) Error() string {
 	return e.Message
 }
 
-// AnyError checks whether err is nil or not.
-func AnyError(err error) bool {
+// CheckErrorForNil checks whether err is nil or not.
+func CheckErrorForNil(err error) bool {
 	return err != nil
 }
