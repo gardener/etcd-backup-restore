@@ -24,7 +24,6 @@ import (
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 
-	"github.com/hashicorp/go-multierror"
 	"github.com/sirupsen/logrus"
 )
 
@@ -156,9 +155,8 @@ func (c *Copier) copyBackups() error {
 
 	// copy all missing snapshots in parallel
 	var (
-		wg        sync.WaitGroup
-		errors    = make(chan error)
-		allErrors error
+		wg     sync.WaitGroup
+		errors = make(chan error)
 	)
 
 	for _, s := range snapshotsToCopy {
@@ -183,11 +181,16 @@ func (c *Copier) copyBackups() error {
 		wg.Wait()
 	}()
 
+	var allErrors []error
 	for err := range errors {
-		allErrors = multierror.Append(allErrors, err)
+		allErrors = append(allErrors, err)
 	}
 
-	return allErrors
+	if len(allErrors) > 0 {
+		return fmt.Errorf("%s", allErrors)
+	}
+
+	return nil
 }
 
 func (c *Copier) getSnapshots() (brtypes.SnapList, error) {
