@@ -49,6 +49,7 @@ type Copier struct {
 	destSnapStore               brtypes.SnapStore
 	maxBackups                  int
 	maxBackupAge                int
+	maxParallelCopyOperations   int
 	waitForFinalSnapshot        bool
 	waitForFinalSnapshotTimeout time.Duration
 }
@@ -60,6 +61,7 @@ func NewCopier(
 	destSnapStore brtypes.SnapStore,
 	maxBackups int,
 	maxBackupAge int,
+	maxParallelCopyOperations int,
 	waitForFinalSnapshot bool,
 	waitForFinalSnapshotTimeout time.Duration,
 ) *Copier {
@@ -69,6 +71,7 @@ func NewCopier(
 		destSnapStore:               destSnapStore,
 		maxBackups:                  maxBackups,
 		maxBackupAge:                maxBackupAge,
+		maxParallelCopyOperations:   maxParallelCopyOperations,
 		waitForFinalSnapshot:        waitForFinalSnapshot,
 		waitForFinalSnapshotTimeout: waitForFinalSnapshotTimeout,
 	}
@@ -153,34 +156,46 @@ func (c *Copier) copyBackups() error {
 		return nil
 	}
 
-	// copy all missing snapshots in parallel
+	// copy all missing snapshots with configured concurrency
 	var (
 		wg     sync.WaitGroup
+		queue  = make(chan *brtypes.Snapshot, c.maxParallelCopyOperations)
 		errors = make(chan error)
 	)
 
-	for _, s := range snapshotsToCopy {
-		snapshot := s
-		wg.Add(1)
-
-		go func() {
-			defer wg.Done()
-
-			c.logger.Infof("Copying %s snapshot %s...", snapshot.Kind, snapshot.SnapName)
-			if err := c.copySnapshot(snapshot); err != nil {
-				errors <- err
-				return
-			}
-
-			c.logger.Infof("Successfully copied %s snapshot %s...", snapshot.Kind, snapshot.SnapName)
-		}()
-	}
-
+	// Enqueue all work items.
+	// This needs to happen in a goroutine, as the queue's buffer might not suffice to hold all work items.
+	// Close the queue and the errors channel once all snapshots have been copied.
 	go func() {
 		defer close(errors)
+		defer close(queue)
+
+		for _, snapshot := range snapshotsToCopy {
+			wg.Add(1)
+			queue <- snapshot
+		}
+
 		wg.Wait()
 	}()
 
+	// Spawn configured amount of workers for copying snapshots.
+	// Each worker takes one item at a time from the queue and exits once the queue is closed.
+	for i := 0; i < c.maxParallelCopyOperations; i++ {
+		go func() {
+			for snapshot := range queue {
+				c.logger.Infof("Copying %s snapshot %s...", snapshot.Kind, snapshot.SnapName)
+				if err := c.copySnapshot(snapshot); err != nil {
+					errors <- err
+					return
+				}
+
+				c.logger.Infof("Successfully copied %s snapshot %s...", snapshot.Kind, snapshot.SnapName)
+				wg.Done()
+			}
+		}()
+	}
+
+	// Collect all errors and wait for operations to finish.
 	var allErrors []error
 	for err := range errors {
 		allErrors = append(allErrors, err)

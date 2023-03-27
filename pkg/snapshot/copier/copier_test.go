@@ -53,7 +53,7 @@ var _ = Describe("Running Copier", func() {
 		var err error
 		ss, ds, err = GetSourceAndDestinationStores(sourceSnapstoreConfig, destSnapstoreConfig)
 		Expect(err).ToNot(HaveOccurred())
-		copier = NewCopier(logger, ss, ds, -1, -1, false, 0)
+		copier = NewCopier(logger, ss, ds, -1, -1, 10, false, 0)
 	})
 	AfterEach(func() {
 		err = os.RemoveAll(targetSnapstoreDir)
@@ -73,7 +73,7 @@ var _ = Describe("Running Copier", func() {
 })
 
 func chekIfSnapsAreTheSame(s1 *brtypes.Snapshot, s2 *brtypes.Snapshot) {
-	//SnapName and Prefix could be different after the copy operation.
+	// SnapName and Prefix could be different after the copy operation.
 	logger.Logger.Infof("Comparing snaps: %v %v", s1, s2)
 	Expect(*s1).To(MatchFields(IgnoreExtras, Fields{
 		"Kind":              Equal(s2.Kind),

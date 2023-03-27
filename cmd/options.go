@@ -280,6 +280,7 @@ type copierOptions struct {
 	snapstoreConfig             *brtypes.SnapstoreConfig
 	maxBackups                  int
 	maxBackupAge                int
+	maxParallelCopyOperations   int
 	waitForFinalSnapshot        bool
 	waitForFinalSnapshotTimeout wrappers.Duration
 }
@@ -296,6 +297,7 @@ func newCopierOptions() *copierOptions {
 func (c *copierOptions) addFlags(fs *flag.FlagSet) {
 	fs.IntVar(&c.maxBackups, "max-backups-to-copy", -1, "copy the specified number of backups sorted by date from newest to oldest")
 	fs.IntVar(&c.maxBackupAge, "max-backup-age", -1, "copy only the backups not older than the specified number of days")
+	fs.IntVar(&c.maxParallelCopyOperations, "max-parallel-copy-operations", 10, "maximum number of parallel copy operations")
 	fs.BoolVar(&c.waitForFinalSnapshot, "wait-for-final-snapshot", false, "wait for a final full snapshot before copying backups")
 	fs.DurationVar(&c.waitForFinalSnapshotTimeout.Duration, "wait-for-final-snapshot-timeout", 0, "timeout for waiting for a final full snapshot")
 	c.sourceSnapStoreConfig.AddSourceFlags(fs)
@@ -308,6 +310,9 @@ func (c *copierOptions) validate() error {
 	}
 	if c.maxBackupAge < -1 {
 		return errors.New("parameter max-backup-age must not be less than -1")
+	}
+	if c.maxParallelCopyOperations <= 0 {
+		return errors.New("parameter max-parallel-copy-operations must be greater than 0")
 	}
 	if c.waitForFinalSnapshotTimeout.Duration < 0 {
 		return errors.New("parameter wait-for-final-snapshot-timeout must not be less than 0")
