@@ -40,6 +40,8 @@ import (
 	"go.etcd.io/etcd/pkg/types"
 	"gopkg.in/yaml.v2"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/client-go/util/retry"
 	"k8s.io/utils/pointer"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -563,4 +565,13 @@ func GetPrevScheduledSnapTime(nextSnapSchedule time.Time, timeWindow float64) ti
 		nextSnapSchedule.Nanosecond(),
 		nextSnapSchedule.Location(),
 	)
+}
+
+// GetBackoff returns the backoff with Factor=2
+func GetBackoff(retryPeriod time.Duration, steps int) wait.Backoff {
+	backoff := retry.DefaultBackoff
+	backoff.Duration = retryPeriod
+	backoff.Factor = 2
+	backoff.Steps = steps
+	return backoff
 }

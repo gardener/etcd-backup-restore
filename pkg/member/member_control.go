@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"strconv"
 	"time"
 
@@ -23,6 +24,9 @@ import (
 const (
 	// RetryPeriod is the peroid after which an operation is retried
 	RetryPeriod = 2 * time.Second
+
+	// RetrySteps is the no. of steps for exponential backoff.
+	RetrySteps = 4
 
 	// EtcdTimeout is timeout for etcd operations
 	EtcdTimeout = 5 * time.Second
@@ -125,8 +129,8 @@ func (m *memberControl) AddMemberAsLearner(ctx context.Context) error {
 func (m *memberControl) IsMemberInCluster(ctx context.Context) (bool, error) {
 	m.logger.Infof("Checking if member %s is part of a running cluster", m.podName)
 	// Check if an etcd is already available
-	backoff := retry.DefaultBackoff
-	backoff.Steps = 2
+
+	backoff := miscellaneous.GetBackoff(RetryPeriod, RetrySteps)
 	err := retry.OnError(backoff, func(err error) bool {
 		return err != nil
 	}, func() error {
@@ -147,7 +151,7 @@ func (m *memberControl) IsMemberInCluster(ctx context.Context) (bool, error) {
 
 	// List members in cluster
 	var etcdMemberList *clientv3.MemberListResponse
-	err = retry.OnError(retry.DefaultBackoff, func(err error) bool {
+	err = retry.OnError(backoff, func(err error) bool {
 		return err != nil
 	}, func() error {
 		memListCtx, cancel := context.WithTimeout(context.TODO(), EtcdTimeout)
@@ -298,4 +302,31 @@ func (m *memberControl) IsLearnerPresent(ctx context.Context) (bool, error) {
 	defer learnerCtxCancel()
 
 	return miscellaneous.CheckIfLearnerPresent(learnerCtx, cli)
+}
+
+// IsScaleup determines whether a etcd cluster is getting scale-up or not.
+func IsScaleup(ctx context.Context, m Control) (bool, error) {
+	logger := logrus.New().WithField("actor", "scale-up")
+	// fetch pod name from env
+	podNS := os.Getenv("POD_NAMESPACE")
+	podName := os.Getenv("POD_NAME")
+
+	clientSet, err := miscellaneous.GetKubernetesClientSetOrError()
+	if err != nil {
+		logger.Fatalf("failed to create clientset, %v", err)
+		return false, err
+	}
+
+	state, err := miscellaneous.GetInitialClusterStateIfScaleup(ctx, *logger, clientSet, podName, podNS)
+	if err != nil {
+		logger.Errorf("unable to check scale-up case :%v", err)
+	} else if state != nil && *state == miscellaneous.ClusterStateExisting {
+		return true, nil
+	}
+
+	isEtcdMemberPresent, err := m.IsMemberInCluster(ctx)
+	if err != nil {
+		return false, err
+	}
+	return !isEtcdMemberPresent, nil
 }
