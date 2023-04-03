@@ -36,13 +36,13 @@ const (
 )
 
 var (
-	testSuitDir, testEtcdDir, testSnapshotDir string
-	testCtx                                   = context.Background()
-	logger                                    = logrus.New().WithField("suite", "compactor")
-	etcd                                      *embed.Etcd
-	err                                       error
-	keyTo                                     int
-	endpoints                                 []string
+	testSuiteDir, testEtcdDir, testSnapshotDir string
+	testCtx                                    = context.Background()
+	logger                                     = logrus.New().WithField("suite", "compactor")
+	etcd                                       *embed.Etcd
+	err                                        error
+	keyTo                                      int
+	endpoints                                  []string
 )
 
 func TestCompactor(t *testing.T) {
@@ -56,13 +56,13 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 	)
 
 	// Create a directory for compaction test cases
-	testSuitDir, err = os.MkdirTemp("/tmp", "compactor-test")
+	testSuiteDir, err = os.MkdirTemp("/tmp", "compactor-test-")
 	Expect(err).ShouldNot(HaveOccurred())
 
 	// Directory for the main ETCD process
-	testEtcdDir := fmt.Sprintf("%s/etcd/default.etcd", testSuitDir)
+	testEtcdDir := fmt.Sprintf("%s/etcd/default.etcd", testSuiteDir)
 	// Directory for storing the backups
-	testSnapshotDir := fmt.Sprintf("%s/etcd/snapshotter.bkp", testSuitDir)
+	testSnapshotDir := fmt.Sprintf("%s/etcd/snapshotter.bkp", testSuiteDir)
 
 	logger.Infof("ETCD Directory is: %s", testEtcdDir)
 	logger.Infof("Snapshot Directory is: %s", testSnapshotDir)
@@ -91,7 +91,7 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 	err = utils.RunSnapshotter(logger, snapstoreConfig, deltaSnapshotPeriod, endpoints, ctx.Done(), true, compressionConfig)
 	Expect(err).ShouldNot(HaveOccurred())
 
-	// Wait unitil the populator finishes with populating ETCD
+	// Wait until the populator finishes with populating ETCD
 	wg.Wait()
 
 	keyTo = resp.KeyTo
@@ -106,7 +106,7 @@ func cleanUp() {
 	etcd.Server.Stop()
 	etcd.Close()
 
-	logger.Infof("All tests are done for compactor suite. %s is being removed.", testSuitDir)
-	err = os.RemoveAll(testSuitDir)
+	logger.Infof("All tests are done for compactor suite. %s is being removed.", testSuiteDir)
+	err = os.RemoveAll(testSuiteDir)
 	Expect(err).ShouldNot(HaveOccurred())
 }

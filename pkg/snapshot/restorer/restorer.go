@@ -26,6 +26,7 @@ import (
 	"path"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"sync"
 	"time"
 
@@ -54,11 +55,6 @@ import (
 	"go.etcd.io/etcd/wal"
 	"go.etcd.io/etcd/wal/walpb"
 	"go.uber.org/zap"
-)
-
-const (
-	tmpDir                  = "/tmp"
-	tmpEventsDataFilePrefix = "etcd-restore-"
 )
 
 // Restorer is a struct for etcd data directory restorer
@@ -90,15 +86,31 @@ func (r *Restorer) RestoreAndStopEtcd(ro brtypes.RestoreOptions, m member.Contro
 	return err
 }
 
-// Restore restore the etcd data directory as per specified restore options but returns the ETCD server that it statrted.
+// Restore restores the etcd data directory as per specified restore options but returns the ETCD server that it statrted.
 func (r *Restorer) Restore(ro brtypes.RestoreOptions, m member.Control) (*embed.Etcd, error) {
 	if err := r.restoreFromBaseSnapshot(ro); err != nil {
 		return nil, fmt.Errorf("failed to restore from the base snapshot :%v", err)
 	}
+
 	if len(ro.DeltaSnapList) == 0 {
 		r.logger.Infof("No delta snapshots present over base snapshot.")
 		return nil, nil
 	}
+	r.logger.Infof("Attempting to apply %d delta snapshots for restoration.", len(ro.DeltaSnapList))
+
+	r.logger.Infof("Creating temporary directory for persisting delta snapshots locally.")
+
+	err := os.MkdirAll(ro.Config.TempDir, 0700)
+	if err != nil {
+		return nil, err
+	}
+
+	defer func() {
+		if err := os.RemoveAll(ro.Config.TempDir); err != nil {
+			r.logger.Errorf("Failed to remove restoration temp directory %s: %v", ro.Config.TempDir, err)
+		}
+	}()
+
 	r.logger.Infof("Starting embedded etcd server...")
 	e, err := miscellaneous.StartEmbeddedEtcd(r.logger, &ro)
 	if err != nil {
@@ -114,7 +126,11 @@ func (r *Restorer) Restore(ro brtypes.RestoreOptions, m member.Control) (*embed.
 	if err != nil {
 		return e, err
 	}
-	defer clientKV.Close()
+	defer func() {
+		if err := clientKV.Close(); err != nil {
+			r.logger.Errorf("Failed to close etcd KV client: %v", err)
+		}
+	}()
 
 	r.logger.Infof("Applying delta snapshots...")
 	if err := r.applyDeltaSnapshots(clientKV, ro); err != nil {
@@ -155,21 +171,21 @@ func (r *Restorer) restoreFromBaseSnapshot(ro brtypes.RestoreOptions) error {
 		return err
 	}
 
-	memberDir := filepath.Join(ro.Config.RestoreDataDir, "member")
+	memberDir := filepath.Join(ro.Config.DataDir, "member")
 	if _, err := os.Stat(memberDir); err == nil {
 		return fmt.Errorf("member directory in data directory(%q) exists", memberDir)
 	}
 
 	walDir := filepath.Join(memberDir, "wal")
-	snapdir := filepath.Join(memberDir, "snap")
-	if err = r.makeDB(snapdir, ro.BaseSnapshot, len(cl.Members()), ro.Config.SkipHashCheck); err != nil {
+	snapDir := filepath.Join(memberDir, "snap")
+	if err = r.makeDB(snapDir, ro.BaseSnapshot, len(cl.Members()), ro.Config.SkipHashCheck); err != nil {
 		return err
 	}
-	return makeWALAndSnap(r.zapLogger, walDir, snapdir, cl, ro.Config.Name)
+	return makeWALAndSnap(r.zapLogger, walDir, snapDir, cl, ro.Config.Name)
 }
 
 // makeDB copies the database snapshot to the snapshot directory.
-func (r *Restorer) makeDB(snapdir string, snap *brtypes.Snapshot, commit int, skipHashCheck bool) error {
+func (r *Restorer) makeDB(snapDir string, snap *brtypes.Snapshot, commit int, skipHashCheck bool) error {
 	rc, err := r.store.Fetch(*snap)
 	if err != nil {
 		return err
@@ -189,11 +205,11 @@ func (r *Restorer) makeDB(snapdir string, snap *brtypes.Snapshot, commit int, sk
 	}
 	defer rc.Close()
 
-	if err := fileutil.CreateDirAll(snapdir); err != nil {
+	if err := fileutil.CreateDirAll(snapDir); err != nil {
 		return err
 	}
 
-	dbPath := filepath.Join(snapdir, "db")
+	dbPath := filepath.Join(snapDir, "db")
 	db, err := os.OpenFile(dbPath, os.O_RDWR|os.O_CREATE, 0600)
 	if err != nil {
 		return err
@@ -281,8 +297,8 @@ func (r *Restorer) makeDB(snapdir string, snap *brtypes.Snapshot, commit int, sk
 	return nil
 }
 
-func makeWALAndSnap(logger *zap.Logger, waldir, snapdir string, cl *membership.RaftCluster, restoreName string) error {
-	if err := fileutil.CreateDirAll(waldir); err != nil {
+func makeWALAndSnap(logger *zap.Logger, walDir, snapDir string, cl *membership.RaftCluster, restoreName string) error {
+	if err := fileutil.CreateDirAll(walDir); err != nil {
 		return err
 	}
 
@@ -300,7 +316,7 @@ func makeWALAndSnap(logger *zap.Logger, waldir, snapdir string, cl *membership.R
 		return err
 	}
 
-	w, err := wal.Create(logger, waldir, metadata)
+	w, err := wal.Create(logger, walDir, metadata)
 	if err != nil {
 		return err
 	}
@@ -360,7 +376,7 @@ func makeWALAndSnap(logger *zap.Logger, waldir, snapdir string, cl *membership.R
 			},
 		},
 	}
-	snapshotter := snap.New(logger, snapdir)
+	snapshotter := snap.New(logger, snapDir)
 	if err := snapshotter.SaveSnap(raftSnap); err != nil {
 		panic(err)
 	}
@@ -402,12 +418,12 @@ func (r *Restorer) applyDeltaSnapshots(clientKV client.KVCloser, ro brtypes.Rest
 	go r.applySnaps(clientKV, remainingSnaps, applierInfoCh, errCh, stopCh, &wg)
 
 	for f := 0; f < numFetchers; f++ {
-		go r.fetchSnaps(f, fetcherInfoCh, applierInfoCh, snapLocationsCh, errCh, stopCh, &wg)
+		go r.fetchSnaps(f, fetcherInfoCh, applierInfoCh, snapLocationsCh, errCh, stopCh, &wg, ro.Config.TempDir)
 	}
 
-	for i, snap := range remainingSnaps {
+	for i, remainingSnap := range remainingSnaps {
 		fetcherInfo := brtypes.FetcherInfo{
-			Snapshot:  *snap,
+			Snapshot:  *remainingSnap,
 			SnapIndex: i,
 		}
 		fetcherInfoCh <- fetcherInfo
@@ -415,36 +431,53 @@ func (r *Restorer) applyDeltaSnapshots(clientKV client.KVCloser, ro brtypes.Rest
 	close(fetcherInfoCh)
 
 	err := <-errCh
-	r.cleanup(snapLocationsCh, stopCh, &wg)
-	if err == nil {
-		r.logger.Infof("Restoration complete.")
-	} else {
-		r.logger.Errorf("Restoration failed.")
+
+	if cleanupErr := r.cleanup(snapLocationsCh, stopCh, &wg); cleanupErr != nil {
+		r.logger.Errorf("Cleanup of temporary snapshots failed: %v", cleanupErr)
 	}
 
-	return err
+	if err != nil {
+		r.logger.Errorf("Restoration failed.")
+		return err
+	}
+
+	r.logger.Infof("Restoration complete.")
+
+	return nil
 }
 
 // cleanup stops all running goroutines and removes the persisted snapshot files from disk.
-func (r *Restorer) cleanup(snapLocationsCh chan string, stopCh chan bool, wg *sync.WaitGroup) {
+func (r *Restorer) cleanup(snapLocationsCh chan string, stopCh chan bool, wg *sync.WaitGroup) error {
+	var errs []error
+
 	close(stopCh)
-
 	wg.Wait()
-
 	close(snapLocationsCh)
 
 	for filePath := range snapLocationsCh {
-		if _, err := os.Stat(filePath); err == nil && !os.IsNotExist(err) {
-			if err = os.Remove(filePath); err != nil {
-				r.logger.Warnf("Unable to remove file, file: %s, err: %v", filePath, err)
+		if _, err := os.Stat(filePath); err != nil {
+			if !os.IsNotExist(err) {
+				errs = append(errs, fmt.Errorf("unable to stat file %s: %v", filePath, err))
 			}
+			continue
+		}
+
+		if err := os.Remove(filePath); err != nil {
+			errs = append(errs, fmt.Errorf("unable to remove file %s: %v", filePath, err))
 		}
 	}
-	r.logger.Infof("Cleanup complete")
+
+	if len(errs) != 0 {
+		r.logger.Error("Cleanup failed")
+		return errorArrayToError(errs)
+	}
+
+	r.logger.Info("Cleanup complete")
+	return nil
 }
 
 // fetchSnaps fetches delta snapshots as events and persists them onto disk.
-func (r *Restorer) fetchSnaps(fetcherIndex int, fetcherInfoCh <-chan brtypes.FetcherInfo, applierInfoCh chan<- brtypes.ApplierInfo, snapLocationsCh chan<- string, errCh chan<- error, stopCh chan bool, wg *sync.WaitGroup) {
+func (r *Restorer) fetchSnaps(fetcherIndex int, fetcherInfoCh <-chan brtypes.FetcherInfo, applierInfoCh chan<- brtypes.ApplierInfo, snapLocationsCh chan<- string, errCh chan<- error, stopCh chan bool, wg *sync.WaitGroup, tempDir string) {
 	defer wg.Done()
 	wg.Add(1)
 
@@ -464,7 +497,8 @@ func (r *Restorer) fetchSnaps(fetcherIndex int, fetcherInfoCh <-chan brtypes.Fet
 				return
 			}
 
-			eventsFilePath, err := persistDeltaSnapshot(eventsData)
+			tempFilePath := filepath.Join(tempDir, fetcherInfo.Snapshot.SnapName)
+			eventsFilePath, err := persistDeltaSnapshot(eventsData, tempFilePath)
 			if err != nil {
 				errCh <- fmt.Errorf("failed to persist events data for delta snapshot %s : %v", fetcherInfo.Snapshot.SnapName, err)
 				applierInfoCh <- brtypes.ApplierInfo{SnapIndex: -1}
@@ -514,29 +548,33 @@ func (r *Restorer) applySnaps(clientKV client.KVCloser, remainingSnaps brtypes.S
 						break
 					}
 
-					r.logger.Infof("Applying delta snapshot %s", path.Join(remainingSnaps[currSnapIndex].SnapDir, remainingSnaps[currSnapIndex].SnapName))
-
 					filePath := pathList[currSnapIndex]
 					snapName := remainingSnaps[currSnapIndex].SnapName
 
+					r.logger.Infof("Reading snapshot %s from temporary file %s", snapName, filePath)
 					eventsData, err := os.ReadFile(filePath)
 					if err != nil {
 						errCh <- fmt.Errorf("failed to read events data from file for delta snapshot %s : %v", snapName, err)
 						return
 					}
-					if err = os.Remove(filePath); err != nil {
-						r.logger.Warnf("Unable to remove file: %s; err: %v", filePath, err)
-					}
+
 					events := []brtypes.Event{}
 					if err = json.Unmarshal(eventsData, &events); err != nil {
 						errCh <- fmt.Errorf("failed to read events from events data for delta snapshot %s : %v", snapName, err)
 						return
 					}
 
+					r.logger.Infof("Applying delta snapshot %s [%d/%d]", path.Join(remainingSnaps[currSnapIndex].SnapDir, remainingSnaps[currSnapIndex].SnapName), currSnapIndex+2, len(remainingSnaps)+1)
 					if err := applyEventsAndVerify(clientKV, events, remainingSnaps[currSnapIndex]); err != nil {
 						errCh <- err
 						return
 					}
+
+					r.logger.Infof("Removing temporary snapshot file %s for snapshot %s", filePath, snapName)
+					if err = os.Remove(filePath); err != nil {
+						r.logger.Warnf("Unable to remove file: %s; err: %v", filePath, err)
+					}
+
 					nextSnapIndexToApply++
 					if nextSnapIndexToApply == len(remainingSnaps) {
 						errCh <- nil // restore finished
@@ -569,8 +607,8 @@ func (r *Restorer) applyFirstDeltaSnapshot(clientKV client.KVCloser, snap brtype
 	}
 
 	// Note: Since revision in full snapshot file name might be lower than actual revision stored in snapshot.
-	// This is because of issue refereed below. So, as per workaround used in our logic of taking delta snapshot,
-	// latest revision from full snapshot may overlap with first few revision on first delta snapshot
+	// This is because of issue referred below. So, as per workaround used in our logic of taking delta snapshot,
+	// the latest revision from full snapshot may overlap with first few revision on first delta snapshot
 	// Hence, we have to additionally take care of that.
 	// Refer: https://github.com/coreos/etcd/issues/9037
 	ctx := context.TODO()
@@ -662,20 +700,20 @@ func (r *Restorer) getEventsDataFromDeltaSnapshot(snap brtypes.Snapshot) ([]byte
 }
 
 // persistDeltaSnapshot writes delta snapshot events to disk and returns the file path for the same.
-func persistDeltaSnapshot(data []byte) (string, error) {
-	tmpFile, err := os.CreateTemp(tmpDir, tmpEventsDataFilePrefix)
+func persistDeltaSnapshot(data []byte, tempFilePath string) (string, error) {
+	tempFile, err := os.Create(tempFilePath)
 	if err != nil {
-		err = fmt.Errorf("failed to create temp file")
+		err = fmt.Errorf("failed to create temp file %s", tempFilePath)
 		return "", err
 	}
-	defer tmpFile.Close()
+	defer tempFile.Close()
 
-	if _, err = tmpFile.Write(data); err != nil {
-		err = fmt.Errorf("failed to write events data into temp file")
+	if _, err = tempFile.Write(data); err != nil {
+		err = fmt.Errorf("failed to write events data into temp file %s", tempFilePath)
 		return "", err
 	}
 
-	return tmpFile.Name(), nil
+	return tempFile.Name(), nil
 }
 
 // applyEventsToEtcd performs operations in events sequentially.
@@ -703,7 +741,7 @@ func applyEventsToEtcd(clientKV client.KVCloser, events []brtypes.Event) error {
 		case mvccpb.DELETE:
 			ops = append(ops, clientv3.OpDelete(string(ev.Kv.Key)))
 		default:
-			return fmt.Errorf("Unexpected event type")
+			return fmt.Errorf("unexpected event type")
 		}
 	}
 	_, err := clientKV.Txn(ctx).Then(ops...).Commit()
@@ -721,4 +759,15 @@ func verifySnapshotRevision(clientKV client.KVCloser, snap *brtypes.Snapshot) er
 		return fmt.Errorf("mismatched event revision while applying delta snapshot, expected %d but applied %d ", snap.LastRevision, etcdRevision)
 	}
 	return nil
+}
+
+// errorArrayToError takes an array of errors and returns a single concatenated error
+func errorArrayToError(errs []error) error {
+	var errString string
+
+	for _, e := range errs {
+		errString = fmt.Sprintf("%s\n%s", errString, e.Error())
+	}
+
+	return fmt.Errorf("%s", strings.TrimSpace(errString))
 }

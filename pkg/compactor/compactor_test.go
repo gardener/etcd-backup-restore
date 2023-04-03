@@ -55,20 +55,27 @@ var _ = Describe("Running Compactor", func() {
 		var compactorConfig *brtypes.CompactorConfig
 		var compactOptions *brtypes.CompactOptions
 		var compactedSnapshot *brtypes.Snapshot
-		var restoreDir string
+		var tempRestoreDir string
 
 		BeforeEach(func() {
-			dir = fmt.Sprintf("%s/etcd/snapshotter.bkp", testSuitDir)
+			dir = fmt.Sprintf("%s/etcd/snapshotter.bkp", testSuiteDir)
 			store, err = snapstore.GetSnapstore(&brtypes.SnapstoreConfig{Container: dir, Provider: "Local"})
 			Expect(err).ShouldNot(HaveOccurred())
 			fmt.Println("The store where compaction will save snapshot is: ", store)
+
+			tempDataDir, err := os.MkdirTemp(testSuiteDir, "compacted.etcd-")
+			Expect(err).ShouldNot(HaveOccurred())
+
+			tempRestorationSnapshotsDir, err := os.MkdirTemp(testSuiteDir, "temp-snapshots-")
+			Expect(err).ShouldNot(HaveOccurred())
 
 			cptr = compactor.NewCompactor(store, logger, nil)
 			restoreOpts = &brtypes.RestoreOptions{
 				Config: &brtypes.RestorationConfig{
 					InitialCluster:           restoreCluster,
 					InitialClusterToken:      restoreClusterToken,
-					RestoreDataDir:           "/tmp",
+					DataDir:                  tempDataDir,
+					TempDir:                  tempRestorationSnapshotsDir,
 					InitialAdvertisePeerURLs: restorePeerURLs,
 					Name:                     restoreName,
 					SkipHashCheck:            skipHashCheck,
@@ -93,11 +100,11 @@ var _ = Describe("Running Compactor", func() {
 			}
 		})
 
-		Context("with defragmention allowed", func() {
+		Context("with defragmentation allowed", func() {
 			AfterEach(func() {
-				_, err := os.Stat(restoreDir)
+				_, err := os.Stat(tempRestoreDir)
 				if err == nil {
-					os.RemoveAll(restoreDir)
+					os.RemoveAll(tempRestoreDir)
 				}
 				store.Delete(*compactedSnapshot)
 			})
@@ -105,14 +112,14 @@ var _ = Describe("Running Compactor", func() {
 			It("should create a snapshot", func() {
 				restoreOpts.Config.MaxFetchers = 4
 
-				// Fetch latest snapshots
+				// Fetch the latest set of snapshots
 				baseSnapshot, deltaSnapList, err := miscellaneous.GetLatestFullSnapshotAndDeltaSnapList(store)
 				Expect(err).ShouldNot(HaveOccurred())
 
 				restoreOpts.BaseSnapshot = baseSnapshot
 				restoreOpts.DeltaSnapList = deltaSnapList
 
-				// Take the compacted full snapshot with defragmnetation allowed
+				// Take the compacted full snapshot with defragmentation allowed
 				_, err = cptr.Compact(testCtx, compactOptions)
 				Expect(err).ShouldNot(HaveOccurred())
 
@@ -130,7 +137,7 @@ var _ = Describe("Running Compactor", func() {
 			It("should restore from compacted snapshot", func() {
 				restoreOpts.Config.MaxFetchers = 4
 
-				// Fetch latest snapshots
+				// Fetch the latest set of snapshots
 				baseSnapshot, deltaSnapList, err := miscellaneous.GetLatestFullSnapshotAndDeltaSnapList(store)
 				Expect(err).ShouldNot(HaveOccurred())
 
@@ -151,10 +158,15 @@ var _ = Describe("Running Compactor", func() {
 				Expect(size).ShouldNot(BeZero())
 
 				// Restore from the compacted snapshot
-				restoreDir, err = os.MkdirTemp("/tmp", "restore-")
+				tempRestoreDir, err = os.MkdirTemp(testSuiteDir, "restore-test-")
 				Expect(err).ShouldNot(HaveOccurred())
 
-				restoreOpts.Config.RestoreDataDir = restoreDir
+				defer func() {
+					err := os.RemoveAll(tempRestoreDir)
+					Expect(err).ShouldNot(HaveOccurred())
+				}()
+
+				restoreOpts.Config.DataDir = tempRestoreDir
 
 				restoreOpts.BaseSnapshot = compactedSnapshot
 				restoreOpts.DeltaSnapList = deltaSnapList
@@ -164,22 +176,22 @@ var _ = Describe("Running Compactor", func() {
 				err = rstr.RestoreAndStopEtcd(*restoreOpts, nil)
 
 				Expect(err).ShouldNot(HaveOccurred())
-				err = utils.CheckDataConsistency(testCtx, restoreOpts.Config.RestoreDataDir, keyTo, logger)
+				err = utils.CheckDataConsistency(testCtx, restoreOpts.Config.DataDir, keyTo, logger)
 				Expect(err).ShouldNot(HaveOccurred())
 			})
 		})
-		Context("with defragmention not allowed", func() {
+		Context("with defragmentation not allowed", func() {
 			AfterEach(func() {
-				_, err := os.Stat(restoreDir)
+				_, err := os.Stat(tempRestoreDir)
 				if err != nil {
-					os.RemoveAll(restoreDir)
+					os.RemoveAll(tempRestoreDir)
 				}
 				store.Delete(*compactedSnapshot)
 			})
 			It("should create a snapshot", func() {
 				restoreOpts.Config.MaxFetchers = 4
 
-				// Fetch latest snapshots
+				// Fetch the latest set of snapshots
 				baseSnapshot, deltaSnapList, err := miscellaneous.GetLatestFullSnapshotAndDeltaSnapList(store)
 				Expect(err).ShouldNot(HaveOccurred())
 
@@ -205,7 +217,7 @@ var _ = Describe("Running Compactor", func() {
 			It("should restore from compacted snapshot", func() {
 				restoreOpts.Config.MaxFetchers = 4
 
-				// Fetch latest snapshots
+				// Fetch the latest set of snapshots
 				baseSnapshot, deltaSnapList, err := miscellaneous.GetLatestFullSnapshotAndDeltaSnapList(store)
 				Expect(err).ShouldNot(HaveOccurred())
 
@@ -227,10 +239,10 @@ var _ = Describe("Running Compactor", func() {
 				Expect(size).ShouldNot(BeZero())
 
 				// Restore from the compacted snapshot
-				restoreDir, err = os.MkdirTemp("/tmp", "restore-")
+				tempRestoreDir, err = os.MkdirTemp(testSuiteDir, "restore-test-")
 				Expect(err).ShouldNot(HaveOccurred())
 
-				restoreOpts.Config.RestoreDataDir = restoreDir
+				restoreOpts.Config.DataDir = tempRestoreDir
 
 				restoreOpts.BaseSnapshot = compactedSnapshot
 				restoreOpts.DeltaSnapList = deltaSnapList
@@ -240,11 +252,11 @@ var _ = Describe("Running Compactor", func() {
 				err = rstr.RestoreAndStopEtcd(*restoreOpts, nil)
 
 				Expect(err).ShouldNot(HaveOccurred())
-				err = utils.CheckDataConsistency(testCtx, restoreOpts.Config.RestoreDataDir, keyTo, logger)
+				err = utils.CheckDataConsistency(testCtx, restoreOpts.Config.DataDir, keyTo, logger)
 				Expect(err).ShouldNot(HaveOccurred())
 			})
 		})
-		Context("with no basesnapshot in backup store", func() {
+		Context("with no base snapshot in backup store", func() {
 			It("should not run compaction", func() {
 				restoreOpts.Config.MaxFetchers = 4
 

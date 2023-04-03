@@ -55,40 +55,38 @@ func (cp *Compactor) Compact(ctx context.Context, opts *brtypes.CompactOptions) 
 	cp.logger.Info("Start compacting")
 
 	// Deepcopy restoration options ro to avoid any mutation of the passing object
-	cmpctOptions := opts.RestoreOptions.DeepCopy()
+	compactorRestoreOptions := opts.RestoreOptions.DeepCopy()
 
-	// If no basesnapshot is found, abort compaction as there would be nothing to compact
-	if cmpctOptions.BaseSnapshot == nil {
+	// If no base snapshot is found, abort compaction as there would be nothing to compact
+	if compactorRestoreOptions.BaseSnapshot == nil {
 		cp.logger.Error("No base snapshot found. Nothing is available for compaction")
 		return nil, fmt.Errorf("no base snapshot found. Nothing is available for compaction")
 	}
 
-	// Set a temporary etcd data directory for embedded etcd
-	prefix := cmpctOptions.Config.RestoreDataDir
-	if prefix == "" {
-		prefix = "/tmp"
-	}
-	cmpctDir, err := os.MkdirTemp(prefix, "compactor-")
+	cp.logger.Infof("Creating temporary etcd directory %s for restoration.", compactorRestoreOptions.Config.DataDir)
+	err := os.MkdirAll(compactorRestoreOptions.Config.DataDir, 0700)
 	if err != nil {
 		cp.logger.Errorf("Unable to create temporary etcd directory for compaction: %s", err.Error())
 		return nil, err
 	}
 
-	defer os.RemoveAll(cmpctDir)
-
-	cmpctOptions.Config.RestoreDataDir = cmpctDir
+	defer func() {
+		if err := os.RemoveAll(compactorRestoreOptions.Config.DataDir); err != nil {
+			cp.logger.Errorf("Failed to remove temporary etcd directory %s: %v", compactorRestoreOptions.Config.DataDir, err)
+		}
+	}()
 
 	// Then restore from the snapshots
 	r := restorer.NewRestorer(cp.store, cp.logger)
-	embeddedEtcd, err := r.Restore(*cmpctOptions, nil)
+	embeddedEtcd, err := r.Restore(*compactorRestoreOptions, nil)
 	if err != nil {
 		return nil, fmt.Errorf("unable to restore snapshots during compaction: %v", err)
 	}
 
-	cp.logger.Info("Restoration for compaction is over")
+	cp.logger.Info("Restoration for compaction is done.")
 	// There is a possibility that restore operation may not start an embedded ETCD.
 	if embeddedEtcd == nil {
-		embeddedEtcd, err = miscellaneous.StartEmbeddedEtcd(cp.logger, cmpctOptions)
+		embeddedEtcd, err = miscellaneous.StartEmbeddedEtcd(cp.logger, compactorRestoreOptions)
 		if err != nil {
 			return nil, err
 		}
@@ -104,8 +102,8 @@ func (cp *Compactor) Compact(ctx context.Context, opts *brtypes.CompactOptions) 
 	// Then compact ETCD
 
 	// Build Client
-	clientFactory := etcdutil.NewClientFactory(cmpctOptions.NewClientFactory, brtypes.EtcdConnectionConfig{
-		MaxCallSendMsgSize: cmpctOptions.Config.MaxCallSendMsgSize,
+	clientFactory := etcdutil.NewClientFactory(compactorRestoreOptions.NewClientFactory, brtypes.EtcdConnectionConfig{
+		MaxCallSendMsgSize: compactorRestoreOptions.Config.MaxCallSendMsgSize,
 		Endpoints:          ep,
 		InsecureTransport:  true,
 	})
@@ -150,22 +148,22 @@ func (cp *Compactor) Compact(ctx context.Context, opts *brtypes.CompactOptions) 
 		}
 	}
 
-	// Then take snapeshot of ETCD
+	// Then take snapshot of ETCD
 	snapshotReqCtx, cancel := context.WithTimeout(ctx, opts.SnapshotTimeout.Duration)
 	defer cancel()
 
 	// Determine suffix of compacted snapshot that will be result of this compaction
-	suffix := cmpctOptions.BaseSnapshot.CompressionSuffix
-	if len(cmpctOptions.DeltaSnapList) > 0 {
-		suffix = cmpctOptions.DeltaSnapList[cmpctOptions.DeltaSnapList.Len()-1].CompressionSuffix
+	suffix := compactorRestoreOptions.BaseSnapshot.CompressionSuffix
+	if len(compactorRestoreOptions.DeltaSnapList) > 0 {
+		suffix = compactorRestoreOptions.DeltaSnapList[compactorRestoreOptions.DeltaSnapList.Len()-1].CompressionSuffix
 	}
 
 	isCompressed, compressionPolicy, err := compressor.IsSnapshotCompressed(suffix)
 	if err != nil {
-		return nil, fmt.Errorf("unable to determine if snapshot is compressed: %v", cmpctOptions.BaseSnapshot.CompressionSuffix)
+		return nil, fmt.Errorf("unable to determine if snapshot is compressed: %v", compactorRestoreOptions.BaseSnapshot.CompressionSuffix)
 	}
 
-	isFinal := cmpctOptions.BaseSnapshot.IsFinal
+	isFinal := compactorRestoreOptions.BaseSnapshot.IsFinal
 
 	cc := &compressor.CompressionConfig{Enabled: isCompressed, CompressionPolicy: compressionPolicy}
 	snapshot, err := etcdutil.TakeAndSaveFullSnapshot(snapshotReqCtx, clientMaintenance, cp.store, etcdRevision, cc, suffix, isFinal, cp.logger)
