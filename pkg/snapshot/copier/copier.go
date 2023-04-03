@@ -183,14 +183,17 @@ func (c *Copier) copyBackups() error {
 	for i := 0; i < c.maxParallelCopyOperations; i++ {
 		go func() {
 			for snapshot := range queue {
-				c.logger.Infof("Copying %s snapshot %s...", snapshot.Kind, snapshot.SnapName)
-				if err := c.copySnapshot(snapshot); err != nil {
-					errors <- err
-					return
-				}
+				func() {
+					defer wg.Done()
 
-				c.logger.Infof("Successfully copied %s snapshot %s...", snapshot.Kind, snapshot.SnapName)
-				wg.Done()
+					c.logger.Infof("Copying %s snapshot %s...", snapshot.Kind, snapshot.SnapName)
+					if err := c.copySnapshot(snapshot); err != nil {
+						errors <- err
+						return
+					}
+
+					c.logger.Infof("Successfully copied %s snapshot %s...", snapshot.Kind, snapshot.SnapName)
+				}()
 			}
 		}()
 	}
