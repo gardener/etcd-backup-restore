@@ -391,7 +391,7 @@ func (r *Restorer) applyDeltaSnapshots(clientKV client.KVCloser, ro brtypes.Rest
 
 	firstDeltaSnap := snapList[0]
 
-	if err := r.applyFirstDeltaSnapshot(clientKV, *firstDeltaSnap); err != nil {
+	if err := r.applyFirstDeltaSnapshot(clientKV, firstDeltaSnap); err != nil {
 		return err
 	}
 	if err := verifySnapshotRevision(clientKV, snapList[0]); err != nil {
@@ -490,26 +490,23 @@ func (r *Restorer) fetchSnaps(fetcherIndex int, fetcherInfoCh <-chan brtypes.Fet
 		default:
 			r.logger.Infof("Fetcher #%d fetching delta snapshot %s", fetcherIndex+1, path.Join(fetcherInfo.Snapshot.SnapDir, fetcherInfo.Snapshot.SnapName))
 
-			eventsData, err := r.getEventsDataFromDeltaSnapshot(fetcherInfo.Snapshot)
+			rc, err := r.store.Fetch(fetcherInfo.Snapshot)
 			if err != nil {
-				errCh <- fmt.Errorf("failed to read events data from delta snapshot %s : %v", fetcherInfo.Snapshot.SnapName, err)
+				errCh <- fmt.Errorf("failed to fetch delta snapshot %s from store : %v", fetcherInfo.Snapshot.SnapName, err)
 				applierInfoCh <- brtypes.ApplierInfo{SnapIndex: -1} // cannot use close(ch) as concurrent fetchSnaps routines might try to send on channel, causing a panic
-				return
 			}
 
-			tempFilePath := filepath.Join(tempDir, fetcherInfo.Snapshot.SnapName)
-			eventsFilePath, err := persistDeltaSnapshot(eventsData, tempFilePath)
-			if err != nil {
-				errCh <- fmt.Errorf("failed to persist events data for delta snapshot %s : %v", fetcherInfo.Snapshot.SnapName, err)
+			snapTempFilePath := filepath.Join(tempDir, fetcherInfo.Snapshot.SnapName)
+			if err = persistRawDeltaSnapshot(rc, snapTempFilePath); err != nil {
+				errCh <- fmt.Errorf("failed to persist delta snapshot %s to temp file path %s : %v", fetcherInfo.Snapshot.SnapName, snapTempFilePath, err)
 				applierInfoCh <- brtypes.ApplierInfo{SnapIndex: -1}
-				return
 			}
 
-			snapLocationsCh <- eventsFilePath // used for cleanup later
+			snapLocationsCh <- snapTempFilePath // used for cleanup later
 
 			applierInfo := brtypes.ApplierInfo{
-				EventsFilePath: eventsFilePath,
-				SnapIndex:      fetcherInfo.SnapIndex,
+				SnapFilePath: snapTempFilePath,
+				SnapIndex:    fetcherInfo.SnapIndex,
 			}
 			applierInfoCh <- applierInfo
 		}
@@ -536,7 +533,7 @@ func (r *Restorer) applySnaps(clientKV client.KVCloser, remainingSnaps brtypes.S
 			}
 
 			fetchedSnapIndex := applierInfo.SnapIndex
-			pathList[fetchedSnapIndex] = applierInfo.EventsFilePath
+			pathList[fetchedSnapIndex] = applierInfo.SnapFilePath
 
 			if fetchedSnapIndex < nextSnapIndexToApply {
 				errCh <- fmt.Errorf("snap index mismatch for delta snapshot %d; expected snap index to be atleast %d", fetchedSnapIndex, nextSnapIndexToApply)
@@ -551,10 +548,10 @@ func (r *Restorer) applySnaps(clientKV client.KVCloser, remainingSnaps brtypes.S
 					filePath := pathList[currSnapIndex]
 					snapName := remainingSnaps[currSnapIndex].SnapName
 
-					r.logger.Infof("Reading snapshot %s from temporary file %s", snapName, filePath)
-					eventsData, err := os.ReadFile(filePath)
+					r.logger.Infof("Reading snapshot contents %s from raw snapshot file %s", snapName, filePath)
+					eventsData, err := r.readSnapshotContentsFromFile(filePath, remainingSnaps[currSnapIndex])
 					if err != nil {
-						errCh <- fmt.Errorf("failed to read events data from file for delta snapshot %s : %v", snapName, err)
+						errCh <- fmt.Errorf("failed to read events data from delta snapshot file %s : %v", filePath, err)
 						return
 					}
 
@@ -599,10 +596,21 @@ func applyEventsAndVerify(clientKV client.KVCloser, events []brtypes.Event, snap
 }
 
 // applyFirstDeltaSnapshot applies the events from first delta snapshot to etcd.
-func (r *Restorer) applyFirstDeltaSnapshot(clientKV client.KVCloser, snap brtypes.Snapshot) error {
+func (r *Restorer) applyFirstDeltaSnapshot(clientKV client.KVCloser, snap *brtypes.Snapshot) error {
 	r.logger.Infof("Applying first delta snapshot %s", path.Join(snap.SnapDir, snap.SnapName))
-	events, err := r.getEventsFromDeltaSnapshot(snap)
+
+	rc, err := r.store.Fetch(*snap)
 	if err != nil {
+		return fmt.Errorf("failed to fetch delta snapshot %s from store : %v", snap.SnapName, err)
+	}
+
+	eventsData, err := r.readSnapshotContentsFromReadCloser(rc, snap)
+	if err != nil {
+		return fmt.Errorf("failed to read events data from delta snapshot %s : %v", snap.SnapName, err)
+	}
+
+	events := []brtypes.Event{}
+	if err = json.Unmarshal(eventsData, &events); err != nil {
 		return fmt.Errorf("failed to read events from delta snapshot %s : %v", snap.SnapName, err)
 	}
 
@@ -625,6 +633,8 @@ func (r *Restorer) applyFirstDeltaSnapshot(clientKV client.KVCloser, snap brtype
 			break
 		}
 	}
+
+	r.logger.Infof("Applying first delta snapshot %s", path.Join(snap.SnapDir, snap.SnapName))
 
 	return applyEventsToEtcd(clientKV, events[newRevisionIndex:])
 }
@@ -699,21 +709,20 @@ func (r *Restorer) getEventsDataFromDeltaSnapshot(snap brtypes.Snapshot) ([]byte
 	return data, nil
 }
 
-// persistDeltaSnapshot writes delta snapshot events to disk and returns the file path for the same.
-func persistDeltaSnapshot(data []byte, tempFilePath string) (string, error) {
+func persistRawDeltaSnapshot(rc io.ReadCloser, tempFilePath string) error {
 	tempFile, err := os.Create(tempFilePath)
 	if err != nil {
 		err = fmt.Errorf("failed to create temp file %s", tempFilePath)
-		return "", err
+		return err
 	}
 	defer tempFile.Close()
 
-	if _, err = tempFile.Write(data); err != nil {
-		err = fmt.Errorf("failed to write events data into temp file %s", tempFilePath)
-		return "", err
+	_, err = tempFile.ReadFrom(rc)
+	if err != nil {
+		return err
 	}
 
-	return tempFile.Name(), nil
+	return rc.Close()
 }
 
 // applyEventsToEtcd performs operations in events sequentially.
@@ -759,6 +768,79 @@ func verifySnapshotRevision(clientKV client.KVCloser, snap *brtypes.Snapshot) er
 		return fmt.Errorf("mismatched event revision while applying delta snapshot, expected %d but applied %d ", snap.LastRevision, etcdRevision)
 	}
 	return nil
+}
+
+// getDecompressedSnapshotReadCloser passes the given ReadCloser through the
+// snapshot decompressor if the snapshot is compressed using a compression policy.
+// Also returns whether the snapshot was initially compressed or not, as well as
+// the compression policy used for compressing the snapshot.
+func getDecompressedSnapshotReadCloser(rc io.ReadCloser, snap *brtypes.Snapshot) (io.ReadCloser, bool, string, error) {
+	isCompressed, compressionPolicy, err := compressor.IsSnapshotCompressed(snap.CompressionSuffix)
+	if err != nil {
+		return nil, false, compressionPolicy, err
+	}
+
+	if isCompressed {
+		// decompress the snapshot
+		rc, err = compressor.DecompressSnapshot(rc, compressionPolicy)
+		if err != nil {
+			return nil, true, compressionPolicy, fmt.Errorf("unable to decompress the snapshot: %v", err)
+		}
+	}
+
+	return rc, true, compressionPolicy, nil
+}
+
+func (r *Restorer) readSnapshotContentsFromReadCloser(rc io.ReadCloser, snap *brtypes.Snapshot) ([]byte, error) {
+	startTime := time.Now()
+
+	rc, wasCompressed, compressionPolicy, err := getDecompressedSnapshotReadCloser(rc, snap)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decompress delta snapshot %s : %v", snap.SnapName, err)
+	}
+
+	buf := new(bytes.Buffer)
+	bufSize, err := buf.ReadFrom(rc)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse contents from delta snapshot %s : %v", snap.SnapName, err)
+	}
+
+	totalTime := time.Now().Sub(startTime).Seconds()
+	if wasCompressed {
+		r.logger.Infof("successfully fetched data of delta snapshot in %v seconds [CompressionPolicy:%v]", totalTime, compressionPolicy)
+	} else {
+		r.logger.Infof("successfully fetched data of delta snapshot in %v seconds", totalTime)
+	}
+
+	if bufSize <= sha256.Size {
+		return nil, fmt.Errorf("delta snapshot is missing hash")
+	}
+
+	sha := buf.Bytes()
+	data := sha[:bufSize-sha256.Size]
+	snapHash := sha[bufSize-sha256.Size:]
+
+	// check for match
+	h := sha256.New()
+	if _, err := h.Write(data); err != nil {
+		return nil, fmt.Errorf("unable to check integrity of snapshot %s: %v", snap.SnapName, err)
+	}
+
+	computedSha := h.Sum(nil)
+	if !reflect.DeepEqual(snapHash, computedSha) {
+		return nil, fmt.Errorf("expected sha256 %v, got %v", snapHash, computedSha)
+	}
+
+	return data, nil
+}
+
+func (r *Restorer) readSnapshotContentsFromFile(filePath string, snap *brtypes.Snapshot) ([]byte, error) {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open file %s for delta snapshot %s : %v", filePath, snap.SnapName, err)
+	}
+
+	return r.readSnapshotContentsFromReadCloser(file, snap)
 }
 
 // errorArrayToError takes an array of errors and returns a single concatenated error

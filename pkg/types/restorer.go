@@ -191,8 +191,8 @@ type FetcherInfo struct {
 
 // ApplierInfo stores the info about applier
 type ApplierInfo struct {
-	EventsFilePath string
-	SnapIndex      int
+	SnapFilePath string
+	SnapIndex    int
 }
 
 // DeepCopyInto copies the structure deeply from in to out.
