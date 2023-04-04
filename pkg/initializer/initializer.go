@@ -60,7 +60,7 @@ func (e *EtcdInitializer) Initialize(mode validator.Mode, failBelowRevision int6
 	//Etcd cluster scale-up case
 	if miscellaneous.IsMultiNode(logger) {
 		m := member.NewMemberControl(e.Config.EtcdConnectionConfig)
-		isScaleup, err := m.IsClusterScaledup(ctx, clientSet)
+		isScaleup, err := m.IsClusterScaledUp(ctx, clientSet)
 		if isScaleup && err == nil {
 			if err := retry.OnError(retry.DefaultBackoff, errors.AnyError, func() error {
 				return m.AddMemberAsLearner(ctx)
@@ -69,6 +69,8 @@ func (e *EtcdInitializer) Initialize(mode validator.Mode, failBelowRevision int6
 			}
 			// return here after adding non-voting member(learner) as no restoration or validation needed
 			return nil
+		} else if err != nil {
+			return err
 		}
 	}
 

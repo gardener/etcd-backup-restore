@@ -42,8 +42,8 @@ type Control interface {
 	// AddMemberAsLearner add a new member as a learner to the etcd cluster
 	AddMemberAsLearner(context.Context) error
 
-	// IsClusterScaledup determines whether a etcd cluster is getting scale-up or not.
-	IsClusterScaledup(context.Context, client.Client) (bool, error)
+	// IsClusterScaledUp determines whether a etcd cluster is getting scale-up or not.
+	IsClusterScaledUp(context.Context, client.Client) (bool, error)
 
 	// IsMemberInCluster checks is the current members peer URL is already part of the etcd cluster
 	IsMemberInCluster(context.Context) (bool, error)
@@ -315,8 +315,8 @@ func (m *memberControl) IsLearnerPresent(ctx context.Context) (bool, error) {
 	return miscellaneous.CheckIfLearnerPresent(learnerCtx, cli)
 }
 
-// ClusterScaled determines whether a etcd cluster is getting scale-up or not and returns a boolean
-func (m *memberControl) IsClusterScaledup(ctx context.Context, clientSet client.Client) (bool, error) {
+// IsClusterScaledUp determines whether a etcd cluster is getting scale-up or not and returns a boolean
+func (m *memberControl) IsClusterScaledUp(ctx context.Context, clientSet client.Client) (bool, error) {
 	state, err := miscellaneous.GetInitialClusterStateIfScaleup(ctx, m.logger, clientSet, m.podName, m.podNamespace)
 	if err != nil {
 		m.logger.Errorf("unable to check scale-up case :%v", err)
