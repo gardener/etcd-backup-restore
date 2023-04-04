@@ -325,8 +325,8 @@ func (m *memberControl) IsClusterScaledUp(ctx context.Context, clientSet client.
 	}
 
 	isEtcdMemberPresent, err := m.IsMemberInCluster(ctx)
-	if err != nil || isEtcdMemberPresent {
+	if err != nil {
 		return false, err
 	}
-	return true, nil
+	return !isEtcdMemberPresent, nil
 }

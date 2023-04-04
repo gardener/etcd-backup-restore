@@ -69,8 +69,6 @@ func (e *EtcdInitializer) Initialize(mode validator.Mode, failBelowRevision int6
 			}
 			// return here after adding non-voting member(learner) as no restoration or validation needed
 			return nil
-		} else if err != nil {
-			return err
 		}
 	}
 
