@@ -48,13 +48,16 @@ import (
 	"go.etcd.io/etcd/mvcc"
 	"go.etcd.io/etcd/mvcc/backend"
 	"go.etcd.io/etcd/mvcc/mvccpb"
-	"go.etcd.io/etcd/pkg/fileutil"
 	"go.etcd.io/etcd/pkg/traceutil"
 	"go.etcd.io/etcd/raft"
 	"go.etcd.io/etcd/raft/raftpb"
 	"go.etcd.io/etcd/wal"
 	"go.etcd.io/etcd/wal/walpb"
 	"go.uber.org/zap"
+)
+
+const (
+	etcdDialTimeout = time.Second * 30
 )
 
 // Restorer is a struct for etcd data directory restorer
@@ -89,16 +92,16 @@ func (r *Restorer) RestoreAndStopEtcd(ro brtypes.RestoreOptions, m member.Contro
 // Restore restores the etcd data directory as per specified restore options but returns the ETCD server that it statrted.
 func (r *Restorer) Restore(ro brtypes.RestoreOptions, m member.Control) (*embed.Etcd, error) {
 	if err := r.restoreFromBaseSnapshot(ro); err != nil {
-		return nil, fmt.Errorf("failed to restore from the base snapshot :%v", err)
+		return nil, fmt.Errorf("failed to restore from the base snapshot: %v", err)
 	}
 
 	if len(ro.DeltaSnapList) == 0 {
 		r.logger.Infof("No delta snapshots present over base snapshot.")
 		return nil, nil
 	}
-	r.logger.Infof("Attempting to apply %d delta snapshots for restoration.", len(ro.DeltaSnapList))
 
-	r.logger.Infof("Creating temporary directory for persisting delta snapshots locally.")
+	r.logger.Infof("Attempting to apply %d delta snapshots for restoration.", len(ro.DeltaSnapList))
+	r.logger.Infof("Creating temporary directory %s for persisting delta snapshots locally.", ro.Config.TempDir)
 
 	err := os.MkdirAll(ro.Config.TempDir, 0700)
 	if err != nil {
@@ -152,8 +155,7 @@ func (r *Restorer) Restore(ro brtypes.RestoreOptions, m member.Control) (*embed.
 func (r *Restorer) restoreFromBaseSnapshot(ro brtypes.RestoreOptions) error {
 	var err error
 	if path.Join(ro.BaseSnapshot.SnapDir, ro.BaseSnapshot.SnapName) == "" {
-		r.logger.Warnf("Base snapshot path not provided. Will do nothing.")
-		return nil
+		return fmt.Errorf("base snapshot path not provided")
 	}
 	r.logger.Infof("Restoring from base snapshot: %s", path.Join(ro.BaseSnapshot.SnapDir, ro.BaseSnapshot.SnapName))
 	cfg := etcdserver.ServerConfig{
@@ -205,7 +207,7 @@ func (r *Restorer) makeDB(snapDir string, snap *brtypes.Snapshot, commit int, sk
 	}
 	defer rc.Close()
 
-	if err := fileutil.CreateDirAll(snapDir); err != nil {
+	if err := os.MkdirAll(snapDir, 0700); err != nil {
 		return err
 	}
 
@@ -217,7 +219,11 @@ func (r *Restorer) makeDB(snapDir string, snap *brtypes.Snapshot, commit int, sk
 	if _, err := io.Copy(db, rc); err != nil {
 		return err
 	}
-	db.Sync()
+
+	if err := db.Sync(); err != nil {
+		return err
+	}
+
 	totalTime := time.Now().Sub(startTime).Seconds()
 
 	if isCompressed {
@@ -269,7 +275,10 @@ func (r *Restorer) makeDB(snapDir string, snap *brtypes.Snapshot, commit int, sk
 	}
 
 	// db hash is OK
-	db.Close()
+	if err := db.Close(); err != nil {
+		return err
+	}
+
 	// update consistentIndex so applies go through on etcdserver despite
 	// having a new raft instance
 	be := backend.NewDefaultBackend(dbPath)
@@ -286,19 +295,32 @@ func (r *Restorer) makeDB(snapDir string, snap *brtypes.Snapshot, commit int, sk
 	}
 
 	// delete stored members from old cluster since using new members
-	btx.UnsafeForEach([]byte("members"), del)
+	if err := btx.UnsafeForEach([]byte("members"), del); err != nil {
+		return err
+	}
+
 	// todo: add back new members when we start to deprecate old snap file.
-	btx.UnsafeForEach([]byte("members_removed"), del)
+	if err := btx.UnsafeForEach([]byte("members_removed"), del); err != nil {
+		return err
+	}
+
 	// trigger write-out of new consistent index
 	txn.End()
 	s.Commit()
-	s.Close()
-	be.Close()
+
+	if err := s.Close(); err != nil {
+		return err
+	}
+
+	if err := be.Close(); err != nil {
+		return err
+	}
+
 	return nil
 }
 
 func makeWALAndSnap(logger *zap.Logger, walDir, snapDir string, cl *membership.RaftCluster, restoreName string) error {
-	if err := fileutil.CreateDirAll(walDir); err != nil {
+	if err := os.MkdirAll(walDir, 0700); err != nil {
 		return err
 	}
 
@@ -469,7 +491,7 @@ func (r *Restorer) cleanup(snapLocationsCh chan string, stopCh chan bool, wg *sy
 
 	if len(errs) != 0 {
 		r.logger.Error("Cleanup failed")
-		return errorArrayToError(errs)
+		return ErrorArrayToError(errs)
 	}
 
 	r.logger.Info("Cleanup complete")
@@ -555,9 +577,9 @@ func (r *Restorer) applySnaps(clientKV client.KVCloser, remainingSnaps brtypes.S
 						return
 					}
 
-					events := []brtypes.Event{}
+					var events []brtypes.Event
 					if err = json.Unmarshal(eventsData, &events); err != nil {
-						errCh <- fmt.Errorf("failed to read events from events data for delta snapshot %s : %v", snapName, err)
+						errCh <- fmt.Errorf("failed to unmarshal events from events data for delta snapshot %s : %v", snapName, err)
 						return
 					}
 
@@ -567,7 +589,7 @@ func (r *Restorer) applySnaps(clientKV client.KVCloser, remainingSnaps brtypes.S
 						return
 					}
 
-					r.logger.Infof("Removing temporary snapshot file %s for snapshot %s", filePath, snapName)
+					r.logger.Infof("Removing temporary delta snapshot events file %s for snapshot %s", filePath, snapName)
 					if err = os.Remove(filePath); err != nil {
 						r.logger.Warnf("Unable to remove file: %s; err: %v", filePath, err)
 					}
@@ -609,9 +631,9 @@ func (r *Restorer) applyFirstDeltaSnapshot(clientKV client.KVCloser, snap *brtyp
 		return fmt.Errorf("failed to read events data from delta snapshot %s : %v", snap.SnapName, err)
 	}
 
-	events := []brtypes.Event{}
+	var events []brtypes.Event
 	if err = json.Unmarshal(eventsData, &events); err != nil {
-		return fmt.Errorf("failed to read events from delta snapshot %s : %v", snap.SnapName, err)
+		return fmt.Errorf("failed to unmarshal events data from delta snapshot %s : %v", snap.SnapName, err)
 	}
 
 	// Note: Since revision in full snapshot file name might be lower than actual revision stored in snapshot.
@@ -619,7 +641,8 @@ func (r *Restorer) applyFirstDeltaSnapshot(clientKV client.KVCloser, snap *brtyp
 	// the latest revision from full snapshot may overlap with first few revision on first delta snapshot
 	// Hence, we have to additionally take care of that.
 	// Refer: https://github.com/coreos/etcd/issues/9037
-	ctx := context.TODO()
+	ctx, cancel := context.WithTimeout(context.TODO(), etcdDialTimeout)
+	defer cancel()
 	resp, err := clientKV.Get(ctx, "", clientv3.WithLastRev()...)
 	if err != nil {
 		return fmt.Errorf("failed to get etcd latest revision: %v", err)
@@ -712,10 +735,12 @@ func (r *Restorer) getEventsDataFromDeltaSnapshot(snap brtypes.Snapshot) ([]byte
 func persistRawDeltaSnapshot(rc io.ReadCloser, tempFilePath string) error {
 	tempFile, err := os.Create(tempFilePath)
 	if err != nil {
-		err = fmt.Errorf("failed to create temp file %s", tempFilePath)
+		err = fmt.Errorf("failed to create temp file %s to store raw delta snapshot", tempFilePath)
 		return err
 	}
-	defer tempFile.Close()
+	defer func() {
+		_ = tempFile.Close()
+	}()
 
 	_, err = tempFile.ReadFrom(rc)
 	if err != nil {
@@ -807,9 +832,9 @@ func (r *Restorer) readSnapshotContentsFromReadCloser(rc io.ReadCloser, snap *br
 
 	totalTime := time.Now().Sub(startTime).Seconds()
 	if wasCompressed {
-		r.logger.Infof("successfully fetched data of delta snapshot in %v seconds [CompressionPolicy:%v]", totalTime, compressionPolicy)
+		r.logger.Infof("successfully decompressed data of delta snapshot in %v seconds [CompressionPolicy:%v]", totalTime, compressionPolicy)
 	} else {
-		r.logger.Infof("successfully fetched data of delta snapshot in %v seconds", totalTime)
+		r.logger.Infof("successfully decompressed data of delta snapshot in %v seconds", totalTime)
 	}
 
 	if bufSize <= sha256.Size {
@@ -843,8 +868,12 @@ func (r *Restorer) readSnapshotContentsFromFile(filePath string, snap *brtypes.S
 	return r.readSnapshotContentsFromReadCloser(file, snap)
 }
 
-// errorArrayToError takes an array of errors and returns a single concatenated error
-func errorArrayToError(errs []error) error {
+// ErrorArrayToError takes an array of errors and returns a single concatenated error
+func ErrorArrayToError(errs []error) error {
+	if len(errs) == 0 {
+		return nil
+	}
+
 	var errString string
 
 	for _, e := range errs {

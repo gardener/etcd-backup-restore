@@ -100,7 +100,7 @@ func (c *RestorationConfig) AddFlags(fs *flag.FlagSet) {
 	fs.StringVar(&c.InitialCluster, "initial-cluster", c.InitialCluster, "initial cluster configuration for restore bootstrap")
 	fs.StringVar(&c.InitialClusterToken, "initial-cluster-token", c.InitialClusterToken, "initial cluster token for the etcd cluster during restore bootstrap")
 	fs.StringVarP(&c.DataDir, "data-dir", "d", c.DataDir, "path to the data directory")
-	fs.StringVar(&c.TempDir, "restore-temp-dir", c.TempDir, "path to the temporary directory to store snapshot files during restoration")
+	fs.StringVar(&c.TempDir, "restoration-temp-dir", c.TempDir, "path to the temporary directory to store snapshot files during restoration")
 	fs.StringArrayVar(&c.InitialAdvertisePeerURLs, "initial-advertise-peer-urls", c.InitialAdvertisePeerURLs, "list of this member's peer URLs to advertise to the rest of the cluster")
 	fs.StringVar(&c.Name, "name", c.Name, "human-readable name for this member")
 	fs.BoolVar(&c.SkipHashCheck, "skip-hash-check", c.SkipHashCheck, "ignore snapshot integrity hash value (required if copied from data directory)")

@@ -926,6 +926,45 @@ var _ = Describe("Running Restorer when both v1 and v2 directory structures are 
 	})
 })
 
+var _ = Describe("Unit testing individual functions for restorer package", func() {
+	Describe("testing ErrorArrayToError", func() {
+		var (
+			errs []error
+		)
+		Context("when error array has no elements", func() {
+			It("should return nil", func() {
+				errs = []error{}
+				Expect(ErrorArrayToError(errs)).Should(BeNil())
+			})
+		})
+		Context("when error array has one element", func() {
+			It("should return nil", func() {
+				errs = []error{
+					fmt.Errorf("error0"),
+				}
+				expectedErr := fmt.Errorf("error0")
+
+				err := ErrorArrayToError(errs)
+				Expect(err).Should(Equal(expectedErr))
+			})
+		})
+		Context("when error array has more than one element", func() {
+			It("should return nil", func() {
+				errs = []error{
+					fmt.Errorf("error0"),
+					fmt.Errorf("error1"),
+					fmt.Errorf("error2"),
+				}
+				expectedErr := fmt.Errorf("error0\nerror1\nerror2")
+
+				err := ErrorArrayToError(errs)
+				Expect(err).Should(Equal(expectedErr))
+			})
+		})
+	})
+
+})
+
 // corruptEtcdDir corrupts the etcd directory by deleting it
 func corruptEtcdDir() error {
 	if _, err := os.Stat(etcdDir); os.IsNotExist(err) {
