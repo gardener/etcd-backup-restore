@@ -24,7 +24,8 @@ var _ = Describe("Membercontrol", func() {
 		cl                   *mockfactory.MockClusterCloser
 	)
 	const (
-		podName = "test-pod"
+		podName      = "test-pod"
+		podNamespace = "test-podnamespace"
 	)
 
 	BeforeEach(func() {
@@ -35,6 +36,7 @@ var _ = Describe("Membercontrol", func() {
 		etcdConnectionConfig.DefragTimeout.Duration = 30 * time.Second
 
 		os.Setenv("POD_NAME", podName)
+		os.Setenv("POD_NAMESPACE", podNamespace)
 
 		ctrl = gomock.NewController(GinkgoT())
 		factory = mockfactory.NewMockFactory(ctrl)
@@ -66,6 +68,7 @@ var _ = Describe("Membercontrol", func() {
 	AfterEach(func() {
 		os.Unsetenv("POD_NAME")
 		os.Unsetenv("ETCD_CONF")
+		os.Unsetenv("POD_NAMESPACE")
 	})
 
 	Describe("Creating NewMemberControl", func() {
