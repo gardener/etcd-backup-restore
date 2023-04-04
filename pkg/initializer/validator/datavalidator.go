@@ -101,7 +101,7 @@ func (d *DataValidator) sanityCheck(failBelowRevision int64) (DataDirStatus, err
 		if _, err := os.Stat(path); err != nil {
 			if errors.Is(err, os.ErrNotExist) {
 				data := []byte(namespace)
-				err := os.WriteFile(path, data, 0644)
+				err := os.WriteFile(path, data, 0600)
 				if err != nil {
 					d.Logger.Fatalf("can't create `safe_guard` file because : %v", err)
 				}

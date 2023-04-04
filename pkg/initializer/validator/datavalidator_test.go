@@ -69,7 +69,7 @@ var _ = Describe("Running Datavalidator", func() {
 			// change the content of safe_guard file to indicate wrong volume mount
 			path := outputDir + "/" + "safe_guard"
 			data := []byte("abcd")
-			err = os.WriteFile(path, data, 0644)
+			err = os.WriteFile(path, data, 0600)
 			Expect(err).ShouldNot(HaveOccurred())
 
 			dataDirStatus, err := validator.Validate(Sanity, 0)
