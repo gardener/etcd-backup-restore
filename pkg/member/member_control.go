@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/gardener/etcd-backup-restore/pkg/etcdutil"
-	"github.com/gardener/etcd-backup-restore/pkg/etcdutil/client"
+	etcdClient "github.com/gardener/etcd-backup-restore/pkg/etcdutil/client"
 	"github.com/gardener/etcd-backup-restore/pkg/metrics"
 	"github.com/gardener/etcd-backup-restore/pkg/miscellaneous"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
@@ -18,6 +18,7 @@ import (
 	"go.etcd.io/etcd/etcdserver/api/v3rpc/rpctypes"
 	"go.etcd.io/etcd/etcdserver/etcdserverpb"
 	"k8s.io/client-go/util/retry"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 const (
@@ -42,7 +43,7 @@ type Control interface {
 	AddMemberAsLearner(context.Context) error
 
 	// IsClusterScaledup determines whether a etcd cluster is getting scale-up or not.
-	IsClusterScaledup(context.Context) (bool, error)
+	IsClusterScaledup(context.Context, client.Client) (bool, error)
 
 	// IsMemberInCluster checks is the current members peer URL is already part of the etcd cluster
 	IsMemberInCluster(context.Context) (bool, error)
@@ -52,7 +53,7 @@ type Control interface {
 	PromoteMember(context.Context) error
 
 	// UpdateMemberPeerURL updates the peer address of a specified etcd cluster member.
-	UpdateMemberPeerURL(context.Context, client.ClusterCloser) error
+	UpdateMemberPeerURL(context.Context, etcdClient.ClusterCloser) error
 
 	// RemoveMember removes the member from the etcd cluster.
 	RemoveMember(context.Context) error
@@ -63,7 +64,7 @@ type Control interface {
 
 // memberControl holds the configuration for the mechanism of adding a new member to the cluster.
 type memberControl struct {
-	clientFactory client.Factory
+	clientFactory etcdClient.Factory
 	logger        logrus.Entry
 	podName       string
 	configFile    string
@@ -77,7 +78,7 @@ func NewMemberControl(etcdConnConfig *brtypes.EtcdConnectionConfig) Control {
 	etcdConn := *etcdConnConfig
 
 	// We want to use the service endpoint since we're only supposed to connect to ready etcd members.
-	clientFactory := etcdutil.NewFactory(etcdConn, client.UseServiceEndpoints(true))
+	clientFactory := etcdutil.NewFactory(etcdConn, etcdClient.UseServiceEndpoints(true))
 	podName, err := miscellaneous.GetEnvVarOrError("POD_NAME")
 	if err != nil {
 		logger.Fatalf("Error reading POD_NAME env var : %v", err)
@@ -202,7 +203,7 @@ func getMemberPeerURL(configFile string, podName string) (string, error) {
 }
 
 // doUpdateMemberPeerAddress updated the peer address of a specified etcd member
-func (m *memberControl) doUpdateMemberPeerAddress(ctx context.Context, cli client.ClusterCloser, id uint64) error {
+func (m *memberControl) doUpdateMemberPeerAddress(ctx context.Context, cli etcdClient.ClusterCloser, id uint64) error {
 	// Already existing clusters or cluster after restoration have `http://localhost:2380` as the peer address. This needs to explicitly updated to the correct peer address.
 	m.logger.Infof("Updating member peer URL for %s", m.podName)
 
@@ -259,7 +260,7 @@ func findMember(existingMembers []*etcdserverpb.Member, memberName string) *etcd
 }
 
 // UpdateMemberPeerURL updates the peer address of a specified etcd cluster member.
-func (m *memberControl) UpdateMemberPeerURL(ctx context.Context, cli client.ClusterCloser) error {
+func (m *memberControl) UpdateMemberPeerURL(ctx context.Context, cli etcdClient.ClusterCloser) error {
 	m.logger.Infof("Attempting to update the member Info: %v", m.podName)
 	ctx, cancel := context.WithTimeout(ctx, brtypes.DefaultEtcdConnectionTimeout)
 	defer cancel()
@@ -315,13 +316,7 @@ func (m *memberControl) IsLearnerPresent(ctx context.Context) (bool, error) {
 }
 
 // ClusterScaled determines whether a etcd cluster is getting scale-up or not and returns a boolean
-func (m *memberControl) IsClusterScaledup(ctx context.Context) (bool, error) {
-	clientSet, err := miscellaneous.GetKubernetesClientSetOrError()
-	if err != nil {
-		m.logger.Fatalf("failed to create clientset, %v", err)
-		return false, err
-	}
-
+func (m *memberControl) IsClusterScaledup(ctx context.Context, clientSet client.Client) (bool, error) {
 	state, err := miscellaneous.GetInitialClusterStateIfScaleup(ctx, m.logger, clientSet, m.podName, m.podNamespace)
 	if err != nil {
 		m.logger.Errorf("unable to check scale-up case :%v", err)
@@ -330,8 +325,8 @@ func (m *memberControl) IsClusterScaledup(ctx context.Context) (bool, error) {
 	}
 
 	isEtcdMemberPresent, err := m.IsMemberInCluster(ctx)
-	if err != nil {
+	if err != nil || isEtcdMemberPresent {
 		return false, err
 	}
-	return !isEtcdMemberPresent, nil
+	return true, nil
 }

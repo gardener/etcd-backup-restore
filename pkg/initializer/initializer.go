@@ -45,21 +45,29 @@ import (
 //   - Try to perform an Etcd data restoration from the latest snapshot.
 //   - No snapshots are available, start etcd as a fresh installation.
 func (e *EtcdInitializer) Initialize(mode validator.Mode, failBelowRevision int64) error {
+	logger := e.Logger.WithField("actor", "initializer")
 	metrics.CurrentClusterSize.With(prometheus.Labels{}).Set(float64(e.Validator.OriginalClusterSize))
 	start := time.Now()
 	isEtcdMemberPresent := false
 	ctx := context.Background()
 	var err error
 
+	clientSet, err := miscellaneous.GetKubernetesClientSetOrError()
+	if err != nil {
+		logger.Fatalf("failed to create clientset, %v", err)
+	}
+
 	//Etcd cluster scale-up case
-	if miscellaneous.IsMultiNode(e.Logger.WithField("actor", "initializer")) {
+	if miscellaneous.IsMultiNode(logger) {
 		m := member.NewMemberControl(e.Config.EtcdConnectionConfig)
-		isScaleup, err := m.IsClusterScaledup(ctx)
+		isScaleup, err := m.IsClusterScaledup(ctx, clientSet)
 		if isScaleup && err == nil {
-			retry.OnError(retry.DefaultBackoff, errors.AnyError, func() error {
+			if err := retry.OnError(retry.DefaultBackoff, errors.AnyError, func() error {
 				return m.AddMemberAsLearner(ctx)
-			})
-			// return here after adding member as no restoration or validation needed
+			}); err != nil {
+				logger.Fatalf("Cluster scale-up detected but unable to add new member as learner: %v", err)
+			}
+			// return here after adding non-voting member(learner) as no restoration or validation needed
 			return nil
 		}
 	}
