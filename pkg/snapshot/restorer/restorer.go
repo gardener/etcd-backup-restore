@@ -155,7 +155,8 @@ func (r *Restorer) Restore(ro brtypes.RestoreOptions, m member.Control) (*embed.
 func (r *Restorer) restoreFromBaseSnapshot(ro brtypes.RestoreOptions) error {
 	var err error
 	if path.Join(ro.BaseSnapshot.SnapDir, ro.BaseSnapshot.SnapName) == "" {
-		return fmt.Errorf("base snapshot path not provided")
+		r.logger.Warnf("Base snapshot path not provided. Will do nothing.")
+		return nil
 	}
 	r.logger.Infof("Restoring from base snapshot: %s", path.Join(ro.BaseSnapshot.SnapDir, ro.BaseSnapshot.SnapName))
 	cfg := etcdserver.ServerConfig{
