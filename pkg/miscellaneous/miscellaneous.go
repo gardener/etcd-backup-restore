@@ -567,11 +567,12 @@ func GetPrevScheduledSnapTime(nextSnapSchedule time.Time, timeWindow float64) ti
 	)
 }
 
-// GetBackoff returns the backoff with Factor=2
-func GetBackoff(retryPeriod time.Duration, steps int) wait.Backoff {
-	backoff := retry.DefaultBackoff
-	backoff.Duration = retryPeriod
-	backoff.Factor = 2
-	backoff.Steps = steps
-	return backoff
+// CreateBackoff returns the backoff with Factor=2
+func CreateBackoff(retryPeriod time.Duration, steps int) wait.Backoff {
+	return wait.Backoff{
+		Duration: retryPeriod,
+		Factor:   2,
+		Jitter:   retry.DefaultBackoff.Jitter,
+		Steps:    steps,
+	}
 }

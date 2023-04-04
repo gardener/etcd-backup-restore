@@ -54,7 +54,7 @@ func (e *EtcdInitializer) Initialize(mode validator.Mode, failBelowRevision int6
 	//Etcd cluster scale-up case
 	if miscellaneous.IsMultiNode(e.Logger.WithField("actor", "initializer")) {
 		m := member.NewMemberControl(e.Config.EtcdConnectionConfig)
-		isScaleup, err := member.IsScaleup(ctx, m)
+		isScaleup, err := m.IsClusterScaledup(ctx)
 		if isScaleup && err == nil {
 			retry.OnError(retry.DefaultBackoff, errors.AnyError, func() error {
 				return m.AddMemberAsLearner(ctx)

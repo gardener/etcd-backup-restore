@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"strconv"
 	"time"
 
@@ -42,6 +41,9 @@ type Control interface {
 	// AddMemberAsLearner add a new member as a learner to the etcd cluster
 	AddMemberAsLearner(context.Context) error
 
+	// IsClusterScaledup determines whether a etcd cluster is getting scale-up or not.
+	IsClusterScaledup(context.Context) (bool, error)
+
 	// IsMemberInCluster checks is the current members peer URL is already part of the etcd cluster
 	IsMemberInCluster(context.Context) (bool, error)
 
@@ -65,6 +67,7 @@ type memberControl struct {
 	logger        logrus.Entry
 	podName       string
 	configFile    string
+	podNamespace  string
 }
 
 // NewMemberControl returns new ExponentialBackoff.
@@ -79,6 +82,12 @@ func NewMemberControl(etcdConnConfig *brtypes.EtcdConnectionConfig) Control {
 	if err != nil {
 		logger.Fatalf("Error reading POD_NAME env var : %v", err)
 	}
+
+	podNamespace, err := miscellaneous.GetEnvVarOrError("POD_NAMESPACE")
+	if err != nil {
+		logger.Fatalf("Error reading POD_NAMESPACE env var : %v", err)
+	}
+
 	//TODO: Refactor needed
 	configFile = miscellaneous.GetConfigFilePath()
 
@@ -87,6 +96,7 @@ func NewMemberControl(etcdConnConfig *brtypes.EtcdConnectionConfig) Control {
 		logger:        *logger,
 		podName:       podName,
 		configFile:    configFile,
+		podNamespace:  podNamespace,
 	}
 }
 
@@ -130,7 +140,7 @@ func (m *memberControl) IsMemberInCluster(ctx context.Context) (bool, error) {
 	m.logger.Infof("Checking if member %s is part of a running cluster", m.podName)
 	// Check if an etcd is already available
 
-	backoff := miscellaneous.GetBackoff(RetryPeriod, RetrySteps)
+	backoff := miscellaneous.CreateBackoff(RetryPeriod, RetrySteps)
 	err := retry.OnError(backoff, func(err error) bool {
 		return err != nil
 	}, func() error {
@@ -304,22 +314,17 @@ func (m *memberControl) IsLearnerPresent(ctx context.Context) (bool, error) {
 	return miscellaneous.CheckIfLearnerPresent(learnerCtx, cli)
 }
 
-// IsScaleup determines whether a etcd cluster is getting scale-up or not.
-func IsScaleup(ctx context.Context, m Control) (bool, error) {
-	logger := logrus.New().WithField("actor", "scale-up")
-	// fetch pod name from env
-	podNS := os.Getenv("POD_NAMESPACE")
-	podName := os.Getenv("POD_NAME")
-
+// ClusterScaled determines whether a etcd cluster is getting scale-up or not and returns a boolean
+func (m *memberControl) IsClusterScaledup(ctx context.Context) (bool, error) {
 	clientSet, err := miscellaneous.GetKubernetesClientSetOrError()
 	if err != nil {
-		logger.Fatalf("failed to create clientset, %v", err)
+		m.logger.Fatalf("failed to create clientset, %v", err)
 		return false, err
 	}
 
-	state, err := miscellaneous.GetInitialClusterStateIfScaleup(ctx, *logger, clientSet, podName, podNS)
+	state, err := miscellaneous.GetInitialClusterStateIfScaleup(ctx, m.logger, clientSet, m.podName, m.podNamespace)
 	if err != nil {
-		logger.Errorf("unable to check scale-up case :%v", err)
+		m.logger.Errorf("unable to check scale-up case :%v", err)
 	} else if state != nil && *state == miscellaneous.ClusterStateExisting {
 		return true, nil
 	}
