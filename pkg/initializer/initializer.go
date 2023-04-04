@@ -62,11 +62,9 @@ func (e *EtcdInitializer) Initialize(mode validator.Mode, failBelowRevision int6
 		m := member.NewMemberControl(e.Config.EtcdConnectionConfig)
 		isScaleup, err := m.IsClusterScaledUp(ctx, clientSet)
 		if isScaleup && err == nil {
-			if err := retry.OnError(retry.DefaultBackoff, errors.AnyError, func() error {
+			retry.OnError(retry.DefaultBackoff, errors.AnyError, func() error {
 				return m.AddMemberAsLearner(ctx)
-			}); err != nil {
-				logger.Fatalf("Cluster scale-up detected but unable to add new member as learner: %v", err)
-			}
+			})
 			// return here after adding non-voting member(learner) as no restoration or validation needed
 			return nil
 		}
