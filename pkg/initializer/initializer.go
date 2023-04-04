@@ -52,15 +52,10 @@ func (e *EtcdInitializer) Initialize(mode validator.Mode, failBelowRevision int6
 	ctx := context.Background()
 	var err error
 
-	clientSet, err := miscellaneous.GetKubernetesClientSetOrError()
-	if err != nil {
-		logger.Fatalf("failed to create clientset, %v", err)
-	}
-
 	//Etcd cluster scale-up case
 	if miscellaneous.IsMultiNode(logger) {
 		m := member.NewMemberControl(e.Config.EtcdConnectionConfig)
-		isScaleup, err := m.IsClusterScaledUp(ctx, clientSet)
+		isScaleup, err := m.IsClusterScaledUp(ctx)
 		if isScaleup && err == nil {
 			retry.OnError(retry.DefaultBackoff, errors.AnyError, func() error {
 				return m.AddMemberAsLearner(ctx)
