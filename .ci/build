@@ -47,8 +47,8 @@ cd "${SOURCE_PATH}"
 ###############################################################################
 
 VERSION_FILE="$(${READLINK_BIN}  -f "${SOURCE_PATH}/VERSION")"
-VERSION="$(cat "${VERSION_FILE}")"
-GIT_SHA=$(git rev-parse --short HEAD || echo "GitNotFound")
+VERSION="${VERSION:-"$(cat "${VERSION_FILE}")"}"
+GIT_SHA="${GIT_SHA:-$(git rev-parse --short HEAD || echo "GitNotFound")}"
 
 CGO_ENABLED=0  go build \
   -v \
