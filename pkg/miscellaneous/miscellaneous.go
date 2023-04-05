@@ -421,7 +421,7 @@ func IsBackupBucketEmpty(snapStoreConfig *brtypes.SnapstoreConfig, logger *logru
 	return true
 }
 
-const scaledToMultiNodeAnnotationKey = "gardener.cloud/scaled-to-multi-node"
+const ScaledToMultiNodeAnnotationKey = "gardener.cloud/scaled-to-multi-node"
 
 // GetInitialClusterStateIfScaleup checks if it is the Scale-up scenario and returns the cluster state either `new` or `existing`.
 func GetInitialClusterStateIfScaleup(ctx context.Context, logger logrus.Entry, clientSet client.Client, podName string, podNS string) (*string, error) {
@@ -436,7 +436,7 @@ func GetInitialClusterStateIfScaleup(ctx context.Context, logger logrus.Entry, c
 		return nil, err
 	}
 
-	if metav1.HasAnnotation(curSts.ObjectMeta, scaledToMultiNodeAnnotationKey) {
+	if metav1.HasAnnotation(curSts.ObjectMeta, ScaledToMultiNodeAnnotationKey) {
 		return pointer.StringPtr(ClusterStateExisting), nil
 	}
 

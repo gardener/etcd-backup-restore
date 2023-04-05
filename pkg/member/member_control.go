@@ -324,14 +324,14 @@ func (m *memberControl) IsClusterScaledUp(ctx context.Context) (bool, error) {
 
 	state, err := miscellaneous.GetInitialClusterStateIfScaleup(ctx, m.logger, clientSet, m.podName, m.podNamespace)
 	if err != nil {
-		m.logger.Errorf("unable to check scale-up case :%v", err)
+		m.logger.Errorf("annotation: %v is not present: %v", miscellaneous.ScaledToMultiNodeAnnotationKey, err)
 	} else if state != nil && *state == miscellaneous.ClusterStateExisting {
 		return true, nil
 	}
 
 	isEtcdMemberPresent, err := m.IsMemberInCluster(ctx)
-	if err != nil {
+	if err != nil || isEtcdMemberPresent {
 		return false, err
 	}
-	return !isEtcdMemberPresent, nil
+	return true, nil
 }
