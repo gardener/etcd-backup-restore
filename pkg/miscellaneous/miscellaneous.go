@@ -157,7 +157,7 @@ func getStructuredBackupList(snapList brtypes.SnapList) []backup {
 // StartEmbeddedEtcd starts the embedded etcd server.
 func StartEmbeddedEtcd(logger *logrus.Entry, ro *brtypes.RestoreOptions) (*embed.Etcd, error) {
 	cfg := embed.NewConfig()
-	cfg.Dir = filepath.Join(ro.Config.RestoreDataDir)
+	cfg.Dir = filepath.Join(ro.Config.DataDir)
 	DefaultListenPeerURLs := "http://localhost:0"
 	DefaultListenClientURLs := "http://localhost:0"
 	DefaultInitialAdvertisePeerURLs := "http://localhost:0"

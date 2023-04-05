@@ -71,6 +71,7 @@ if [ -z $COVER ] || [ "$COVER" = false ] ; then
   ginkgo -race -trace $GINKGO_COMMON_FLAGS -gcflags=all=-d=checkptr=0 --randomizeAllSpecs --randomizeSuites --failOnPending --skip="NEGATIVE\:.*" ${TEST_PACKAGES}
 
   if [ "$RUN_NEGATIVE" = "true" ] ; then
+    echo "[INFO] Running negative tests now..."
     #run negative scenario in a sequenced manner (removed failOnPending as one spec in restore test is marked as 'X' for excluding)
     ginkgo -race -trace $GINKGO_COMMON_FLAGS -gcflags=all=-d=checkptr=0 --focus="NEGATIVE\:.*" ${TEST_PACKAGES}
   fi

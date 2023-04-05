@@ -32,7 +32,8 @@ var _ = Describe("restorer types", func() {
 			return &brtypes.RestorationConfig{
 				InitialCluster:           s,
 				InitialClusterToken:      s,
-				RestoreDataDir:           s,
+				DataDir:                  s,
+				TempSnapshotsDir:         s,
 				InitialAdvertisePeerURLs: []string{s, s},
 				Name:                     s,
 				SkipHashCheck:            b,

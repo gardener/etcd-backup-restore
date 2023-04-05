@@ -119,21 +119,21 @@ func (e *EtcdInitializer) Initialize(mode validator.Mode, failBelowRevision int6
 }
 
 // NewInitializer creates an etcd initializer object.
-func NewInitializer(options *brtypes.RestoreOptions, snapstoreConfig *brtypes.SnapstoreConfig, etcdConnectionConfig *brtypes.EtcdConnectionConfig, logger *logrus.Logger) *EtcdInitializer {
+func NewInitializer(restoreOptions *brtypes.RestoreOptions, snapstoreConfig *brtypes.SnapstoreConfig, etcdConnectionConfig *brtypes.EtcdConnectionConfig, logger *logrus.Logger) *EtcdInitializer {
 	zapLogger, _ := zap.NewProduction()
 	etcdInit := &EtcdInitializer{
 		Config: &Config{
 			SnapstoreConfig:      snapstoreConfig,
-			RestoreOptions:       options,
+			RestoreOptions:       restoreOptions,
 			EtcdConnectionConfig: etcdConnectionConfig,
 		},
 		Validator: &validator.DataValidator{
 			Config: &validator.Config{
-				DataDir:                options.Config.RestoreDataDir,
-				EmbeddedEtcdQuotaBytes: options.Config.EmbeddedEtcdQuotaBytes,
+				DataDir:                restoreOptions.Config.DataDir,
+				EmbeddedEtcdQuotaBytes: restoreOptions.Config.EmbeddedEtcdQuotaBytes,
 				SnapstoreConfig:        snapstoreConfig,
 			},
-			OriginalClusterSize: options.OriginalClusterSize,
+			OriginalClusterSize: restoreOptions.OriginalClusterSize,
 			Logger:              logger,
 			ZapLogger:           zapLogger,
 		},
@@ -149,7 +149,7 @@ func NewInitializer(options *brtypes.RestoreOptions, snapstoreConfig *brtypes.Sn
 func (e *EtcdInitializer) restoreCorruptData() (bool, error) {
 	logger := e.Logger
 	tempRestoreOptions := *(e.Config.RestoreOptions.DeepCopy())
-	dataDir := tempRestoreOptions.Config.RestoreDataDir
+	dataDir := tempRestoreOptions.Config.DataDir
 
 	if e.Config.SnapstoreConfig == nil || len(e.Config.SnapstoreConfig.Provider) == 0 {
 		logger.Warnf("No snapstore storage provider configured.")
@@ -175,9 +175,9 @@ func (e *EtcdInitializer) restoreCorruptData() (bool, error) {
 
 	tempRestoreOptions.BaseSnapshot = baseSnap
 	tempRestoreOptions.DeltaSnapList = deltaSnapList
-	tempRestoreOptions.Config.RestoreDataDir = fmt.Sprintf("%s.%s", tempRestoreOptions.Config.RestoreDataDir, "part")
+	tempRestoreOptions.Config.DataDir = fmt.Sprintf("%s.%s", tempRestoreOptions.Config.DataDir, "part")
 
-	if err := e.removeDir(tempRestoreOptions.Config.RestoreDataDir); err != nil {
+	if err := e.removeDir(tempRestoreOptions.Config.DataDir); err != nil {
 		return false, fmt.Errorf("failed to delete previous temporary data directory: %v", err)
 	}
 
@@ -201,7 +201,7 @@ func (e *EtcdInitializer) restoreCorruptData() (bool, error) {
 // and false if directory removal failed or if directory
 // never existed (bootstrap case)
 func (e *EtcdInitializer) restoreWithEmptySnapstore() (bool, error) {
-	dataDir := e.Config.RestoreOptions.Config.RestoreDataDir
+	dataDir := e.Config.RestoreOptions.Config.DataDir
 	e.Logger.Infof("Removing directory(%s) since snapstore is empty.", dataDir)
 
 	// If data directory doesn't exist, it means we are bootstrapping
@@ -253,7 +253,7 @@ func (e *EtcdInitializer) restoreInMultiNode(ctx context.Context) error {
 		return fmt.Errorf("unable to remove the member %v", err)
 	}
 
-	if err := e.removeDir(e.Config.RestoreOptions.Config.RestoreDataDir); err != nil {
+	if err := e.removeDir(e.Config.RestoreOptions.Config.DataDir); err != nil {
 		return fmt.Errorf("unable to remove the data-dir %v", err)
 	}
 

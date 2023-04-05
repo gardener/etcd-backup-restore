@@ -365,7 +365,7 @@ func (d *DataValidator) checkFullRevisionConsistency(dataDir string, latestSnaps
 	d.Logger.Info("Starting embedded etcd server...")
 	ro := &brtypes.RestoreOptions{
 		Config: &brtypes.RestorationConfig{
-			RestoreDataDir:         dataDir,
+			DataDir:                dataDir,
 			EmbeddedEtcdQuotaBytes: d.Config.EmbeddedEtcdQuotaBytes,
 			MaxRequestBytes:        defaultMaxRequestBytes,
 			MaxTxnOps:              defaultMaxTxnOps,

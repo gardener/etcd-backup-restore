@@ -18,6 +18,7 @@ import (
 	"context"
 	"os"
 	"path"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
@@ -34,18 +35,19 @@ import (
 
 const (
 	outputDir          = "../../../test/output"
-	etcdDir            = outputDir + "/default.etcd"
-	snapstoreDir       = outputDir + "/snapshotter.bkp"
 	embeddedEtcdPortNo = "9089"
 )
 
 var (
-	testCtx   = context.Background()
-	logger    = logrus.New().WithField("suite", "restorer")
-	etcd      *embed.Etcd
-	err       error
-	keyTo     int
-	endpoints []string
+	etcdDir      = filepath.Join(outputDir, "default.etcd")
+	tempDir      = filepath.Join(outputDir, "default.restore.tmp")
+	snapstoreDir = filepath.Join(outputDir, "snapshotter.bkp")
+	testCtx      = context.Background()
+	logger       = logrus.New().WithField("suite", "restorer")
+	etcd         *embed.Etcd
+	err          error
+	keyTo        int
+	endpoints    []string
 )
 
 func TestRestorer(t *testing.T) {
