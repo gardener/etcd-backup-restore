@@ -33,7 +33,7 @@ var _ = Describe("restorer types", func() {
 				InitialCluster:           s,
 				InitialClusterToken:      s,
 				DataDir:                  s,
-				TempDir:                  s,
+				TempSnapshotsDir:         s,
 				InitialAdvertisePeerURLs: []string{s, s},
 				Name:                     s,
 				SkipHashCheck:            b,

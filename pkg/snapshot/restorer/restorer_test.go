@@ -103,7 +103,7 @@ var _ = Describe("Running Restorer", func() {
 			restoreOpts = brtypes.RestoreOptions{
 				Config: &brtypes.RestorationConfig{
 					DataDir:                  etcdDir,
-					TempDir:                  tempDir,
+					TempSnapshotsDir:         tempDir,
 					InitialClusterToken:      restoreClusterToken,
 					InitialCluster:           restoreCluster,
 					Name:                     restoreName,
@@ -263,7 +263,7 @@ var _ = Describe("Running Restorer", func() {
 
 			restorationConfig = &brtypes.RestorationConfig{
 				DataDir:                  etcdDir,
-				TempDir:                  tempDir,
+				TempSnapshotsDir:         tempDir,
 				InitialClusterToken:      restoreClusterToken,
 				InitialCluster:           restoreCluster,
 				Name:                     restoreName,
@@ -735,7 +735,7 @@ var _ = Describe("Running Restorer when both v1 and v2 directory structures are 
 
 		restorationConfig = &brtypes.RestorationConfig{
 			DataDir:                  etcdDataDir,
-			TempDir:                  restoreTempDir,
+			TempSnapshotsDir:         restoreTempDir,
 			InitialClusterToken:      restoreClusterToken,
 			InitialCluster:           restoreCluster,
 			Name:                     restoreName,

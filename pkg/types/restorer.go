@@ -62,7 +62,7 @@ type RestorationConfig struct {
 	InitialCluster           string   `json:"initialCluster"`
 	InitialClusterToken      string   `json:"initialClusterToken,omitempty"`
 	DataDir                  string   `json:"dataDir,omitempty"`
-	TempDir                  string   `json:"tempDir,omitempty"`
+	TempSnapshotsDir         string   `json:"tempDir,omitempty"`
 	InitialAdvertisePeerURLs []string `json:"initialAdvertisePeerURLs"`
 	Name                     string   `json:"name"`
 	SkipHashCheck            bool     `json:"skipHashCheck,omitempty"`
@@ -81,7 +81,7 @@ func NewRestorationConfig() *RestorationConfig {
 		InitialCluster:           initialClusterFromName(defaultName),
 		InitialClusterToken:      defaultInitialClusterToken,
 		DataDir:                  fmt.Sprintf("%s.etcd", defaultName),
-		TempDir:                  fmt.Sprintf("%s.restore.tmp", defaultName),
+		TempSnapshotsDir:         fmt.Sprintf("%s.restoration.tmp", defaultName),
 		InitialAdvertisePeerURLs: []string{defaultInitialAdvertisePeerURLs},
 		Name:                     defaultName,
 		SkipHashCheck:            false,
@@ -100,7 +100,7 @@ func (c *RestorationConfig) AddFlags(fs *flag.FlagSet) {
 	fs.StringVar(&c.InitialCluster, "initial-cluster", c.InitialCluster, "initial cluster configuration for restore bootstrap")
 	fs.StringVar(&c.InitialClusterToken, "initial-cluster-token", c.InitialClusterToken, "initial cluster token for the etcd cluster during restore bootstrap")
 	fs.StringVarP(&c.DataDir, "data-dir", "d", c.DataDir, "path to the data directory")
-	fs.StringVar(&c.TempDir, "restoration-temp-dir", c.TempDir, "path to the temporary directory to store snapshot files during restoration")
+	fs.StringVar(&c.TempSnapshotsDir, "restoration-temp-snapshots-dir", c.TempSnapshotsDir, "path to the temporary directory to store snapshot files during restoration")
 	fs.StringArrayVar(&c.InitialAdvertisePeerURLs, "initial-advertise-peer-urls", c.InitialAdvertisePeerURLs, "list of this member's peer URLs to advertise to the rest of the cluster")
 	fs.StringVar(&c.Name, "name", c.Name, "human-readable name for this member")
 	fs.BoolVar(&c.SkipHashCheck, "skip-hash-check", c.SkipHashCheck, "ignore snapshot integrity hash value (required if copied from data directory)")
@@ -134,7 +134,7 @@ func (c *RestorationConfig) Validate() error {
 		return fmt.Errorf("UnSupported auto-compaction-mode")
 	}
 	c.DataDir = path.Clean(c.DataDir)
-	c.TempDir = path.Clean(c.TempDir)
+	c.TempSnapshotsDir = path.Clean(c.TempSnapshotsDir)
 	return nil
 }
 

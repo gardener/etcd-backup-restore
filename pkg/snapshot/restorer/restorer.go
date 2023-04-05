@@ -101,16 +101,16 @@ func (r *Restorer) Restore(ro brtypes.RestoreOptions, m member.Control) (*embed.
 	}
 
 	r.logger.Infof("Attempting to apply %d delta snapshots for restoration.", len(ro.DeltaSnapList))
-	r.logger.Infof("Creating temporary directory %s for persisting delta snapshots locally.", ro.Config.TempDir)
+	r.logger.Infof("Creating temporary directory %s for persisting delta snapshots locally.", ro.Config.TempSnapshotsDir)
 
-	err := os.MkdirAll(ro.Config.TempDir, 0700)
+	err := os.MkdirAll(ro.Config.TempSnapshotsDir, 0700)
 	if err != nil {
 		return nil, err
 	}
 
 	defer func() {
-		if err := os.RemoveAll(ro.Config.TempDir); err != nil {
-			r.logger.Errorf("Failed to remove restoration temp directory %s: %v", ro.Config.TempDir, err)
+		if err := os.RemoveAll(ro.Config.TempSnapshotsDir); err != nil {
+			r.logger.Errorf("Failed to remove restoration temp directory %s: %v", ro.Config.TempSnapshotsDir, err)
 		}
 	}()
 
@@ -441,7 +441,7 @@ func (r *Restorer) applyDeltaSnapshots(clientKV client.KVCloser, ro brtypes.Rest
 	go r.applySnaps(clientKV, remainingSnaps, applierInfoCh, errCh, stopCh, &wg)
 
 	for f := 0; f < numFetchers; f++ {
-		go r.fetchSnaps(f, fetcherInfoCh, applierInfoCh, snapLocationsCh, errCh, stopCh, &wg, ro.Config.TempDir)
+		go r.fetchSnaps(f, fetcherInfoCh, applierInfoCh, snapLocationsCh, errCh, stopCh, &wg, ro.Config.TempSnapshotsDir)
 	}
 
 	for i, remainingSnap := range remainingSnaps {

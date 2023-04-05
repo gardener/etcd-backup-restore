@@ -75,7 +75,7 @@ var _ = Describe("Running Compactor", func() {
 					InitialCluster:           restoreCluster,
 					InitialClusterToken:      restoreClusterToken,
 					DataDir:                  tempDataDir,
-					TempDir:                  tempRestorationSnapshotsDir,
+					TempSnapshotsDir:         tempRestorationSnapshotsDir,
 					InitialAdvertisePeerURLs: restorePeerURLs,
 					Name:                     restoreName,
 					SkipHashCheck:            skipHashCheck,
