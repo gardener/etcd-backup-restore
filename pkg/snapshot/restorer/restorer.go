@@ -796,31 +796,32 @@ func verifySnapshotRevision(clientKV client.KVCloser, snap *brtypes.Snapshot) er
 	return nil
 }
 
-// getDecompressedSnapshotReadCloser passes the given ReadCloser through the
+// getNormalizedSnapshotReadCloser passes the given ReadCloser through the
 // snapshot decompressor if the snapshot is compressed using a compression policy.
-// Also returns whether the snapshot was initially compressed or not, as well as
+// If snapshot is not compressed, it returns the given ReadCloser as is.
+// It also returns whether the snapshot was initially compressed or not, as well as
 // the compression policy used for compressing the snapshot.
-func getDecompressedSnapshotReadCloser(rc io.ReadCloser, snap *brtypes.Snapshot) (io.ReadCloser, bool, string, error) {
+func getNormalizedSnapshotReadCloser(rc io.ReadCloser, snap *brtypes.Snapshot) (io.ReadCloser, bool, string, error) {
 	isCompressed, compressionPolicy, err := compressor.IsSnapshotCompressed(snap.CompressionSuffix)
 	if err != nil {
-		return nil, false, compressionPolicy, err
+		return rc, false, "", err
 	}
 
 	if isCompressed {
 		// decompress the snapshot
 		rc, err = compressor.DecompressSnapshot(rc, compressionPolicy)
 		if err != nil {
-			return nil, true, compressionPolicy, fmt.Errorf("unable to decompress the snapshot: %v", err)
+			return rc, true, compressionPolicy, fmt.Errorf("unable to decompress the snapshot: %v", err)
 		}
 	}
 
-	return rc, true, compressionPolicy, nil
+	return rc, false, "", nil
 }
 
 func (r *Restorer) readSnapshotContentsFromReadCloser(rc io.ReadCloser, snap *brtypes.Snapshot) ([]byte, error) {
 	startTime := time.Now()
 
-	rc, wasCompressed, compressionPolicy, err := getDecompressedSnapshotReadCloser(rc, snap)
+	rc, wasCompressed, compressionPolicy, err := getNormalizedSnapshotReadCloser(rc, snap)
 	if err != nil {
 		return nil, fmt.Errorf("failed to decompress delta snapshot %s : %v", snap.SnapName, err)
 	}
@@ -835,7 +836,7 @@ func (r *Restorer) readSnapshotContentsFromReadCloser(rc io.ReadCloser, snap *br
 	if wasCompressed {
 		r.logger.Infof("successfully decompressed data of delta snapshot in %v seconds [CompressionPolicy:%v]", totalTime, compressionPolicy)
 	} else {
-		r.logger.Infof("successfully decompressed data of delta snapshot in %v seconds", totalTime)
+		r.logger.Infof("successfully read the data of delta snapshot in %v seconds", totalTime)
 	}
 
 	if bufSize <= sha256.Size {
