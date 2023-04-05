@@ -193,6 +193,7 @@ func (r *Restorer) makeDB(snapDir string, snap *brtypes.Snapshot, commit int, sk
 	if err != nil {
 		return err
 	}
+	defer rc.Close()
 
 	startTime := time.Now()
 	isCompressed, compressionPolicy, err := compressor.IsSnapshotCompressed(snap.CompressionSuffix)
@@ -206,7 +207,6 @@ func (r *Restorer) makeDB(snapDir string, snap *brtypes.Snapshot, commit int, sk
 			return fmt.Errorf("unable to decompress the snapshot: %v", err)
 		}
 	}
-	defer rc.Close()
 
 	if err := os.MkdirAll(snapDir, 0700); err != nil {
 		return err
@@ -815,7 +815,7 @@ func getNormalizedSnapshotReadCloser(rc io.ReadCloser, snap *brtypes.Snapshot) (
 		}
 	}
 
-	return rc, false, "", nil
+	return rc, isCompressed, compressionPolicy, nil
 }
 
 func (r *Restorer) readSnapshotContentsFromReadCloser(rc io.ReadCloser, snap *brtypes.Snapshot) ([]byte, error) {
