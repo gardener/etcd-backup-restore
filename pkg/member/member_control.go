@@ -18,7 +18,7 @@ import (
 	"go.etcd.io/etcd/etcdserver/api/v3rpc/rpctypes"
 	"go.etcd.io/etcd/etcdserver/etcdserverpb"
 	"k8s.io/client-go/util/retry"
-	//"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 const (
@@ -43,7 +43,7 @@ type Control interface {
 	AddMemberAsLearner(context.Context) error
 
 	// IsClusterScaledUp determines whether a etcd cluster is getting scale-up or not.
-	IsClusterScaledUp(context.Context) (bool, error)
+	IsClusterScaledUp(context.Context, client.Client) (bool, error)
 
 	// IsMemberInCluster checks is the current members peer URL is already part of the etcd cluster
 	IsMemberInCluster(context.Context) (bool, error)
@@ -316,12 +316,7 @@ func (m *memberControl) IsLearnerPresent(ctx context.Context) (bool, error) {
 }
 
 // IsClusterScaledUp determines whether a etcd cluster is getting scale-up or not and returns a boolean
-func (m *memberControl) IsClusterScaledUp(ctx context.Context) (bool, error) {
-	clientSet, err := miscellaneous.GetKubernetesClientSetOrError()
-	if err != nil {
-		m.logger.Fatalf("failed to create clientset, %v", err)
-	}
-
+func (m *memberControl) IsClusterScaledUp(ctx context.Context, clientSet client.Client) (bool, error) {
 	state, err := miscellaneous.GetInitialClusterStateIfScaleup(ctx, m.logger, clientSet, m.podName, m.podNamespace)
 	if err != nil {
 		m.logger.Errorf("annotation: %v is not present: %v", miscellaneous.ScaledToMultiNodeAnnotationKey, err)

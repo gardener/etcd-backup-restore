@@ -54,14 +54,20 @@ func (e *EtcdInitializer) Initialize(mode validator.Mode, failBelowRevision int6
 
 	//Etcd cluster scale-up case
 	if miscellaneous.IsMultiNode(logger) {
+		clientSet, err := miscellaneous.GetKubernetesClientSetOrError()
+		if err != nil {
+			logger.Fatalf("failed to create clientset, %v", err)
+		}
 		m := member.NewMemberControl(e.Config.EtcdConnectionConfig)
-		isScaleup, err := m.IsClusterScaledUp(ctx)
+		isScaleup, err := m.IsClusterScaledUp(ctx, clientSet)
 		if isScaleup && err == nil {
 			retry.OnError(retry.DefaultBackoff, errors.AnyError, func() error {
 				return m.AddMemberAsLearner(ctx)
 			})
 			// return here after adding non-voting member(learner) as no restoration or validation needed
 			return nil
+		} else if err != nil {
+			logger.Errorf("scale-up not detected: %v", err)
 		}
 	}
 
