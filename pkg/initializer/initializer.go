@@ -45,6 +45,7 @@ import (
 //   - Try to perform an Etcd data restoration from the latest snapshot.
 //   - No snapshots are available, start etcd as a fresh installation.
 func (e *EtcdInitializer) Initialize(mode validator.Mode, failBelowRevision int64) error {
+	logger := e.Logger.WithField("actor", "initializer")
 	metrics.CurrentClusterSize.With(prometheus.Labels{}).Set(float64(e.Validator.OriginalClusterSize))
 	start := time.Now()
 	isEtcdMemberPresent := false
@@ -52,17 +53,21 @@ func (e *EtcdInitializer) Initialize(mode validator.Mode, failBelowRevision int6
 	var err error
 
 	//Etcd cluster scale-up case
-	if miscellaneous.IsMultiNode(e.Logger.WithField("actor", "initializer")) {
+	if miscellaneous.IsMultiNode(logger) {
+		clientSet, err := miscellaneous.GetKubernetesClientSetOrError()
+		if err != nil {
+			logger.Fatalf("failed to create clientset, %v", err)
+		}
 		m := member.NewMemberControl(e.Config.EtcdConnectionConfig)
-		isEtcdMemberPresent, err = m.IsMemberInCluster(ctx)
-		if !isEtcdMemberPresent && err == nil {
-			retry.OnError(retry.DefaultBackoff, func(err error) bool {
-				return err != nil
-			}, func() error {
+		isScaleup, err := m.IsClusterScaledUp(ctx, clientSet)
+		if isScaleup && err == nil {
+			retry.OnError(retry.DefaultBackoff, errors.AnyError, func() error {
 				return m.AddMemberAsLearner(ctx)
 			})
-			// return here after adding member as no restoration or validation needed
+			// return here after adding non-voting member(learner) as no restoration or validation needed
 			return nil
+		} else if err != nil {
+			logger.Errorf("scale-up not detected: %v", err)
 		}
 	}
 

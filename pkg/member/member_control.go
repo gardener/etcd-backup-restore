@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/gardener/etcd-backup-restore/pkg/etcdutil"
-	"github.com/gardener/etcd-backup-restore/pkg/etcdutil/client"
+	etcdClient "github.com/gardener/etcd-backup-restore/pkg/etcdutil/client"
 	"github.com/gardener/etcd-backup-restore/pkg/metrics"
 	"github.com/gardener/etcd-backup-restore/pkg/miscellaneous"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
@@ -18,11 +18,15 @@ import (
 	"go.etcd.io/etcd/etcdserver/api/v3rpc/rpctypes"
 	"go.etcd.io/etcd/etcdserver/etcdserverpb"
 	"k8s.io/client-go/util/retry"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 const (
 	// RetryPeriod is the peroid after which an operation is retried
 	RetryPeriod = 2 * time.Second
+
+	// RetrySteps is the no. of steps for exponential backoff.
+	RetrySteps = 4
 
 	// EtcdTimeout is timeout for etcd operations
 	EtcdTimeout = 5 * time.Second
@@ -38,6 +42,9 @@ type Control interface {
 	// AddMemberAsLearner add a new member as a learner to the etcd cluster
 	AddMemberAsLearner(context.Context) error
 
+	// IsClusterScaledUp determines whether a etcd cluster is getting scale-up or not.
+	IsClusterScaledUp(context.Context, client.Client) (bool, error)
+
 	// IsMemberInCluster checks is the current members peer URL is already part of the etcd cluster
 	IsMemberInCluster(context.Context) (bool, error)
 
@@ -46,7 +53,7 @@ type Control interface {
 	PromoteMember(context.Context) error
 
 	// UpdateMemberPeerURL updates the peer address of a specified etcd cluster member.
-	UpdateMemberPeerURL(context.Context, client.ClusterCloser) error
+	UpdateMemberPeerURL(context.Context, etcdClient.ClusterCloser) error
 
 	// RemoveMember removes the member from the etcd cluster.
 	RemoveMember(context.Context) error
@@ -57,10 +64,11 @@ type Control interface {
 
 // memberControl holds the configuration for the mechanism of adding a new member to the cluster.
 type memberControl struct {
-	clientFactory client.Factory
+	clientFactory etcdClient.Factory
 	logger        logrus.Entry
 	podName       string
 	configFile    string
+	podNamespace  string
 }
 
 // NewMemberControl returns new ExponentialBackoff.
@@ -70,11 +78,17 @@ func NewMemberControl(etcdConnConfig *brtypes.EtcdConnectionConfig) Control {
 	etcdConn := *etcdConnConfig
 
 	// We want to use the service endpoint since we're only supposed to connect to ready etcd members.
-	clientFactory := etcdutil.NewFactory(etcdConn, client.UseServiceEndpoints(true))
+	clientFactory := etcdutil.NewFactory(etcdConn, etcdClient.UseServiceEndpoints(true))
 	podName, err := miscellaneous.GetEnvVarOrError("POD_NAME")
 	if err != nil {
 		logger.Fatalf("Error reading POD_NAME env var : %v", err)
 	}
+
+	podNamespace, err := miscellaneous.GetEnvVarOrError("POD_NAMESPACE")
+	if err != nil {
+		logger.Fatalf("Error reading POD_NAMESPACE env var : %v", err)
+	}
+
 	//TODO: Refactor needed
 	configFile = miscellaneous.GetConfigFilePath()
 
@@ -83,6 +97,7 @@ func NewMemberControl(etcdConnConfig *brtypes.EtcdConnectionConfig) Control {
 		logger:        *logger,
 		podName:       podName,
 		configFile:    configFile,
+		podNamespace:  podNamespace,
 	}
 }
 
@@ -125,8 +140,8 @@ func (m *memberControl) AddMemberAsLearner(ctx context.Context) error {
 func (m *memberControl) IsMemberInCluster(ctx context.Context) (bool, error) {
 	m.logger.Infof("Checking if member %s is part of a running cluster", m.podName)
 	// Check if an etcd is already available
-	backoff := retry.DefaultBackoff
-	backoff.Steps = 2
+
+	backoff := miscellaneous.CreateBackoff(RetryPeriod, RetrySteps)
 	err := retry.OnError(backoff, func(err error) bool {
 		return err != nil
 	}, func() error {
@@ -147,7 +162,7 @@ func (m *memberControl) IsMemberInCluster(ctx context.Context) (bool, error) {
 
 	// List members in cluster
 	var etcdMemberList *clientv3.MemberListResponse
-	err = retry.OnError(retry.DefaultBackoff, func(err error) bool {
+	err = retry.OnError(backoff, func(err error) bool {
 		return err != nil
 	}, func() error {
 		memListCtx, cancel := context.WithTimeout(context.TODO(), EtcdTimeout)
@@ -188,7 +203,7 @@ func getMemberPeerURL(configFile string, podName string) (string, error) {
 }
 
 // doUpdateMemberPeerAddress updated the peer address of a specified etcd member
-func (m *memberControl) doUpdateMemberPeerAddress(ctx context.Context, cli client.ClusterCloser, id uint64) error {
+func (m *memberControl) doUpdateMemberPeerAddress(ctx context.Context, cli etcdClient.ClusterCloser, id uint64) error {
 	// Already existing clusters or cluster after restoration have `http://localhost:2380` as the peer address. This needs to explicitly updated to the correct peer address.
 	m.logger.Infof("Updating member peer URL for %s", m.podName)
 
@@ -245,7 +260,7 @@ func findMember(existingMembers []*etcdserverpb.Member, memberName string) *etcd
 }
 
 // UpdateMemberPeerURL updates the peer address of a specified etcd cluster member.
-func (m *memberControl) UpdateMemberPeerURL(ctx context.Context, cli client.ClusterCloser) error {
+func (m *memberControl) UpdateMemberPeerURL(ctx context.Context, cli etcdClient.ClusterCloser) error {
 	m.logger.Infof("Attempting to update the member Info: %v", m.podName)
 	ctx, cancel := context.WithTimeout(ctx, brtypes.DefaultEtcdConnectionTimeout)
 	defer cancel()
@@ -298,4 +313,20 @@ func (m *memberControl) IsLearnerPresent(ctx context.Context) (bool, error) {
 	defer learnerCtxCancel()
 
 	return miscellaneous.CheckIfLearnerPresent(learnerCtx, cli)
+}
+
+// IsClusterScaledUp determines whether a etcd cluster is getting scale-up or not and returns a boolean
+func (m *memberControl) IsClusterScaledUp(ctx context.Context, clientSet client.Client) (bool, error) {
+	state, err := miscellaneous.GetInitialClusterStateIfScaleup(ctx, m.logger, clientSet, m.podName, m.podNamespace)
+	if err != nil {
+		m.logger.Errorf("annotation: %v is not present: %v", miscellaneous.ScaledToMultiNodeAnnotationKey, err)
+	} else if state != nil && *state == miscellaneous.ClusterStateExisting {
+		return true, nil
+	}
+
+	isEtcdMemberPresent, err := m.IsMemberInCluster(ctx)
+	if err != nil || isEtcdMemberPresent {
+		return false, err
+	}
+	return true, nil
 }

@@ -548,7 +548,7 @@ var _ = Describe("Miscellaneous Tests", func() {
 					UpdatedReplicas: 3,
 				}
 				sts.Annotations = map[string]string{
-					scaledToMultiNodeAnnotationKey: "",
+					ScaledToMultiNodeAnnotationKey: "",
 				}
 			})
 

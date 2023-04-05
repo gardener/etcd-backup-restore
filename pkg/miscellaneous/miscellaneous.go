@@ -40,6 +40,8 @@ import (
 	"go.etcd.io/etcd/pkg/types"
 	"gopkg.in/yaml.v2"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/client-go/util/retry"
 	"k8s.io/utils/pointer"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -57,6 +59,9 @@ const (
 	ClusterStateNew = "new"
 	// ClusterStateExisting defines the "existing" state of etcd cluster.
 	ClusterStateExisting = "existing"
+
+	// ScaledToMultiNodeAnnotationKey defines annotation key for scale-up to multi-node cluster.
+	ScaledToMultiNodeAnnotationKey = "gardener.cloud/scaled-to-multi-node"
 
 	https = "https"
 )
@@ -419,8 +424,6 @@ func IsBackupBucketEmpty(snapStoreConfig *brtypes.SnapstoreConfig, logger *logru
 	return true
 }
 
-const scaledToMultiNodeAnnotationKey = "gardener.cloud/scaled-to-multi-node"
-
 // GetInitialClusterStateIfScaleup checks if it is the Scale-up scenario and returns the cluster state either `new` or `existing`.
 func GetInitialClusterStateIfScaleup(ctx context.Context, logger logrus.Entry, clientSet client.Client, podName string, podNS string) (*string, error) {
 	//Read sts spec for updated replicas to toggle `initial-cluster-state`
@@ -434,7 +437,7 @@ func GetInitialClusterStateIfScaleup(ctx context.Context, logger logrus.Entry, c
 		return nil, err
 	}
 
-	if metav1.HasAnnotation(curSts.ObjectMeta, scaledToMultiNodeAnnotationKey) {
+	if metav1.HasAnnotation(curSts.ObjectMeta, ScaledToMultiNodeAnnotationKey) {
 		return pointer.StringPtr(ClusterStateExisting), nil
 	}
 
@@ -563,4 +566,14 @@ func GetPrevScheduledSnapTime(nextSnapSchedule time.Time, timeWindow float64) ti
 		nextSnapSchedule.Nanosecond(),
 		nextSnapSchedule.Location(),
 	)
+}
+
+// CreateBackoff returns the backoff with Factor=2
+func CreateBackoff(retryPeriod time.Duration, steps int) wait.Backoff {
+	return wait.Backoff{
+		Duration: retryPeriod,
+		Factor:   2,
+		Jitter:   retry.DefaultBackoff.Jitter,
+		Steps:    steps,
+	}
 }
