@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM golang:1.19.5 as builder
+FROM golang:1.20.3 as builder
 
 WORKDIR /go/src/github.com/gardener/backup-restore
 COPY . .
