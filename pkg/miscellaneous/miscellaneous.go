@@ -437,15 +437,20 @@ func GetInitialClusterStateIfScaleup(ctx context.Context, logger logrus.Entry, c
 		return nil, err
 	}
 
-	if metav1.HasAnnotation(curSts.ObjectMeta, ScaledToMultiNodeAnnotationKey) {
+	if IsAnnotationPresent(curSts, ScaledToMultiNodeAnnotationKey) {
 		return pointer.StringPtr(ClusterStateExisting), nil
 	}
 
-	// fallback - preserves backward compatibility
 	if *curSts.Spec.Replicas > 1 && *curSts.Spec.Replicas > curSts.Status.UpdatedReplicas {
 		return pointer.StringPtr(ClusterStateExisting), nil
 	}
+
 	return nil, nil
+}
+
+// IsAnnotationPresent checks the presence of given annotation in a given statefulset.
+func IsAnnotationPresent(sts *appsv1.StatefulSet, annotation string) bool {
+	return metav1.HasAnnotation(sts.ObjectMeta, annotation)
 }
 
 // DoPromoteMember promotes a given learner to a voting member.
