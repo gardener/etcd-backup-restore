@@ -17,7 +17,6 @@ import (
 	"go.etcd.io/etcd/clientv3"
 	"go.etcd.io/etcd/etcdserver/api/v3rpc/rpctypes"
 	"go.etcd.io/etcd/etcdserver/etcdserverpb"
-	appsv1 "k8s.io/api/apps/v1"
 	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -319,17 +318,13 @@ func (m *memberControl) IsLearnerPresent(ctx context.Context) (bool, error) {
 // IsClusterScaledUp determines whether a etcd cluster is getting scale-up or not and returns a boolean
 func (m *memberControl) IsClusterScaledUp(ctx context.Context, clientSet client.Client) (bool, error) {
 	m.logger.Info("Checking whether etcd cluster is marked for scale-up")
-	curSts := &appsv1.StatefulSet{}
-	err := clientSet.Get(ctx, client.ObjectKey{
-		Namespace: m.podNamespace,
-		Name:      m.podName,
-	}, curSts)
+	etcdsts, err := miscellaneous.GetStatefulSet(ctx, clientSet, m.podNamespace, m.podName)
 	if err != nil {
-		m.logger.Errorf("unable to fetch etcd sts: %v", err)
-	}
-
-	if err == nil && curSts != nil && miscellaneous.IsAnnotationPresent(curSts, miscellaneous.ScaledToMultiNodeAnnotationKey) {
-		return true, nil
+		m.logger.Errorf("unable to fetch etcd statefulset: %v", err)
+	} else {
+		if etcdsts != nil && miscellaneous.IsAnnotationPresent(etcdsts, miscellaneous.ScaledToMultiNodeAnnotationKey) {
+			return true, nil
+		}
 	}
 
 	isEtcdMemberPresent, err := m.IsMemberInCluster(ctx)
