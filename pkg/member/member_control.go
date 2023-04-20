@@ -322,7 +322,7 @@ func (m *memberControl) IsClusterScaledUp(ctx context.Context, clientSet client.
 	if err != nil {
 		m.logger.Errorf("unable to fetch etcd statefulset: %v", err)
 	} else {
-		if etcdsts != nil && miscellaneous.IsAnnotationPresent(etcdsts, miscellaneous.ScaledToMultiNodeAnnotationKey) {
+		if miscellaneous.IsAnnotationPresent(etcdsts, miscellaneous.ScaledToMultiNodeAnnotationKey) {
 			return true, nil
 		}
 	}
