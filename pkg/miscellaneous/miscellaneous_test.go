@@ -622,6 +622,52 @@ var _ = Describe("Miscellaneous Tests", func() {
 		})
 	})
 
+	Describe("Etcd Statefulset", func() {
+		var (
+			sts             *appsv1.StatefulSet
+			statefulSetName = "etcd-test"
+			podName         = "etcd-test-0"
+			namespace       = "test_namespace"
+		)
+		BeforeEach(func() {
+			sts = &appsv1.StatefulSet{
+				TypeMeta: metav1.TypeMeta{
+					Kind:       "StatefulSet",
+					APIVersion: "apps/v1",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      statefulSetName,
+					Namespace: namespace,
+				},
+			}
+		})
+		Context("Etcd statefulset exists", func() {
+			It("should return statefulset", func() {
+				clientSet := GetFakeKubernetesClientSet()
+
+				err := clientSet.Create(testCtx, sts)
+				Expect(err).ShouldNot(HaveOccurred())
+
+				etcdSts, err := GetStatefulSet(testCtx, clientSet, namespace, podName)
+				Expect(err).ShouldNot(HaveOccurred())
+				Expect(etcdSts).ShouldNot(BeNil())
+			})
+		})
+		Context("Etcd statefulset not exist in a given namespace", func() {
+			It("should return error", func() {
+				wrongNS := "wrong-namespace"
+				clientSet := GetFakeKubernetesClientSet()
+
+				err := clientSet.Create(testCtx, sts)
+				Expect(err).ShouldNot(HaveOccurred())
+
+				etcdSts, err := GetStatefulSet(testCtx, clientSet, wrongNS, podName)
+				Expect(err).Should(HaveOccurred())
+				Expect(etcdSts).Should(BeNil())
+			})
+		})
+	})
+
 	Describe("read config file into a map", func() {
 		const testdataPath = "testdata"
 		var (
