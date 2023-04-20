@@ -317,11 +317,14 @@ func (m *memberControl) IsLearnerPresent(ctx context.Context) (bool, error) {
 
 // IsClusterScaledUp determines whether a etcd cluster is getting scale-up or not and returns a boolean
 func (m *memberControl) IsClusterScaledUp(ctx context.Context, clientSet client.Client) (bool, error) {
-	state, err := miscellaneous.GetInitialClusterStateIfScaleup(ctx, m.logger, clientSet, m.podName, m.podNamespace)
+	m.logger.Info("Checking whether etcd cluster is marked for scale-up")
+	etcdsts, err := miscellaneous.GetStatefulSet(ctx, clientSet, m.podNamespace, m.podName)
 	if err != nil {
-		m.logger.Errorf("annotation: %v is not present: %v", miscellaneous.ScaledToMultiNodeAnnotationKey, err)
-	} else if state != nil && *state == miscellaneous.ClusterStateExisting {
-		return true, nil
+		m.logger.Errorf("unable to fetch etcd statefulset: %v", err)
+	} else {
+		if miscellaneous.IsAnnotationPresent(etcdsts, miscellaneous.ScaledToMultiNodeAnnotationKey) {
+			return true, nil
+		}
 	}
 
 	isEtcdMemberPresent, err := m.IsMemberInCluster(ctx)
