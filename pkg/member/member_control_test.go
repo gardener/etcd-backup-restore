@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/gardener/etcd-backup-restore/pkg/member"
+	"github.com/gardener/etcd-backup-restore/pkg/miscellaneous"
 	mockfactory "github.com/gardener/etcd-backup-restore/pkg/mock/etcdutil/client"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 	"github.com/golang/mock/gomock"
@@ -14,6 +15,8 @@ import (
 	. "github.com/onsi/gomega"
 	"go.etcd.io/etcd/clientv3"
 	"go.etcd.io/etcd/etcdserver/etcdserverpb"
+	appsv1 "k8s.io/api/apps/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 var _ = Describe("Membercontrol", func() {
@@ -24,7 +27,7 @@ var _ = Describe("Membercontrol", func() {
 		cl                   *mockfactory.MockClusterCloser
 	)
 	const (
-		podName      = "test-pod"
+		podName      = "etcd-test-0"
 		podNamespace = "test-podnamespace"
 	)
 
@@ -169,6 +172,53 @@ var _ = Describe("Membercontrol", func() {
 
 				err = m.UpdateMemberPeerURL(context.TODO(), client)
 				Expect(err).Should(HaveOccurred())
+			})
+		})
+	})
+
+	Describe("Cluster marked for scale-up", func() {
+		var (
+			sts             *appsv1.StatefulSet
+			m               member.Control
+			statefulSetName = "etcd-test"
+		)
+		BeforeEach(func() {
+			m = member.NewMemberControl(etcdConnectionConfig)
+			sts = &appsv1.StatefulSet{
+				TypeMeta: metav1.TypeMeta{
+					Kind:       "StatefulSet",
+					APIVersion: "apps/v1",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      statefulSetName,
+					Namespace: podNamespace,
+				},
+			}
+		})
+		Context("When scale-up annotation is not present in statefulset, cluster is up and member is not part of the list", func() {
+			It("should return true", func() {
+				clientSet := miscellaneous.GetFakeKubernetesClientSet()
+				err := clientSet.Create(testCtx, sts)
+				Expect(err).ShouldNot(HaveOccurred())
+
+				isScaleUp, err := m.IsClusterScaledUp(testCtx, clientSet)
+				Expect(isScaleUp).Should(BeTrue())
+				Expect(err).ShouldNot(HaveOccurred())
+			})
+		})
+		Context("When statefulset has scale-up annotation", func() {
+			It("should return true", func() {
+				sts.Annotations = map[string]string{
+					miscellaneous.ScaledToMultiNodeAnnotationKey: "",
+				}
+
+				clientSet := miscellaneous.GetFakeKubernetesClientSet()
+				err := clientSet.Create(testCtx, sts)
+				Expect(err).ShouldNot(HaveOccurred())
+
+				isScaleUp, err := m.IsClusterScaledUp(testCtx, clientSet)
+				Expect(isScaleUp).Should(BeTrue())
+				Expect(err).ShouldNot(HaveOccurred())
 			})
 		})
 	})
