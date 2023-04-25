@@ -233,7 +233,7 @@ var _ = Describe("Running Datavalidator", func() {
 			}()
 
 			// start etcd
-			etcd, err := utils.StartEmbeddedEtcd(testCtx, restoreDataDir, logger, embeddedEtcdPortNo)
+			etcd, err := utils.StartEmbeddedEtcd(testCtx, restoreDataDir, logger, utils.DefaultEtcdName, embeddedEtcdPortNo)
 			Expect(err).ShouldNot(HaveOccurred())
 			endpoints := []string{etcd.Clients[0].Addr().String()}
 			// populate etcd but with lesser data than previous populate call, so that the new db has a lower revision
@@ -272,7 +272,7 @@ var _ = Describe("Running Datavalidator", func() {
 			}()
 
 			// start etcd
-			etcd, err := utils.StartEmbeddedEtcd(testCtx, restoreDataDir, logger, embeddedEtcdPortNo)
+			etcd, err := utils.StartEmbeddedEtcd(testCtx, restoreDataDir, logger, utils.DefaultEtcdName, embeddedEtcdPortNo)
 			Expect(err).ShouldNot(HaveOccurred())
 			endpoints := []string{etcd.Clients[0].Addr().String()}
 

@@ -26,10 +26,6 @@ var _ = Describe("Membercontrol", func() {
 		factory              *mockfactory.MockFactory
 		cl                   *mockfactory.MockClusterCloser
 	)
-	const (
-		podName      = "etcd-test-0"
-		podNamespace = "test-podnamespace"
-	)
 
 	BeforeEach(func() {
 		etcdConnectionConfig = brtypes.NewEtcdConnectionConfig()
@@ -97,12 +93,25 @@ var _ = Describe("Membercontrol", func() {
 	})
 
 	Describe("While attempting to check if etcd is part of a cluster", func() {
-		Context("When cluster is up and member is not part of the list", func() {
-			It("Should return false and no error", func() {
+		Context("If member is already part of a cluster", func() {
+			It("Should return true", func() {
 				mem := member.NewMemberControl(etcdConnectionConfig)
-				bool, err := mem.IsMemberInCluster(context.TODO())
-				Expect(bool).To(BeFalse())
+				present, err := mem.IsMemberInCluster(context.TODO())
+				Expect(present).To(BeTrue())
 				Expect(err).To(BeNil())
+			})
+		})
+		Context("If member is not part of a cluster", func() {
+			It("Should return false", func() {
+				podName := "default-0"
+				os.Setenv("POD_NAME", podName)
+
+				mem := member.NewMemberControl(etcdConnectionConfig)
+				present, err := mem.IsMemberInCluster(context.TODO())
+
+				Expect(present).To(BeFalse())
+				Expect(err).To(BeNil())
+				os.Unsetenv("POD_NAME")
 			})
 		})
 	})
@@ -197,6 +206,10 @@ var _ = Describe("Membercontrol", func() {
 		})
 		Context("When scale-up annotation is not present in statefulset, cluster is up and member is not part of the list", func() {
 			It("should return true", func() {
+				podName := "default-0"
+				os.Setenv("POD_NAME", podName)
+				m = member.NewMemberControl(etcdConnectionConfig)
+
 				clientSet := miscellaneous.GetFakeKubernetesClientSet()
 				err := clientSet.Create(testCtx, sts)
 				Expect(err).ShouldNot(HaveOccurred())
@@ -204,8 +217,22 @@ var _ = Describe("Membercontrol", func() {
 				isScaleUp, err := m.IsClusterScaledUp(testCtx, clientSet)
 				Expect(isScaleUp).Should(BeTrue())
 				Expect(err).ShouldNot(HaveOccurred())
+				os.Unsetenv("POD_NAME")
 			})
 		})
+
+		Context("When scale-up annotation is not present in statefulset, cluster is up and member is already a part of cluster", func() {
+			It("should return false", func() {
+				clientSet := miscellaneous.GetFakeKubernetesClientSet()
+				err := clientSet.Create(testCtx, sts)
+				Expect(err).ShouldNot(HaveOccurred())
+
+				isScaleUp, err := m.IsClusterScaledUp(testCtx, clientSet)
+				Expect(isScaleUp).Should(BeFalse())
+				Expect(err).ShouldNot(HaveOccurred())
+			})
+		})
+
 		Context("When statefulset has scale-up annotation", func() {
 			It("should return true", func() {
 				sts.Annotations = map[string]string{

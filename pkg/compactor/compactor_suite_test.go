@@ -68,7 +68,7 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 	logger.Infof("Snapshot Directory is: %s", testSnapshotDir)
 
 	// Start the main ETCD process that will run untill all compaction test cases are run
-	etcd, err = utils.StartEmbeddedEtcd(testCtx, testEtcdDir, logger, embeddedEtcdPortNo)
+	etcd, err = utils.StartEmbeddedEtcd(testCtx, testEtcdDir, logger, utils.DefaultEtcdName, embeddedEtcdPortNo)
 	Expect(err).ShouldNot(HaveOccurred())
 	endpoints = []string{etcd.Clients[0].Addr().String()}
 	logger.Infof("endpoints: %s", endpoints)

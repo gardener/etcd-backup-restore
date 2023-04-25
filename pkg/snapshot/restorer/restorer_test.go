@@ -254,7 +254,7 @@ var _ = Describe("Running Restorer", func() {
 
 		BeforeEach(func() {
 			deltaSnapshotPeriod = time.Second
-			etcd, err = utils.StartEmbeddedEtcd(testCtx, etcdDir, logger, embeddedEtcdPortNo)
+			etcd, err = utils.StartEmbeddedEtcd(testCtx, etcdDir, logger, utils.DefaultEtcdName, embeddedEtcdPortNo)
 			Expect(err).ShouldNot(HaveOccurred())
 			endpoints = []string{etcd.Clients[0].Addr().String()}
 
@@ -720,7 +720,7 @@ var _ = Describe("Running Restorer when both v1 and v2 directory structures are 
 		etcdDataDir = filepath.Join(testDir, "default.etcd")
 		restoreTempDir = filepath.Join(testDir, "default.restore.tmp")
 		storeDir = filepath.Join(testDir, "snapshotter.bkp")
-		etcd, err = utils.StartEmbeddedEtcd(testCtx, etcdDataDir, logger, embeddedEtcdPortNo)
+		etcd, err = utils.StartEmbeddedEtcd(testCtx, etcdDataDir, logger, utils.DefaultEtcdName, embeddedEtcdPortNo)
 		Expect(err).ShouldNot(HaveOccurred())
 		ep = []string{etcd.Clients[0].Addr().String()}
 
