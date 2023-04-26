@@ -33,7 +33,7 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 	err = os.RemoveAll(outputDir)
 	Expect(err).ShouldNot(HaveOccurred())
 
-	etcd, err = utils.StartEmbeddedEtcd(testCtx, etcdDir, logger, "")
+	etcd, err = utils.StartEmbeddedEtcd(testCtx, etcdDir, logger, utils.DefaultEtcdName, "")
 	Expect(err).ShouldNot(HaveOccurred())
 	var data []byte
 	return data

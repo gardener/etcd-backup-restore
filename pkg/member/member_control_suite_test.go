@@ -20,8 +20,10 @@ var (
 )
 
 const (
-	outputDir = "../../../test/output"
-	etcdDir   = outputDir + "/default.etcd"
+	outputDir    = "../../../test/output"
+	etcdDir      = outputDir + "/default.etcd"
+	podName      = "etcd-test-0"
+	podNamespace = "test-podnamespace"
 )
 
 func TestMembergarbagecollector(t *testing.T) {
@@ -33,7 +35,7 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 	err = os.RemoveAll(outputDir)
 	Expect(err).ShouldNot(HaveOccurred())
 
-	etcd, err = utils.StartEmbeddedEtcd(testCtx, etcdDir, logger, "")
+	etcd, err = utils.StartEmbeddedEtcd(testCtx, etcdDir, logger, podName, "")
 	Expect(err).ShouldNot(HaveOccurred())
 	var data []byte
 	return data

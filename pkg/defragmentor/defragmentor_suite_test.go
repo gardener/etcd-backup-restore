@@ -54,7 +54,7 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 	err = os.RemoveAll(outputDir)
 	Expect(err).ShouldNot(HaveOccurred())
 
-	etcd, err = utils.StartEmbeddedEtcd(testCtx, etcdDir, logger, embeddedEtcdPortNo)
+	etcd, err = utils.StartEmbeddedEtcd(testCtx, etcdDir, logger, utils.DefaultEtcdName, embeddedEtcdPortNo)
 	Expect(err).ShouldNot(HaveOccurred())
 	endpoints = []string{etcd.Clients[0].Addr().String()}
 	logger.Infof("endpoints: %s", endpoints)

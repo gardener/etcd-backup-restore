@@ -41,13 +41,19 @@ const (
 	ValuePrefix = "val-"
 	// EmbeddedEtcdPortNo defines PortNo which can be used to start EmbeddedEtcd.
 	EmbeddedEtcdPortNo = "12379"
+	// DefaultEtcdName defines the default etcd name used to start EmbeddedEtcd.
+	DefaultEtcdName = "default"
 )
 
 // StartEmbeddedEtcd starts the embedded etcd for test purpose with minimal configuration at a given port.
 // To get the exact client endpoints it is listening on, use returns etcd.Clients[0].Addr().String()
-func StartEmbeddedEtcd(ctx context.Context, etcdDir string, logger *logrus.Entry, port string) (*embed.Etcd, error) {
+func StartEmbeddedEtcd(ctx context.Context, etcdDir string, logger *logrus.Entry, name string, port string) (*embed.Etcd, error) {
 	logger.Infoln("Starting embedded etcd...")
 	cfg := embed.NewConfig()
+	cfg.Name = name
+	if len(name) == 0 {
+		cfg.Name = DefaultEtcdName
+	}
 	cfg.Dir = etcdDir
 	cfg.EnableV2 = false
 	cfg.Debug = false
@@ -241,7 +247,7 @@ func RunSnapshotter(logger *logrus.Entry, snapstoreConfig brtypes.SnapstoreConfi
 
 // CheckDataConsistency starts an embedded etcd and checks for correctness of the values stored in etcd against the keys 'keyFrom' through 'keyTo'
 func CheckDataConsistency(ctx context.Context, dir string, keyTo int, logger *logrus.Entry) error {
-	etcd, err := StartEmbeddedEtcd(ctx, dir, logger, EmbeddedEtcdPortNo)
+	etcd, err := StartEmbeddedEtcd(ctx, dir, logger, DefaultEtcdName, EmbeddedEtcdPortNo)
 	if err != nil {
 		return fmt.Errorf("unable to start embedded etcd server: %v", err)
 	}
