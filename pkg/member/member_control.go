@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strconv"
 	"time"
 
@@ -41,6 +43,9 @@ var (
 type Control interface {
 	// AddMemberAsLearner add a new member as a learner to the etcd cluster
 	AddMemberAsLearner(context.Context) error
+
+	// AddLearnerWithRetry add a new member as a learner with exponential backoff.
+	AddLearnerWithRetry(context.Context, int, string) error
 
 	// IsClusterScaledUp determines whether a etcd cluster is getting scale-up or not.
 	IsClusterScaledUp(context.Context, client.Client) (bool, error)
@@ -123,6 +128,9 @@ func (m *memberControl) AddMemberAsLearner(ctx context.Context) error {
 		if errors.Is(err, rpctypes.Error(rpctypes.ErrGRPCPeerURLExist)) || errors.Is(err, rpctypes.Error(rpctypes.ErrGRPCMemberExist)) {
 			m.logger.Infof("Member %s already part of etcd cluster", memberURL)
 			return nil
+		} else if errors.Is(err, rpctypes.Error(rpctypes.ErrGRPCTooManyLearners)) {
+			m.logger.Infof("Unable to add a member %s as learner because other is currently being added as a learner", m.podName)
+			return rpctypes.Error(rpctypes.ErrGRPCTooManyLearners)
 		}
 		metrics.IsLearnerCountTotal.With(prometheus.Labels{metrics.LabelSucceeded: metrics.ValueSucceededFalse}).Inc()
 		metrics.AddLearnerDurationSeconds.With(prometheus.Labels{metrics.LabelSucceeded: metrics.ValueSucceededFalse}).Observe(time.Since(start).Seconds())
@@ -133,6 +141,34 @@ func (m *memberControl) AddMemberAsLearner(ctx context.Context) error {
 	metrics.IsLearner.With(prometheus.Labels{}).Set(1)
 	metrics.AddLearnerDurationSeconds.With(prometheus.Labels{metrics.LabelSucceeded: metrics.ValueSucceededTrue}).Observe(time.Since(start).Seconds())
 	m.logger.Infof("Added member %v to cluster as a learner", strconv.FormatUint(response.Member.GetID(), 16))
+	return nil
+}
+
+// AddLearnerWithRetry add a new member as a learner with exponential backoff.
+func (m *memberControl) AddLearnerWithRetry(ctx context.Context, retrySteps int, dataDir string) error {
+	backoff := miscellaneous.CreateBackoff(RetryPeriod, retrySteps)
+
+	if err := retry.OnError(backoff, func(err error) bool {
+		return err != nil
+	}, func() error {
+		// Additional safety check before adding a learner
+		if _, err := os.Stat(dataDir); err == nil {
+			if err := os.RemoveAll(filepath.Join(dataDir)); err != nil {
+				return fmt.Errorf("failed to remove directory %s with err: %v", dataDir, err)
+			}
+		} else if !os.IsNotExist(err) {
+			return err
+		}
+		if err := m.AddMemberAsLearner(ctx); err != nil {
+			if errors.Is(err, rpctypes.Error(rpctypes.ErrGRPCTooManyLearners)) {
+				miscellaneous.SleepWithContext(ctx, EtcdTimeout)
+			}
+			return err
+		}
+		return nil
+	}); err != nil {
+		return err
+	}
 	return nil
 }
 

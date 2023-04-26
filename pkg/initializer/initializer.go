@@ -35,6 +35,11 @@ import (
 	"k8s.io/client-go/util/retry"
 )
 
+const (
+	// retrySteps is the no. of steps used for exponential backoff to add a learner.
+	retrySteps = 6
+)
+
 // Initialize has the following steps:
 //   - Check if data directory exists.
 //   - If data directory exists
@@ -60,22 +65,18 @@ func (e *EtcdInitializer) Initialize(mode validator.Mode, failBelowRevision int6
 		}
 		m := member.NewMemberControl(e.Config.EtcdConnectionConfig)
 		isScaleup, err := m.IsClusterScaledUp(ctx, clientSet)
-		if isScaleup && err == nil {
-			retry.OnError(retry.DefaultBackoff, errors.IsErrNotNil, func() error {
-				// Additional safety check before adding a learner
-				if _, err := os.Stat(e.Config.RestoreOptions.Config.DataDir); err == nil {
-					if err := os.RemoveAll(filepath.Join(e.Config.RestoreOptions.Config.DataDir)); err != nil {
-						return fmt.Errorf("failed to remove directory %s with err: %v", e.Config.RestoreOptions.Config.DataDir, err)
-					}
-				} else if !os.IsNotExist(err) {
-					return err
-				}
-				return m.AddMemberAsLearner(ctx)
-			})
-			// return here after adding non-voting member(learner) as no restoration or validation needed
-			return nil
-		} else if err != nil {
+		if err != nil {
 			logger.Errorf("scale-up not detected: %v", err)
+		} else if isScaleup && err == nil {
+			logger.Info("Etcd cluster scale-up is detected")
+			// Add a learner(non-voting member) to a etcd cluster with retry
+			// If backup-restore is unable to add a learner in a cluster
+			// restart the `initialization` by exiting the backup-restore.
+			if err := m.AddLearnerWithRetry(ctx, retrySteps, e.Config.RestoreOptions.Config.DataDir); err != nil {
+				logger.Fatalf("unable to add a learner in a cluster: %v", err)
+			}
+			// return here after adding learner(non-voting member) as no restoration or validation required.
+			return nil
 		}
 	}
 
