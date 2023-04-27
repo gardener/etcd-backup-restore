@@ -36,8 +36,8 @@ import (
 )
 
 const (
-	// retrySteps is the no. of steps used for exponential backoff to add a learner.
-	retrySteps = 6
+	// addLearnerAttempts are the total number of attempts that will be made to add a learner
+	addLearnerAttempts = 6
 )
 
 // Initialize has the following steps:
@@ -67,12 +67,12 @@ func (e *EtcdInitializer) Initialize(mode validator.Mode, failBelowRevision int6
 		isScaleup, err := m.IsClusterScaledUp(ctx, clientSet)
 		if err != nil {
 			logger.Errorf("scale-up not detected: %v", err)
-		} else if isScaleup && err == nil {
+		} else if isScaleup {
 			logger.Info("Etcd cluster scale-up is detected")
 			// Add a learner(non-voting member) to a etcd cluster with retry
 			// If backup-restore is unable to add a learner in a cluster
 			// restart the `initialization` by exiting the backup-restore.
-			if err := m.AddLearnerWithRetry(ctx, retrySteps, e.Config.RestoreOptions.Config.DataDir); err != nil {
+			if err := member.AddLearnerWithRetry(ctx, m, addLearnerAttempts, e.Config.RestoreOptions.Config.DataDir); err != nil {
 				logger.Fatalf("unable to add a learner in a cluster: %v", err)
 			}
 			// return here after adding learner(non-voting member) as no restoration or validation required.

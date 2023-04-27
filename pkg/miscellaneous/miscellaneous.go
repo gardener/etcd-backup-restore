@@ -589,3 +589,15 @@ func CreateBackoff(retryPeriod time.Duration, steps int) wait.Backoff {
 		Steps:    steps,
 	}
 }
+
+// RemoveDir removes the directory(if exist) and do nothing if directory doesn't exist.
+func RemoveDir(dir string) error {
+	if _, err := os.Stat(dir); err == nil {
+		if err := os.RemoveAll(filepath.Join(dir)); err != nil {
+			return fmt.Errorf("failed to remove directory %s with err: %v", dir, err)
+		}
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+	return nil
+}
