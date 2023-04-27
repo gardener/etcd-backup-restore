@@ -24,6 +24,7 @@ import (
 )
 
 var (
+	etcdDir = "./default.etcd"
 	testCtx = context.TODO()
 	logger  = logrus.New().WithField("suite", "miscellaneous")
 )
