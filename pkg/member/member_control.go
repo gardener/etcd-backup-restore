@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"time"
 
+	utilError "github.com/gardener/etcd-backup-restore/pkg/errors"
 	"github.com/gardener/etcd-backup-restore/pkg/etcdutil"
 	etcdClient "github.com/gardener/etcd-backup-restore/pkg/etcdutil/client"
 	"github.com/gardener/etcd-backup-restore/pkg/metrics"
@@ -341,9 +342,7 @@ func (m *memberControl) IsClusterScaledUp(ctx context.Context, clientSet client.
 func AddLearnerWithRetry(ctx context.Context, m Control, retrySteps int, dataDir string) error {
 	backoff := miscellaneous.CreateBackoff(RetryPeriod, retrySteps)
 
-	if err := retry.OnError(backoff, func(err error) bool {
-		return err != nil
-	}, func() error {
+	if err := retry.OnError(backoff, utilError.IsErrNotNil, func() error {
 		// Remove data-dir(if exist) before adding a learner as a additional safety check.
 		if err := miscellaneous.RemoveDir(dataDir); err != nil {
 			return err
