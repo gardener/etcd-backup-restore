@@ -580,13 +580,14 @@ func GetPrevScheduledSnapTime(nextSnapSchedule time.Time, timeWindow float64) ti
 	)
 }
 
-// CreateBackoff returns the backoff with Factor=2
+// CreateBackoff returns the backoff with Factor=2 with upper limit of 120sec.
 func CreateBackoff(retryPeriod time.Duration, steps int) wait.Backoff {
 	return wait.Backoff{
 		Duration: retryPeriod,
 		Factor:   2,
 		Jitter:   retry.DefaultBackoff.Jitter,
 		Steps:    steps,
+		Cap:      120 * time.Second,
 	}
 }
 
