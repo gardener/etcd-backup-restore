@@ -125,7 +125,7 @@ func (m *memberControl) AddMemberAsLearner(ctx context.Context) error {
 			m.logger.Infof("Member %s already part of etcd cluster", memberURL)
 			return nil
 		} else if errors.Is(err, rpctypes.Error(rpctypes.ErrGRPCTooManyLearners)) {
-			m.logger.Infof("Unable to add a member %s as learner because other is currently being added as a learner", m.podName)
+			m.logger.Infof("Unable to add member %s as a learner because the cluster already has a learner", m.podName)
 			return rpctypes.Error(rpctypes.ErrGRPCTooManyLearners)
 		}
 		metrics.IsLearnerCountTotal.With(prometheus.Labels{metrics.LabelSucceeded: metrics.ValueSucceededFalse}).Inc()
@@ -342,7 +342,7 @@ func (m *memberControl) IsClusterScaledUp(ctx context.Context, clientSet client.
 func AddLearnerWithRetry(ctx context.Context, m Control, retrySteps int, dataDir string) error {
 	backoff := miscellaneous.CreateBackoff(RetryPeriod, retrySteps)
 
-	if err := retry.OnError(backoff, utilError.IsErrNotNil, func() error {
+	return retry.OnError(backoff, utilError.IsErrNotNil, func() error {
 		// Remove data-dir(if exist) before adding a learner as a additional safety check.
 		if err := miscellaneous.RemoveDir(dataDir); err != nil {
 			return err
@@ -354,8 +354,5 @@ func AddLearnerWithRetry(ctx context.Context, m Control, retrySteps int, dataDir
 			return err
 		}
 		return nil
-	}); err != nil {
-		return err
-	}
-	return nil
+	})
 }
