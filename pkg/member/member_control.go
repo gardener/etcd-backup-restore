@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"time"
 
+	utilError "github.com/gardener/etcd-backup-restore/pkg/errors"
 	"github.com/gardener/etcd-backup-restore/pkg/etcdutil"
 	etcdClient "github.com/gardener/etcd-backup-restore/pkg/etcdutil/client"
 	"github.com/gardener/etcd-backup-restore/pkg/metrics"
@@ -123,6 +124,9 @@ func (m *memberControl) AddMemberAsLearner(ctx context.Context) error {
 		if errors.Is(err, rpctypes.Error(rpctypes.ErrGRPCPeerURLExist)) || errors.Is(err, rpctypes.Error(rpctypes.ErrGRPCMemberExist)) {
 			m.logger.Infof("Member %s already part of etcd cluster", memberURL)
 			return nil
+		} else if errors.Is(err, rpctypes.Error(rpctypes.ErrGRPCTooManyLearners)) {
+			m.logger.Infof("Unable to add member %s as a learner because the cluster already has a learner", m.podName)
+			return rpctypes.Error(rpctypes.ErrGRPCTooManyLearners)
 		}
 		metrics.IsLearnerCountTotal.With(prometheus.Labels{metrics.LabelSucceeded: metrics.ValueSucceededFalse}).Inc()
 		metrics.AddLearnerDurationSeconds.With(prometheus.Labels{metrics.LabelSucceeded: metrics.ValueSucceededFalse}).Observe(time.Since(start).Seconds())
@@ -332,4 +336,23 @@ func (m *memberControl) IsClusterScaledUp(ctx context.Context, clientSet client.
 		return false, err
 	}
 	return true, nil
+}
+
+// AddLearnerWithRetry add a new member as a learner with exponential backoff.
+func AddLearnerWithRetry(ctx context.Context, m Control, retrySteps int, dataDir string) error {
+	backoff := miscellaneous.CreateBackoff(RetryPeriod, retrySteps)
+
+	return retry.OnError(backoff, utilError.IsErrNotNil, func() error {
+		// Remove data-dir(if exist) before adding a learner as a additional safety check.
+		if err := miscellaneous.RemoveDir(dataDir); err != nil {
+			return err
+		}
+		if err := m.AddMemberAsLearner(ctx); err != nil {
+			if errors.Is(err, rpctypes.Error(rpctypes.ErrGRPCTooManyLearners)) {
+				miscellaneous.SleepWithContext(ctx, EtcdTimeout)
+			}
+			return err
+		}
+		return nil
+	})
 }

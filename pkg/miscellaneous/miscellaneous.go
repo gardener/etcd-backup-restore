@@ -580,12 +580,25 @@ func GetPrevScheduledSnapTime(nextSnapSchedule time.Time, timeWindow float64) ti
 	)
 }
 
-// CreateBackoff returns the backoff with Factor=2
+// CreateBackoff returns the backoff with Factor=2 with upper limit of 120sec.
 func CreateBackoff(retryPeriod time.Duration, steps int) wait.Backoff {
 	return wait.Backoff{
 		Duration: retryPeriod,
 		Factor:   2,
 		Jitter:   retry.DefaultBackoff.Jitter,
 		Steps:    steps,
+		Cap:      120 * time.Second,
 	}
+}
+
+// RemoveDir removes the directory(if exist) and do nothing if directory doesn't exist.
+func RemoveDir(dir string) error {
+	if _, err := os.Stat(dir); err == nil {
+		if err := os.RemoveAll(filepath.Join(dir)); err != nil {
+			return fmt.Errorf("failed to remove directory %s with err: %v", dir, err)
+		}
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+	return nil
 }

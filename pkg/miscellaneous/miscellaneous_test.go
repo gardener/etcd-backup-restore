@@ -768,6 +768,28 @@ initial-cluster: etcd1=http://0.0.0.0:2380`
 		})
 	})
 
+	Describe("Remove data-dir", func() {
+		Context("If path exist and can be removed", func() {
+			It("should return nil", func() {
+				err := os.Mkdir(etcdDir, 0700)
+				Expect(err).ShouldNot(HaveOccurred())
+				err = RemoveDir(etcdDir)
+				Expect(err).ShouldNot(HaveOccurred())
+			})
+		})
+		Context("If path doesn't exist", func() {
+			It("should return nil", func() {
+				err := RemoveDir(etcdDir)
+				Expect(err).ShouldNot(HaveOccurred())
+			})
+		})
+		Context("If path exist but can't be removed", func() {
+			It("should return error", func() {
+				err := RemoveDir(".")
+				Expect(err).Should(HaveOccurred())
+			})
+		})
+	})
 })
 
 func emptyStatefulSet(name, namespace string) *appsv1.StatefulSet {
