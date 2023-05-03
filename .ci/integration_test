@@ -175,7 +175,11 @@ function delete_aws_secret() {
 
 function create_s3_bucket() {
   echo "Creating S3 bucket ${TEST_ID} in region ${REGION}"
-  aws s3api create-bucket --bucket ${TEST_ID} --region ${REGION} --create-bucket-configuration LocationConstraint=${REGION}
+  aws s3api create-bucket --bucket ${TEST_ID} --region ${REGION} --create-bucket-configuration LocationConstraint=${REGION} --acl private
+  # Block public access to the S3 bucket
+  aws s3api put-public-access-block --bucket ${TEST_ID} --public-access-block-configuration "BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true"
+  # Deny non-HTTPS requests to the S3 bucket
+  aws s3api put-bucket-policy --bucket ${TEST_ID} --policy "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Deny\",\"Principal\":\"*\",\"Action\":\"s3:*\",\"Resource\":[\"arn:aws:s3:::${TEST_ID}\",\"arn:aws:s3:::${TEST_ID}/*\"],\"Condition\":{\"Bool\":{\"aws:SecureTransport\":\"false\"},\"NumericLessThan\":{\"s3:TlsVersion\":\"1.2\"}}}]}"
 }
 
 function delete_s3_bucket() {
