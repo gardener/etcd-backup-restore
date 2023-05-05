@@ -232,21 +232,5 @@ var _ = Describe("Membercontrol", func() {
 				Expect(err).ShouldNot(HaveOccurred())
 			})
 		})
-
-		Context("When statefulset has scale-up annotation", func() {
-			It("should return true", func() {
-				sts.Annotations = map[string]string{
-					miscellaneous.ScaledToMultiNodeAnnotationKey: "",
-				}
-
-				clientSet := miscellaneous.GetFakeKubernetesClientSet()
-				err := clientSet.Create(testCtx, sts)
-				Expect(err).ShouldNot(HaveOccurred())
-
-				isScaleUp, err := m.IsClusterScaledUp(testCtx, clientSet)
-				Expect(isScaleUp).Should(BeTrue())
-				Expect(err).ShouldNot(HaveOccurred())
-			})
-		})
 	})
 })

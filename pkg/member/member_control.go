@@ -322,6 +322,17 @@ func (m *memberControl) IsLearnerPresent(ctx context.Context) (bool, error) {
 // IsClusterScaledUp determines whether a etcd cluster is getting scale-up or not and returns a boolean
 func (m *memberControl) IsClusterScaledUp(ctx context.Context, clientSet client.Client) (bool, error) {
 	m.logger.Info("Checking whether etcd cluster is marked for scale-up")
+
+	// First, try to determine scale-up case by checking whether member is already part of cluster or not.
+	// In case of failure in checking the presence of member in a cluster then
+	// check for `ScaledToMultiNodeAnnotationKey` annotation in etcd statefulset.
+
+	if isEtcdMemberPresent, err := m.IsMemberInCluster(ctx); err != nil {
+		m.logger.Errorf("unable to check presence of member in cluster: %v", err)
+	} else {
+		return !isEtcdMemberPresent, nil
+	}
+
 	etcdsts, err := miscellaneous.GetStatefulSet(ctx, clientSet, m.podNamespace, m.podName)
 	if err != nil {
 		m.logger.Errorf("unable to fetch etcd statefulset: %v", err)
@@ -330,12 +341,7 @@ func (m *memberControl) IsClusterScaledUp(ctx context.Context, clientSet client.
 			return true, nil
 		}
 	}
-
-	isEtcdMemberPresent, err := m.IsMemberInCluster(ctx)
-	if err != nil || isEtcdMemberPresent {
-		return false, err
-	}
-	return true, nil
+	return false, nil
 }
 
 // AddLearnerWithRetry add a new member as a learner with exponential backoff.
