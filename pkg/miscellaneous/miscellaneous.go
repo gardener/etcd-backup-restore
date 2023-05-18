@@ -53,6 +53,8 @@ import (
 const (
 	// NoLeaderState defines the state when etcd returns LeaderID as 0.
 	NoLeaderState uint64 = 0
+	// EtcdConfigFileDirPath is directory path which has etcd configuration file.
+	EtcdConfigFileDirPath string = "/var/etcd/config"
 	// EtcdConfigFilePath is the file path where the etcd config map is mounted.
 	EtcdConfigFilePath string = "/var/etcd/config/etcd.conf.yaml"
 	// ClusterStateNew defines the "new" state of etcd cluster.

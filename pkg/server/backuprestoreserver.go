@@ -41,7 +41,6 @@ import (
 	cron "github.com/robfig/cron/v3"
 	"github.com/sirupsen/logrus"
 	"go.etcd.io/etcd/pkg/types"
-	"k8s.io/client-go/util/retry"
 )
 
 // BackupRestoreServer holds the details for backup-restore server.
@@ -190,22 +189,6 @@ func (b *BackupRestoreServer) runServer(ctx context.Context, restoreOpts *brtype
 			}
 			_ = miscellaneous.SleepWithContext(ctx, retryTimeout)
 		}
-	}
-
-	m := member.NewMemberControl(b.config.EtcdConnectionConfig)
-	if err := retry.OnError(retry.DefaultBackoff, errors.IsErrNotNil, func() error {
-		cli, err := etcdutil.NewFactory(*b.config.EtcdConnectionConfig).NewCluster()
-		if err != nil {
-			return err
-		}
-		defer cli.Close()
-
-		if err := m.UpdateMemberPeerURL(ctx, cli); err != nil {
-			return err
-		}
-		return nil
-	}); err != nil {
-		b.logger.Errorf("failed to update member peer url: %v", err)
 	}
 
 	leaderCallbacks := &brtypes.LeaderCallbacks{

@@ -20,8 +20,10 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/fsnotify/fsnotify"
 	"github.com/gardener/etcd-backup-restore/pkg/errors"
 	"github.com/gardener/etcd-backup-restore/pkg/etcdutil"
+	"github.com/gardener/etcd-backup-restore/pkg/member"
 	"github.com/gardener/etcd-backup-restore/pkg/miscellaneous"
 	utils "github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
@@ -318,6 +320,17 @@ func DeltaSnapshotCaseLeaseUpdate(ctx context.Context, logger *logrus.Entry, k8s
 
 // RenewMemberLeasePeriodically has a timer and will periodically call RenewMemberLeases to renew the member lease until stopped
 func RenewMemberLeasePeriodically(ctx context.Context, stopCh chan struct{}, hconfig *brtypes.HealthConfig, logger *logrus.Entry, etcdConfig *brtypes.EtcdConnectionConfig) error {
+	cmWatcher, err := fsnotify.NewWatcher()
+	if err != nil {
+		return err
+	}
+	defer cmWatcher.Close()
+
+	// add the input config map file to watcher to watch
+	if err := cmWatcher.Add(miscellaneous.EtcdConfigFileDirPath); err != nil {
+		return err
+	}
+
 	peerURLTLSEnabled, err := miscellaneous.IsPeerURLTLSEnabled()
 	if err != nil {
 		return fmt.Errorf("unable to check peer TLS enabled or not: %v", err)
@@ -355,6 +368,34 @@ func RenewMemberLeasePeriodically(ctx context.Context, stopCh chan struct{}, hco
 		case <-stopCh:
 			hb.logger.Info("Stoping the member lease renewal")
 			return nil
+		case <-cmWatcher.Events:
+			hb.logger.Info("config map watcher received an event")
+			peerURLTLSEnabled, err := miscellaneous.IsPeerURLTLSEnabled()
+			if err != nil {
+				hb.logger.Errorf("unable to check peer TLS enabled or not: %v", err)
+			}
+
+			// update etcd member's peerUrl with TLS enabled peerUrl.
+			if peerURLTLSEnabled {
+				hb.logger.Info("PeerUrl for etcd member has found to be enabled")
+				hb.metadata = map[string]string{
+					PeerURLTLSEnabledKey: strconv.FormatBool(peerURLTLSEnabled),
+				}
+
+				m := member.NewMemberControl(etcdConfig)
+				retry.OnError(retry.DefaultBackoff, errors.IsErrNotNil, func() error {
+					cli, err := etcdutil.NewFactory(*etcdConfig).NewCluster()
+					if err != nil {
+						return err
+					}
+					defer cli.Close()
+					hb.logger.Info("Will update PeerUrl...")
+					if err := m.UpdateMemberPeerURL(ctx, cli); err != nil {
+						return err
+					}
+					return nil
+				})
+			}
 		}
 	}
 }
