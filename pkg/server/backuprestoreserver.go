@@ -169,8 +169,6 @@ func waitUntilEtcdRunning(ctx context.Context, etcdConnectionConfig *brtypes.Etc
 }
 
 func isEtcdRunning(ctx context.Context, timeout time.Duration, etcdConnectionConfig *brtypes.EtcdConnectionConfig, logger *logrus.Logger) bool {
-	var endPoint string
-
 	factory := etcdutil.NewFactory(*etcdConnectionConfig)
 	client, err := factory.NewMaintenance()
 	if err != nil {
@@ -179,19 +177,19 @@ func isEtcdRunning(ctx context.Context, timeout time.Duration, etcdConnectionCon
 	}
 	defer client.Close()
 
-	if len(etcdConnectionConfig.Endpoints) > 0 {
-		endPoint = etcdConnectionConfig.Endpoints[0]
-	} else {
+	if len(etcdConnectionConfig.Endpoints) == 0 {
 		logger.Errorf("etcd endpoints are not passed correctly")
 		return false
 	}
 
+	endpoint := etcdConnectionConfig.Endpoints[0]
+
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	_, err = client.Status(ctx, endPoint)
+	_, err = client.Status(ctx, endpoint)
 	if err != nil {
-		logger.Errorf("failed to get status of etcd endPoint: %v with error: %v", endPoint, err)
+		logger.Errorf("failed to get status of etcd endPoint: %v with error: %v", endpoint, err)
 		return false
 	}
 	return true
