@@ -153,6 +153,50 @@ func (b *BackupRestoreServer) startHTTPServer(initializer initializer.Initialize
 	return handler
 }
 
+func waitUntilEtcdRunning(ctx context.Context, etcdConnectionConfig *brtypes.EtcdConnectionConfig, logger *logrus.Logger) error {
+	ticker := time.NewTicker(4 * time.Second)
+	defer ticker.Stop()
+	logger.Info("Checking if etcd is running")
+	for !isEtcdRunning(ctx, 2*time.Second, etcdConnectionConfig, logger) {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+		}
+	}
+	logger.Info("Etcd is now running. Continuing br startup")
+	return nil
+}
+
+func isEtcdRunning(ctx context.Context, timeout time.Duration, etcdConnectionConfig *brtypes.EtcdConnectionConfig, logger *logrus.Logger) bool {
+	var endPoint string
+
+	factory := etcdutil.NewFactory(*etcdConnectionConfig)
+	client, err := factory.NewMaintenance()
+	if err != nil {
+		logger.Errorf("failed to create etcd maintenance client: %v", err)
+		return false
+	}
+	defer client.Close()
+
+	if len(etcdConnectionConfig.Endpoints) > 0 {
+		endPoint = etcdConnectionConfig.Endpoints[0]
+	} else {
+		logger.Errorf("etcd endpoints are not passed correctly")
+		return false
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	_, err = client.Status(ctx, endPoint)
+	if err != nil {
+		logger.Errorf("failed to get status of etcd endPoint: %v with error: %v", endPoint, err)
+		return false
+	}
+	return true
+}
+
 // runServer runs the etcd-backup-restore server according to snapstore provider configuration.
 func (b *BackupRestoreServer) runServer(ctx context.Context, restoreOpts *brtypes.RestoreOptions) error {
 	var (
@@ -173,23 +217,9 @@ func (b *BackupRestoreServer) runServer(ctx context.Context, restoreOpts *brtype
 	defer handler.Stop()
 
 	metrics.CurrentClusterSize.With(prometheus.Labels{}).Set(float64(restoreOpts.OriginalClusterSize))
-	// Promotes member if it is a learner
 
-	if restoreOpts.OriginalClusterSize > 1 {
-		for {
-			select {
-			case <-ctx.Done():
-				b.logger.Info("Context cancelled. Stopping retry promoting member")
-				return ctx.Err()
-			default:
-			}
-			m := member.NewMemberControl(b.config.EtcdConnectionConfig)
-			err := m.PromoteMember(ctx)
-			if err == nil {
-				break
-			}
-			_ = miscellaneous.SleepWithContext(ctx, retryTimeout)
-		}
+	if err := waitUntilEtcdRunning(ctx, b.config.EtcdConnectionConfig, b.logger.Logger); err != nil {
+		return err
 	}
 
 	m := member.NewMemberControl(b.config.EtcdConnectionConfig)
