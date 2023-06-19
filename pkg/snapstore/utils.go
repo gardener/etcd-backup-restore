@@ -76,7 +76,15 @@ func GetSnapstore(config *brtypes.SnapstoreConfig) (brtypes.SnapStore, error) {
 		if config.Container == "" {
 			config.Container = defaultLocalStore
 		}
-		return NewLocalSnapStore(path.Join(config.Container, config.Prefix))
+		if strings.HasPrefix(config.Container, "../../../test/output") {
+			// To be used only by unit tests
+			return NewLocalSnapStore(path.Join(config.Container, config.Prefix))
+		}
+		homeDir, err := os.UserHomeDir()
+		if err != nil {
+			return nil, err
+		}
+		return NewLocalSnapStore(path.Join(homeDir, config.Container, config.Prefix))
 	case brtypes.SnapstoreProviderS3:
 		return NewS3SnapStore(config)
 	case brtypes.SnapstoreProviderABS:
