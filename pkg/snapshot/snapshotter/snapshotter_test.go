@@ -557,6 +557,16 @@ var _ = Describe("Snapshotter", func() {
 						Expect(err).ShouldNot(HaveOccurred())
 						Expect(len(list)).Should(Equal(6))
 
+						snapshotterConfig := &brtypes.SnapshotterConfig{
+							DeltaSnapshotRetentionPeriod: wrappers.Duration{Duration: 10 * time.Minute},
+							FullSnapshotSchedule:         schedule,
+							DeltaSnapshotPeriod:          wrappers.Duration{Duration: 10 * time.Second},
+							DeltaSnapshotMemoryLimit:     brtypes.DefaultDeltaSnapMemoryLimit,
+							GarbageCollectionPeriod:      wrappers.Duration{Duration: garbageCollectionPeriod},
+							GarbageCollectionPolicy:      brtypes.GarbageCollectionPolicyLimitBased,
+							MaxBackups:                   maxBackups,
+						}
+
 						ssr, err := NewSnapshotter(logger, snapshotterConfig, store, etcdConnectionConfig, compressionConfig, healthConfig, snapstoreConfig)
 						Expect(err).ShouldNot(HaveOccurred())
 						deleted, err := ssr.GarbageCollectDeltaSnapshots(list)
