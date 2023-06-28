@@ -544,7 +544,7 @@ var _ = Describe("Snapshotter", func() {
 				validateLimitBasedSnapshots(list, maxBackups, snapsInV1)
 			})
 
-			Describe("###garbageCollectDeltaSnapshots", func() {
+			Describe("###GarbageCollectDeltaSnapshots", func() {
 				AfterEach(func() {
 					err = os.RemoveAll(outputDir)
 					Expect(err).ShouldNot(HaveOccurred())
@@ -558,13 +558,12 @@ var _ = Describe("Snapshotter", func() {
 						Expect(len(list)).Should(Equal(6))
 
 						snapshotterConfig := &brtypes.SnapshotterConfig{
-							DeltaSnapshotRetentionPeriod: wrappers.Duration{Duration: 10 * time.Minute},
-							FullSnapshotSchedule:         schedule,
-							DeltaSnapshotPeriod:          wrappers.Duration{Duration: 10 * time.Second},
-							DeltaSnapshotMemoryLimit:     brtypes.DefaultDeltaSnapMemoryLimit,
-							GarbageCollectionPeriod:      wrappers.Duration{Duration: garbageCollectionPeriod},
-							GarbageCollectionPolicy:      brtypes.GarbageCollectionPolicyLimitBased,
-							MaxBackups:                   maxBackups,
+							FullSnapshotSchedule:     schedule,
+							DeltaSnapshotPeriod:      wrappers.Duration{Duration: 10 * time.Second},
+							DeltaSnapshotMemoryLimit: brtypes.DefaultDeltaSnapMemoryLimit,
+							GarbageCollectionPeriod:  wrappers.Duration{Duration: garbageCollectionPeriod},
+							GarbageCollectionPolicy:  brtypes.GarbageCollectionPolicyLimitBased,
+							MaxBackups:               maxBackups,
 						}
 
 						ssr, err := NewSnapshotter(logger, snapshotterConfig, store, etcdConnectionConfig, compressionConfig, healthConfig, snapstoreConfig)
@@ -1087,7 +1086,7 @@ Parameters:
 	storeContainer: string - Specifies the storeContainer path in the output directory.
 	noOfDeltaSnapshots: int - Specifies the number of delta snapshots to create and store.
 
-The function creates a snapshot store and populates it with delta snapshots. Each delta snapshot is generated at 10-minute intervals.
+The function creates a snapshot store and populates it with delta snapshots. Each delta snapshot is generated at 9-minute intervals.
 
 Returns:
 
@@ -1098,7 +1097,7 @@ func prepareStoreWithDeltaSnapshots(storeContainer string, noOfDeltaSnapshots in
 	store, err := snapstore.GetSnapstore(snapstoreConf)
 	Expect(err).ShouldNot(HaveOccurred())
 
-	snapTime := time.Now().Add(-time.Duration(noOfDeltaSnapshots*10) * time.Minute)
+	snapTime := time.Now().Add(-time.Duration(noOfDeltaSnapshots*9) * time.Minute)
 	for i := 0; i < noOfDeltaSnapshots; i++ {
 		snap := brtypes.Snapshot{
 			Kind:          brtypes.SnapshotKindDelta,
