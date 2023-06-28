@@ -83,7 +83,7 @@ func (ssr *Snapshotter) RunGarbageCollector(stopCh <-chan struct{}) {
 					nextSnap := snapList[snapStreamIndexList[snapStreamIndex-1]]
 
 					// garbage collect delta snapshots.
-					deletedSnap, err := ssr.garbageCollectDeltaSnapshots(snapList[snapStreamIndexList[snapStreamIndex-1]:snapStreamIndexList[snapStreamIndex]])
+					deletedSnap, err := ssr.GarbageCollectDeltaSnapshots(snapList[snapStreamIndexList[snapStreamIndex-1]:snapStreamIndexList[snapStreamIndex]])
 					total += deletedSnap
 					if err != nil {
 						continue
@@ -150,7 +150,7 @@ func (ssr *Snapshotter) RunGarbageCollector(stopCh <-chan struct{}) {
 				// Delete delta snapshots in all snapStream but the latest one.
 				// Delete all snapshots beyond limit set by ssr.maxBackups.
 				for snapStreamIndex := 0; snapStreamIndex < len(snapStreamIndexList)-1; snapStreamIndex++ {
-					deletedSnap, err := ssr.garbageCollectDeltaSnapshots(snapList[snapStreamIndexList[snapStreamIndex]:snapStreamIndexList[snapStreamIndex+1]])
+					deletedSnap, err := ssr.GarbageCollectDeltaSnapshots(snapList[snapStreamIndexList[snapStreamIndex]:snapStreamIndexList[snapStreamIndex+1]])
 					total += deletedSnap
 					if err != nil {
 						continue
@@ -213,24 +213,28 @@ func garbageCollectChunks(store brtypes.SnapStore, snapList brtypes.SnapList, lo
 	}
 }
 
-// garbageCollectDeltaSnapshots deletes only the delta snapshots from revision sorted <snapStream>. It won't delete the full snapshot
+// GarbageCollectDeltaSnapshots deletes only the delta snapshots from revision sorted <snapStream>. It won't delete the full snapshot
 // in snapstream which supposed to be at index 0 in <snapStream>.
-func (ssr *Snapshotter) garbageCollectDeltaSnapshots(snapStream brtypes.SnapList) (int, error) {
-	total := 0
-	for i := len(snapStream) - 1; i > 0; i-- {
-		if (*snapStream[i]).Kind != brtypes.SnapshotKindDelta {
-			continue
+func (ssr *Snapshotter) GarbageCollectDeltaSnapshots(snapStream brtypes.SnapList) (int, error) {
+	totalDeleted := 0
+	cutoffTime := time.Now().UTC().Add(-ssr.config.DeltaSnapshotRetentionPeriod.Duration)
+	for i := len(snapStream) - 1; i >= 0; i-- {
+		if (*snapStream[i]).Kind == brtypes.SnapshotKindDelta && snapStream[i].CreatedOn.Before(cutoffTime) {
+			snapPath := path.Join(snapStream[i].SnapDir, snapStream[i].SnapName)
+			ssr.logger.Infof("GC: Deleting old delta snapshot: %s", snapPath)
+
+			if err := ssr.store.Delete(*snapStream[i]); err != nil {
+				ssr.logger.Warnf("GC: Failed to delete snapshot %s: %v", snapPath, err)
+				metrics.SnapshotterOperationFailure.With(prometheus.Labels{metrics.LabelError: err.Error()}).Inc()
+				metrics.GCSnapshotCounter.With(prometheus.Labels{metrics.LabelKind: brtypes.SnapshotKindDelta, metrics.LabelSucceeded: metrics.ValueSucceededFalse}).Inc()
+
+				return totalDeleted, err
+			}
+
+			metrics.GCSnapshotCounter.With(prometheus.Labels{metrics.LabelKind: brtypes.SnapshotKindDelta, metrics.LabelSucceeded: metrics.ValueSucceededTrue}).Inc()
+			totalDeleted++
 		}
-		snapPath := path.Join(snapStream[i].SnapDir, snapStream[i].SnapName)
-		ssr.logger.Infof("GC: Deleting old delta snapshot: %s", snapPath)
-		if err := ssr.store.Delete(*snapStream[i]); err != nil {
-			ssr.logger.Warnf("GC: Failed to delete snapshot %s: %v", snapPath, err)
-			metrics.SnapshotterOperationFailure.With(prometheus.Labels{metrics.LabelError: err.Error()}).Inc()
-			metrics.GCSnapshotCounter.With(prometheus.Labels{metrics.LabelKind: brtypes.SnapshotKindDelta, metrics.LabelSucceeded: metrics.ValueSucceededFalse}).Inc()
-			return total, err
-		}
-		metrics.GCSnapshotCounter.With(prometheus.Labels{metrics.LabelKind: brtypes.SnapshotKindDelta, metrics.LabelSucceeded: metrics.ValueSucceededTrue}).Inc()
-		total++
 	}
-	return total, nil
+
+	return totalDeleted, nil
 }
