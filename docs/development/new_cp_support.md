@@ -13,7 +13,7 @@
 1. Update the `GetSnapstore` method in `pkg/snapstore/utils.go` to add a new case in switch block to support creation of the new provider implementation object.
 1. Add the fake implementation of provider SDK calls under `pkg/snapstore/provider_snapstore_test.go` for unit testing the provider implementation.
 1. Register the provider implementation object for testing at the appropriate place under `pkg/snapstore/snapstore_test.go`. This will run generic test against provider implementation.
-1. Update the [documentation](../usage/getting_started.md#cloud-provider-credentials) to provide info about passing provider credentials.
+1. Update the [documentation](../operations/getting_started.md#cloud-provider-credentials) to provide info about passing provider credentials.
 1. Update the [helm chart](../../chart/etcd-backup-restore) with provider details.
     - Update the [values.yaml](../../chart/etcd-backup-restore/values.yaml) with configuration for provider.
 1. Refer [this commit](https://github.com/gardener/etcd-backup-restore/pull/108/commits/9bcd4e0e96f85ce1f356f08c06a2ced293aaf20b) to for one of the already added provider support.
