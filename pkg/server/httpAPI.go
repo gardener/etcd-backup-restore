@@ -396,7 +396,7 @@ func (h *HTTPHandler) serveConfig(rw http.ResponseWriter, req *http.Request) {
 		rw.WriteHeader(http.StatusInternalServerError)
 		return
 	}
-	outputFileName := filepath.Join(dir, "etcd.conf.yaml") //"/etc/etcd.conf.yaml"
+	outputFileName := filepath.Join(dir, "etcd.conf.yaml")
 	configYML, err := ioutil.ReadFile(inputFileName)
 	if err != nil {
 		h.Logger.Warnf("Unable to read etcd config file: %v", err)
