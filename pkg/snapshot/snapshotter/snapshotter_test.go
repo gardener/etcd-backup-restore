@@ -545,29 +545,39 @@ var _ = Describe("Snapshotter", func() {
 			})
 
 			Describe("###GarbageCollectDeltaSnapshots", func() {
+				const (
+					deltaSnapshotCount = 6
+					testDir            = "garbagecollector_deltasnapshots.bkp"
+				)
+
+				var snapshotterConfig *brtypes.SnapshotterConfig
+
+				BeforeEach(func() {
+					snapshotterConfig = &brtypes.SnapshotterConfig{
+						FullSnapshotSchedule:     schedule,
+						DeltaSnapshotPeriod:      wrappers.Duration{Duration: 10 * time.Second},
+						DeltaSnapshotMemoryLimit: brtypes.DefaultDeltaSnapMemoryLimit,
+						GarbageCollectionPeriod:  wrappers.Duration{Duration: garbageCollectionPeriod},
+						GarbageCollectionPolicy:  brtypes.GarbageCollectionPolicyLimitBased,
+						MaxBackups:               maxBackups,
+					}
+				})
+
 				AfterEach(func() {
-					err = os.RemoveAll(outputDir)
+					err = os.RemoveAll(path.Join(outputDir, testDir))
 					Expect(err).ShouldNot(HaveOccurred())
 				})
 
 				Context("with all delta snapshots older than retention period", func() {
 					It("should delete all delta snapshots", func() {
-						store := prepareStoreWithDeltaSnapshots("garbagecollector_deltasnapshots.bkp", 6)
+						store := prepareStoreWithDeltaSnapshots(testDir, deltaSnapshotCount)
 						list, err := store.List()
 						Expect(err).ShouldNot(HaveOccurred())
-						Expect(len(list)).Should(Equal(6))
-
-						snapshotterConfig := &brtypes.SnapshotterConfig{
-							FullSnapshotSchedule:     schedule,
-							DeltaSnapshotPeriod:      wrappers.Duration{Duration: 10 * time.Second},
-							DeltaSnapshotMemoryLimit: brtypes.DefaultDeltaSnapMemoryLimit,
-							GarbageCollectionPeriod:  wrappers.Duration{Duration: garbageCollectionPeriod},
-							GarbageCollectionPolicy:  brtypes.GarbageCollectionPolicyLimitBased,
-							MaxBackups:               maxBackups,
-						}
+						Expect(len(list)).Should(Equal(deltaSnapshotCount))
 
 						ssr, err := NewSnapshotter(logger, snapshotterConfig, store, etcdConnectionConfig, compressionConfig, healthConfig, snapstoreConfig)
 						Expect(err).ShouldNot(HaveOccurred())
+
 						deleted, err := ssr.GarbageCollectDeltaSnapshots(list)
 						Expect(err).NotTo(HaveOccurred())
 						Expect(deleted).To(Equal(6))
@@ -577,71 +587,49 @@ var _ = Describe("Snapshotter", func() {
 
 				Context("with no delta snapshots", func() {
 					It("should not delete any snapshots", func() {
-						store := prepareStoreWithDeltaSnapshots("garbagecollector_deltasnapshots.bkp", 0)
+						store := prepareStoreWithDeltaSnapshots(testDir, 0)
 						list, err := store.List()
 						Expect(err).ShouldNot(HaveOccurred())
-						Expect(len(list)).Should(Equal(0))
+						Expect(len(list)).Should(BeZero())
 
-						snapshotterConfig := &brtypes.SnapshotterConfig{
-							DeltaSnapshotRetentionPeriod: wrappers.Duration{Duration: 10 * time.Minute},
-							FullSnapshotSchedule:         schedule,
-							DeltaSnapshotPeriod:          wrappers.Duration{Duration: 10 * time.Second},
-							DeltaSnapshotMemoryLimit:     brtypes.DefaultDeltaSnapMemoryLimit,
-							GarbageCollectionPeriod:      wrappers.Duration{Duration: garbageCollectionPeriod},
-							GarbageCollectionPolicy:      brtypes.GarbageCollectionPolicyLimitBased,
-							MaxBackups:                   maxBackups,
-						}
+						snapshotterConfig.DeltaSnapshotRetentionPeriod = wrappers.Duration{Duration: 10 * time.Minute}
 						ssr, err := NewSnapshotter(logger, snapshotterConfig, store, etcdConnectionConfig, compressionConfig, healthConfig, snapstoreConfig)
 						Expect(err).ShouldNot(HaveOccurred())
+
 						deleted, err := ssr.GarbageCollectDeltaSnapshots(list)
 						Expect(err).NotTo(HaveOccurred())
-						Expect(deleted).To(Equal(0))
+						Expect(deleted).Should(BeZero())
 					})
 				})
 
 				Context("with all delta snapshots younger than retention period", func() {
 					It("should not delete any snapshots", func() {
-						store := prepareStoreWithDeltaSnapshots("garbagecollector_deltasnapshots.bkp", 6)
+						store := prepareStoreWithDeltaSnapshots(testDir, deltaSnapshotCount)
 						list, err := store.List()
 						Expect(err).ShouldNot(HaveOccurred())
 						Expect(len(list)).Should(Equal(6))
 
-						snapshotterConfig := &brtypes.SnapshotterConfig{
-							DeltaSnapshotRetentionPeriod: wrappers.Duration{Duration: 600 * time.Minute},
-							FullSnapshotSchedule:         schedule,
-							DeltaSnapshotPeriod:          wrappers.Duration{Duration: 10 * time.Second},
-							DeltaSnapshotMemoryLimit:     brtypes.DefaultDeltaSnapMemoryLimit,
-							GarbageCollectionPeriod:      wrappers.Duration{Duration: garbageCollectionPeriod},
-							GarbageCollectionPolicy:      brtypes.GarbageCollectionPolicyLimitBased,
-							MaxBackups:                   maxBackups,
-						}
-
+						snapshotterConfig.DeltaSnapshotRetentionPeriod = wrappers.Duration{Duration: 600 * time.Minute}
 						ssr, err := NewSnapshotter(logger, snapshotterConfig, store, etcdConnectionConfig, compressionConfig, healthConfig, snapstoreConfig)
 						Expect(err).ShouldNot(HaveOccurred())
+
 						deleted, err := ssr.GarbageCollectDeltaSnapshots(list)
 						Expect(err).NotTo(HaveOccurred())
-						Expect(deleted).To(Equal(0))
+						Expect(deleted).Should(BeZero())
 					})
 				})
 
 				Context("with a mix of delta snapshots, some older and some younger than retention period", func() {
 					It("should delete only the delta snapshots older than the retention period", func() {
-						store := prepareStoreWithDeltaSnapshots("garbagecollector_deltasnapshots.bkp", 6)
+						store := prepareStoreWithDeltaSnapshots(testDir, deltaSnapshotCount)
 						list, err := store.List()
 						Expect(err).ShouldNot(HaveOccurred())
 						Expect(len(list)).Should(Equal(6))
 
-						snapshotterConfig := &brtypes.SnapshotterConfig{
-							DeltaSnapshotRetentionPeriod: wrappers.Duration{Duration: 30 * time.Minute},
-							FullSnapshotSchedule:         schedule,
-							DeltaSnapshotPeriod:          wrappers.Duration{Duration: 10 * time.Second},
-							DeltaSnapshotMemoryLimit:     brtypes.DefaultDeltaSnapMemoryLimit,
-							GarbageCollectionPeriod:      wrappers.Duration{Duration: garbageCollectionPeriod},
-							GarbageCollectionPolicy:      brtypes.GarbageCollectionPolicyLimitBased,
-							MaxBackups:                   maxBackups,
-						}
+						snapshotterConfig.DeltaSnapshotRetentionPeriod = wrappers.Duration{Duration: 30 * time.Minute}
 						ssr, err := NewSnapshotter(logger, snapshotterConfig, store, etcdConnectionConfig, compressionConfig, healthConfig, snapstoreConfig)
 						Expect(err).ShouldNot(HaveOccurred())
+
 						deleted, err := ssr.GarbageCollectDeltaSnapshots(list)
 						Expect(err).NotTo(HaveOccurred())
 						Expect(deleted).To(Equal(3))
