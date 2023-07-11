@@ -19,10 +19,8 @@ COPY . .
 
 RUN make build
 
-FROM alpine:3.18.2
+FROM gcr.io/distroless/static-debian11:nonroot AS backup-restore
 
-RUN apk add --update bash curl
-
-COPY --from=builder /go/src/github.com/gardener/backup-restore/bin/etcdbrctl /usr/local/bin/etcdbrctl
+COPY --from=builder /go/src/github.com/gardener/backup-restore/bin/etcdbrctl /etcdbrctl
 WORKDIR /
-ENTRYPOINT ["/usr/local/bin/etcdbrctl"]
+ENTRYPOINT ["/etcdbrctl"]
