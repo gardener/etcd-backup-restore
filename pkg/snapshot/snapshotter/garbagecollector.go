@@ -213,8 +213,18 @@ func garbageCollectChunks(store brtypes.SnapStore, snapList brtypes.SnapList, lo
 	}
 }
 
-// GarbageCollectDeltaSnapshots deletes only the delta snapshots from revision sorted <snapStream>. It won't delete the full snapshot
-// in snapstream which supposed to be at index 0 in <snapStream>.
+/*
+GarbageCollectDeltaSnapshots traverses the list of snapshots and removes delta snapshots that are older than the retention period specified in the Snapshotter's configuration.
+
+Parameters:
+
+	snapStream brtypes.SnapList - List of snapshots to perform garbage collection on.
+
+Returns:
+
+	int - Total number of delta snapshots deleted.
+	error - Error information, if any error occurred during the garbage collection. Returns 'nil' if operation is successful.
+*/
 func (ssr *Snapshotter) GarbageCollectDeltaSnapshots(snapStream brtypes.SnapList) (int, error) {
 	totalDeleted := 0
 	cutoffTime := time.Now().UTC().Add(-ssr.config.DeltaSnapshotRetentionPeriod.Duration)
