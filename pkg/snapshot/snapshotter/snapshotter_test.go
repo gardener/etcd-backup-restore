@@ -582,6 +582,9 @@ var _ = Describe("Snapshotter", func() {
 						Expect(err).NotTo(HaveOccurred())
 						Expect(deleted).To(Equal(6))
 
+						list, err = store.List()
+						Expect(err).ShouldNot(HaveOccurred())
+						Expect(len(list)).Should(BeZero())
 					})
 				})
 
@@ -599,6 +602,10 @@ var _ = Describe("Snapshotter", func() {
 						deleted, err := ssr.GarbageCollectDeltaSnapshots(list)
 						Expect(err).NotTo(HaveOccurred())
 						Expect(deleted).Should(BeZero())
+
+						list, err = store.List()
+						Expect(err).ShouldNot(HaveOccurred())
+						Expect(len(list)).Should(BeZero())
 					})
 				})
 
@@ -616,6 +623,10 @@ var _ = Describe("Snapshotter", func() {
 						deleted, err := ssr.GarbageCollectDeltaSnapshots(list)
 						Expect(err).NotTo(HaveOccurred())
 						Expect(deleted).Should(BeZero())
+
+						list, err = store.List()
+						Expect(err).ShouldNot(HaveOccurred())
+						Expect(len(list)).Should(Equal(deltaSnapshotCount))
 					})
 				})
 
@@ -633,6 +644,10 @@ var _ = Describe("Snapshotter", func() {
 						deleted, err := ssr.GarbageCollectDeltaSnapshots(list)
 						Expect(err).NotTo(HaveOccurred())
 						Expect(deleted).To(Equal(3))
+
+						list, err = store.List()
+						Expect(err).ShouldNot(HaveOccurred())
+						Expect(len(list)).Should(Equal(3))
 					})
 				})
 			})
