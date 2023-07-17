@@ -34,7 +34,7 @@ import (
 	"go.etcd.io/etcd/pkg/types"
 
 	. "github.com/gardener/etcd-backup-restore/pkg/snapshot/restorer"
-	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
 

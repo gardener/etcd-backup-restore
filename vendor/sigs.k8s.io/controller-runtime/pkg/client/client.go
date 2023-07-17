@@ -18,7 +18,9 @@ package client
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"strings"
 
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -31,15 +33,34 @@ import (
 	"k8s.io/client-go/rest"
 
 	"sigs.k8s.io/controller-runtime/pkg/client/apiutil"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
-// Options are creation options for a Client
+// WarningHandlerOptions are options for configuring a
+// warning handler for the client which is responsible
+// for surfacing API Server warnings.
+type WarningHandlerOptions struct {
+	// SuppressWarnings decides if the warnings from the
+	// API server are suppressed or surfaced in the client.
+	SuppressWarnings bool
+	// AllowDuplicateLogs does not deduplicate the to-be
+	// logged surfaced warnings messages. See
+	// log.WarningHandlerOptions for considerations
+	// regarding deduplication
+	AllowDuplicateLogs bool
+}
+
+// Options are creation options for a Client.
 type Options struct {
 	// Scheme, if provided, will be used to map go structs to GroupVersionKinds
 	Scheme *runtime.Scheme
 
 	// Mapper, if provided, will be used to map GroupVersionKinds to Resources
 	Mapper meta.RESTMapper
+
+	// Opts is used to configure the warning handler responsible for
+	// surfacing and handling warnings messages sent by the API server.
+	Opts WarningHandlerOptions
 }
 
 // New returns a new Client using the provided config and Options.
@@ -53,8 +74,28 @@ type Options struct {
 // case of unstructured types, the group, version, and kind will be extracted
 // from the corresponding fields on the object.
 func New(config *rest.Config, options Options) (Client, error) {
+	return newClient(config, options)
+}
+
+func newClient(config *rest.Config, options Options) (*client, error) {
 	if config == nil {
 		return nil, fmt.Errorf("must provide non-nil rest.Config to client.New")
+	}
+
+	if !options.Opts.SuppressWarnings {
+		// surface warnings
+		logger := log.Log.WithName("KubeAPIWarningLogger")
+		// Set a WarningHandler, the default WarningHandler
+		// is log.KubeAPIWarningLogger with deduplication enabled.
+		// See log.KubeAPIWarningLoggerOptions for considerations
+		// regarding deduplication.
+		config = rest.CopyConfig(config)
+		config.WarningHandler = log.NewKubeAPIWarningLogger(
+			logger,
+			log.KubeAPIWarningLoggerOptions{
+				Deduplicate: !options.Opts.AllowDuplicateLogs,
+			},
+		)
 	}
 
 	// Init a scheme if none provided
@@ -119,7 +160,6 @@ type client struct {
 }
 
 // resetGroupVersionKind is a helper function to restore and preserve GroupVersionKind on an object.
-// TODO(vincepri): Remove this function and its calls once controller-runtime dependencies are upgraded to 1.16?
 func (c *client) resetGroupVersionKind(obj runtime.Object, gvk schema.GroupVersionKind) {
 	if gvk != schema.EmptyObjectKind.GroupVersionKind() {
 		if v, ok := obj.(schema.ObjectKind); ok {
@@ -138,7 +178,7 @@ func (c *client) RESTMapper() meta.RESTMapper {
 	return c.mapper
 }
 
-// Create implements client.Client
+// Create implements client.Client.
 func (c *client) Create(ctx context.Context, obj Object, opts ...CreateOption) error {
 	switch obj.(type) {
 	case *unstructured.Unstructured:
@@ -150,7 +190,7 @@ func (c *client) Create(ctx context.Context, obj Object, opts ...CreateOption) e
 	}
 }
 
-// Update implements client.Client
+// Update implements client.Client.
 func (c *client) Update(ctx context.Context, obj Object, opts ...UpdateOption) error {
 	defer c.resetGroupVersionKind(obj, obj.GetObjectKind().GroupVersionKind())
 	switch obj.(type) {
@@ -163,7 +203,7 @@ func (c *client) Update(ctx context.Context, obj Object, opts ...UpdateOption) e
 	}
 }
 
-// Delete implements client.Client
+// Delete implements client.Client.
 func (c *client) Delete(ctx context.Context, obj Object, opts ...DeleteOption) error {
 	switch obj.(type) {
 	case *unstructured.Unstructured:
@@ -175,7 +215,7 @@ func (c *client) Delete(ctx context.Context, obj Object, opts ...DeleteOption) e
 	}
 }
 
-// DeleteAllOf implements client.Client
+// DeleteAllOf implements client.Client.
 func (c *client) DeleteAllOf(ctx context.Context, obj Object, opts ...DeleteAllOfOption) error {
 	switch obj.(type) {
 	case *unstructured.Unstructured:
@@ -187,7 +227,7 @@ func (c *client) DeleteAllOf(ctx context.Context, obj Object, opts ...DeleteAllO
 	}
 }
 
-// Patch implements client.Client
+// Patch implements client.Client.
 func (c *client) Patch(ctx context.Context, obj Object, patch Patch, opts ...PatchOption) error {
 	defer c.resetGroupVersionKind(obj, obj.GetObjectKind().GroupVersionKind())
 	switch obj.(type) {
@@ -200,65 +240,243 @@ func (c *client) Patch(ctx context.Context, obj Object, patch Patch, opts ...Pat
 	}
 }
 
-// Get implements client.Client
-func (c *client) Get(ctx context.Context, key ObjectKey, obj Object) error {
+// Get implements client.Client.
+func (c *client) Get(ctx context.Context, key ObjectKey, obj Object, opts ...GetOption) error {
 	switch obj.(type) {
 	case *unstructured.Unstructured:
-		return c.unstructuredClient.Get(ctx, key, obj)
+		return c.unstructuredClient.Get(ctx, key, obj, opts...)
 	case *metav1.PartialObjectMetadata:
-		return c.metadataClient.Get(ctx, key, obj)
+		// Metadata only object should always preserve the GVK coming in from the caller.
+		defer c.resetGroupVersionKind(obj, obj.GetObjectKind().GroupVersionKind())
+		return c.metadataClient.Get(ctx, key, obj, opts...)
 	default:
-		return c.typedClient.Get(ctx, key, obj)
+		return c.typedClient.Get(ctx, key, obj, opts...)
 	}
 }
 
-// List implements client.Client
+// List implements client.Client.
 func (c *client) List(ctx context.Context, obj ObjectList, opts ...ListOption) error {
-	switch obj.(type) {
+	switch x := obj.(type) {
 	case *unstructured.UnstructuredList:
 		return c.unstructuredClient.List(ctx, obj, opts...)
 	case *metav1.PartialObjectMetadataList:
-		return c.metadataClient.List(ctx, obj, opts...)
+		// Metadata only object should always preserve the GVK.
+		gvk := obj.GetObjectKind().GroupVersionKind()
+		defer c.resetGroupVersionKind(obj, gvk)
+
+		// Call the list client.
+		if err := c.metadataClient.List(ctx, obj, opts...); err != nil {
+			return err
+		}
+
+		// Restore the GVK for each item in the list.
+		itemGVK := schema.GroupVersionKind{
+			Group:   gvk.Group,
+			Version: gvk.Version,
+			// TODO: this is producing unsafe guesses that don't actually work,
+			// but it matches ~99% of the cases out there.
+			Kind: strings.TrimSuffix(gvk.Kind, "List"),
+		}
+		for i := range x.Items {
+			item := &x.Items[i]
+			item.SetGroupVersionKind(itemGVK)
+		}
+
+		return nil
 	default:
 		return c.typedClient.List(ctx, obj, opts...)
 	}
 }
 
-// Status implements client.StatusClient
-func (c *client) Status() StatusWriter {
-	return &statusWriter{client: c}
+// Status implements client.StatusClient.
+func (c *client) Status() SubResourceWriter {
+	return c.SubResource("status")
 }
 
-// statusWriter is client.StatusWriter that writes status subresource
-type statusWriter struct {
-	client *client
+func (c *client) SubResource(subResource string) SubResourceClient {
+	return &subResourceClient{client: c, subResource: subResource}
 }
 
-// ensure statusWriter implements client.StatusWriter
-var _ StatusWriter = &statusWriter{}
+// subResourceClient is client.SubResourceWriter that writes to subresources.
+type subResourceClient struct {
+	client      *client
+	subResource string
+}
 
-// Update implements client.StatusWriter
-func (sw *statusWriter) Update(ctx context.Context, obj Object, opts ...UpdateOption) error {
-	defer sw.client.resetGroupVersionKind(obj, obj.GetObjectKind().GroupVersionKind())
-	switch obj.(type) {
-	case *unstructured.Unstructured:
-		return sw.client.unstructuredClient.UpdateStatus(ctx, obj, opts...)
-	case *metav1.PartialObjectMetadata:
-		return fmt.Errorf("cannot update status using only metadata -- did you mean to patch?")
-	default:
-		return sw.client.typedClient.UpdateStatus(ctx, obj, opts...)
+// ensure subResourceClient implements client.SubResourceClient.
+var _ SubResourceClient = &subResourceClient{}
+
+// SubResourceGetOptions holds all the possible configuration
+// for a subresource Get request.
+type SubResourceGetOptions struct {
+	Raw *metav1.GetOptions
+}
+
+// ApplyToSubResourceGet updates the configuaration to the given get options.
+func (getOpt *SubResourceGetOptions) ApplyToSubResourceGet(o *SubResourceGetOptions) {
+	if getOpt.Raw != nil {
+		o.Raw = getOpt.Raw
 	}
 }
 
-// Patch implements client.Client
-func (sw *statusWriter) Patch(ctx context.Context, obj Object, patch Patch, opts ...PatchOption) error {
-	defer sw.client.resetGroupVersionKind(obj, obj.GetObjectKind().GroupVersionKind())
+// ApplyOptions applues the given options.
+func (getOpt *SubResourceGetOptions) ApplyOptions(opts []SubResourceGetOption) *SubResourceGetOptions {
+	for _, o := range opts {
+		o.ApplyToSubResourceGet(getOpt)
+	}
+
+	return getOpt
+}
+
+// AsGetOptions returns the configured options as *metav1.GetOptions.
+func (getOpt *SubResourceGetOptions) AsGetOptions() *metav1.GetOptions {
+	if getOpt.Raw == nil {
+		return &metav1.GetOptions{}
+	}
+	return getOpt.Raw
+}
+
+// SubResourceUpdateOptions holds all the possible configuration
+// for a subresource update request.
+type SubResourceUpdateOptions struct {
+	UpdateOptions
+	SubResourceBody Object
+}
+
+// ApplyToSubResourceUpdate updates the configuration on the given create options
+func (uo *SubResourceUpdateOptions) ApplyToSubResourceUpdate(o *SubResourceUpdateOptions) {
+	uo.UpdateOptions.ApplyToUpdate(&o.UpdateOptions)
+	if uo.SubResourceBody != nil {
+		o.SubResourceBody = uo.SubResourceBody
+	}
+}
+
+// ApplyOptions applies the given options.
+func (uo *SubResourceUpdateOptions) ApplyOptions(opts []SubResourceUpdateOption) *SubResourceUpdateOptions {
+	for _, o := range opts {
+		o.ApplyToSubResourceUpdate(uo)
+	}
+
+	return uo
+}
+
+// SubResourceUpdateAndPatchOption is an option that can be used for either
+// a subresource update or patch request.
+type SubResourceUpdateAndPatchOption interface {
+	SubResourceUpdateOption
+	SubResourcePatchOption
+}
+
+// WithSubResourceBody returns an option that uses the given body
+// for a subresource Update or Patch operation.
+func WithSubResourceBody(body Object) SubResourceUpdateAndPatchOption {
+	return &withSubresourceBody{body: body}
+}
+
+type withSubresourceBody struct {
+	body Object
+}
+
+func (wsr *withSubresourceBody) ApplyToSubResourceUpdate(o *SubResourceUpdateOptions) {
+	o.SubResourceBody = wsr.body
+}
+
+func (wsr *withSubresourceBody) ApplyToSubResourcePatch(o *SubResourcePatchOptions) {
+	o.SubResourceBody = wsr.body
+}
+
+// SubResourceCreateOptions are all the possible configurations for a subresource
+// create request.
+type SubResourceCreateOptions struct {
+	CreateOptions
+}
+
+// ApplyOptions applies the given options.
+func (co *SubResourceCreateOptions) ApplyOptions(opts []SubResourceCreateOption) *SubResourceCreateOptions {
+	for _, o := range opts {
+		o.ApplyToSubResourceCreate(co)
+	}
+
+	return co
+}
+
+// ApplyToSubresourceCreate applies the the configuration on the given create options.
+func (co *SubResourceCreateOptions) ApplyToSubresourceCreate(o *SubResourceCreateOptions) {
+	co.CreateOptions.ApplyToCreate(&co.CreateOptions)
+}
+
+// SubResourcePatchOptions holds all possible configurations for a subresource patch
+// request.
+type SubResourcePatchOptions struct {
+	PatchOptions
+	SubResourceBody Object
+}
+
+// ApplyOptions applies the given options.
+func (po *SubResourcePatchOptions) ApplyOptions(opts []SubResourcePatchOption) *SubResourcePatchOptions {
+	for _, o := range opts {
+		o.ApplyToSubResourcePatch(po)
+	}
+
+	return po
+}
+
+// ApplyToSubResourcePatch applies the configuration on the given patch options.
+func (po *SubResourcePatchOptions) ApplyToSubResourcePatch(o *SubResourcePatchOptions) {
+	po.PatchOptions.ApplyToPatch(&o.PatchOptions)
+	if po.SubResourceBody != nil {
+		o.SubResourceBody = po.SubResourceBody
+	}
+}
+
+func (sc *subResourceClient) Get(ctx context.Context, obj Object, subResource Object, opts ...SubResourceGetOption) error {
 	switch obj.(type) {
 	case *unstructured.Unstructured:
-		return sw.client.unstructuredClient.PatchStatus(ctx, obj, patch, opts...)
+		return sc.client.unstructuredClient.GetSubResource(ctx, obj, subResource, sc.subResource, opts...)
 	case *metav1.PartialObjectMetadata:
-		return sw.client.metadataClient.PatchStatus(ctx, obj, patch, opts...)
+		return errors.New("can not get subresource using only metadata")
 	default:
-		return sw.client.typedClient.PatchStatus(ctx, obj, patch, opts...)
+		return sc.client.typedClient.GetSubResource(ctx, obj, subResource, sc.subResource, opts...)
+	}
+}
+
+// Create implements client.SubResourceClient
+func (sc *subResourceClient) Create(ctx context.Context, obj Object, subResource Object, opts ...SubResourceCreateOption) error {
+	defer sc.client.resetGroupVersionKind(obj, obj.GetObjectKind().GroupVersionKind())
+	defer sc.client.resetGroupVersionKind(subResource, subResource.GetObjectKind().GroupVersionKind())
+
+	switch obj.(type) {
+	case *unstructured.Unstructured:
+		return sc.client.unstructuredClient.CreateSubResource(ctx, obj, subResource, sc.subResource, opts...)
+	case *metav1.PartialObjectMetadata:
+		return fmt.Errorf("cannot update status using only metadata -- did you mean to patch?")
+	default:
+		return sc.client.typedClient.CreateSubResource(ctx, obj, subResource, sc.subResource, opts...)
+	}
+}
+
+// Update implements client.SubResourceClient
+func (sc *subResourceClient) Update(ctx context.Context, obj Object, opts ...SubResourceUpdateOption) error {
+	defer sc.client.resetGroupVersionKind(obj, obj.GetObjectKind().GroupVersionKind())
+	switch obj.(type) {
+	case *unstructured.Unstructured:
+		return sc.client.unstructuredClient.UpdateSubResource(ctx, obj, sc.subResource, opts...)
+	case *metav1.PartialObjectMetadata:
+		return fmt.Errorf("cannot update status using only metadata -- did you mean to patch?")
+	default:
+		return sc.client.typedClient.UpdateSubResource(ctx, obj, sc.subResource, opts...)
+	}
+}
+
+// Patch implements client.SubResourceWriter.
+func (sc *subResourceClient) Patch(ctx context.Context, obj Object, patch Patch, opts ...SubResourcePatchOption) error {
+	defer sc.client.resetGroupVersionKind(obj, obj.GetObjectKind().GroupVersionKind())
+	switch obj.(type) {
+	case *unstructured.Unstructured:
+		return sc.client.unstructuredClient.PatchSubResource(ctx, obj, sc.subResource, patch, opts...)
+	case *metav1.PartialObjectMetadata:
+		return sc.client.metadataClient.PatchSubResource(ctx, obj, sc.subResource, patch, opts...)
+	default:
+		return sc.client.typedClient.PatchSubResource(ctx, obj, sc.subResource, patch, opts...)
 	}
 }
