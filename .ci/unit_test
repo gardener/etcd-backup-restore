@@ -16,64 +16,54 @@ set -e
 
 # For the test step concourse will set the following environment variables:
 # SOURCE_PATH - path to component repository root directory.
+READLINK_BIN="readlink"
 if [[ $(uname) == 'Darwin' ]]; then
   READLINK_BIN="greadlink"
-else
-  READLINK_BIN="readlink"
 fi
 
-if [[ -z "${SOURCE_PATH}" ]]; then
-  export SOURCE_PATH="$(${READLINK_BIN} -f "$(dirname ${0})/..")"
-else
-  export SOURCE_PATH="$(${READLINK_BIN} -f "${SOURCE_PATH}")"
-fi
-
-VCS="github.com"
-ORGANIZATION="gardener"
-PROJECT="etcd-backup-restore"
-REPOSITORY=${VCS}/${ORGANIZATION}/${PROJECT}
+# Set SOURCE_PATH if not already set
+SOURCE_PATH="${SOURCE_PATH:-$(dirname "$0")/..}"
+SOURCE_PATH=$(${READLINK_BIN} -f "${SOURCE_PATH}")
+export SOURCE_PATH
 
 cd "${SOURCE_PATH}"
 
 # Install Ginkgo (test framework) to be able to execute the tests.
-go install github.com/onsi/ginkgo/ginkgo@v1.14.1
+go install github.com/onsi/ginkgo/v2/ginkgo
 
 ###############################################################################
 
-function test_with_coverage() {
+test_with_coverage() {
   echo "[INFO] Test coverage is enabled."
   local output_dir=test/output
   local coverprofile_file=coverprofile.out
-  mkdir -p test/output
-  ginkgo $GINKGO_COMMON_FLAGS -gcflags=all=-d=checkptr=0 --coverprofile ${coverprofile_file} -covermode=set -outputdir ${output_dir} ${TEST_PACKAGES}
-  sed -i='' '/mode: set/d' ${output_dir}/${coverprofile_file}
-  {( echo "mode: set"; cat ${output_dir}/${coverprofile_file} )} > ${output_dir}/${coverprofile_file}.temp
-  mv ${output_dir}/${coverprofile_file}.temp ${output_dir}/${coverprofile_file}
-  go tool cover -func ${output_dir}/${coverprofile_file}
+  mkdir -p "${output_dir}"
+  ginkgo "${GINKGO_COMMON_FLAGS[@]}" -gcflags=all=-d=checkptr=0 --coverprofile "${coverprofile_file}" -covermode=set -outputdir "${output_dir}" ${TEST_PACKAGES}
+  sed -i='' '/mode: set/d' "${output_dir}/${coverprofile_file}"
+  { echo "mode: set"; cat "${output_dir}/${coverprofile_file}"; } > "${output_dir}/${coverprofile_file}.temp"
+  mv "${output_dir}/${coverprofile_file}.temp" "${output_dir}/${coverprofile_file}"
+  go tool cover -func "${output_dir}/${coverprofile_file}"
 }
 
 ################################################################################
 
 # To run a specific package, run TEST_PACKAGES=<PATH_TO_PACKAGE> make test
-TEST_PACKAGES=${TEST_PACKAGES:-""}
-if [[ -z "${TEST_PACKAGES}" ]]; then
-  TEST_PACKAGES="cmd pkg"
-fi
+TEST_PACKAGES="${TEST_PACKAGES:-"cmd pkg"}"
 
-RUN_NEGATIVE=${RUN_NEGATIVE:-"true"}
+RUN_NEGATIVE="${RUN_NEGATIVE:-"true"}"
 
-GINKGO_COMMON_FLAGS="-r -timeout=1h0m0s --progress -slowSpecThreshold=180 -mod=vendor"
+GINKGO_COMMON_FLAGS=("-r" "-timeout=1h0m0s" "--progress" "-slowSpecThreshold=180" "-mod=vendor")
 
-if [ -z $COVER ] || [ "$COVER" = false ] ; then
+if [[ "${COVER:-false}" == "false" ]]; then
   echo "[INFO] Test coverage is disabled."
 
-  # run everything which is not part of negative scenarios with randomizeAllSpecs parameters.
-  ginkgo -race -trace $GINKGO_COMMON_FLAGS -gcflags=all=-d=checkptr=0 --randomizeAllSpecs --randomizeSuites --failOnPending --skip="NEGATIVE\:.*" ${TEST_PACKAGES}
+  # Run all non-negative scenarios with randomizeAllSpecs parameters.
+  ginkgo -race -trace "${GINKGO_COMMON_FLAGS[@]}" -gcflags=all=-d=checkptr=0 --randomizeAllSpecs --randomizeSuites --failOnPending --skip="NEGATIVE\:.*" ${TEST_PACKAGES}
 
-  if [ "$RUN_NEGATIVE" = "true" ] ; then
+  if [[ "${RUN_NEGATIVE}" == "true" ]]; then
     echo "[INFO] Running negative tests now..."
-    #run negative scenario in a sequenced manner (removed failOnPending as one spec in restore test is marked as 'X' for excluding)
-    ginkgo -race -trace $GINKGO_COMMON_FLAGS -gcflags=all=-d=checkptr=0 --focus="NEGATIVE\:.*" ${TEST_PACKAGES}
+    # Run negative scenarios sequentially (removed failOnPending as one spec in restore test is marked as 'X' for excluding)
+    ginkgo -race -trace "${GINKGO_COMMON_FLAGS[@]}" -gcflags=all=-d=checkptr=0 --focus="NEGATIVE\:.*" ${TEST_PACKAGES}
   fi
 
 else
