@@ -52,6 +52,7 @@ PACKAGES="$(GO111MODULE=on go list -mod=vendor -e ./...)"
 LINT_FOLDERS="$(echo ${PACKAGES} | sed "s|github.com/gardener/etcd-backup-restore|.|g")"
 HELM_CHART_PATH="${SOURCE_PATH}/chart/etcd-backup-restore"
 
+go version
 # Execute static code checks.
 GO111MODULE=on go vet -mod vendor ${PACKAGES}
 
