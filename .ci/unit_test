@@ -52,13 +52,13 @@ TEST_PACKAGES="${TEST_PACKAGES:-"cmd pkg"}"
 
 RUN_NEGATIVE="${RUN_NEGATIVE:-"true"}"
 
-GINKGO_COMMON_FLAGS=("-r" "-timeout=1h0m0s" "--progress" "-slowSpecThreshold=180" "-mod=vendor")
+GINKGO_COMMON_FLAGS=("-r" "-timeout=1h0m0s" "-mod=vendor")
 
 if [[ "${COVER:-false}" == "false" ]]; then
   echo "[INFO] Test coverage is disabled."
 
-  # Run all non-negative scenarios with randomizeAllSpecs parameters.
-  ginkgo -race -trace "${GINKGO_COMMON_FLAGS[@]}" -gcflags=all=-d=checkptr=0 --randomizeAllSpecs --randomizeSuites --failOnPending --skip="NEGATIVE\:.*" ${TEST_PACKAGES}
+  # Run all non-negative scenarios with randomize-all parameters.
+  ginkgo -race -trace "${GINKGO_COMMON_FLAGS[@]}" -gcflags=all=-d=checkptr=0 --randomize-all --randomize-suites --skip="NEGATIVE\:.*" ${TEST_PACKAGES}
 
   if [[ "${RUN_NEGATIVE}" == "true" ]]; then
     echo "[INFO] Running negative tests now..."
