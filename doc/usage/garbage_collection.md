@@ -19,6 +19,7 @@ Garbage Collection policies fall into two categories, each of which can be confi
 2. **Limit-Based Policy**: This policy aims to keep the snapshot count under a specific limit, as determined by the configuration. The policy prioritizes retaining recent snapshots and eliminating older ones. You can configure this policy with the following flags: `--max-backups=10` and `--garbage-collection-policy='LimitBased'`. The garbage collection process under this policy unfolds as follows:
 
    - The most recent full snapshot and its associated delta snapshots are always retained, regardless of the `delta-snapshot-retention-period` setting. This is essential for potential data recovery.
+   - All delta snapshots that fall within the `delta-snapshot-retention-period` are preserved.
    - Full snapshots are retained up to the limit set in the configuration. Any full snapshots beyond this limit are removed.
 
 ## Retention Period for Delta Snapshots

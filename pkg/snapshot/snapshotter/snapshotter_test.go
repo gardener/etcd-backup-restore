@@ -580,7 +580,7 @@ var _ = Describe("Snapshotter", func() {
 
 						deleted, err := ssr.GarbageCollectDeltaSnapshots(list)
 						Expect(err).NotTo(HaveOccurred())
-						Expect(deleted).To(Equal(6))
+						Expect(deleted).To(Equal(deltaSnapshotCount))
 
 						list, err = store.List()
 						Expect(err).ShouldNot(HaveOccurred())
@@ -1095,7 +1095,7 @@ Returns:
 
 	brtypes.SnapStore - The populated snapshot store.
 */
-func prepareStoreWithDeltaSnapshots(storeContainer string, noOfDeltaSnapshots int) brtypes.SnapStore {
+func prepareStoreWithDeltaSnapshots(storeContainer string, numDeltaSnapshots int) brtypes.SnapStore {
 	snapstoreConf := &brtypes.SnapstoreConfig{Container: path.Join(outputDir, storeContainer), Prefix: "v2"}
 	store, err := snapstore.GetSnapstore(snapstoreConf)
 	Expect(err).ShouldNot(HaveOccurred())
