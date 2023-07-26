@@ -555,7 +555,7 @@ var _ = Describe("Snapshotter", func() {
 				BeforeEach(func() {
 					snapshotterConfig = &brtypes.SnapshotterConfig{
 						FullSnapshotSchedule:     schedule,
-						DeltaSnapshotPeriod:      wrappers.Duration{Duration: 10 * time.Second},
+						DeltaSnapshotPeriod:      wrappers.Duration{Duration: 10 * time.Minute},
 						DeltaSnapshotMemoryLimit: brtypes.DefaultDeltaSnapMemoryLimit,
 						GarbageCollectionPeriod:  wrappers.Duration{Duration: garbageCollectionPeriod},
 						GarbageCollectionPolicy:  brtypes.GarbageCollectionPolicyLimitBased,
@@ -637,7 +637,7 @@ var _ = Describe("Snapshotter", func() {
 						Expect(err).ShouldNot(HaveOccurred())
 						Expect(len(list)).Should(Equal(6))
 
-						snapshotterConfig.DeltaSnapshotRetentionPeriod = wrappers.Duration{Duration: 30 * time.Minute}
+						snapshotterConfig.DeltaSnapshotRetentionPeriod = wrappers.Duration{Duration: 35 * time.Minute}
 						ssr, err := NewSnapshotter(logger, snapshotterConfig, store, etcdConnectionConfig, compressionConfig, healthConfig, snapstoreConfig)
 						Expect(err).ShouldNot(HaveOccurred())
 
@@ -1087,7 +1087,7 @@ prepareStoreWithDeltaSnapshots prepares a snapshot store with a specified number
 Parameters:
 
 	storeContainer: string - Specifies the storeContainer path in the output directory.
-	noOfDeltaSnapshots: int - Specifies the number of delta snapshots to create and store.
+	numDeltaSnapshots: int - Specifies the number of delta snapshots to create and store.
 
 The function creates a snapshot store and populates it with delta snapshots. Each delta snapshot is generated at 9-minute intervals.
 
@@ -1100,8 +1100,8 @@ func prepareStoreWithDeltaSnapshots(storeContainer string, numDeltaSnapshots int
 	store, err := snapstore.GetSnapstore(snapstoreConf)
 	Expect(err).ShouldNot(HaveOccurred())
 
-	snapTime := time.Now().Add(-time.Duration(noOfDeltaSnapshots*9) * time.Minute)
-	for i := 0; i < noOfDeltaSnapshots; i++ {
+	snapTime := time.Now().Add(-time.Duration(numDeltaSnapshots*10) * time.Minute)
+	for i := 0; i < numDeltaSnapshots; i++ {
 		snap := brtypes.Snapshot{
 			Kind:          brtypes.SnapshotKindDelta,
 			CreatedOn:     snapTime,
@@ -1109,7 +1109,6 @@ func prepareStoreWithDeltaSnapshots(storeContainer string, numDeltaSnapshots int
 			LastRevision:  int64(i+1) * 10,
 		}
 		snap.GenerateSnapshotName()
-		// snap.GenerateSnapshotDirectory()
 		snapTime = snapTime.Add(time.Duration(time.Minute * 10))
 		store.Save(snap, io.NopCloser(strings.NewReader(fmt.Sprintf("dummy-snapshot-content for snap created on %s", snap.CreatedOn))))
 	}
