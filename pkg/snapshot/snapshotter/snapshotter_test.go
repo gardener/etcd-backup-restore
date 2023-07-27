@@ -18,6 +18,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
 	"path"
 	"strconv"
 	"sync"
@@ -516,36 +517,8 @@ var _ = Describe("Snapshotter", func() {
 			})
 
 			// Test to check backward compatibility of garbage collector
-			// Tests garbage collector behaviour (in limit based config) when both v1 and v2 directories are present
+			// Tests garbage collector behaviour (in limit based config) when only v1 directory is present
 			// TODO: Consider removing when backward compatibility no longer needed
-			/*It("should garbage collect limitBased from both v1 and v2 dir structures (backward compatibility test)", func() {
-				now := time.Now().UTC()
-				store := prepareStoreForBackwardCompatibleGC(now, "gc_limit_based_backward_compatible.bkp")
-				snapshotterConfig := &brtypes.SnapshotterConfig{
-					FullSnapshotSchedule:     schedule,
-					DeltaSnapshotPeriod:      wrappers.Duration{Duration: 10 * time.Second},
-					DeltaSnapshotMemoryLimit: brtypes.DefaultDeltaSnapMemoryLimit,
-					GarbageCollectionPeriod:  wrappers.Duration{Duration: garbageCollectionPeriod},
-					GarbageCollectionPolicy:  brtypes.GarbageCollectionPolicyLimitBased,
-					MaxBackups:               maxBackups,
-				}
-
-				ssr, err := NewSnapshotter(logger, snapshotterConfig, store, etcdConnectionConfig, compressionConfig)
-				Expect(err).ShouldNot(HaveOccurred())
-
-				gcCtx, cancel := context.WithTimeout(testCtx, testTimeout)
-				defer cancel()
-				ssr.RunGarbageCollector(gcCtx.Done())
-
-				list, err := store.List()
-				Expect(err).ShouldNot(HaveOccurred())
-
-				validateLimitBasedSnapshots(list, maxBackups, snapsInV2)
-			})*/
-
-			//Test to check backward compatibility of garbage collector
-			//Tests garbage collector behaviour (in limit based config) when only v1 directory is present
-			//TODO: Consider removing when backward compatibility no longer needed
 			It("should garbage collect limitBased with only v1 dir structure present (backward compatible test)", func() {
 				now := time.Now().UTC()
 				store, snapstoreConfig := prepareStoreForGarbageCollection(now, "gc_limit_based_backward_compatiblev1.bkp", "v1")
@@ -570,192 +543,299 @@ var _ = Describe("Snapshotter", func() {
 
 				validateLimitBasedSnapshots(list, maxBackups, snapsInV1)
 			})
+
+			Describe("###GarbageCollectDeltaSnapshots", func() {
+				const (
+					deltaSnapshotCount = 6
+					testDir            = "garbagecollector_deltasnapshots.bkp"
+				)
+
+				var snapshotterConfig *brtypes.SnapshotterConfig
+
+				BeforeEach(func() {
+					snapshotterConfig = &brtypes.SnapshotterConfig{
+						FullSnapshotSchedule:     schedule,
+						DeltaSnapshotPeriod:      wrappers.Duration{Duration: 10 * time.Minute},
+						DeltaSnapshotMemoryLimit: brtypes.DefaultDeltaSnapMemoryLimit,
+						GarbageCollectionPeriod:  wrappers.Duration{Duration: garbageCollectionPeriod},
+						GarbageCollectionPolicy:  brtypes.GarbageCollectionPolicyLimitBased,
+						MaxBackups:               maxBackups,
+					}
+				})
+
+				AfterEach(func() {
+					err = os.RemoveAll(path.Join(outputDir, testDir))
+					Expect(err).ShouldNot(HaveOccurred())
+				})
+
+				Context("with all delta snapshots older than retention period", func() {
+					It("should delete all delta snapshots", func() {
+						store := prepareStoreWithDeltaSnapshots(testDir, deltaSnapshotCount)
+						list, err := store.List()
+						Expect(err).ShouldNot(HaveOccurred())
+						Expect(len(list)).Should(Equal(deltaSnapshotCount))
+
+						ssr, err := NewSnapshotter(logger, snapshotterConfig, store, etcdConnectionConfig, compressionConfig, healthConfig, snapstoreConfig)
+						Expect(err).ShouldNot(HaveOccurred())
+
+						deleted, err := ssr.GarbageCollectDeltaSnapshots(list)
+						Expect(err).NotTo(HaveOccurred())
+						Expect(deleted).To(Equal(deltaSnapshotCount))
+
+						list, err = store.List()
+						Expect(err).ShouldNot(HaveOccurred())
+						Expect(len(list)).Should(BeZero())
+					})
+				})
+
+				Context("with no delta snapshots", func() {
+					It("should not delete any snapshots", func() {
+						store := prepareStoreWithDeltaSnapshots(testDir, 0)
+						list, err := store.List()
+						Expect(err).ShouldNot(HaveOccurred())
+						Expect(len(list)).Should(BeZero())
+
+						snapshotterConfig.DeltaSnapshotRetentionPeriod = wrappers.Duration{Duration: 10 * time.Minute}
+						ssr, err := NewSnapshotter(logger, snapshotterConfig, store, etcdConnectionConfig, compressionConfig, healthConfig, snapstoreConfig)
+						Expect(err).ShouldNot(HaveOccurred())
+
+						deleted, err := ssr.GarbageCollectDeltaSnapshots(list)
+						Expect(err).NotTo(HaveOccurred())
+						Expect(deleted).Should(BeZero())
+
+						list, err = store.List()
+						Expect(err).ShouldNot(HaveOccurred())
+						Expect(len(list)).Should(BeZero())
+					})
+				})
+
+				Context("with all delta snapshots younger than retention period", func() {
+					It("should not delete any snapshots", func() {
+						store := prepareStoreWithDeltaSnapshots(testDir, deltaSnapshotCount)
+						list, err := store.List()
+						Expect(err).ShouldNot(HaveOccurred())
+						Expect(len(list)).Should(Equal(6))
+
+						snapshotterConfig.DeltaSnapshotRetentionPeriod = wrappers.Duration{Duration: 600 * time.Minute}
+						ssr, err := NewSnapshotter(logger, snapshotterConfig, store, etcdConnectionConfig, compressionConfig, healthConfig, snapstoreConfig)
+						Expect(err).ShouldNot(HaveOccurred())
+
+						deleted, err := ssr.GarbageCollectDeltaSnapshots(list)
+						Expect(err).NotTo(HaveOccurred())
+						Expect(deleted).Should(BeZero())
+
+						list, err = store.List()
+						Expect(err).ShouldNot(HaveOccurred())
+						Expect(len(list)).Should(Equal(deltaSnapshotCount))
+					})
+				})
+
+				Context("with a mix of delta snapshots, some older and some younger than retention period", func() {
+					It("should delete only the delta snapshots older than the retention period", func() {
+						store := prepareStoreWithDeltaSnapshots(testDir, deltaSnapshotCount)
+						list, err := store.List()
+						Expect(err).ShouldNot(HaveOccurred())
+						Expect(len(list)).Should(Equal(6))
+
+						snapshotterConfig.DeltaSnapshotRetentionPeriod = wrappers.Duration{Duration: 35 * time.Minute}
+						ssr, err := NewSnapshotter(logger, snapshotterConfig, store, etcdConnectionConfig, compressionConfig, healthConfig, snapstoreConfig)
+						Expect(err).ShouldNot(HaveOccurred())
+
+						deleted, err := ssr.GarbageCollectDeltaSnapshots(list)
+						Expect(err).NotTo(HaveOccurred())
+						Expect(deleted).To(Equal(3))
+
+						list, err = store.List()
+						Expect(err).ShouldNot(HaveOccurred())
+						Expect(len(list)).Should(Equal(3))
+					})
+				})
+			})
+		})
+
+		Describe("Scenarios to take full-snapshot during startup of backup-restore", func() {
+			var (
+				ssr                    *Snapshotter
+				currentMin             int
+				currentHour            int
+				fullSnapshotTimeWindow float64
+			)
+			BeforeEach(func() {
+				fullSnapshotTimeWindow = 24
+				currentHour = time.Now().Hour()
+				currentMin = time.Now().Minute()
+				snapstoreConfig = &brtypes.SnapstoreConfig{Container: path.Join(outputDir, "default.bkp")}
+				store, err = snapstore.GetSnapstore(snapstoreConfig)
+				Expect(err).ShouldNot(HaveOccurred())
+			})
+			Context("No previous snapshot was taken", func() {
+				It("should return true", func() {
+					snapshotterConfig := &brtypes.SnapshotterConfig{
+						FullSnapshotSchedule: fmt.Sprintf("%d %d * * *", (currentMin+1)%60, (currentHour+2)%24),
+					}
+
+					ssr, err = NewSnapshotter(logger, snapshotterConfig, store, etcdConnectionConfig, compressionConfig, healthConfig, snapstoreConfig)
+					Expect(err).ShouldNot(HaveOccurred())
+
+					// No previous snapshot was taken
+					ssr.PrevFullSnapshot = nil
+					isFullSnapMissed := ssr.IsFullSnapshotRequiredAtStartup(fullSnapshotTimeWindow)
+					Expect(isFullSnapMissed).Should(BeTrue())
+				})
+			})
+			Context("If previous snapshot was final full snapshot", func() {
+				It("should return true", func() {
+					snapshotterConfig := &brtypes.SnapshotterConfig{
+						FullSnapshotSchedule: fmt.Sprintf("%d %d * * *", (currentMin+1)%60, (currentHour+2)%24),
+					}
+
+					ssr, err = NewSnapshotter(logger, snapshotterConfig, store, etcdConnectionConfig, compressionConfig, healthConfig, snapstoreConfig)
+					Expect(err).ShouldNot(HaveOccurred())
+
+					// If previous snapshot was final full snapshot
+					ssr.PrevFullSnapshot = &brtypes.Snapshot{
+						IsFinal: true,
+					}
+					isFullSnapMissed := ssr.IsFullSnapshotRequiredAtStartup(fullSnapshotTimeWindow)
+					Expect(isFullSnapMissed).Should(BeTrue())
+				})
+			})
+			Context("Previous full snapshot was taken more than 24hrs before", func() {
+				It("should return true", func() {
+					snapshotterConfig := &brtypes.SnapshotterConfig{
+						FullSnapshotSchedule: fmt.Sprintf("%d %d * * *", (currentMin+1)%60, (currentHour+2)%24),
+					}
+
+					ssr, err = NewSnapshotter(logger, snapshotterConfig, store, etcdConnectionConfig, compressionConfig, healthConfig, snapstoreConfig)
+					Expect(err).ShouldNot(HaveOccurred())
+
+					// Previous full snapshot was taken 2 days before
+					ssr.PrevFullSnapshot = &brtypes.Snapshot{
+						CreatedOn: time.Date(time.Now().Year(), time.Now().Month(), time.Now().Day()-2, currentHour, currentMin, 0, 0, time.Local),
+					}
+					isFullSnapMissed := ssr.IsFullSnapshotRequiredAtStartup(fullSnapshotTimeWindow)
+					Expect(isFullSnapMissed).Should(BeTrue())
+				})
+			})
+
+			Context("Previous full snapshot was taken exactly at scheduled snapshot time, no FullSnapshot was missed", func() {
+				It("should return false", func() {
+					snapshotterConfig := &brtypes.SnapshotterConfig{
+						FullSnapshotSchedule: fmt.Sprintf("%d %d * * *", (currentMin+1)%60, (currentHour+2)%24),
+					}
+
+					ssr, err = NewSnapshotter(logger, snapshotterConfig, store, etcdConnectionConfig, compressionConfig, healthConfig, snapstoreConfig)
+					Expect(err).ShouldNot(HaveOccurred())
+
+					// Previous full snapshot was taken 1 days before at exactly at scheduled time
+					ssr.PrevFullSnapshot = &brtypes.Snapshot{
+						CreatedOn: time.Date(time.Now().Year(), time.Now().Month(), time.Now().Day()-1, (currentHour+2)%24, (currentMin+1)%60, 0, 0, time.Local),
+					}
+
+					isFullSnapMissed := ssr.IsFullSnapshotRequiredAtStartup(fullSnapshotTimeWindow)
+					Expect(isFullSnapMissed).Should(BeFalse())
+				})
+			})
+
+			Context("Previous snapshot was taken within 24hrs and next schedule full-snapshot will be taken within 24hs of time window", func() {
+				It("should return false", func() {
+					scheduleHour := (currentHour + 4) % 24
+					snapshotterConfig := &brtypes.SnapshotterConfig{
+						FullSnapshotSchedule: fmt.Sprintf("%d %d * * *", currentMin, scheduleHour),
+					}
+
+					ssr, err = NewSnapshotter(logger, snapshotterConfig, store, etcdConnectionConfig, compressionConfig, healthConfig, snapstoreConfig)
+					Expect(err).ShouldNot(HaveOccurred())
+
+					// Previous full snapshot was taken 4hrs 10 mins before startup of backup-restore
+					ssr.PrevFullSnapshot = &brtypes.Snapshot{
+						CreatedOn: time.Date(time.Now().Year(), time.Now().Month(), time.Now().Day(), (currentHour-4)%24, (currentMin-10)%60, 0, 0, time.Local),
+					}
+					isFullSnapCanBeMissed := ssr.IsFullSnapshotRequiredAtStartup(fullSnapshotTimeWindow)
+					Expect(isFullSnapCanBeMissed).Should(BeFalse())
+				})
+			})
+
+			Context("Previous snapshot was taken within 24hrs and next schedule full-snapshot likely to cross 24hs of time window", func() {
+				It("should return true", func() {
+					scheduleHour := (currentHour + 8) % 24
+					snapshotterConfig := &brtypes.SnapshotterConfig{
+						FullSnapshotSchedule: fmt.Sprintf("%d %d * * *", currentMin, scheduleHour),
+					}
+
+					ssr, err = NewSnapshotter(logger, snapshotterConfig, store, etcdConnectionConfig, compressionConfig, healthConfig, snapstoreConfig)
+					Expect(err).ShouldNot(HaveOccurred())
+
+					// Previous full snapshot was taken 18hrs(<24hrs) before startup of backup-restore
+					ssr.PrevFullSnapshot = &brtypes.Snapshot{
+						CreatedOn: time.Date(time.Now().Year(), time.Now().Month(), time.Now().Day(), (currentHour-18)%24, (currentMin)%60, 0, 0, time.Local),
+					}
+					isFullSnapCanBeMissed := ssr.IsFullSnapshotRequiredAtStartup(fullSnapshotTimeWindow)
+					Expect(isFullSnapCanBeMissed).Should(BeTrue())
+				})
+			})
+		})
+
+		Describe("Scenarios to get maximum time window for full snapshot", func() {
+			var (
+				ssr                    *Snapshotter
+				currentMin             int
+				currentHour            int
+				fullSnapshotTimeWindow float64
+			)
+			BeforeEach(func() {
+				fullSnapshotTimeWindow = 24
+				currentHour = time.Now().Hour()
+				currentMin = time.Now().Minute()
+				snapstoreConfig = &brtypes.SnapstoreConfig{Container: path.Join(outputDir, "default.bkp")}
+				store, err = snapstore.GetSnapstore(snapstoreConfig)
+				Expect(err).ShouldNot(HaveOccurred())
+			})
+			Context("Full snapshot schedule for once a day", func() {
+				It("should return 24hours of timeWindow", func() {
+					snapshotterConfig := &brtypes.SnapshotterConfig{
+						FullSnapshotSchedule: fmt.Sprintf("%d %d * * *", currentMin, currentHour),
+					}
+
+					ssr, err = NewSnapshotter(logger, snapshotterConfig, store, etcdConnectionConfig, compressionConfig, healthConfig, snapstoreConfig)
+					Expect(err).ShouldNot(HaveOccurred())
+
+					timeWindow := ssr.GetFullSnapshotMaxTimeWindow(snapshotterConfig.FullSnapshotSchedule)
+					Expect(timeWindow).Should(Equal(fullSnapshotTimeWindow))
+				})
+			})
+
+			Context("Full snapshot schedule for once in a week", func() {
+				It("should return 24*7 hours of timeWindow", func() {
+					snapshotterConfig := &brtypes.SnapshotterConfig{
+						FullSnapshotSchedule: fmt.Sprintf("%d %d * * %d", currentMin, currentHour, time.Thursday),
+					}
+
+					ssr, err = NewSnapshotter(logger, snapshotterConfig, store, etcdConnectionConfig, compressionConfig, healthConfig, snapstoreConfig)
+					Expect(err).ShouldNot(HaveOccurred())
+
+					timeWindow := ssr.GetFullSnapshotMaxTimeWindow(snapshotterConfig.FullSnapshotSchedule)
+					Expect(timeWindow).Should(Equal(fullSnapshotTimeWindow * 7))
+				})
+			})
+
+			Context("Full snapshot schedule for every 4 hours", func() {
+				It("should return 4 hours of timeWindow", func() {
+					// every 4 hour
+					scheduleHour := 4
+					snapshotterConfig := &brtypes.SnapshotterConfig{
+						FullSnapshotSchedule: fmt.Sprintf("%d */%d * * *", 0, scheduleHour),
+					}
+
+					ssr, err = NewSnapshotter(logger, snapshotterConfig, store, etcdConnectionConfig, compressionConfig, healthConfig, snapstoreConfig)
+					Expect(err).ShouldNot(HaveOccurred())
+
+					timeWindow := ssr.GetFullSnapshotMaxTimeWindow(snapshotterConfig.FullSnapshotSchedule)
+					Expect(timeWindow).Should(Equal(float64(scheduleHour)))
+				})
+			})
 		})
 	})
-
-	Describe("Scenarios to take full-snapshot during startup of backup-restore", func() {
-		var (
-			ssr                    *Snapshotter
-			currentMin             int
-			currentHour            int
-			fullSnapshotTimeWindow float64
-		)
-		BeforeEach(func() {
-			fullSnapshotTimeWindow = 24
-			currentHour = time.Now().Hour()
-			currentMin = time.Now().Minute()
-			snapstoreConfig = &brtypes.SnapstoreConfig{Container: path.Join(outputDir, "default.bkp")}
-			store, err = snapstore.GetSnapstore(snapstoreConfig)
-			Expect(err).ShouldNot(HaveOccurred())
-		})
-		Context("No previous snapshot was taken", func() {
-			It("should return true", func() {
-				snapshotterConfig := &brtypes.SnapshotterConfig{
-					FullSnapshotSchedule: fmt.Sprintf("%d %d * * *", (currentMin+1)%60, (currentHour+2)%24),
-				}
-
-				ssr, err = NewSnapshotter(logger, snapshotterConfig, store, etcdConnectionConfig, compressionConfig, healthConfig, snapstoreConfig)
-				Expect(err).ShouldNot(HaveOccurred())
-
-				// No previous snapshot was taken
-				ssr.PrevFullSnapshot = nil
-				isFullSnapMissed := ssr.IsFullSnapshotRequiredAtStartup(fullSnapshotTimeWindow)
-				Expect(isFullSnapMissed).Should(BeTrue())
-			})
-		})
-		Context("If previous snapshot was final full snapshot", func() {
-			It("should return true", func() {
-				snapshotterConfig := &brtypes.SnapshotterConfig{
-					FullSnapshotSchedule: fmt.Sprintf("%d %d * * *", (currentMin+1)%60, (currentHour+2)%24),
-				}
-
-				ssr, err = NewSnapshotter(logger, snapshotterConfig, store, etcdConnectionConfig, compressionConfig, healthConfig, snapstoreConfig)
-				Expect(err).ShouldNot(HaveOccurred())
-
-				// If previous snapshot was final full snapshot
-				ssr.PrevFullSnapshot = &brtypes.Snapshot{
-					IsFinal: true,
-				}
-				isFullSnapMissed := ssr.IsFullSnapshotRequiredAtStartup(fullSnapshotTimeWindow)
-				Expect(isFullSnapMissed).Should(BeTrue())
-			})
-		})
-		Context("Previous full snapshot was taken more than 24hrs before", func() {
-			It("should return true", func() {
-				snapshotterConfig := &brtypes.SnapshotterConfig{
-					FullSnapshotSchedule: fmt.Sprintf("%d %d * * *", (currentMin+1)%60, (currentHour+2)%24),
-				}
-
-				ssr, err = NewSnapshotter(logger, snapshotterConfig, store, etcdConnectionConfig, compressionConfig, healthConfig, snapstoreConfig)
-				Expect(err).ShouldNot(HaveOccurred())
-
-				// Previous full snapshot was taken 2 days before
-				ssr.PrevFullSnapshot = &brtypes.Snapshot{
-					CreatedOn: time.Date(time.Now().Year(), time.Now().Month(), time.Now().Day()-2, currentHour, currentMin, 0, 0, time.Local),
-				}
-				isFullSnapMissed := ssr.IsFullSnapshotRequiredAtStartup(fullSnapshotTimeWindow)
-				Expect(isFullSnapMissed).Should(BeTrue())
-			})
-		})
-
-		Context("Previous full snapshot was taken exactly at scheduled snapshot time, no FullSnapshot was missed", func() {
-			It("should return false", func() {
-				snapshotterConfig := &brtypes.SnapshotterConfig{
-					FullSnapshotSchedule: fmt.Sprintf("%d %d * * *", (currentMin+1)%60, (currentHour+2)%24),
-				}
-
-				ssr, err = NewSnapshotter(logger, snapshotterConfig, store, etcdConnectionConfig, compressionConfig, healthConfig, snapstoreConfig)
-				Expect(err).ShouldNot(HaveOccurred())
-
-				// Previous full snapshot was taken 1 days before at exactly at scheduled time
-				ssr.PrevFullSnapshot = &brtypes.Snapshot{
-					CreatedOn: time.Date(time.Now().Year(), time.Now().Month(), time.Now().Day()-1, (currentHour+2)%24, (currentMin+1)%60, 0, 0, time.Local),
-				}
-
-				isFullSnapMissed := ssr.IsFullSnapshotRequiredAtStartup(fullSnapshotTimeWindow)
-				Expect(isFullSnapMissed).Should(BeFalse())
-			})
-		})
-
-		Context("Previous snapshot was taken within 24hrs and next schedule full-snapshot will be taken within 24hs of time window", func() {
-			It("should return false", func() {
-				scheduleHour := (currentHour + 4) % 24
-				snapshotterConfig := &brtypes.SnapshotterConfig{
-					FullSnapshotSchedule: fmt.Sprintf("%d %d * * *", currentMin, scheduleHour),
-				}
-
-				ssr, err = NewSnapshotter(logger, snapshotterConfig, store, etcdConnectionConfig, compressionConfig, healthConfig, snapstoreConfig)
-				Expect(err).ShouldNot(HaveOccurred())
-
-				// Previous full snapshot was taken 4hrs 10 mins before startup of backup-restore
-				ssr.PrevFullSnapshot = &brtypes.Snapshot{
-					CreatedOn: time.Date(time.Now().Year(), time.Now().Month(), time.Now().Day(), (currentHour-4)%24, (currentMin-10)%60, 0, 0, time.Local),
-				}
-				isFullSnapCanBeMissed := ssr.IsFullSnapshotRequiredAtStartup(fullSnapshotTimeWindow)
-				Expect(isFullSnapCanBeMissed).Should(BeFalse())
-			})
-		})
-
-		Context("Previous snapshot was taken within 24hrs and next schedule full-snapshot likely to cross 24hs of time window", func() {
-			It("should return true", func() {
-				scheduleHour := (currentHour + 8) % 24
-				snapshotterConfig := &brtypes.SnapshotterConfig{
-					FullSnapshotSchedule: fmt.Sprintf("%d %d * * *", currentMin, scheduleHour),
-				}
-
-				ssr, err = NewSnapshotter(logger, snapshotterConfig, store, etcdConnectionConfig, compressionConfig, healthConfig, snapstoreConfig)
-				Expect(err).ShouldNot(HaveOccurred())
-
-				// Previous full snapshot was taken 18hrs(<24hrs) before startup of backup-restore
-				ssr.PrevFullSnapshot = &brtypes.Snapshot{
-					CreatedOn: time.Date(time.Now().Year(), time.Now().Month(), time.Now().Day(), (currentHour-18)%24, (currentMin)%60, 0, 0, time.Local),
-				}
-				isFullSnapCanBeMissed := ssr.IsFullSnapshotRequiredAtStartup(fullSnapshotTimeWindow)
-				Expect(isFullSnapCanBeMissed).Should(BeTrue())
-			})
-		})
-	})
-
-	Describe("Scenarios to get maximum time window for full snapshot", func() {
-		var (
-			ssr                    *Snapshotter
-			currentMin             int
-			currentHour            int
-			fullSnapshotTimeWindow float64
-		)
-		BeforeEach(func() {
-			fullSnapshotTimeWindow = 24
-			currentHour = time.Now().Hour()
-			currentMin = time.Now().Minute()
-			snapstoreConfig = &brtypes.SnapstoreConfig{Container: path.Join(outputDir, "default.bkp")}
-			store, err = snapstore.GetSnapstore(snapstoreConfig)
-			Expect(err).ShouldNot(HaveOccurred())
-		})
-		Context("Full snapshot schedule for once a day", func() {
-			It("should return 24hours of timeWindow", func() {
-				snapshotterConfig := &brtypes.SnapshotterConfig{
-					FullSnapshotSchedule: fmt.Sprintf("%d %d * * *", currentMin, currentHour),
-				}
-
-				ssr, err = NewSnapshotter(logger, snapshotterConfig, store, etcdConnectionConfig, compressionConfig, healthConfig, snapstoreConfig)
-				Expect(err).ShouldNot(HaveOccurred())
-
-				timeWindow := ssr.GetFullSnapshotMaxTimeWindow(snapshotterConfig.FullSnapshotSchedule)
-				Expect(timeWindow).Should(Equal(fullSnapshotTimeWindow))
-			})
-		})
-
-		Context("Full snapshot schedule for once in a week", func() {
-			It("should return 24*7 hours of timeWindow", func() {
-				snapshotterConfig := &brtypes.SnapshotterConfig{
-					FullSnapshotSchedule: fmt.Sprintf("%d %d * * %d", currentMin, currentHour, time.Thursday),
-				}
-
-				ssr, err = NewSnapshotter(logger, snapshotterConfig, store, etcdConnectionConfig, compressionConfig, healthConfig, snapstoreConfig)
-				Expect(err).ShouldNot(HaveOccurred())
-
-				timeWindow := ssr.GetFullSnapshotMaxTimeWindow(snapshotterConfig.FullSnapshotSchedule)
-				Expect(timeWindow).Should(Equal(fullSnapshotTimeWindow * 7))
-			})
-		})
-
-		Context("Full snapshot schedule for every 4 hours", func() {
-			It("should return 4 hours of timeWindow", func() {
-				// every 4 hour
-				scheduleHour := 4
-				snapshotterConfig := &brtypes.SnapshotterConfig{
-					FullSnapshotSchedule: fmt.Sprintf("%d */%d * * *", 0, scheduleHour),
-				}
-
-				ssr, err = NewSnapshotter(logger, snapshotterConfig, store, etcdConnectionConfig, compressionConfig, healthConfig, snapstoreConfig)
-				Expect(err).ShouldNot(HaveOccurred())
-
-				timeWindow := ssr.GetFullSnapshotMaxTimeWindow(snapshotterConfig.FullSnapshotSchedule)
-				Expect(timeWindow).Should(Equal(float64(scheduleHour)))
-			})
-		})
-	})
-
 })
 
 // prepareExpectedSnapshotsList prepares the expected snapshotlist based on directory structure
@@ -869,129 +949,6 @@ func prepareExpectedSnapshotsList(snapTime time.Time, now time.Time, expectedSna
 	fmt.Println("Incremental snapshot list prepared")
 	return expectedSnapList
 }
-
-/*func prepareExpectedSnapshotsList(snapTime time.Time, now time.Time, mode string) brtypes.SnapList {
-	var expectedSnapList brtypes.SnapList
-	var dir string
-
-	// weekly snapshot
-	for i := 1; i <= 4; i++ {
-		snapTime = snapTime.Add(time.Duration(time.Hour * 24 * 7))
-		if (mode == snapsInV1) || (mode == mixed && (i == 1 || i == 2)) {
-			dir = fmt.Sprintf("Backup-%d", snapTime.Unix())
-		} else {
-			dir = ""
-		}
-		snap := &brtypes.Snapshot{
-			Kind:          brtypes.SnapshotKindFull,
-			CreatedOn:     snapTime,
-			StartRevision: 0,
-			LastRevision:  1001,
-			SnapDir:       dir,
-		}
-		snap.GenerateSnapshotName()
-		expectedSnapList = append(expectedSnapList, snap)
-	}
-	fmt.Println("Weekly snapshot list prepared")
-	fmt.Printf("len: %d", len(expectedSnapList))
-
-	// daily snapshot
-	for i := 1; i <= 7; i++ {
-		snapTime = snapTime.Add(time.Duration(time.Hour * 24))
-		if mode == snapsInV1 {
-			dir = fmt.Sprintf("Backup-%d", snapTime.Unix())
-		} else {
-			dir = ""
-		}
-		snap := &brtypes.Snapshot{
-			Kind:          brtypes.SnapshotKindFull,
-			CreatedOn:     snapTime,
-			StartRevision: 0,
-			LastRevision:  1001,
-			SnapDir:       dir,
-		}
-		snap.GenerateSnapshotName()
-		expectedSnapList = append(expectedSnapList, snap)
-	}
-	fmt.Println("Daily snapshot list prepared")
-
-	// hourly snapshot
-	snapTime = snapTime.Add(time.Duration(time.Hour))
-	for now.Truncate(time.Hour).Sub(snapTime) > 0 {
-		if mode == snapsInV1 {
-			dir = fmt.Sprintf("Backup-%d", snapTime.Unix())
-		} else {
-			dir = ""
-		}
-		snap := &brtypes.Snapshot{
-			Kind:          brtypes.SnapshotKindFull,
-			CreatedOn:     snapTime,
-			StartRevision: 0,
-			LastRevision:  1001,
-			SnapDir:       dir,
-		}
-		snap.GenerateSnapshotName()
-		expectedSnapList = append(expectedSnapList, snap)
-		snapTime = snapTime.Add(time.Duration(time.Hour))
-	}
-	fmt.Println("Hourly snapshot list prepared")
-
-	// current hour
-	snapTime = now.Truncate(time.Hour)
-	if mode == snapsInV1 {
-		dir = fmt.Sprintf("Backup-%d", snapTime.Unix())
-	} else {
-		dir = ""
-	}
-	snap := &brtypes.Snapshot{
-		Kind:          brtypes.SnapshotKindFull,
-		CreatedOn:     snapTime,
-		StartRevision: 0,
-		LastRevision:  1001,
-		SnapDir:       dir,
-	}
-	snap.GenerateSnapshotName()
-	expectedSnapList = append(expectedSnapList, snap)
-	snapTime = snapTime.Add(time.Duration(time.Minute * 30))
-	for now.Sub(snapTime) >= 0 {
-		if mode == snapsInV1 {
-			dir = fmt.Sprintf("Backup-%d", snapTime.Unix())
-		} else {
-			dir = ""
-		}
-		snap := &brtypes.Snapshot{
-			Kind:          brtypes.SnapshotKindFull,
-			CreatedOn:     snapTime,
-			StartRevision: 0,
-			LastRevision:  1001,
-			SnapDir:       dir,
-		}
-		snap.GenerateSnapshotName()
-		expectedSnapList = append(expectedSnapList, snap)
-		snapTime = snapTime.Add(time.Duration(time.Minute * 30))
-	}
-	fmt.Println("Current hour full snapshot list prepared")
-
-	// delta snapshots
-	snapTime = snapTime.Add(time.Duration(-time.Minute * 30))
-	snapTime = snapTime.Add(time.Duration(time.Minute * 10))
-	for now.Sub(snapTime) >= 0 {
-		snap := &brtypes.Snapshot{
-			Kind:          brtypes.SnapshotKindDelta,
-			CreatedOn:     snapTime,
-			StartRevision: 0,
-			LastRevision:  1001,
-			SnapDir:       dir,
-		}
-		snap.GenerateSnapshotName()
-		expectedSnapList = append(expectedSnapList, snap)
-		snapTime = snapTime.Add(time.Duration(time.Minute * 10))
-	}
-	fmt.Println("Incremental snapshot list prepared")
-
-	return expectedSnapList
-}
-*/
 
 // prepareStoreForGarbageCollection populates the store with dummy snapshots for garbage collection tests
 func prepareStoreForGarbageCollection(forTime time.Time, storeContainer string, storePrefix string) (brtypes.SnapStore, *brtypes.SnapstoreConfig) {
@@ -1122,4 +1079,39 @@ func validateLimitBasedSnapshots(list brtypes.SnapList, maxBackups uint, mode st
 			}
 		}
 	}
+}
+
+/*
+prepareStoreWithDeltaSnapshots prepares a snapshot store with a specified number of delta snapshots.
+
+Parameters:
+
+	storeContainer: string - Specifies the storeContainer path in the output directory.
+	numDeltaSnapshots: int - Specifies the number of delta snapshots to create and store.
+
+The function creates a snapshot store and populates it with delta snapshots. Each delta snapshot is generated at 9-minute intervals.
+
+Returns:
+
+	brtypes.SnapStore - The populated snapshot store.
+*/
+func prepareStoreWithDeltaSnapshots(storeContainer string, numDeltaSnapshots int) brtypes.SnapStore {
+	snapstoreConf := &brtypes.SnapstoreConfig{Container: path.Join(outputDir, storeContainer), Prefix: "v2"}
+	store, err := snapstore.GetSnapstore(snapstoreConf)
+	Expect(err).ShouldNot(HaveOccurred())
+
+	snapTime := time.Now().Add(-time.Duration(numDeltaSnapshots*10) * time.Minute)
+	for i := 0; i < numDeltaSnapshots; i++ {
+		snap := brtypes.Snapshot{
+			Kind:          brtypes.SnapshotKindDelta,
+			CreatedOn:     snapTime,
+			StartRevision: int64(i) * 10,
+			LastRevision:  int64(i+1) * 10,
+		}
+		snap.GenerateSnapshotName()
+		snapTime = snapTime.Add(time.Duration(time.Minute * 10))
+		store.Save(snap, io.NopCloser(strings.NewReader(fmt.Sprintf("dummy-snapshot-content for snap created on %s", snap.CreatedOn))))
+	}
+
+	return store
 }
