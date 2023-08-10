@@ -21,7 +21,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"net/http/httputil"
 	"net/http/pprof"
@@ -397,7 +396,7 @@ func (h *HTTPHandler) serveConfig(rw http.ResponseWriter, req *http.Request) {
 		return
 	}
 	outputFileName := filepath.Join(dir, "etcd.conf.yaml")
-	configYML, err := ioutil.ReadFile(inputFileName)
+	configYML, err := os.ReadFile(inputFileName)
 	if err != nil {
 		h.Logger.Warnf("Unable to read etcd config file: %v", err)
 		rw.WriteHeader(http.StatusInternalServerError)
@@ -467,7 +466,7 @@ func (h *HTTPHandler) serveConfig(rw http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	if err := ioutil.WriteFile(outputFileName, data, 0644); err != nil {
+	if err := os.WriteFile(outputFileName, data, 0644); err != nil {
 		h.Logger.Warnf("Unable to write etcd config file: %v", err)
 		rw.WriteHeader(http.StatusInternalServerError)
 		return
