@@ -21,7 +21,7 @@
 package zap
 
 import (
-	"fmt"
+	"errors"
 	"sort"
 	"time"
 
@@ -101,6 +101,7 @@ func NewProductionEncoderConfig() zapcore.EncoderConfig {
 		LevelKey:       "level",
 		NameKey:        "logger",
 		CallerKey:      "caller",
+		FunctionKey:    zapcore.OmitKey,
 		MessageKey:     "msg",
 		StacktraceKey:  "stacktrace",
 		LineEnding:     zapcore.DefaultLineEnding,
@@ -140,6 +141,7 @@ func NewDevelopmentEncoderConfig() zapcore.EncoderConfig {
 		LevelKey:       "L",
 		NameKey:        "N",
 		CallerKey:      "C",
+		FunctionKey:    zapcore.OmitKey,
 		MessageKey:     "M",
 		StacktraceKey:  "S",
 		LineEnding:     zapcore.DefaultLineEnding,
@@ -180,7 +182,7 @@ func (cfg Config) Build(opts ...Option) (*Logger, error) {
 	}
 
 	if cfg.Level == (AtomicLevel{}) {
-		return nil, fmt.Errorf("missing Level")
+		return nil, errors.New("missing Level")
 	}
 
 	log := New(
