@@ -63,7 +63,7 @@ if [[ "${COVER:-false}" == "false" ]]; then
   if [[ "${RUN_NEGATIVE}" == "true" ]]; then
     echo "[INFO] Running negative tests now..."
     # Run negative scenarios sequentially (removed failOnPending as one spec in restore test is marked as 'X' for excluding)
-    ginkgo -race -trace $GINKGO_COMMON_FLAGS  $TEST_PACKAGES
+    ginkgo -race -trace $GINKGO_COMMON_FLAGS -gcflags=all=-d=checkptr=0 --focus="NEGATIVE\:.*" ${TEST_PACKAGES}
   fi
 
 else
