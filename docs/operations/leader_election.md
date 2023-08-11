@@ -1,8 +1,8 @@
-### Leading ETCD main container’s sidecar is the backup leader 
+### Leading ETCD main container’s sidecar is the backup leader
 
 - The `backup-restore sidecar` poll its corresponding etcd main container to see if it is the leading member in the etcd cluster. This information is used by the backup-restore sidecars to decide that sidecar of the leading etcd main container is the `backup leader`.
 
-- Only `backup leader` sidecar among the members have the responsibility to take/upload the snapshots(full as well as incremental) for a given Etcd cluster as well as to [trigger the defragmentation](https://github.com/gardener/etcd-druid/tree/master/docs/proposals/multi-node#defragmentation) for each Etcd cluster member. 
+- Only `backup leader` sidecar among the members have the responsibility to take/upload the snapshots(full as well as incremental) for a given Etcd cluster as well as to [trigger the defragmentation](https://github.com/gardener/etcd-druid/tree/master/docs/proposals/multi-node#defragmentation) for each Etcd cluster member.
 
 
 ### Work flow
@@ -20,8 +20,8 @@ Backup-restore can be in following 3 states:
 
 ### Backup
 
-- Only `backup leader` among the backup-restore members have the responsibility to take/upload the snapshots(full as well as incremental) for a given Etcd cluster. 
-- The `backup leader` also has the responsibility to [garbage-collect](https://github.com/gardener/etcd-backup-restore/blob/master/doc/usage/getting_started.md#taking-scheduled-snapshot) the backups from the object storage bucket according to a configured garbage collection policy.
+- Only `backup leader` among the backup-restore members have the responsibility to take/upload the snapshots(full as well as incremental) for a given Etcd cluster.
+- The `backup leader` also has the responsibility to [garbage-collect](https://github.com/gardener/etcd-backup-restore/blob/master/docs/operations/getting_started.md#taking-scheduled-snapshot) the backups from the object storage bucket according to a configured garbage collection policy.
 
 ### Member-lease
 

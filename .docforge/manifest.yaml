@@ -1,0 +1,36 @@
+nodesSelector:
+  path: /docs
+structure:
+- name: _index.md
+  properties:
+    frontmatter:
+      title: Etcd Backup & Restore
+      description: A backup & restore sidecar for etcd (e.g. in the context of Gardener)
+  source: /README.md
+- name: development
+  properties:
+    frontmatter:
+      title: Development
+      weight: 1
+      categories:
+        - Developers
+  nodesSelector:
+    path: /docs/development
+- name: operations
+  properties:
+    frontmatter:
+      title: Operations
+      weight: 2
+      categories:
+        - Operators
+  nodesSelector:
+    path: /docs/operations
+- name: proposals
+  properties:
+    frontmatter:
+      title: Proposals
+      weight: 3
+      categories:
+        - Users
+  nodesSelector:
+    path: /docs/proposals

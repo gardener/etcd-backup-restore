@@ -8,25 +8,26 @@ Etcd-backup-restore is collection of components to backup and restore the [etcd]
 
 ## Documentation Index
 
-### Usage
+### Operations
 
-* [Getting started](doc/usage/getting_started.md)
-* [Manual restoration](doc/usage/manual_restoration.md)
-* [Monitoring](doc/usage/metrics.md)
-* [Generating SSL certificates](doc/usage/generating_ssl_certificates.md)
+* [Getting started](docs/operations/getting_started.md)
+* [Manual restoration](docs/operations/manual_restoration.md)
+* [Monitoring](docs/operations/metrics.md)
+* [Generating SSL certificates](docs/operations/generating_ssl_certificates.md)
+* [Leader Election](docs/operations/leader_election.md)
 
 ### Design and Proposals
 
-* [Core design](doc/proposals/design.md)
-* [Etcd data validation](doc/proposals/validation.md)
-* [Data restoration](doc/proposals/restoration.md)
-* [High watch events ingress rate issue](doc/proposals/high_watch_event_ingress_rate.md)
+* [Core design](docs/proposals/design.md)
+* [Etcd data validation](docs/proposals/validation.md)
+* [Data restoration](docs/proposals/restoration.md)
+* [High watch events ingress rate issue](docs/proposals/high_watch_event_ingress_rate.md)
 
 ### Development
 
-* [Setting up a local development environment](doc/development/local_setup.md)
-* [Testing and Dependency Management](doc/development/testing_and_dependencies.md)
-* [Tests](doc/development/tests.md)
-* [Adding support for a new object store provider](doc/development/new_cp_support.md)
+* [Setting up a local development environment](docs/development/local_setup.md)
+* [Testing and Dependency Management](docs/development/testing_and_dependencies.md)
+* [Tests](docs/development/tests.md)
+* [Adding support for a new object store provider](docs/development/new_cp_support.md)
 
 [etcd]: https://github.com/etcd-io/etcd
