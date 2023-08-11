@@ -25,12 +25,9 @@ import (
 
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
+	"gopkg.in/yaml.v2"
 
 	"github.com/sirupsen/logrus"
-	helmaction "helm.sh/helm/v3/pkg/action"
-	helmchart "helm.sh/helm/v3/pkg/chart"
-	helmloader "helm.sh/helm/v3/pkg/chart/loader"
-	helmkube "helm.sh/helm/v3/pkg/kube"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -39,6 +36,8 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/tools/remotecommand"
+	"k8s.io/helm/pkg/chartutil"
+	"k8s.io/helm/pkg/helm"
 )
 
 // EndpointStatus stores result from output of etcdctl endpoint status command
@@ -106,47 +105,34 @@ func getKubernetesTypedClient(logger *logrus.Logger, kubeconfigPath string) (*ku
 }
 
 func helmDeployChart(logger *logrus.Logger, timeout time.Duration, kubeconfigPath, chartPath, releaseName, releaseNamespace string, chartValues map[string]interface{}, waitForResourcesToBeReady bool) error {
-	var (
-		chart *helmchart.Chart
-		err   error
-	)
+	client := helm.NewClient(helm.Host(kubeconfigPath))
 
-	chart, err = helmloader.Load(chartPath)
+	chartRequested, err := chartutil.Load(chartPath)
 	if err != nil {
 		return err
 	}
 
-	actionConfig := new(helmaction.Configuration)
-	if err = actionConfig.Init(helmkube.GetConfig(kubeconfigPath, "", releaseNamespace), releaseNamespace, "configmap", func(format string, v ...interface{}) {}); err != nil {
+	valuesToRender, err := yaml.Marshal(chartValues)
+	if err != nil {
+		return fmt.Errorf("failed to marshal values: %v", err)
+	}
+
+	// Install the chart
+	_, err = client.InstallReleaseFromChart(
+		chartRequested,
+		releaseNamespace,
+		helm.ValueOverrides(valuesToRender),
+		helm.ReleaseName(releaseName),
+		helm.InstallWait(waitForResourcesToBeReady),
+	)
+
+	if err != nil {
+		logger.Infof("helm chart installation to release '%s' failed", releaseName)
 		return err
 	}
 
-	installClient := helmaction.NewInstall(actionConfig)
-	installClient.Namespace = releaseNamespace
-	installClient.ReleaseName = releaseName
-	installClient.Wait = waitForResourcesToBeReady
-
-	helmErrCh := make(chan error)
-	go func(errCh chan<- error) {
-		_, err := installClient.Run(chart, chartValues)
-		errCh <- err
-	}(helmErrCh)
-
-	helmDeployTimer := time.NewTimer(timeout)
-	for {
-		select {
-		case err := <-helmErrCh:
-			if err != nil {
-				logger.Infof("helm chart installation to release '%s' failed", releaseName)
-				return err
-			}
-			logger.Infof("successfully installed release '%s'", releaseName)
-			return nil
-		case <-helmDeployTimer.C:
-			logger.Infof("helm chart installation to release '%s' failed", releaseName)
-			return fmt.Errorf("operation timed out")
-		}
-	}
+	logger.Infof("successfully installed release '%s'", releaseName)
+	return nil
 }
 
 func waitForNamespaceToBeCreated(k8sClient *kubernetes.Clientset, name string) error {

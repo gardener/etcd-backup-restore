@@ -30,7 +30,7 @@ import (
 	"go.etcd.io/etcd/etcdserver/etcdserverpb"
 
 	. "github.com/gardener/etcd-backup-restore/pkg/defragmentor"
-	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
 

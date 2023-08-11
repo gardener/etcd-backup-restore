@@ -26,7 +26,7 @@ import (
 	"go.uber.org/zap"
 
 	. "github.com/gardener/etcd-backup-restore/pkg/initializer/validator"
-	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
 

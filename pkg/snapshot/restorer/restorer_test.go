@@ -34,7 +34,7 @@ import (
 	"go.etcd.io/etcd/pkg/types"
 
 	. "github.com/gardener/etcd-backup-restore/pkg/snapshot/restorer"
-	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
 
@@ -453,60 +453,6 @@ var _ = Describe("Running Restorer", func() {
 				logger.Infof("Failed to restore because :: %s", err)
 
 				Expect(err).Should(HaveOccurred())
-			})
-		})
-
-		//this test is excluded for now and is kept for reference purpose only
-		// there needs to be some re-look done to validate the scenarios when a restore can happen on a running snapshot and accordingly include the test
-		// as per current understanding the flow ensures it cannot happen but external intervention can not be ruled out as the command allows calling restore while snapshotting.
-		XContext("while snapshotter is running ", func() {
-			It("Should stop snapshotter while restore is happening", func() {
-				wg.Add(1)
-				populatorCtx, cancelPopulator := context.WithTimeout(testCtx, 5*time.Second)
-				defer cancelPopulator()
-				go utils.PopulateEtcdWithWaitGroup(populatorCtx, wg, logger, endpoints, nil)
-				ssrCtx := utils.ContextWithWaitGroupFollwedByGracePeriod(testCtx, wg, 15*time.Second)
-
-				logger.Infoln("Starting snapshotter while loading is happening")
-				compressionConfig := compressor.NewCompressorConfig()
-				snapstoreConfig := brtypes.SnapstoreConfig{Container: snapstoreDir, Provider: "Local"}
-				err = utils.RunSnapshotter(logger, snapstoreConfig, deltaSnapshotPeriod, endpoints, ssrCtx.Done(), true, compressionConfig)
-				Expect(err).ShouldNot(HaveOccurred())
-
-				time.Sleep(time.Duration(5 * time.Second))
-				etcd.Server.Stop()
-				etcd.Close()
-
-				err = corruptEtcdDir()
-				Expect(err).ShouldNot(HaveOccurred())
-				logger.Infoln("corrupted the etcd dir")
-
-				store, err = snapstore.GetSnapstore(&brtypes.SnapstoreConfig{Container: snapstoreDir, Provider: "Local"})
-				Expect(err).ShouldNot(HaveOccurred())
-				baseSnapshot, deltaSnapList, err = miscellaneous.GetLatestFullSnapshotAndDeltaSnapList(store)
-				Expect(err).ShouldNot(HaveOccurred())
-
-				restorer = NewRestorer(store, logger)
-
-				restoreOpts := brtypes.RestoreOptions{
-					Config:        restorationConfig,
-					BaseSnapshot:  baseSnapshot,
-					DeltaSnapList: deltaSnapList,
-					ClusterURLs:   clusterUrlsMap,
-					PeerURLs:      peerUrls,
-				}
-
-				logger.Infoln("starting restore while snapshotter is running")
-				err = restorer.RestoreAndStopEtcd(restoreOpts, nil)
-				Expect(err).ShouldNot(HaveOccurred())
-				err = utils.CheckDataConsistency(testCtx, restoreOpts.Config.DataDir, keyTo, logger)
-				Expect(err).ShouldNot(HaveOccurred())
-
-				// Although the test has passed but the logic currently doesn't stop snapshotter explicitly but assumes that restore
-				// shall be triggered only on restart of the etcd pod, so in the current case the snapshotter and restore were both running
-				// together. However data corruption was not simulated as the embedded etcd used to populate need to be stopped for restore to begin.
-				// In a productive scenarios as the command is exposed so it's possible to run this without knowledge of the tightly coupled
-				// behavior of etcd restart.
 			})
 		})
 

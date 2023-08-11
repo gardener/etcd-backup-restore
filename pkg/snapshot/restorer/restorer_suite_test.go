@@ -27,7 +27,7 @@ import (
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 
 	"github.com/gardener/etcd-backup-restore/test/utils"
-	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/sirupsen/logrus"
 	"go.etcd.io/etcd/embed"

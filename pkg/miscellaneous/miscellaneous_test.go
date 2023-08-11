@@ -28,7 +28,7 @@ import (
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 	"github.com/golang/mock/gomock"
 
-	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	. "github.com/onsi/gomega/gstruct"
 
@@ -116,8 +116,8 @@ var _ = Describe("Miscellaneous Tests", func() {
 			dummyClientEndpoints = []string{"http://127.0.0.1:2379", "http://127.0.0.1:9090"}
 		)
 		BeforeEach(func() {
-			factory.EXPECT().NewMaintenance().Return(cm, nil)
-			factory.EXPECT().NewCluster().Return(cl, nil)
+			factory.EXPECT().NewMaintenance().Return(cm, nil).AnyTimes()
+			factory.EXPECT().NewCluster().Return(cl, nil).AnyTimes()
 		})
 
 		Context("MemberList API call succeeds", func() {
