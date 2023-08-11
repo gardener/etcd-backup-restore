@@ -10,7 +10,7 @@ Etcd-backup-restore is collection of components to backup and restore the [etcd]
 
 ### Operations
 
-* [Getting started](docs/operations/getting_started.md)
+* [Getting started](docs/deployment/getting_started.md)
 * [Manual restoration](docs/operations/manual_restoration.md)
 * [Monitoring](docs/operations/metrics.md)
 * [Generating SSL certificates](docs/operations/generating_ssl_certificates.md)
