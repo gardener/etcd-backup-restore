@@ -7,11 +7,20 @@ structure:
       title: Etcd Backup & Restore
       description: A backup & restore sidecar for etcd (e.g. in the context of Gardener)
   source: /README.md
+- name: deployment
+  properties:
+    frontmatter:
+      title: Deployment
+      weight: 1
+      categories:
+        - Operators
+  nodesSelector:
+    path: /docs/deployment
 - name: development
   properties:
     frontmatter:
       title: Development
-      weight: 1
+      weight: 2
       categories:
         - Developers
   nodesSelector:
@@ -20,7 +29,7 @@ structure:
   properties:
     frontmatter:
       title: Operations
-      weight: 2
+      weight: 3
       categories:
         - Operators
   nodesSelector:
@@ -29,8 +38,17 @@ structure:
   properties:
     frontmatter:
       title: Proposals
-      weight: 3
+      weight: 4
+      categories:
+        - Developers
+  nodesSelector:
+    path: /docs/proposals
+- name: usage
+  properties:
+    frontmatter:
+      title: Usage
+      weight: 5
       categories:
         - Users
   nodesSelector:
-    path: /docs/proposals
+    path: /docs/usage

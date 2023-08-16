@@ -4,7 +4,7 @@ Etcd-backup-restore provides a simple and automated method of restoring single-n
 
 In the context of etcd-backup-restore server, restoration is a conditional part of the initialization workflow, in which restoration is triggered when etcd data validation deems the data directory invalid or corrupt.
 
-To learn about starting an etcd-backup-restore server, please follow the [getting started guide](../operations/getting_started.md).
+To learn about starting an etcd-backup-restore server, please follow the [getting started guide](../deployment/getting_started.md).
 
 ## Assumption
 
