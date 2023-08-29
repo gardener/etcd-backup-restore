@@ -182,7 +182,21 @@ func (cp *Compactor) Compact(ctx context.Context, opts *brtypes.CompactOptions) 
 	}
 
 	// Add a sleep command so that prometheus can collect necessary metrics related to the uploading of snapshots. see https://github.com/gardener/etcd-druid/issues/648
-	time.Sleep(opts.SleepTimeout.Duration)
+	err = SleepWithContext(ctx, opts.SleepFor.Duration)
+	if err != nil {
+		cp.logger.Warnf("Could not sleep for specified duration: %v", err)
+	}
 
 	return snapshot, nil
+}
+
+func SleepWithContext(ctx context.Context, sleepFor time.Duration) error {
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(sleepFor):
+			return nil
+		}
+	}
 }
