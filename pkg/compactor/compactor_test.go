@@ -39,8 +39,8 @@ var _ = Describe("Running Compactor", func() {
 		embeddedEtcdQuotaBytes int64  = 8 * 1024 * 1024 * 1024
 		snapshotTimeout               = 30 * time.Second
 		defragTimeout                 = 30 * time.Second
-		// keep SleepFor low so that tests are faster
-		sleepFor            = 10 * time.Nanosecond
+		// keep SleepForScrape low so that tests are faster
+		sleepForScrape      = 10 * time.Nanosecond
 		needDefragmentation = true
 	)
 
@@ -95,7 +95,7 @@ var _ = Describe("Running Compactor", func() {
 				SnapshotTimeout:     wrappers.Duration{Duration: snapshotTimeout},
 				DefragTimeout:       wrappers.Duration{Duration: defragTimeout},
 				EnabledLeaseRenewal: false,
-				SleepFor:            wrappers.Duration{Duration: sleepFor},
+				SleepForScrape:      wrappers.Duration{Duration: sleepForScrape},
 			}
 			compactOptions = &brtypes.CompactOptions{
 				RestoreOptions:  restoreOpts,

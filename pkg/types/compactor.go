@@ -27,8 +27,8 @@ const (
 	defaultDefragTimeout time.Duration = 8 * time.Minute
 	// defaultSnapshotTimeout defines default timeout duration for taking compacted FullSnapshot.
 	defaultSnapshotTimeout time.Duration = 30 * time.Minute
-	//defaultSleepForInSeconds defines default timeout for sleep command in compaction
-	defaultSleepFor time.Duration = 60 * time.Second
+	//defaultSleepForScrapeInSeconds defines default timeout for sleep command in compaction
+	defaultSleepForScrape time.Duration = 60 * time.Second
 )
 
 // CompactOptions holds all configurable options of compact.
@@ -46,7 +46,7 @@ type CompactorConfig struct {
 	DeltaSnapshotLeaseName string            `json:"deltaSnapshotLeaseName,omitempty"`
 	EnabledLeaseRenewal    bool              `json:"enabledLeaseRenewal"`
 	// see https://github.com/gardener/etcd-druid/issues/648
-	SleepFor wrappers.Duration `json:"sleepFor,omitempty"`
+	SleepForScrape wrappers.Duration `json:"sleepForScrape,omitempty"`
 }
 
 // NewCompactorConfig returns the CompactorConfig.
@@ -58,7 +58,7 @@ func NewCompactorConfig() *CompactorConfig {
 		FullSnapshotLeaseName:  DefaultFullSnapshotLeaseName,
 		DeltaSnapshotLeaseName: DefaultDeltaSnapshotLeaseName,
 		EnabledLeaseRenewal:    DefaultSnapshotLeaseRenewalEnabled,
-		SleepFor:               wrappers.Duration{Duration: defaultSleepFor},
+		SleepForScrape:         wrappers.Duration{Duration: defaultSleepForScrape},
 	}
 }
 
@@ -70,7 +70,7 @@ func (c *CompactorConfig) AddFlags(fs *flag.FlagSet) {
 	fs.StringVar(&c.FullSnapshotLeaseName, "full-snapshot-lease-name", c.FullSnapshotLeaseName, "full snapshot lease name")
 	fs.StringVar(&c.DeltaSnapshotLeaseName, "delta-snapshot-lease-name", c.DeltaSnapshotLeaseName, "delta snapshot lease name")
 	fs.BoolVar(&c.EnabledLeaseRenewal, "enable-snapshot-lease-renewal", c.EnabledLeaseRenewal, "Allows compactor to renew the full snapshot lease when successfully compacted snapshot is uploaded")
-	fs.DurationVar(&c.SleepFor.Duration, "sleep-timeout-in-seconds", c.SleepFor.Duration, "Timeout for sleep command after the snapshot upload is over")
+	fs.DurationVar(&c.SleepForScrape.Duration, "sleep-for-scrape", c.SleepForScrape.Duration, "Sleep duration after compaction is completed")
 }
 
 // Validate validates the config.
