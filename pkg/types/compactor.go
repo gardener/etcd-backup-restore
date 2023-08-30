@@ -28,7 +28,7 @@ const (
 	// defaultSnapshotTimeout defines default timeout duration for taking compacted FullSnapshot.
 	defaultSnapshotTimeout time.Duration = 30 * time.Minute
 	//defaultSleepForScrapeInSeconds defines default timeout for sleep command in compaction
-	defaultSleepForScrape time.Duration = 60 * time.Second
+	defaultSleepForScrape time.Duration = 0 * time.Second
 )
 
 // CompactOptions holds all configurable options of compact.

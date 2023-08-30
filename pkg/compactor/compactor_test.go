@@ -39,8 +39,8 @@ var _ = Describe("Running Compactor", func() {
 		embeddedEtcdQuotaBytes int64  = 8 * 1024 * 1024 * 1024
 		snapshotTimeout               = 30 * time.Second
 		defragTimeout                 = 30 * time.Second
-		// keep SleepForScrape low so that tests are faster
-		sleepForScrape      = 10 * time.Nanosecond
+		// keep SleepForScrape 0 so that tests are faster
+		sleepForScrape      = 0 * time.Second
 		needDefragmentation = true
 	)
 
