@@ -27,6 +27,8 @@ const (
 	defaultDefragTimeout time.Duration = 8 * time.Minute
 	// defaultSnapshotTimeout defines default timeout duration for taking compacted FullSnapshot.
 	defaultSnapshotTimeout time.Duration = 30 * time.Minute
+	//defaultMetricsScrapeWaitDuration defines default duration to wait for after compaction is completed, to allow Prometheus metrics to be scraped
+	defaultMetricsScrapeWaitDuration time.Duration = 0 * time.Second
 )
 
 // CompactOptions holds all configurable options of compact.
@@ -43,17 +45,20 @@ type CompactorConfig struct {
 	FullSnapshotLeaseName  string            `json:"fullSnapshotLeaseName,omitempty"`
 	DeltaSnapshotLeaseName string            `json:"deltaSnapshotLeaseName,omitempty"`
 	EnabledLeaseRenewal    bool              `json:"enabledLeaseRenewal"`
+	// see https://github.com/gardener/etcd-druid/issues/648
+	MetricsScrapeWaitDuration wrappers.Duration `json:"metricsScrapeWaitDuration,omitempty"`
 }
 
 // NewCompactorConfig returns the CompactorConfig.
 func NewCompactorConfig() *CompactorConfig {
 	return &CompactorConfig{
-		NeedDefragmentation:    true,
-		SnapshotTimeout:        wrappers.Duration{Duration: defaultSnapshotTimeout},
-		DefragTimeout:          wrappers.Duration{Duration: defaultDefragTimeout},
-		FullSnapshotLeaseName:  DefaultFullSnapshotLeaseName,
-		DeltaSnapshotLeaseName: DefaultDeltaSnapshotLeaseName,
-		EnabledLeaseRenewal:    DefaultSnapshotLeaseRenewalEnabled,
+		NeedDefragmentation:       true,
+		SnapshotTimeout:           wrappers.Duration{Duration: defaultSnapshotTimeout},
+		DefragTimeout:             wrappers.Duration{Duration: defaultDefragTimeout},
+		FullSnapshotLeaseName:     DefaultFullSnapshotLeaseName,
+		DeltaSnapshotLeaseName:    DefaultDeltaSnapshotLeaseName,
+		EnabledLeaseRenewal:       DefaultSnapshotLeaseRenewalEnabled,
+		MetricsScrapeWaitDuration: wrappers.Duration{Duration: defaultMetricsScrapeWaitDuration},
 	}
 }
 
@@ -65,6 +70,7 @@ func (c *CompactorConfig) AddFlags(fs *flag.FlagSet) {
 	fs.StringVar(&c.FullSnapshotLeaseName, "full-snapshot-lease-name", c.FullSnapshotLeaseName, "full snapshot lease name")
 	fs.StringVar(&c.DeltaSnapshotLeaseName, "delta-snapshot-lease-name", c.DeltaSnapshotLeaseName, "delta snapshot lease name")
 	fs.BoolVar(&c.EnabledLeaseRenewal, "enable-snapshot-lease-renewal", c.EnabledLeaseRenewal, "Allows compactor to renew the full snapshot lease when successfully compacted snapshot is uploaded")
+	fs.DurationVar(&c.MetricsScrapeWaitDuration.Duration, "metrics-scrape-wait-duration", c.MetricsScrapeWaitDuration.Duration, "The duration to wait for after compaction is completed, to allow Prometheus metrics to be scraped")
 }
 
 // Validate validates the config.
