@@ -89,10 +89,11 @@ var _ = Describe("Running Compactor", func() {
 				PeerURLs:    peerUrls,
 			}
 			compactorConfig = &brtypes.CompactorConfig{
-				NeedDefragmentation: needDefragmentation,
-				SnapshotTimeout:     wrappers.Duration{Duration: snapshotTimeout},
-				DefragTimeout:       wrappers.Duration{Duration: defragTimeout},
-				EnabledLeaseRenewal: false,
+				NeedDefragmentation:       needDefragmentation,
+				SnapshotTimeout:           wrappers.Duration{Duration: snapshotTimeout},
+				DefragTimeout:             wrappers.Duration{Duration: defragTimeout},
+				EnabledLeaseRenewal:       false,
+				MetricsScrapeWaitDuration: wrappers.Duration{Duration: 0},
 			}
 			compactOptions = &brtypes.CompactOptions{
 				RestoreOptions:  restoreOpts,
