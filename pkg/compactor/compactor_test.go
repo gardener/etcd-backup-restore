@@ -39,9 +39,7 @@ var _ = Describe("Running Compactor", func() {
 		embeddedEtcdQuotaBytes int64  = 8 * 1024 * 1024 * 1024
 		snapshotTimeout               = 30 * time.Second
 		defragTimeout                 = 30 * time.Second
-		// keep SleepForScrape 0 so that tests are faster
-		sleepForScrape      = 0 * time.Second
-		needDefragmentation = true
+		needDefragmentation           = true
 	)
 
 	BeforeEach(func() {
@@ -91,11 +89,11 @@ var _ = Describe("Running Compactor", func() {
 				PeerURLs:    peerUrls,
 			}
 			compactorConfig = &brtypes.CompactorConfig{
-				NeedDefragmentation: needDefragmentation,
-				SnapshotTimeout:     wrappers.Duration{Duration: snapshotTimeout},
-				DefragTimeout:       wrappers.Duration{Duration: defragTimeout},
-				EnabledLeaseRenewal: false,
-				SleepForScrape:      wrappers.Duration{Duration: sleepForScrape},
+				NeedDefragmentation:       needDefragmentation,
+				SnapshotTimeout:           wrappers.Duration{Duration: snapshotTimeout},
+				DefragTimeout:             wrappers.Duration{Duration: defragTimeout},
+				EnabledLeaseRenewal:       false,
+				MetricsScrapeWaitDuration: wrappers.Duration{Duration: 0},
 			}
 			compactOptions = &brtypes.CompactOptions{
 				RestoreOptions:  restoreOpts,
