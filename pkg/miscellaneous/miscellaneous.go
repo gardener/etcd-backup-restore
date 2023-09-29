@@ -162,10 +162,22 @@ func StartEmbeddedEtcd(logger *logrus.Entry, ro *brtypes.RestoreOptions) (*embed
 	DefaultListenClientURLs := "http://localhost:0"
 	DefaultInitialAdvertisePeerURLs := "http://localhost:0"
 	DefaultAdvertiseClientURLs := "http://localhost:0"
-	lpurl, _ := url.Parse(DefaultListenPeerURLs)
-	apurl, _ := url.Parse(DefaultInitialAdvertisePeerURLs)
-	lcurl, _ := url.Parse(DefaultListenClientURLs)
-	acurl, _ := url.Parse(DefaultAdvertiseClientURLs)
+	lpurl, err := url.Parse(DefaultListenPeerURLs)
+	if err != nil {
+		return nil, err
+	}
+	apurl, err := url.Parse(DefaultInitialAdvertisePeerURLs)
+	if err != nil {
+		return nil, err
+	}
+	lcurl, err := url.Parse(DefaultListenClientURLs)
+	if err != nil {
+		return nil, err
+	}
+	acurl, err := url.Parse(DefaultAdvertiseClientURLs)
+	if err != nil {
+		return nil, err
+	}
 	cfg.LPUrls = []url.URL{*lpurl}
 	cfg.LCUrls = []url.URL{*lcurl}
 	cfg.APUrls = []url.URL{*apurl}

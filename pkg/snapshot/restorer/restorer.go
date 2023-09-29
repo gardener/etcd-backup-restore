@@ -68,13 +68,16 @@ type Restorer struct {
 }
 
 // NewRestorer returns the restorer object.
-func NewRestorer(store brtypes.SnapStore, logger *logrus.Entry) *Restorer {
-	zapLogger, _ := zap.NewProduction()
+func NewRestorer(store brtypes.SnapStore, logger *logrus.Entry) (*Restorer, error) {
+	zapLogger, err := zap.NewProduction()
+	if err != nil {
+		return nil, fmt.Errorf("unable to create the object of zapLogger: %s", err)
+	}
 	return &Restorer{
 		logger:    logger.WithField("actor", "restorer"),
 		zapLogger: zapLogger,
 		store:     store,
-	}
+	}, nil
 }
 
 // RestoreAndStopEtcd restore the etcd data directory as per specified restore options but doesn't return the ETCD server that it statrted.
@@ -401,7 +404,7 @@ func makeWALAndSnap(logger *zap.Logger, walDir, snapDir string, cl *membership.R
 	}
 	snapshotter := snap.New(logger, snapDir)
 	if err := snapshotter.SaveSnap(raftSnap); err != nil {
-		panic(err)
+		return err
 	}
 
 	return w.SaveSnapshot(walpb.Snapshot{Index: commit, Term: term})
