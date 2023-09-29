@@ -492,24 +492,20 @@ func (s *SwiftSnapStore) Delete(snap brtypes.Snapshot) error {
 
 // SwiftSnapStoreHash calculates and returns the hash of openstack swift snapstore secret.
 func SwiftSnapStoreHash(config *brtypes.SnapstoreConfig) (string, error) {
-	if _, isSet := os.LookupEnv(swiftCredentialFile); isSet {
-		if dir := os.Getenv(swiftCredentialFile); dir != "" {
-			swiftConfig, err := readSwiftCredentialDir(dir)
-			if err != nil {
-				return "", fmt.Errorf("error getting credentials from %v directory", dir)
-			}
-			return getSwiftHash(swiftConfig), nil
+	if dir, isSet := os.LookupEnv(swiftCredentialFile); isSet {
+		swiftConfig, err := readSwiftCredentialDir(dir)
+		if err != nil {
+			return "", fmt.Errorf("error getting credentials from %v directory", dir)
 		}
+		return getSwiftHash(swiftConfig), nil
 	}
 
-	if _, isSet := os.LookupEnv(swiftCredentialJSONFile); isSet {
-		if filename := os.Getenv(swiftCredentialJSONFile); filename != "" {
-			swiftConfig, err := swiftCredentialsFromJSON(filename)
-			if err != nil {
-				return "", fmt.Errorf("error getting credentials using %v file", filename)
-			}
-			return getSwiftHash(swiftConfig), nil
+	if filename, isSet := os.LookupEnv(swiftCredentialJSONFile); isSet {
+		swiftConfig, err := swiftCredentialsFromJSON(filename)
+		if err != nil {
+			return "", fmt.Errorf("error getting credentials using %v file", filename)
 		}
+		return getSwiftHash(swiftConfig), nil
 	}
 
 	return "", nil

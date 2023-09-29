@@ -99,7 +99,8 @@ var _ = Describe("Running Restorer", func() {
 			baseSnapshot, deltaSnapList, err = miscellaneous.GetLatestFullSnapshotAndDeltaSnapList(store)
 			Expect(err).ShouldNot(HaveOccurred())
 
-			restorer = NewRestorer(store, logger)
+			restorer, err = NewRestorer(store, logger)
+			Expect(err).ShouldNot(HaveOccurred())
 			restoreOpts = brtypes.RestoreOptions{
 				Config: &brtypes.RestorationConfig{
 					DataDir:                  etcdDir,
@@ -312,7 +313,8 @@ var _ = Describe("Running Restorer", func() {
 				logger.Infof("No of delta snapshots: %d", deltaSnapList.Len())
 				logger.Infof("Base snapshot is %v", baseSnapshot)
 
-				restorer = NewRestorer(store, logger)
+				restorer, err = NewRestorer(store, logger)
+				Expect(err).ShouldNot(HaveOccurred())
 				restoreOpts := brtypes.RestoreOptions{
 					Config:        restorationConfig,
 					BaseSnapshot:  baseSnapshot,
@@ -326,9 +328,9 @@ var _ = Describe("Running Restorer", func() {
 					restoreOpts.BaseSnapshot.SnapName = ""
 				}
 
-				err := restorer.RestoreAndStopEtcd(restoreOpts, nil)
-
+				err = restorer.RestoreAndStopEtcd(restoreOpts, nil)
 				Expect(err).ShouldNot(HaveOccurred())
+
 				err = utils.CheckDataConsistency(testCtx, restoreOpts.Config.DataDir, keyTo, logger)
 				Expect(err).ShouldNot(HaveOccurred())
 			})
@@ -357,7 +359,8 @@ var _ = Describe("Running Restorer", func() {
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(deltaSnapList.Len()).Should(BeZero())
 
-				restorer = NewRestorer(store, logger)
+				restorer, err = NewRestorer(store, logger)
+				Expect(err).ShouldNot(HaveOccurred())
 
 				restoreOpts := brtypes.RestoreOptions{
 					Config:        restorationConfig,
@@ -401,7 +404,8 @@ var _ = Describe("Running Restorer", func() {
 				logger.Infof("Removed snapshot to cause corruption %s", snapshotToRemove)
 				Expect(err).ShouldNot(HaveOccurred())
 
-				restorer = NewRestorer(store, logger)
+				restorer, err = NewRestorer(store, logger)
+				Expect(err).ShouldNot(HaveOccurred())
 
 				restoreOpts := brtypes.RestoreOptions{
 					Config:        restorationConfig,
@@ -438,7 +442,8 @@ var _ = Describe("Running Restorer", func() {
 				baseSnapshot, deltaSnapList, err = miscellaneous.GetLatestFullSnapshotAndDeltaSnapList(store)
 				Expect(err).ShouldNot(HaveOccurred())
 
-				restorer = NewRestorer(store, logger)
+				restorer, err = NewRestorer(store, logger)
+				Expect(err).ShouldNot(HaveOccurred())
 
 				restoreOpts := brtypes.RestoreOptions{
 					Config:        restorationConfig,
@@ -521,7 +526,8 @@ var _ = Describe("Running Restorer", func() {
 				baseSnapshot, deltaSnapList, err = miscellaneous.GetLatestFullSnapshotAndDeltaSnapList(store)
 				Expect(err).ShouldNot(HaveOccurred())
 
-				restorer = NewRestorer(store, logger)
+				restorer, err = NewRestorer(store, logger)
+				Expect(err).ShouldNot(HaveOccurred())
 
 				restoreOpts := brtypes.RestoreOptions{
 					Config:        restorationConfig,
@@ -606,7 +612,8 @@ var _ = Describe("Running Restorer", func() {
 				baseSnapshot, deltaSnapList, err = miscellaneous.GetLatestFullSnapshotAndDeltaSnapList(store)
 				Expect(err).ShouldNot(HaveOccurred())
 
-				restorer = NewRestorer(store, logger)
+				restorer, err = NewRestorer(store, logger)
+				Expect(err).ShouldNot(HaveOccurred())
 
 				restoreOpts := brtypes.RestoreOptions{
 					Config:        restorationConfig,
@@ -718,7 +725,8 @@ var _ = Describe("Running Restorer when both v1 and v2 directory structures are 
 			baseSnapshot, deltaSnapList, err = miscellaneous.GetLatestFullSnapshotAndDeltaSnapList(store)
 			Expect(err).ShouldNot(HaveOccurred())
 
-			restorer = NewRestorer(store, logger)
+			restorer, err = NewRestorer(store, logger)
+			Expect(err).ShouldNot(HaveOccurred())
 
 			restoreOpts := brtypes.RestoreOptions{
 				Config:        restorationConfig,
@@ -750,7 +758,8 @@ var _ = Describe("Running Restorer when both v1 and v2 directory structures are 
 			baseSnapshot, deltaSnapList, err = miscellaneous.GetLatestFullSnapshotAndDeltaSnapList(store)
 			Expect(err).ShouldNot(HaveOccurred())
 
-			restorer = NewRestorer(store, logger)
+			restorer, err = NewRestorer(store, logger)
+			Expect(err).ShouldNot(HaveOccurred())
 
 			restoreOpts := brtypes.RestoreOptions{
 				Config:        restorationConfig,
@@ -782,7 +791,8 @@ var _ = Describe("Running Restorer when both v1 and v2 directory structures are 
 			baseSnapshot, deltaSnapList, err = miscellaneous.GetLatestFullSnapshotAndDeltaSnapList(store)
 			Expect(err).ShouldNot(HaveOccurred())
 
-			restorer = NewRestorer(store, logger)
+			restorer, err = NewRestorer(store, logger)
+			Expect(err).ShouldNot(HaveOccurred())
 
 			restoreOpts := brtypes.RestoreOptions{
 				Config:        restorationConfig,
@@ -816,7 +826,8 @@ var _ = Describe("Running Restorer when both v1 and v2 directory structures are 
 			baseSnapshot, deltaSnapList, err = miscellaneous.GetLatestFullSnapshotAndDeltaSnapList(store)
 			Expect(err).ShouldNot(HaveOccurred())
 
-			restorer = NewRestorer(store, logger)
+			restorer, err = NewRestorer(store, logger)
+			Expect(err).ShouldNot(HaveOccurred())
 
 			restoreOpts := brtypes.RestoreOptions{
 				Config:        restorationConfig,
@@ -849,7 +860,8 @@ var _ = Describe("Running Restorer when both v1 and v2 directory structures are 
 				baseSnapshot, deltaSnapList, err = miscellaneous.GetLatestFullSnapshotAndDeltaSnapList(store)
 				Expect(err).ShouldNot(HaveOccurred())
 
-				restorer = NewRestorer(store, logger)
+				restorer, err = NewRestorer(store, logger)
+				Expect(err).ShouldNot(HaveOccurred())
 
 				restoreOpts := brtypes.RestoreOptions{
 					Config:        restorationConfig,
