@@ -136,9 +136,13 @@ func (e *EtcdInitializer) Initialize(mode validator.Mode, failBelowRevision int6
 }
 
 // NewInitializer creates an etcd initializer object.
-func NewInitializer(restoreOptions *brtypes.RestoreOptions, snapstoreConfig *brtypes.SnapstoreConfig, etcdConnectionConfig *brtypes.EtcdConnectionConfig, logger *logrus.Logger) *EtcdInitializer {
-	zapLogger, _ := zap.NewProduction()
-	etcdInit := &EtcdInitializer{
+func NewInitializer(restoreOptions *brtypes.RestoreOptions, snapstoreConfig *brtypes.SnapstoreConfig, etcdConnectionConfig *brtypes.EtcdConnectionConfig, logger *logrus.Logger) (*EtcdInitializer, error) {
+	zapLogger, err := zap.NewProduction()
+	if err != nil {
+		return nil, fmt.Errorf("unable to create the object of zapLogger: %s", err)
+	}
+
+	return &EtcdInitializer{
 		Config: &Config{
 			SnapstoreConfig:      snapstoreConfig,
 			RestoreOptions:       restoreOptions,
@@ -155,9 +159,7 @@ func NewInitializer(restoreOptions *brtypes.RestoreOptions, snapstoreConfig *brt
 			ZapLogger:           zapLogger,
 		},
 		Logger: logger,
-	}
-
-	return etcdInit
+	}, nil
 }
 
 // restoreCorruptData attempts to restore a corrupted data directory.
@@ -198,7 +200,10 @@ func (e *EtcdInitializer) restoreCorruptData() (bool, error) {
 		return false, fmt.Errorf("failed to delete previous temporary data directory: %v", err)
 	}
 
-	rs := restorer.NewRestorer(store, logrus.NewEntry(logger))
+	rs, err := restorer.NewRestorer(store, logrus.NewEntry(logger))
+	if err != nil {
+		return false, err
+	}
 	m := member.NewMemberControl(e.Config.EtcdConnectionConfig)
 	if err := rs.RestoreAndStopEtcd(tempRestoreOptions, m); err != nil {
 		err = fmt.Errorf("failed to restore snapshot: %v", err)

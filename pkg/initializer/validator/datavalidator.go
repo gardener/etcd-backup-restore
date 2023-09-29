@@ -400,8 +400,8 @@ waitLoop:
 		case <-timer.C:
 			break waitLoop
 		default:
-			latestSyncedEtcdRevision, _ = getLatestSyncedRevision(clientKV, d.Logger)
-			if latestSyncedEtcdRevision >= latestSnapshotRevision {
+			latestSyncedEtcdRevision, err = getLatestSyncedRevision(clientKV, d.Logger)
+			if err == nil && latestSyncedEtcdRevision >= latestSnapshotRevision {
 				d.Logger.Infof("After starting embeddedEtcd backend DB file revision (%d) is greater than or equal to latest snapshot revision (%d): no data loss", latestSyncedEtcdRevision, latestSnapshotRevision)
 				break waitLoop
 			}

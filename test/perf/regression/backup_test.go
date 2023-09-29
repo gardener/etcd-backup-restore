@@ -50,10 +50,10 @@ var _ = Describe("Backup", func() {
 
 	BeforeEach(func() {
 		logger := newLogger("BeforeEach")
-		kubeconfigPath := getKubeconfigPath()
+		kubeconfigPath, err := getKubeconfigPath()
+		Expect(err).To(BeNil())
 		logger.Printf("Setting up target using KUBECONFIG=%s", kubeconfigPath)
 
-		var err error
 		config, err := getKubeconfig(kubeconfigPath)
 		Expect(err).To(BeNil())
 

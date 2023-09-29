@@ -69,7 +69,10 @@ func NewInitializeCommand(ctx context.Context) *cobra.Command {
 				PeerURLs:    peerUrls,
 			}
 
-			etcdInitializer := initializer.NewInitializer(restoreOptions, opts.restorerOptions.snapstoreConfig, opts.etcdConnectionConfig, logger)
+			etcdInitializer, err := initializer.NewInitializer(restoreOptions, opts.restorerOptions.snapstoreConfig, opts.etcdConnectionConfig, logger)
+			if err != nil {
+				logger.Fatalf("failed to create initializer object: %v", err)
+			}
 			if err := etcdInitializer.Initialize(mode, opts.validatorOptions.FailBelowRevision); err != nil {
 				logger.Fatalf("initializer failed. %v", err)
 			}

@@ -42,7 +42,10 @@ func NewRestoreCommand(ctx context.Context) *cobra.Command {
 				return
 			}
 
-			rs := restorer.NewRestorer(store, logrus.NewEntry(logger))
+			rs, err := restorer.NewRestorer(store, logrus.NewEntry(logger))
+			if err != nil {
+				logger.Fatalf("failed to create restorer object: %v", err)
+			}
 			if err := rs.RestoreAndStopEtcd(*options, nil); err != nil {
 				logger.Fatalf("Failed to restore snapshot: %v", err)
 				return

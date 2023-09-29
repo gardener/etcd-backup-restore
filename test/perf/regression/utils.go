@@ -15,6 +15,7 @@
 package regression
 
 import (
+	"fmt"
 	"os"
 
 	"k8s.io/client-go/rest"
@@ -25,8 +26,11 @@ const (
 	envKubeconfig = "KUBECONFIG"
 )
 
-func getKubeconfigPath() string {
-	return os.Getenv(envKubeconfig)
+func getKubeconfigPath() (string, error) {
+	if value, ok := os.LookupEnv(envKubeconfig); ok {
+		return value, nil
+	}
+	return "", fmt.Errorf("KUBECONFIG ENV is not set")
 }
 
 func getKubeconfig(kubeconfigPath string) (*rest.Config, error) {
