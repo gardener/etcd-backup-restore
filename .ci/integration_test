@@ -155,6 +155,16 @@ EOF
 [default]
 region = $3
 EOF
+  temp_dir=$(mktemp -d)
+  credentials_file="${temp_dir}/credentials.json"
+  cat <<EOF >"${credentials_file}"
+{
+  "accessKeyID": "$1",
+  "secretAccessKey": "$2",
+  "region": "$3"
+}
+EOF
+  export AWS_APPLICATION_CREDENTIALS_JSON="${credentials_file}"
 }
 
 function create_aws_secret() {
