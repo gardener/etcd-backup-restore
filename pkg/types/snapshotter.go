@@ -56,12 +56,13 @@ type SnapshotterState int
 
 // SnapshotterConfig holds the snapshotter config.
 type SnapshotterConfig struct {
-	FullSnapshotSchedule     string            `json:"schedule,omitempty"`
-	DeltaSnapshotPeriod      wrappers.Duration `json:"deltaSnapshotPeriod,omitempty"`
-	DeltaSnapshotMemoryLimit uint              `json:"deltaSnapshotMemoryLimit,omitempty"`
-	GarbageCollectionPeriod  wrappers.Duration `json:"garbageCollectionPeriod,omitempty"`
-	GarbageCollectionPolicy  string            `json:"garbageCollectionPolicy,omitempty"`
-	MaxBackups               uint              `json:"maxBackups,omitempty"`
+	FullSnapshotSchedule         string            `json:"schedule,omitempty"`
+	DeltaSnapshotPeriod          wrappers.Duration `json:"deltaSnapshotPeriod,omitempty"`
+	DeltaSnapshotMemoryLimit     uint              `json:"deltaSnapshotMemoryLimit,omitempty"`
+	GarbageCollectionPeriod      wrappers.Duration `json:"garbageCollectionPeriod,omitempty"`
+	GarbageCollectionPolicy      string            `json:"garbageCollectionPolicy,omitempty"`
+	MaxBackups                   uint              `json:"maxBackups,omitempty"`
+	DeltaSnapshotRetentionPeriod wrappers.Duration `json:"deltaSnapshotRetentionPeriod,omitempty"`
 }
 
 // AddFlags adds the flags to flagset.
@@ -72,6 +73,7 @@ func (c *SnapshotterConfig) AddFlags(fs *flag.FlagSet) {
 	fs.DurationVar(&c.GarbageCollectionPeriod.Duration, "garbage-collection-period", c.GarbageCollectionPeriod.Duration, "Period for garbage collecting old backups")
 	fs.StringVar(&c.GarbageCollectionPolicy, "garbage-collection-policy", c.GarbageCollectionPolicy, "Policy for garbage collecting old backups")
 	fs.UintVarP(&c.MaxBackups, "max-backups", "m", c.MaxBackups, "maximum number of previous backups to keep")
+	fs.DurationVar(&c.DeltaSnapshotRetentionPeriod.Duration, "delta-snapshot-retention-period", c.DeltaSnapshotRetentionPeriod.Duration, "Defines the retention period for older delta snapshots, excluding the latest snapshot set which is always retained for data safety.")
 }
 
 // Validate validates the config.
