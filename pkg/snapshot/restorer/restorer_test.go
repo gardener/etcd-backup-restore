@@ -27,10 +27,13 @@ import (
 
 	"github.com/gardener/etcd-backup-restore/pkg/compressor"
 	"github.com/gardener/etcd-backup-restore/pkg/miscellaneous"
+	mockfactory "github.com/gardener/etcd-backup-restore/pkg/mock/etcdutil/client"
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 	"github.com/gardener/etcd-backup-restore/test/utils"
+	"github.com/golang/mock/gomock"
 	"github.com/sirupsen/logrus"
+	"go.etcd.io/etcd/clientv3"
 	"go.etcd.io/etcd/pkg/types"
 
 	. "github.com/gardener/etcd-backup-restore/pkg/snapshot/restorer"
@@ -627,6 +630,198 @@ var _ = Describe("Running Restorer", func() {
 				Expect(err).ShouldNot(HaveOccurred())
 				err = utils.CheckDataConsistency(testCtx, restoreOpts.Config.DataDir, keyTo, logger)
 				Expect(err).ShouldNot(HaveOccurred())
+			})
+		})
+	})
+
+	Describe("Handle Alarm and Make etcd lean", func() {
+		var (
+			ctrl    *gomock.Controller
+			factory *mockfactory.MockFactory
+			cm      *mockfactory.MockMaintenanceCloser
+			ckv     *mockfactory.MockKVCloser
+
+			dummyRevisionNo             = int64(1111)
+			dummyEtcdEndpoints          = []string{"http://127.0.0.1:9999"}
+			dummyEmbeddedEtcdQuotaBytes = float64(100) // 100B
+		)
+		BeforeEach(func() {
+			ctrl = gomock.NewController(GinkgoT())
+			factory = mockfactory.NewMockFactory(ctrl)
+			cm = mockfactory.NewMockMaintenanceCloser(ctrl)
+			ckv = mockfactory.NewMockKVCloser(ctrl)
+			restorer, err = NewRestorer(store, logger)
+			Expect(err).ShouldNot(HaveOccurred())
+		})
+
+		Context("Etcd database size within the threshold limit", func() {
+			var (
+				dummyDBSize      = int64(50)
+				dummyDBSizeInUse = int64(25)
+			)
+			BeforeEach(func() {
+				factory.EXPECT().NewMaintenance().Return(cm, nil).AnyTimes()
+				factory.EXPECT().NewKV().Return(ckv, nil).AnyTimes()
+			})
+
+			Context("unable to compact etcd", func() {
+				It("should return error", func() {
+					var (
+						dbSizeAlarmCh    = make(chan string)
+						dbSizeDisAlarmCh = make(chan bool)
+					)
+
+					ckv.EXPECT().Compact(gomock.Any(), gomock.Any(), gomock.Any()).Return(
+						nil, fmt.Errorf("dummy compact etcd error"),
+					).AnyTimes()
+
+					clientMaintenance, err := factory.NewMaintenance()
+					Expect(err).ShouldNot(HaveOccurred())
+
+					clientKV, err := factory.NewKV()
+					Expect(err).ShouldNot(HaveOccurred())
+
+					err = restorer.MakeEtcdLeanAndCheckAlarm(dummyRevisionNo, dummyEtcdEndpoints, dummyEmbeddedEtcdQuotaBytes, dbSizeAlarmCh, dbSizeDisAlarmCh, clientKV, clientMaintenance)
+					Expect(err).Should(HaveOccurred())
+				})
+			})
+
+			Context("able to compact etcd but unable to check etcd status", func() {
+				It("should return error", func() {
+					var (
+						dbSizeAlarmCh    = make(chan string)
+						dbSizeDisAlarmCh = make(chan bool)
+					)
+
+					ckv.EXPECT().Compact(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
+
+					cm.EXPECT().Status(gomock.Any(), gomock.Any()).Return(
+						nil, fmt.Errorf("dummy etcd status error"),
+					).AnyTimes()
+
+					clientMaintenance, err := factory.NewMaintenance()
+					Expect(err).ShouldNot(HaveOccurred())
+
+					clientKV, err := factory.NewKV()
+					Expect(err).ShouldNot(HaveOccurred())
+
+					err = restorer.MakeEtcdLeanAndCheckAlarm(dummyRevisionNo, dummyEtcdEndpoints, dummyEmbeddedEtcdQuotaBytes, dbSizeAlarmCh, dbSizeDisAlarmCh, clientKV, clientMaintenance)
+					Expect(err).Should(HaveOccurred())
+				})
+			})
+
+			Context("able to compact etcd and check the etcd status", func() {
+				It("shouldn't return error", func() {
+					var (
+						dbSizeAlarmCh    = make(chan string)
+						dbSizeDisAlarmCh = make(chan bool)
+					)
+
+					ckv.EXPECT().Compact(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
+
+					cm.EXPECT().Status(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, _ string) (*clientv3.StatusResponse, error) {
+						response := new(clientv3.StatusResponse)
+						// setting the db size
+						response.DbSize = dummyDBSize
+						response.DbSizeInUse = dummyDBSizeInUse
+						return response, nil
+					}).AnyTimes()
+
+					clientMaintenance, err := factory.NewMaintenance()
+					Expect(err).ShouldNot(HaveOccurred())
+
+					clientKV, err := factory.NewKV()
+					Expect(err).ShouldNot(HaveOccurred())
+
+					err = restorer.MakeEtcdLeanAndCheckAlarm(dummyRevisionNo, dummyEtcdEndpoints, dummyEmbeddedEtcdQuotaBytes, dbSizeAlarmCh, dbSizeDisAlarmCh, clientKV, clientMaintenance)
+					Expect(err).ShouldNot(HaveOccurred())
+				})
+			})
+		})
+
+		Context("Etcd database size crosses the threshold limit", func() {
+			var (
+				dummyDBSize            = int64(90)
+				dummyDBSizeInUse       = int64(50)
+				dummyDBSizeAfterDefrag = int64(50)
+			)
+			BeforeEach(func() {
+				factory.EXPECT().NewMaintenance().Return(cm, nil).AnyTimes()
+				factory.EXPECT().NewKV().Return(ckv, nil).AnyTimes()
+			})
+
+			Context("compact but unable to defragment the given endpoint", func() {
+				It("should return error", func() {
+					var (
+						stopHandleAlarmCh = make(chan bool)
+						dbSizeAlarmCh     = make(chan string)
+						dbSizeDisAlarmCh  = make(chan bool)
+					)
+
+					ckv.EXPECT().Compact(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
+					cm.EXPECT().Status(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, _ string) (*clientv3.StatusResponse, error) {
+						response := new(clientv3.StatusResponse)
+						// setting the db size
+						response.DbSize = dummyDBSize
+						response.DbSizeInUse = dummyDBSizeInUse
+						return response, nil
+					}).AnyTimes()
+
+					cm.EXPECT().Defragment(gomock.Any(), gomock.Any()).Return(
+						nil, fmt.Errorf("dummy defrag error"),
+					).AnyTimes()
+
+					clientMaintenance, err := factory.NewMaintenance()
+					Expect(err).ShouldNot(HaveOccurred())
+
+					clientKV, err := factory.NewKV()
+					Expect(err).ShouldNot(HaveOccurred())
+
+					go restorer.HandleAlarm(stopHandleAlarmCh, dbSizeAlarmCh, dbSizeDisAlarmCh, clientMaintenance)
+					defer close(stopHandleAlarmCh)
+					err = restorer.MakeEtcdLeanAndCheckAlarm(dummyRevisionNo, dummyEtcdEndpoints, dummyEmbeddedEtcdQuotaBytes, dbSizeAlarmCh, dbSizeDisAlarmCh, clientKV, clientMaintenance)
+					Expect(err).Should(HaveOccurred())
+				})
+			})
+
+			Context("compact and defragment the given etcd endpoint", func() {
+				It("shouldn't return any error", func() {
+					var (
+						stopHandleAlarmCh = make(chan bool)
+						dbSizeAlarmCh     = make(chan string)
+						dbSizeDisAlarmCh  = make(chan bool)
+					)
+
+					ckv.EXPECT().Compact(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
+					cm.EXPECT().Status(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, _ string) (*clientv3.StatusResponse, error) {
+						response := new(clientv3.StatusResponse)
+						// setting the db size before defrag
+						response.DbSize = dummyDBSize
+						response.DbSizeInUse = dummyDBSizeInUse
+						return response, nil
+					}).MaxTimes(1)
+
+					cm.EXPECT().Status(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, _ string) (*clientv3.StatusResponse, error) {
+						response := new(clientv3.StatusResponse)
+						// setting the db size after defrag
+						response.DbSize = dummyDBSizeAfterDefrag
+						response.DbSizeInUse = dummyDBSizeAfterDefrag
+						return response, nil
+					}).AnyTimes()
+
+					cm.EXPECT().Defragment(gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
+
+					clientMaintenance, err := factory.NewMaintenance()
+					Expect(err).ShouldNot(HaveOccurred())
+
+					clientKV, err := factory.NewKV()
+					Expect(err).ShouldNot(HaveOccurred())
+
+					go restorer.HandleAlarm(stopHandleAlarmCh, dbSizeAlarmCh, dbSizeDisAlarmCh, clientMaintenance)
+					defer close(stopHandleAlarmCh)
+					err = restorer.MakeEtcdLeanAndCheckAlarm(dummyRevisionNo, dummyEtcdEndpoints, dummyEmbeddedEtcdQuotaBytes, dbSizeAlarmCh, dbSizeDisAlarmCh, clientKV, clientMaintenance)
+					Expect(err).ShouldNot(HaveOccurred())
+				})
 			})
 		})
 	})

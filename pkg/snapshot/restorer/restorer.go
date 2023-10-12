@@ -475,7 +475,7 @@ func (r *Restorer) applyDeltaSnapshots(clientFactory client.Factory, endPoints [
 		go r.fetchSnaps(f, fetcherInfoCh, applierInfoCh, snapLocationsCh, errCh, stopCh, &wg, ro.Config.TempSnapshotsDir)
 	}
 
-	go r.handleAlarm(stopHandleAlarmCh, dbSizeAlarmCh, dbSizeDisAlarmCh, clientMaintenance)
+	go r.HandleAlarm(stopHandleAlarmCh, dbSizeAlarmCh, dbSizeDisAlarmCh, clientMaintenance)
 	defer close(stopHandleAlarmCh)
 
 	for i, remainingSnap := range remainingSnaps {
@@ -648,7 +648,7 @@ func (r *Restorer) applySnaps(clientKV client.KVCloser, clientMaintenance client
 
 					if numberOfDeltaSnapApplied%periodicallyMakeEtcdLean == 0 || prevAttemptToMakeEtcdLeanFailed {
 						r.logger.Info("making an embedded etcd lean and check for db size alarm")
-						if err := r.makeEtcdLeanAndCheckAlarm(int64(remainingSnaps[currSnapIndex].LastRevision), endPoints, embeddedEtcdQuotaBytes, dbSizeAlarmCh, dbSizeDisAlarmCh, clientKV, clientMaintenance); err != nil {
+						if err := r.MakeEtcdLeanAndCheckAlarm(int64(remainingSnaps[currSnapIndex].LastRevision), endPoints, embeddedEtcdQuotaBytes, dbSizeAlarmCh, dbSizeDisAlarmCh, clientKV, clientMaintenance); err != nil {
 							r.logger.Errorf("unable to make embedded etcd lean: %v", err)
 							r.logger.Warn("etcd mvcc: database space might exceeds its quota limit")
 							r.logger.Info("backup-restore will try again in next attempt...")
@@ -945,8 +945,8 @@ func ErrorArrayToError(errs []error) error {
 	return fmt.Errorf("%s", strings.TrimSpace(errString))
 }
 
-// handleAlarm function handles alarm raised by backup-restore.
-func (r *Restorer) handleAlarm(stopHandleAlarmCh chan bool, dbSizeAlarmCh <-chan string, dbSizeDisAlarmCh chan bool, clientMaintenance client.MaintenanceCloser) {
+// HandleAlarm function handles alarm raised by backup-restore.
+func (r *Restorer) HandleAlarm(stopHandleAlarmCh chan bool, dbSizeAlarmCh <-chan string, dbSizeDisAlarmCh chan bool, clientMaintenance client.MaintenanceCloser) {
 	r.logger.Info("Starting to handle an alarm...")
 	for {
 		select {
@@ -975,8 +975,8 @@ func (r *Restorer) handleAlarm(stopHandleAlarmCh chan bool, dbSizeAlarmCh <-chan
 	}
 }
 
-// makeEtcdLeanAndCheckAlarm calls etcd compaction on given revision number and raise db size alarm if embedded etcd db size crosses threshold.
-func (r *Restorer) makeEtcdLeanAndCheckAlarm(revision int64, endPoints []string, embeddedEtcdQuotaBytes float64, dbSizeAlarmCh chan string, dbSizeDisAlarmCh <-chan bool, clientKV client.KVCloser, clientMaintenance client.MaintenanceCloser) error {
+// MakeEtcdLeanAndCheckAlarm calls etcd compaction on given revision number and raise db size alarm if embedded etcd db size crosses threshold.
+func (r *Restorer) MakeEtcdLeanAndCheckAlarm(revision int64, endPoints []string, embeddedEtcdQuotaBytes float64, dbSizeAlarmCh chan string, dbSizeDisAlarmCh <-chan bool, clientKV client.KVCloser, clientMaintenance client.MaintenanceCloser) error {
 	if err := func() error {
 		ctx, cancel := context.WithTimeout(context.Background(), etcdCompactTimeout)
 		defer cancel()
