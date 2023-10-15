@@ -642,7 +642,7 @@ var _ = Describe("Running Restorer", func() {
 			ckv     *mockfactory.MockKVCloser
 
 			dummyRevisionNo             = int64(1111)
-			dummyEtcdEndpoints          = []string{"http://127.0.0.1:9999"}
+			dummyEtcdEndpoints          = []string{"http://127.0.0.1:9999", "http://127.0.0.1:9900"}
 			dummyEmbeddedEtcdQuotaBytes = float64(100) // 100B
 		)
 		BeforeEach(func() {

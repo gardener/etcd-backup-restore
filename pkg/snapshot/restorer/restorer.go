@@ -61,7 +61,7 @@ const (
 	etcdCompactTimeout                        = 2 * time.Minute
 	etcdDefragTimeout                         = 5 * time.Minute
 	periodicallyMakeEtcdLean                  = 10
-	thresholdPercentageForDBSizeAlarm float64 = .8
+	thresholdPercentageForDBSizeAlarm float64 = 80.0 / 100.0
 )
 
 // Restorer is a struct for etcd data directory restorer
@@ -1003,23 +1003,27 @@ func (r *Restorer) MakeEtcdLeanAndCheckAlarm(revision int64, endPoints []string,
 		r.logger.Info("Embedded etcd database size crosses the threshold limit")
 		r.logger.Info("Raising a dbSize alarm...")
 
-		// send endpoints to alarm channel to raise an db size alarm
-		dbSizeAlarmCh <- endPoints[0]
+		for _, endPoint := range endPoints {
+			// send endpoint to alarm channel to raise an db size alarm
+			dbSizeAlarmCh <- endPoint
 
-		if <-dbSizeDisAlarmCh {
-			r.logger.Info("Successfully disalarm the embedded etcd dbSize alarm")
-			ctx, cancel := context.WithTimeout(context.Background(), etcdConnectionTimeout)
-			defer cancel()
-			if afterDefragStatus, err := clientMaintenance.Status(ctx, endPoints[0]); err != nil {
-				r.logger.Warnf("failed to get status of etcd with error: %v", err)
+			if <-dbSizeDisAlarmCh {
+				r.logger.Info("Successfully disalarm the embedded etcd dbSize alarm")
+				ctx, cancel := context.WithTimeout(context.Background(), etcdConnectionTimeout)
+				defer cancel()
+				if afterDefragStatus, err := clientMaintenance.Status(ctx, endPoint); err != nil {
+					r.logger.Warnf("failed to get status of embedded etcd with error: %v", err)
+				} else {
+					dbSizeBeforeDefrag := status.DbSize
+					dbSizeAfterDefrag := afterDefragStatus.DbSize
+					r.logger.Infof("Probable DB size change for embedded etcd: %dB -> %dB after defragmentation call", dbSizeBeforeDefrag, dbSizeAfterDefrag)
+				}
 			} else {
-				dbSizeBeforeDefrag := status.DbSize
-				dbSizeAfterDefrag := afterDefragStatus.DbSize
-				r.logger.Infof("Probable DB size change for embedded etcd: %dB -> %dB after defragmentation call", dbSizeBeforeDefrag, dbSizeAfterDefrag)
+				return fmt.Errorf("failed to disalarm the embedded etcd dbSize alarm")
 			}
-		} else {
-			return fmt.Errorf("failed to disalarm the embedded etcd dbSize alarm")
 		}
+	} else {
+		r.logger.Infof("Embedded etcd dbsize: %dB didn't crosses the threshold limit: %fB", status.DbSize, thresholdPercentageForDBSizeAlarm*embeddedEtcdQuotaBytes)
 	}
 	return nil
 }
