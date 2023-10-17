@@ -363,7 +363,7 @@ func (m *memberControl) WasMemberInCluster(ctx context.Context, clientSet client
 		Namespace: m.podNamespace,
 		Name:      m.podName,
 	}, memberLease); err != nil {
-		return false, fmt.Errorf("couldn't able to fetch member lease: %v", err)
+		return false, fmt.Errorf("couldn't fetch member lease while checking if the member was part of the cluster: %v", err)
 	}
 
 	if memberLease.Spec.HolderIdentity == nil {
