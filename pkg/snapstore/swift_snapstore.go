@@ -396,6 +396,19 @@ func (s *SwiftSnapStore) Save(snap brtypes.Snapshot, rc io.ReadCloser) error {
 		return fmt.Errorf("failed uploading manifest for snapshot with error: %v", res.Err)
 	}
 	logrus.Info("Manifest object uploaded successfully.")
+
+	// Delete the chunks from the bucket right after manifest object is uploaded
+	logrus.Infof("Started deleting the chunk objects from bucket")
+	// Create a DeleteOpts options object to pass as parameter to delete function while deleting an object from the bucket
+	deleteOpts := objects.DeleteOpts{}
+	for partNumber := int64(1); partNumber <= noOfChunks; partNumber++ {
+
+		objectName := path.Join(prefix, snap.SnapDir, snap.SnapName, fmt.Sprintf("%010d", partNumber))
+		res := objects.Delete(s.client, s.bucket, objectName, deleteOpts)
+		if res.Err != nil {
+			return fmt.Errorf("failed to delete the chunk with id: %d", partNumber)
+		}
+	}
 	return nil
 }
 
