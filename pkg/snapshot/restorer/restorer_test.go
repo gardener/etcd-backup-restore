@@ -491,7 +491,8 @@ var _ = Describe("Running Restorer", func() {
 				baseSnapshot, deltaSnapList, err = miscellaneous.GetLatestFullSnapshotAndDeltaSnapList(store)
 				Expect(err).ShouldNot(HaveOccurred())
 
-				restorer = NewRestorer(store, logger)
+				restorer, err = NewRestorer(store, logger)
+				Expect(err).ShouldNot(HaveOccurred())
 
 				restoreOpts := brtypes.RestoreOptions{
 					Config:        restorationConfig,
