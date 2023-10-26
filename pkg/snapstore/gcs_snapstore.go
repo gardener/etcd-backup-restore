@@ -167,6 +167,18 @@ func (s *GCSSnapStore) Save(snap brtypes.Snapshot, rc io.ReadCloser) error {
 		return fmt.Errorf("failed uploading composite object for snapshot with error: %v", err)
 	}
 	logrus.Info("Composite object uploaded successfully.")
+
+	// Delete the chunks right after uploading the snapshot to bucket.
+	// To be done once the composite object is successfully uploaded.
+	logrus.Infof("Started deleting the chunk objects from bucket")
+	for partNumber := int64(1); partNumber <= noOfChunks; partNumber++ {
+		name := path.Join(prefix, snap.SnapDir, snap.SnapName, fmt.Sprintf("%010d", partNumber))
+		obj := bh.Object(name)
+		err := obj.Delete(context.TODO())
+		if err != nil {
+			return fmt.Errorf("failed to delete chunk with id: %d ", partNumber)
+		}
+	}
 	return nil
 }
 
