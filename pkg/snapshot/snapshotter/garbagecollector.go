@@ -59,6 +59,7 @@ func (ssr *Snapshotter) RunGarbageCollector(stopCh <-chan struct{}) {
 				continue
 			}
 
+			snapList = garbageCollectChunks(ssr.store, snapList)
 			snapStreamIndexList := getSnapStreamIndexList(snapList)
 
 			switch ssr.config.GarbageCollectionPolicy {
@@ -142,7 +143,6 @@ func (ssr *Snapshotter) RunGarbageCollector(stopCh <-chan struct{}) {
 						}
 						metrics.GCSnapshotCounter.With(prometheus.Labels{metrics.LabelKind: brtypes.SnapshotKindFull, metrics.LabelSucceeded: metrics.ValueSucceededTrue}).Inc()
 						total++
-						garbageCollectChunks(ssr.store, snapList, snapStreamIndexList[snapStreamIndex-1]+1, snapStreamIndexList[snapStreamIndex])
 					}
 				}
 
@@ -167,7 +167,6 @@ func (ssr *Snapshotter) RunGarbageCollector(stopCh <-chan struct{}) {
 						}
 						metrics.GCSnapshotCounter.With(prometheus.Labels{metrics.LabelKind: brtypes.SnapshotKindFull, metrics.LabelSucceeded: metrics.ValueSucceededTrue}).Inc()
 						total++
-						garbageCollectChunks(ssr.store, snapList, snapStreamIndexList[snapStreamIndex]+1, snapStreamIndexList[snapStreamIndex+1])
 					}
 				}
 			}
@@ -193,24 +192,28 @@ func getSnapStreamIndexList(snapList brtypes.SnapList) []int {
 	return snapStreamIndexList
 }
 
-// garbageCollectChunks deletes the chunks in the store from snaplist starting at index low (inclusive) till high (exclusive).
-func garbageCollectChunks(store brtypes.SnapStore, snapList brtypes.SnapList, low, high int) {
-	for index := low; index < high; index++ {
+// garbageCollectChunks deletes the chunks in the store from snaplist.
+func garbageCollectChunks(store brtypes.SnapStore, snapList brtypes.SnapList) brtypes.SnapList {
+	var snapListWithoutChunks brtypes.SnapList
+	for index := 0; index < len(snapList); index++ {
 		snap := snapList[index]
-		// Only delete chunk snapshots of kind Full
-		if snap.Kind != brtypes.SnapshotKindFull || !snap.IsChunk {
+		// If not chunk, add to list and continue
+		if !snap.IsChunk {
+			snapListWithoutChunks = append(snapListWithoutChunks, snap)
 			continue
 		}
+		// else, delete the chunk object
 		snapPath := path.Join(snap.SnapDir, snap.SnapName)
-		logrus.Infof("GC: Deleting chunk for old full snapshot: %s", snapPath)
+		logrus.Infof("GC: Deleting chunk for old snapshot: %s", snapPath)
 		if err := store.Delete(*snap); err != nil {
-			logrus.Warnf("GC: Failed to delete snapshot %s: %v", snapPath, err)
+			logrus.Warnf("GC: Failed to delete chunk %s: %v", snapPath, err)
 			metrics.SnapshotterOperationFailure.With(prometheus.Labels{metrics.LabelError: err.Error()}).Inc()
 			metrics.GCSnapshotCounter.With(prometheus.Labels{metrics.LabelKind: brtypes.SnapshotKindChunk, metrics.LabelSucceeded: metrics.ValueSucceededFalse}).Inc()
 			continue
 		}
 		metrics.GCSnapshotCounter.With(prometheus.Labels{metrics.LabelKind: brtypes.SnapshotKindChunk, metrics.LabelSucceeded: metrics.ValueSucceededTrue}).Inc()
 	}
+	return snapListWithoutChunks
 }
 
 /*
