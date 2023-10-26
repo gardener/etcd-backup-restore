@@ -349,24 +349,20 @@ func (a *ABSSnapStore) Delete(snap brtypes.Snapshot) error {
 
 // ABSSnapStoreHash calculates and returns the hash of azure object storage snapstore secret.
 func ABSSnapStoreHash(config *brtypes.SnapstoreConfig) (string, error) {
-	if _, isSet := os.LookupEnv(absCredentialFile); isSet {
-		if dir := os.Getenv(absCredentialFile); dir != "" {
-			absConfig, err := readABSCredentialFiles(dir)
-			if err != nil {
-				return "", fmt.Errorf("error getting credentials from %v directory", dir)
-			}
-			return getABSHash(absConfig), nil
+	if dir, isSet := os.LookupEnv(absCredentialFile); isSet {
+		absConfig, err := readABSCredentialFiles(dir)
+		if err != nil {
+			return "", fmt.Errorf("error getting credentials from %v directory", dir)
 		}
+		return getABSHash(absConfig), nil
 	}
 
-	if _, isSet := os.LookupEnv(absCredentialJSONFile); isSet {
-		if filename := os.Getenv(absCredentialJSONFile); filename != "" {
-			absConfig, err := readABSCredentialsJSON(filename)
-			if err != nil {
-				return "", fmt.Errorf("error getting credentials using %v file", filename)
-			}
-			return getABSHash(absConfig), nil
+	if filename, isSet := os.LookupEnv(absCredentialJSONFile); isSet {
+		absConfig, err := readABSCredentialsJSON(filename)
+		if err != nil {
+			return "", fmt.Errorf("error getting credentials using %v file", filename)
 		}
+		return getABSHash(absConfig), nil
 	}
 
 	return "", nil

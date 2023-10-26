@@ -209,10 +209,17 @@ func (b *BackupRestoreServer) runServer(ctx context.Context, restoreOpts *brtype
 	if runServerWithSnapshotter {
 		snapstoreConfig = b.config.SnapstoreConfig
 	}
-	etcdInitializer := initializer.NewInitializer(restoreOpts, snapstoreConfig, b.config.EtcdConnectionConfig, b.logger.Logger)
+	etcdInitializer, err := initializer.NewInitializer(restoreOpts, snapstoreConfig, b.config.EtcdConnectionConfig, b.logger.Logger)
+	if err != nil {
+		return err
+	}
 
 	handler := b.startHTTPServer(etcdInitializer, b.config.SnapstoreConfig.Provider, b.config.EtcdConnectionConfig, b.config.SnapstoreConfig, nil)
-	defer handler.Stop()
+	defer func() {
+		if err := handler.Stop(); err != nil {
+			b.logger.Errorf("unable to stop HTTP server: %s", err)
+		}
+	}()
 
 	metrics.CurrentClusterSize.With(prometheus.Labels{}).Set(float64(restoreOpts.OriginalClusterSize))
 

@@ -343,24 +343,20 @@ func readALICredentialFiles(dirname string) (*authOptions, error) {
 
 // OSSSnapStoreHash calculates and returns the hash of aliCloud OSS snapstore secret.
 func OSSSnapStoreHash(config *brtypes.SnapstoreConfig) (string, error) {
-	if _, isSet := os.LookupEnv(aliCredentialFile); isSet {
-		if dir := os.Getenv(aliCredentialFile); dir != "" {
-			aliConfig, err := readALICredentialFiles(dir)
-			if err != nil {
-				return "", fmt.Errorf("error getting credentials from %v directory", dir)
-			}
-			return getOSSHash(aliConfig), nil
+	if dir, isSet := os.LookupEnv(aliCredentialFile); isSet {
+		aliConfig, err := readALICredentialFiles(dir)
+		if err != nil {
+			return "", fmt.Errorf("error getting credentials from %v directory", dir)
 		}
+		return getOSSHash(aliConfig), nil
 	}
 
-	if _, isSet := os.LookupEnv(aliCredentialJSONFile); isSet {
-		if filename := os.Getenv(aliCredentialJSONFile); filename != "" {
-			aliConfig, err := readALICredentialsJSON(filename)
-			if err != nil {
-				return "", fmt.Errorf("error getting credentials using %v file", filename)
-			}
-			return getOSSHash(aliConfig), nil
+	if filename, isSet := os.LookupEnv(aliCredentialJSONFile); isSet {
+		aliConfig, err := readALICredentialsJSON(filename)
+		if err != nil {
+			return "", fmt.Errorf("error getting credentials using %v file", filename)
 		}
+		return getOSSHash(aliConfig), nil
 	}
 	return "", nil
 }

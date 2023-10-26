@@ -172,9 +172,10 @@ var _ = Describe("Running Compactor", func() {
 				restoreOpts.BaseSnapshot = compactedSnapshot
 				restoreOpts.DeltaSnapList = deltaSnapList
 
-				rstr := restorer.NewRestorer(store, logger)
+				restorer, err := restorer.NewRestorer(store, logger)
+				Expect(err).ShouldNot(HaveOccurred())
 
-				err = rstr.RestoreAndStopEtcd(*restoreOpts, nil)
+				err = restorer.RestoreAndStopEtcd(*restoreOpts, nil)
 
 				Expect(err).ShouldNot(HaveOccurred())
 				err = utils.CheckDataConsistency(testCtx, restoreOpts.Config.DataDir, keyTo, logger)
@@ -248,9 +249,10 @@ var _ = Describe("Running Compactor", func() {
 				restoreOpts.BaseSnapshot = compactedSnapshot
 				restoreOpts.DeltaSnapList = deltaSnapList
 
-				rstr := restorer.NewRestorer(store, logger)
+				restorer, err := restorer.NewRestorer(store, logger)
+				Expect(err).ShouldNot(HaveOccurred())
 
-				err = rstr.RestoreAndStopEtcd(*restoreOpts, nil)
+				err = restorer.RestoreAndStopEtcd(*restoreOpts, nil)
 
 				Expect(err).ShouldNot(HaveOccurred())
 				err = utils.CheckDataConsistency(testCtx, restoreOpts.Config.DataDir, keyTo, logger)
