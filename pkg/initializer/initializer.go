@@ -54,7 +54,7 @@ func (e *EtcdInitializer) Initialize(mode validator.Mode, failBelowRevision int6
 	logger := e.Logger.WithField("actor", "initializer")
 	metrics.CurrentClusterSize.With(prometheus.Labels{}).Set(float64(e.Validator.OriginalClusterSize))
 	start := time.Now()
-	memberHearbeatPresent := false
+	memberHeartbeatPresent := false
 	ctx := context.Background()
 	var err error
 
@@ -75,7 +75,7 @@ func (e *EtcdInitializer) Initialize(mode validator.Mode, failBelowRevision int6
 		m := member.NewMemberControl(e.Config.EtcdConnectionConfig)
 
 		// check heartbeat of etcd member
-		if memberHearbeatPresent, err = m.WasMemberInCluster(ctx, clientSet); memberHearbeatPresent {
+		if memberHeartbeatPresent, err = m.WasMemberInCluster(ctx, clientSet); memberHeartbeatPresent {
 			logger.Info("member found to be already a part of the cluster")
 			logger.Info("skipping the scale-up check")
 		} else {
@@ -125,7 +125,7 @@ func (e *EtcdInitializer) Initialize(mode validator.Mode, failBelowRevision int6
 	metrics.ValidationDurationSeconds.With(prometheus.Labels{metrics.LabelSucceeded: metrics.ValueSucceededTrue}).Observe(time.Since(start).Seconds())
 
 	if dataDirStatus != validator.DataDirectoryValid {
-		if dataDirStatus == validator.DataDirStatusInvalidInMultiNode || (e.Validator.OriginalClusterSize > 1 && dataDirStatus == validator.DataDirectoryCorrupt) || (e.Validator.OriginalClusterSize > 1 && memberHearbeatPresent) {
+		if dataDirStatus == validator.DataDirStatusInvalidInMultiNode || (e.Validator.OriginalClusterSize > 1 && dataDirStatus == validator.DataDirectoryCorrupt) || (e.Validator.OriginalClusterSize > 1 && memberHeartbeatPresent) {
 			start := time.Now()
 			if err := e.restoreInMultiNode(ctx); err != nil {
 				metrics.RestorationDurationSeconds.With(prometheus.Labels{metrics.LabelRestorationKind: metrics.ValueRestoreSingleMemberInMultiNode, metrics.LabelSucceeded: metrics.ValueSucceededFalse}).Observe(time.Since(start).Seconds())
