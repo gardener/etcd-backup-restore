@@ -75,13 +75,10 @@ func (e *EtcdInitializer) Initialize(mode validator.Mode, failBelowRevision int6
 		m := member.NewMemberControl(e.Config.EtcdConnectionConfig)
 
 		// check heartbeat of etcd member
-		if memberHeartbeatPresent, err = m.WasMemberInCluster(ctx, clientSet); memberHeartbeatPresent {
+		if memberHeartbeatPresent = m.WasMemberInCluster(ctx, clientSet); memberHeartbeatPresent {
 			logger.Info("member found to be already a part of the cluster")
 			logger.Info("skipping the scale-up check")
 		} else {
-			if err != nil {
-				logger.Errorf("unable to check heartbeat of etcd member: %v", err)
-			}
 			logger.Info("member heartbeat is not present")
 			logger.Info("backup-restore will start the scale-up check")
 			isScaleup, err := m.IsClusterScaledUp(ctx, clientSet)
