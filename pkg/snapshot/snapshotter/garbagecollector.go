@@ -59,7 +59,11 @@ func (ssr *Snapshotter) RunGarbageCollector(stopCh <-chan struct{}) {
 				continue
 			}
 
-			snapList = garbageCollectChunks(ssr.store, snapList)
+			// chunksDeleted stores the no of chunks deleted in the current iteration of GC
+			var chunksDeleted int
+			chunksDeleted, snapList = garbageCollectChunks(ssr.store, snapList)
+			ssr.logger.Infof("GC: Total number garbage collected chunks: %d", chunksDeleted)
+
 			snapStreamIndexList := getSnapStreamIndexList(snapList)
 
 			switch ssr.config.GarbageCollectionPolicy {
@@ -193,8 +197,9 @@ func getSnapStreamIndexList(snapList brtypes.SnapList) []int {
 }
 
 // garbageCollectChunks deletes the chunks in the store from snaplist.
-func garbageCollectChunks(store brtypes.SnapStore, snapList brtypes.SnapList) brtypes.SnapList {
+func garbageCollectChunks(store brtypes.SnapStore, snapList brtypes.SnapList) (int, brtypes.SnapList) {
 	var snapListWithoutChunks brtypes.SnapList
+	chunksDeleted := 0
 	for index := 0; index < len(snapList); index++ {
 		snap := snapList[index]
 		// If not chunk, add to list and continue
@@ -211,9 +216,10 @@ func garbageCollectChunks(store brtypes.SnapStore, snapList brtypes.SnapList) br
 			metrics.GCSnapshotCounter.With(prometheus.Labels{metrics.LabelKind: brtypes.SnapshotKindChunk, metrics.LabelSucceeded: metrics.ValueSucceededFalse}).Inc()
 			continue
 		}
+		chunksDeleted++
 		metrics.GCSnapshotCounter.With(prometheus.Labels{metrics.LabelKind: brtypes.SnapshotKindChunk, metrics.LabelSucceeded: metrics.ValueSucceededTrue}).Inc()
 	}
-	return snapListWithoutChunks
+	return chunksDeleted, snapListWithoutChunks
 }
 
 /*
