@@ -196,15 +196,15 @@ func getSnapStreamIndexList(snapList brtypes.SnapList) []int {
 	return snapStreamIndexList
 }
 
-// garbageCollectChunks deletes the chunks in the store from snaplist.
+// garbageCollectChunks goes through the snapList and deletes any chunks
+// Returns a list of non-chunk snapshots, preserving the original order
 func garbageCollectChunks(store brtypes.SnapStore, snapList brtypes.SnapList) (int, brtypes.SnapList) {
-	var snapListWithoutChunks brtypes.SnapList
+	var nonChunkSnapList brtypes.SnapList
 	chunksDeleted := 0
-	for index := 0; index < len(snapList); index++ {
-		snap := snapList[index]
+	for _, snap := range snapList {
 		// If not chunk, add to list and continue
 		if !snap.IsChunk {
-			snapListWithoutChunks = append(snapListWithoutChunks, snap)
+			nonChunkSnapList = append(nonChunkSnapList, snap)
 			continue
 		}
 		// else, delete the chunk object
@@ -219,7 +219,7 @@ func garbageCollectChunks(store brtypes.SnapStore, snapList brtypes.SnapList) (i
 		chunksDeleted++
 		metrics.GCSnapshotCounter.With(prometheus.Labels{metrics.LabelKind: brtypes.SnapshotKindChunk, metrics.LabelSucceeded: metrics.ValueSucceededTrue}).Inc()
 	}
-	return chunksDeleted, snapListWithoutChunks
+	return chunksDeleted, nonChunkSnapList
 }
 
 /*
