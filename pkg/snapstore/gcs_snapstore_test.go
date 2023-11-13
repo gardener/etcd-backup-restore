@@ -117,6 +117,7 @@ type mockComposer struct {
 
 func (m *mockComposer) Run(ctx context.Context) (*storage.ObjectAttrs, error) {
 	dstWriter := m.dst.NewWriter(ctx)
+	defer dstWriter.Close()
 	for _, obj := range m.objectHandles {
 		r, err := obj.NewReader(ctx)
 		if err != nil {
