@@ -168,16 +168,21 @@ func (s *GCSSnapStore) Save(snap brtypes.Snapshot, rc io.ReadCloser) error {
 	}
 	logrus.Info("Composite object uploaded successfully.")
 
+	// New context to be used for deleting chunks. Timeout same as upload chunk timeout.
+	chunkDeleteCtx, chunkDeleteCancel := context.WithTimeout(context.TODO(), chunkUploadTimeout)
+	defer chunkDeleteCancel()
 	// Delete the chunks right after uploading the snapshot to bucket.
 	// To be done once the composite object is successfully uploaded.
-	logrus.Infof("Started deleting the chunk objects from bucket")
-	for partNumber := int64(1); partNumber <= noOfChunks; partNumber++ {
-		name := path.Join(prefix, snap.SnapDir, snap.SnapName, fmt.Sprintf("%010d", partNumber))
-		obj := bh.Object(name)
-		err := obj.Delete(context.TODO())
-		if err != nil {
-			return fmt.Errorf("failed to delete chunk with id: %d ", partNumber)
-		}
+	logrus.Infof("Started deleting the chunk objects from bucket: GCS")
+	errList := deleteChunksGCS(chunkDeleteCtx, snap, prefix, noOfChunks, bh)
+
+	// Log the errors occured while deleting the chunks
+	for _, errLog := range errList {
+		fmt.Println(errLog)
+	}
+
+	if len(errList) > 0 {
+		return fmt.Errorf("failed deleting chunks in GCS for snapshot: %v", snap.SnapName)
 	}
 	return nil
 }
@@ -225,6 +230,29 @@ func (s *GCSSnapStore) componentUploader(wg *sync.WaitGroup, stopCh <-chan struc
 			}
 		}
 	}
+}
+
+// Deletes the chunks from GCS store by fetching it using the bucketHandler from its chunk number
+// Collects the err logs into a list and return
+func deleteChunksGCS(ctx context.Context, snap brtypes.Snapshot, prefix string, noOfChunks int64, bh stiface.BucketHandle) []error {
+	errList := []error{}
+	for partNumber := int64(1); partNumber <= noOfChunks; partNumber++ {
+		select {
+		case <-ctx.Done():
+			errLog := fmt.Errorf("Interrupted while deleting Chunks from GCS Snapstore")
+			errList = append(errList, errLog)
+			return errList
+		default:
+			name := path.Join(prefix, snap.SnapDir, snap.SnapName, fmt.Sprintf("%010d", partNumber))
+			obj := bh.Object(name)
+			err := obj.Delete(context.TODO())
+			if err != nil {
+				errLog := fmt.Errorf("failed to delete chunk with id: %d ", partNumber)
+				errList = append(errList, errLog)
+			}
+		}
+	}
+	return errList
 }
 
 // List will return sorted list with all snapshot files on store.

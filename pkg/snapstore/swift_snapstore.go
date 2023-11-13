@@ -16,6 +16,7 @@ package snapstore
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -397,17 +398,19 @@ func (s *SwiftSnapStore) Save(snap brtypes.Snapshot, rc io.ReadCloser) error {
 	}
 	logrus.Info("Manifest object uploaded successfully.")
 
+	chunkDeleteCtx, chunkDeleteCancel := context.WithTimeout(context.TODO(), chunkUploadTimeout)
+	defer chunkDeleteCancel()
 	// Delete the chunks from the bucket right after manifest object is uploaded
-	logrus.Infof("Started deleting the chunk objects from bucket")
-	// Create a DeleteOpts options object to pass as parameter to delete function while deleting an object from the bucket
-	deleteOpts := objects.DeleteOpts{}
-	for partNumber := int64(1); partNumber <= noOfChunks; partNumber++ {
+	logrus.Infof("Started deleting the chunk objects from bucket: Swift")
+	errList := s.deleteChunks(chunkDeleteCtx, snap, prefix, noOfChunks)
 
-		objectName := path.Join(prefix, snap.SnapDir, snap.SnapName, fmt.Sprintf("%010d", partNumber))
-		res := objects.Delete(s.client, s.bucket, objectName, deleteOpts)
-		if res.Err != nil {
-			return fmt.Errorf("failed to delete the chunk with id: %d", partNumber)
-		}
+	// Log the errors occured while deleting the chunks
+	for _, errLog := range errList {
+		fmt.Println(errLog)
+	}
+
+	if len(errList) > 0 {
+		return fmt.Errorf("failed deleting chunks in OpenStack Swift for snapshot: %v", snap.SnapName)
 	}
 	return nil
 }
@@ -451,6 +454,31 @@ func (s *SwiftSnapStore) chunkUploader(wg *sync.WaitGroup, stopCh <-chan struct{
 			}
 		}
 	}
+}
+
+// Deletes the chunks from OpenStack Swift snapstore by fetching it using the bucketHandler from its chunk number
+// Collects the err logs into a list and return
+func (s *SwiftSnapStore) deleteChunks(ctx context.Context, snap brtypes.Snapshot, prefix string, noOfChunks int64) []error {
+
+	errList := []error{}
+	deleteOpts := objects.DeleteOpts{}
+	for partNumber := int64(1); partNumber <= noOfChunks; partNumber++ {
+
+		select {
+		case <-ctx.Done():
+			errLog := fmt.Errorf("Interrupted deleting Chunks from Swift Snapstore")
+			errList = append(errList, errLog)
+			return errList
+		default:
+			objectName := path.Join(prefix, snap.SnapDir, snap.SnapName, fmt.Sprintf("%010d", partNumber))
+			res := objects.Delete(s.client, s.bucket, objectName, deleteOpts)
+			if res.Err != nil {
+				errLog := fmt.Errorf("failed to delete the chunk with id: %d", partNumber)
+				errList = append(errList, errLog)
+			}
+		}
+	}
+	return errList
 }
 
 // List will return sorted list with all snapshot files on store.
