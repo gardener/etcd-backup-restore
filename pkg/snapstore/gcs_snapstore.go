@@ -184,6 +184,7 @@ func (s *GCSSnapStore) Save(snap brtypes.Snapshot, rc io.ReadCloser) error {
 	if len(errList) > 0 {
 		return fmt.Errorf("failed deleting chunks in GCS for snapshot: %v", snap.SnapName)
 	}
+	logrus.Infof("Successfully deleted %d chunks from GCS bucket", noOfChunks)
 	return nil
 }
 
