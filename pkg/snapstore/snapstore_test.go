@@ -144,12 +144,12 @@ var _ = Describe("Save, List, Fetch, Delete from mock snapstore", func() {
 				objectMap[path.Join(prefixV1, snap2.SnapDir, snap2.SnapName)] = &expectedVal2
 
 				logrus.Infof("Running mock tests for %s when only v1 is present", key)
-				// List snap1 and snap3
+				// List snap1 and snap2
 				snapList, err := snapStore.List()
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(snapList.Len()).To(Equal(2))
 				Expect(snapList[0].SnapName).To(Equal(snap2.SnapName))
-				// Fetch snap3
+				// Fetch snap2
 				rc, err := snapStore.Fetch(*snapList[1])
 				Expect(err).ShouldNot(HaveOccurred())
 				defer rc.Close()
@@ -164,12 +164,13 @@ var _ = Describe("Save, List, Fetch, Delete from mock snapstore", func() {
 				snapList, err = snapStore.List()
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(snapList.Len()).To(Equal(prevLen - 1))
-				// Save snapshot
+				// reset the objectMap
 				resetObjectMap()
 				dummyData := make([]byte, 6*1024*1024)
+				// Save a new snapshot 'snap3'
 				err = snapStore.Save(snap3, io.NopCloser(bytes.NewReader(dummyData)))
 				Expect(err).ShouldNot(HaveOccurred())
-				Expect(len(objectMap)).Should(BeNumerically(">", 0))
+				Expect(len(objectMap)).Should(BeNumerically("==", 1))
 			}
 		})
 	})
@@ -217,19 +218,20 @@ var _ = Describe("Save, List, Fetch, Delete from mock snapstore", func() {
 				err = snapStore.Delete(*snapList[2])
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(len(objectMap)).To(Equal(prevLen - 1))
-
-				// Save snapshot
+				// reset the objectMap
 				resetObjectMap()
+				// Save a new snapshot 'snap1'
 				dummyData := make([]byte, 6*1024*1024)
 				err = snapStore.Save(snap1, io.NopCloser(bytes.NewReader(dummyData)))
 				Expect(err).ShouldNot(HaveOccurred())
-				Expect(len(objectMap)).Should(BeNumerically(">", 0))
+				Expect(len(objectMap)).Should(BeNumerically("==", 1))
 
+				// Save another new snapshot 'snap4'
 				prevLen = len(objectMap)
 				dummyData = make([]byte, 6*1024*1024)
 				err = snapStore.Save(snap4, io.NopCloser(bytes.NewReader(dummyData)))
 				Expect(err).ShouldNot(HaveOccurred())
-				Expect(len(objectMap)).Should(BeNumerically(">", prevLen))
+				Expect(len(objectMap)).Should(BeNumerically("==", prevLen+1))
 			}
 		})
 	})
@@ -248,6 +250,7 @@ var _ = Describe("Save, List, Fetch, Delete from mock snapstore", func() {
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(snapList.Len()).To(Equal(2))
 				Expect(snapList[0].SnapName).To(Equal(snap4.SnapName))
+				Expect(snapList[1].SnapName).To(Equal(snap5.SnapName))
 				// Fetch snap5
 				rc, err := snapStore.Fetch(*snapList[1])
 				Expect(err).ShouldNot(HaveOccurred())
@@ -263,12 +266,13 @@ var _ = Describe("Save, List, Fetch, Delete from mock snapstore", func() {
 				snapList, err = snapStore.List()
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(snapList.Len()).To(Equal(prevLen - 1))
-				// Save snapshot
+				// Reset the objectMap
 				resetObjectMap()
+				// Save a new snapshot 'snap4'
 				dummyData := make([]byte, 6*1024*1024)
 				err = snapStore.Save(snap4, io.NopCloser(bytes.NewReader(dummyData)))
 				Expect(err).ShouldNot(HaveOccurred())
-				Expect(len(objectMap)).Should(BeNumerically(">", 0))
+				Expect(len(objectMap)).Should(BeNumerically("==", 1))
 			}
 		})
 	})
