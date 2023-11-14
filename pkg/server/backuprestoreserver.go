@@ -526,7 +526,7 @@ func handleSsrStopRequest(ctx context.Context, handler *HTTPHandler, ssr *snapsh
 		ssr.SsrStateMutex.Lock()
 		if ssr.SsrState == brtypes.SnapshotterActive {
 			ssr.SsrStateMutex.Unlock()
-			ssrStopCh <- emptyStruct
+			close(ssrStopCh)
 		} else {
 			ssr.SsrState = brtypes.SnapshotterInactive
 			ssr.SsrStateMutex.Unlock()
