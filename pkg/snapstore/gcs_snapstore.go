@@ -223,6 +223,7 @@ func (s *GCSSnapStore) componentUploader(wg *sync.WaitGroup, stopCh <-chan struc
 	}
 }
 
+// chunkRemover is a GoRoutine to perform the chunk deletion operation
 func (s *GCSSnapStore) chunkRemover(ctx context.Context, deleteWg *sync.WaitGroup, deleteCancelCh chan struct{}, chunkDeleteCh chan deleteChunk, deleteResCh chan chunkDeleteResult, bh stiface.BucketHandle) {
 	defer deleteWg.Done()
 	for {
