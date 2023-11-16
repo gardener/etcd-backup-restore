@@ -169,22 +169,12 @@ func (s *GCSSnapStore) Save(snap brtypes.Snapshot, rc io.ReadCloser) error {
 	logrus.Info("Composite object uploaded successfully.")
 
 	// New context to be used for deleting chunks. Timeout same as upload chunk timeout.
-	chunkDeleteCtx, chunkDeleteCancel := context.WithTimeout(context.TODO(), chunkUploadTimeout)
+	chunkDeleteCtx, chunkDeleteCancel := context.WithTimeout(context.Background(), chunkUploadTimeout)
 	defer chunkDeleteCancel()
 	// Delete the chunks right after uploading the snapshot to bucket.
 	// To be done once the composite object is successfully uploaded.
 	logrus.Infof("Started deleting the chunk objects from bucket: GCS")
-	errList := deleteChunksGCS(chunkDeleteCtx, snap, prefix, noOfChunks, bh)
-
-	// Log the errors occured while deleting the chunks
-	for _, errLog := range errList {
-		fmt.Println(errLog)
-	}
-
-	if len(errList) > 0 {
-		return fmt.Errorf("failed deleting chunks in GCS for snapshot: %v", snap.SnapName)
-	}
-	logrus.Infof("Successfully deleted %d chunks from GCS bucket", noOfChunks)
+	s.deleteChunks(chunkDeleteCtx, snap, prefix, noOfChunks, bh)
 	return nil
 }
 
@@ -233,27 +223,59 @@ func (s *GCSSnapStore) componentUploader(wg *sync.WaitGroup, stopCh <-chan struc
 	}
 }
 
-// Deletes the chunks from GCS store by fetching it using the bucketHandler from its chunk number
-// Collects the err logs into a list and return
-func deleteChunksGCS(ctx context.Context, snap brtypes.Snapshot, prefix string, noOfChunks int64, bh stiface.BucketHandle) []error {
-	errList := []error{}
-	for partNumber := int64(1); partNumber <= noOfChunks; partNumber++ {
+func (s *GCSSnapStore) chunkRemover(ctx context.Context, deleteWg *sync.WaitGroup, deleteCancelCh chan struct{}, chunkDeleteCh chan deleteChunk, deleteResCh chan chunkDeleteResult, bh stiface.BucketHandle) {
+	defer deleteWg.Done()
+	for {
 		select {
-		case <-ctx.Done():
-			errLog := fmt.Errorf("Interrupted while deleting Chunks from GCS Snapstore")
-			errList = append(errList, errLog)
-			return errList
-		default:
-			name := path.Join(prefix, snap.SnapDir, snap.SnapName, fmt.Sprintf("%010d", partNumber))
-			obj := bh.Object(name)
-			err := obj.Delete(context.TODO())
-			if err != nil {
-				errLog := fmt.Errorf("failed to delete chunk with id: %d ", partNumber)
-				errList = append(errList, errLog)
+		case <-deleteCancelCh:
+			return
+		case chunk, ok := <-chunkDeleteCh:
+			if !ok {
+				return
+			}
+			logrus.Infof("Deleting chunk with ID %d", chunk.partNumber)
+			obj := bh.Object(chunk.chunkName)
+			err := obj.Delete(ctx)
+			deleteResCh <- chunkDeleteResult{
+				err:         err,
+				deleteChunk: &chunk,
 			}
 		}
 	}
-	return errList
+
+}
+
+// deleteChunks spans multiple GoRoutines to delete chunks from the GCS store in parallel
+func (s *GCSSnapStore) deleteChunks(ctx context.Context, snap brtypes.Snapshot, prefix string, noOfChunks int64, bh stiface.BucketHandle) {
+
+	var (
+		chunkDeleteCh  = make(chan deleteChunk, noOfChunks)
+		deleteResCh    = make(chan chunkDeleteResult, noOfChunks)
+		deleteWg       sync.WaitGroup
+		deleteCancelCh = make(chan struct{})
+	)
+	// Maximum GoRoutines to span for chunk deletion is same as max allowed parallel chunk uploads
+	for i := uint(0); i < s.maxParallelChunkUploads; i++ {
+		deleteWg.Add(1)
+		go s.chunkRemover(ctx, &deleteWg, deleteCancelCh, chunkDeleteCh, deleteResCh, bh)
+	}
+
+	logrus.Infof("Triggered chunk delete for all chunks, total: %d", noOfChunks)
+	for partNumber := int64(1); partNumber <= noOfChunks; partNumber++ {
+		name := path.Join(prefix, snap.SnapDir, snap.SnapName, fmt.Sprintf("%010d", partNumber))
+		newDeleteChunk := deleteChunk{
+			chunkName:  name,
+			partNumber: partNumber,
+		}
+		chunkDeleteCh <- newDeleteChunk
+	}
+
+	chunkDeleteErr := collectChunkDeleteError(chunkDeleteCh, deleteResCh, deleteCancelCh, noOfChunks)
+	if chunkDeleteErr != nil {
+		logrus.Errorf("Chunk deletion unsuccessful for few chunks, will be taken care of by GC")
+	}
+	deleteWg.Wait()
+	return
 }
 
 // List will return sorted list with all snapshot files on store.

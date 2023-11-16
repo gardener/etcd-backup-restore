@@ -402,17 +402,7 @@ func (s *SwiftSnapStore) Save(snap brtypes.Snapshot, rc io.ReadCloser) error {
 	defer chunkDeleteCancel()
 	// Delete the chunks from the bucket right after manifest object is uploaded
 	logrus.Infof("Started deleting the chunk objects from bucket: Swift")
-	errList := s.deleteChunks(chunkDeleteCtx, snap, prefix, noOfChunks)
-
-	// Log the errors occured while deleting the chunks
-	for _, errLog := range errList {
-		fmt.Println(errLog)
-	}
-
-	if len(errList) > 0 {
-		return fmt.Errorf("failed deleting chunks in OpenStack Swift for snapshot: %v", snap.SnapName)
-	}
-	logrus.Infof("Successfully deleted %d chunks from Openstack Swift bucket", noOfChunks)
+	s.deleteChunks(chunkDeleteCtx, snap, prefix, noOfChunks)
 	return nil
 }
 
@@ -457,29 +447,59 @@ func (s *SwiftSnapStore) chunkUploader(wg *sync.WaitGroup, stopCh <-chan struct{
 	}
 }
 
-// Deletes the chunks from OpenStack Swift snapstore by fetching it using the bucketHandler from its chunk number
-// Collects the err logs into a list and return
-func (s *SwiftSnapStore) deleteChunks(ctx context.Context, snap brtypes.Snapshot, prefix string, noOfChunks int64) []error {
-
-	errList := []error{}
-	deleteOpts := objects.DeleteOpts{}
-	for partNumber := int64(1); partNumber <= noOfChunks; partNumber++ {
-
+// chunkRemover is a GoRoutine to perform the chunk deletion operation
+func (s *SwiftSnapStore) chunkRemover(ctx context.Context, deleteWg *sync.WaitGroup, deleteCancelCh chan struct{}, chunkDeleteCh chan deleteChunk, deleteResCh chan chunkDeleteResult, i uint) {
+	defer deleteWg.Done()
+	for {
 		select {
-		case <-ctx.Done():
-			errLog := fmt.Errorf("Interrupted deleting Chunks from Swift Snapstore")
-			errList = append(errList, errLog)
-			return errList
-		default:
-			objectName := path.Join(prefix, snap.SnapDir, snap.SnapName, fmt.Sprintf("%010d", partNumber))
-			res := objects.Delete(s.client, s.bucket, objectName, deleteOpts)
-			if res.Err != nil {
-				errLog := fmt.Errorf("failed to delete the chunk with id: %d", partNumber)
-				errList = append(errList, errLog)
+		case <-deleteCancelCh:
+			return
+		case chunk, ok := <-chunkDeleteCh:
+			if !ok {
+				return
+			}
+			logrus.Infof("Deleting chunk with ID %d", chunk.partNumber)
+			deleteOpts := objects.DeleteOpts{}
+			res := objects.Delete(s.client, s.bucket, chunk.chunkName, deleteOpts)
+			deleteResCh <- chunkDeleteResult{
+				err:         res.Err,
+				deleteChunk: &chunk,
 			}
 		}
 	}
-	return errList
+}
+
+// deleteChunks spans multiple GoRoutines to delete chunks from the Openstack Swift store in parallel
+func (s *SwiftSnapStore) deleteChunks(ctx context.Context, snap brtypes.Snapshot, prefix string, noOfChunks int64) {
+
+	var (
+		chunkDeleteCh  = make(chan deleteChunk, noOfChunks)
+		deleteResCh    = make(chan chunkDeleteResult, noOfChunks)
+		deleteWg       sync.WaitGroup
+		deleteCancelCh = make(chan struct{})
+	)
+	// Maximum GoRoutines to span for chunk deletion is same as max allowed parallel chunk uploads
+	for i := uint(0); i < s.maxParallelChunkUploads; i++ {
+		deleteWg.Add(1)
+		go s.chunkRemover(ctx, &deleteWg, deleteCancelCh, chunkDeleteCh, deleteResCh, i)
+	}
+
+	logrus.Infof("Triggered chunk delete for all chunks, total: %d", noOfChunks)
+	for partNumber := int64(1); partNumber <= noOfChunks; partNumber++ {
+		name := path.Join(prefix, snap.SnapDir, snap.SnapName, fmt.Sprintf("%010d", partNumber))
+		newDeleteChunk := deleteChunk{
+			chunkName:  name,
+			partNumber: partNumber,
+		}
+		chunkDeleteCh <- newDeleteChunk
+	}
+
+	chunkDeleteErr := collectChunkDeleteError(chunkDeleteCh, deleteResCh, deleteCancelCh, noOfChunks)
+	if chunkDeleteErr != nil {
+		logrus.Errorf("Chunk deletion unsuccessful for few chunks, will be taken care of by GC")
+	}
+	deleteWg.Wait()
+	return
 }
 
 // List will return sorted list with all snapshot files on store.

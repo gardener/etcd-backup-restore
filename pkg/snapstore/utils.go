@@ -164,6 +164,45 @@ func collectChunkUploadError(chunkUploadCh chan<- chunk, resCh <-chan chunkUploa
 	return nil
 }
 
+// collectChunkDeleteError collects the error from all go routine to delete individual chunks
+// Attempts to retry chunk deletion incase of failure in deleting a chunk
+func collectChunkDeleteError(chunkDeleteCh chan deleteChunk, deleteResCh chan chunkDeleteResult, deleteCancelCh chan struct{}, noOfChunks int64) error {
+	remainingChunks := noOfChunks
+	for result := range deleteResCh {
+		logrus.Infof("Received chunk delete result for ID: %d", result.deleteChunk.partNumber)
+		if result.err != nil {
+
+			logrus.Infof("Chunk Deletion failed for ID: %d", result.deleteChunk.partNumber)
+			if result.deleteChunk.attempt == maxChunkDeleteRetryAttempts {
+				logrus.Errorf("Chunk deletion attempt failed even after %d attempts for chunk ID: %d", result.deleteChunk.attempt, result.deleteChunk.partNumber)
+				close(deleteCancelCh)
+				return result.err
+			}
+			// Retry deleting the chunk after a delay
+			deleteChunk := result.deleteChunk
+			delayTime := 1
+			deleteChunk.attempt++
+			logrus.Warnf("Will try to upload chunk id: %d, after %d seconds", deleteChunk.partNumber, delayTime)
+			time.AfterFunc(time.Duration(delayTime)*time.Second, func() {
+				select {
+				case <-deleteCancelCh:
+					return
+				default:
+					chunkDeleteCh <- *deleteChunk
+				}
+			})
+		} else {
+			remainingChunks--
+			if remainingChunks == 0 {
+				logrus.Infof("Received successful chunk deletion result for all chunks. Stopping workers.")
+				close(deleteCancelCh)
+				break
+			}
+		}
+	}
+	return nil
+}
+
 func getEnvPrefixString(isSource bool) string {
 	if isSource {
 		return sourcePrefixString
