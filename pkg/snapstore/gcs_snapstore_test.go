@@ -50,6 +50,8 @@ func (m *mockBucketHandle) Object(name string) stiface.ObjectHandle {
 }
 
 func (m *mockBucketHandle) Objects(context.Context, *storage.Query) stiface.ObjectIterator {
+	m.client.objectMutex.Lock()
+	defer m.client.objectMutex.Unlock()
 	var keys []string
 	for key := range m.client.objects {
 		keys = append(keys, key)
@@ -65,6 +67,8 @@ type mockObjectHandle struct {
 }
 
 func (m *mockObjectHandle) NewReader(ctx context.Context) (stiface.Reader, error) {
+	m.client.objectMutex.Lock()
+	defer m.client.objectMutex.Unlock()
 	if value, ok := m.client.objects[m.object]; ok {
 		return &mockObjectReader{reader: io.NopCloser(bytes.NewReader(*value))}, nil
 	}
