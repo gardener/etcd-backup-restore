@@ -271,10 +271,7 @@ func (s *GCSSnapStore) deleteChunks(ctx context.Context, snap brtypes.Snapshot, 
 		chunkDeleteCh <- newDeleteChunk
 	}
 
-	chunkDeleteErr := collectChunkDeleteError(chunkDeleteCh, deleteResCh, deleteCancelCh, noOfChunks)
-	if chunkDeleteErr != nil {
-		logrus.Errorf("Chunk deletion unsuccessful for few chunks, will be taken care of by GC")
-	}
+	collectChunkDeleteError(chunkDeleteCh, deleteResCh, deleteCancelCh, noOfChunks)
 	deleteWg.Wait()
 	return
 }
