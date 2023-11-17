@@ -134,7 +134,9 @@ func handleListObjectNames(w http.ResponseWriter, r *http.Request) {
 func handleDeleteObject(w http.ResponseWriter, r *http.Request) {
 	key := parseObjectNamefromURL(r.URL)
 	if _, ok := objectMap[key]; ok {
+		objectMapMutex.Lock()
 		delete(objectMap, key)
+		objectMapMutex.Unlock()
 		w.WriteHeader(http.StatusNoContent)
 	} else {
 		w.WriteHeader(http.StatusNotFound)

@@ -84,6 +84,8 @@ func (m *mockObjectHandle) ComposerFrom(objects ...stiface.ObjectHandle) stiface
 }
 
 func (m *mockObjectHandle) Delete(context.Context) error {
+	m.client.objectMutex.Lock()
+	defer m.client.objectMutex.Unlock()
 	if _, ok := m.client.objects[m.object]; ok {
 		delete(m.client.objects, m.object)
 		return nil
