@@ -170,7 +170,7 @@ var _ = Describe("Save, List, Fetch, Delete from mock snapstore", func() {
 				// Save a new snapshot 'snap3'
 				err = snapStore.Save(snap3, io.NopCloser(bytes.NewReader(dummyData)))
 				Expect(err).ShouldNot(HaveOccurred())
-				Expect(len(objectMap)).Should(BeNumerically("==", 1))
+				Expect(len(objectMap)).Should(BeNumerically(">=", 1))
 			}
 		})
 	})
@@ -224,14 +224,14 @@ var _ = Describe("Save, List, Fetch, Delete from mock snapstore", func() {
 				dummyData := make([]byte, 6*1024*1024)
 				err = snapStore.Save(snap1, io.NopCloser(bytes.NewReader(dummyData)))
 				Expect(err).ShouldNot(HaveOccurred())
-				Expect(len(objectMap)).Should(BeNumerically("==", 1))
+				Expect(len(objectMap)).Should(BeNumerically(">=", 1))
 
 				// Save another new snapshot 'snap4'
 				prevLen = len(objectMap)
 				dummyData = make([]byte, 6*1024*1024)
 				err = snapStore.Save(snap4, io.NopCloser(bytes.NewReader(dummyData)))
 				Expect(err).ShouldNot(HaveOccurred())
-				Expect(len(objectMap)).Should(BeNumerically("==", prevLen+1))
+				Expect(len(objectMap)).Should(BeNumerically(">=", prevLen+1))
 			}
 		})
 	})
@@ -272,7 +272,7 @@ var _ = Describe("Save, List, Fetch, Delete from mock snapstore", func() {
 				dummyData := make([]byte, 6*1024*1024)
 				err = snapStore.Save(snap4, io.NopCloser(bytes.NewReader(dummyData)))
 				Expect(err).ShouldNot(HaveOccurred())
-				Expect(len(objectMap)).Should(BeNumerically("==", 1))
+				Expect(len(objectMap)).Should(BeNumerically(">=", 1))
 			}
 		})
 	})

@@ -16,7 +16,6 @@ package snapstore
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -397,12 +396,6 @@ func (s *SwiftSnapStore) Save(snap brtypes.Snapshot, rc io.ReadCloser) error {
 		return fmt.Errorf("failed uploading manifest for snapshot with error: %v", res.Err)
 	}
 	logrus.Info("Manifest object uploaded successfully.")
-
-	chunkDeleteCtx, chunkDeleteCancel := context.WithTimeout(context.TODO(), chunkUploadTimeout)
-	defer chunkDeleteCancel()
-	// Delete the chunks from the bucket right after manifest object is uploaded
-	logrus.Infof("Started deleting the chunk objects from bucket: Swift")
-	s.deleteChunks(chunkDeleteCtx, snap, prefix, noOfChunks)
 	return nil
 }
 
@@ -445,58 +438,6 @@ func (s *SwiftSnapStore) chunkUploader(wg *sync.WaitGroup, stopCh <-chan struct{
 			}
 		}
 	}
-}
-
-// chunkRemover is a GoRoutine to perform the chunk deletion operation
-func (s *SwiftSnapStore) chunkRemover(ctx context.Context, deleteWg *sync.WaitGroup, deleteCancelCh chan struct{}, chunkDeleteCh chan deleteChunk, deleteResCh chan chunkDeleteResult, i uint) {
-	defer deleteWg.Done()
-	for {
-		select {
-		case <-deleteCancelCh:
-			return
-		case chunk, ok := <-chunkDeleteCh:
-			if !ok {
-				return
-			}
-			logrus.Infof("Deleting chunk with ID %d", chunk.partNumber)
-			deleteOpts := objects.DeleteOpts{}
-			res := objects.Delete(s.client, s.bucket, chunk.chunkName, deleteOpts)
-			deleteResCh <- chunkDeleteResult{
-				err:         res.Err,
-				deleteChunk: &chunk,
-			}
-		}
-	}
-}
-
-// deleteChunks spans multiple GoRoutines to delete chunks from the Openstack Swift store in parallel
-func (s *SwiftSnapStore) deleteChunks(ctx context.Context, snap brtypes.Snapshot, prefix string, noOfChunks int64) {
-
-	var (
-		chunkDeleteCh  = make(chan deleteChunk, noOfChunks)
-		deleteResCh    = make(chan chunkDeleteResult, noOfChunks)
-		deleteWg       sync.WaitGroup
-		deleteCancelCh = make(chan struct{})
-	)
-	// Maximum GoRoutines to span for chunk deletion is same as max allowed parallel chunk uploads
-	for i := uint(0); i < s.maxParallelChunkUploads; i++ {
-		deleteWg.Add(1)
-		go s.chunkRemover(ctx, &deleteWg, deleteCancelCh, chunkDeleteCh, deleteResCh, i)
-	}
-
-	logrus.Infof("Triggered chunk delete for all chunks, total: %d", noOfChunks)
-	for partNumber := int64(1); partNumber <= noOfChunks; partNumber++ {
-		name := path.Join(prefix, snap.SnapDir, snap.SnapName, fmt.Sprintf("%010d", partNumber))
-		newDeleteChunk := deleteChunk{
-			chunkName:  name,
-			partNumber: partNumber,
-		}
-		chunkDeleteCh <- newDeleteChunk
-	}
-
-	collectChunkDeleteError(chunkDeleteCh, deleteResCh, deleteCancelCh, noOfChunks)
-	deleteWg.Wait()
-	return
 }
 
 // List will return sorted list with all snapshot files on store.

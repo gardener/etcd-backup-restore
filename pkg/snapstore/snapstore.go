@@ -27,10 +27,10 @@ const (
 	tmpBackupFilePrefix = "etcd-backup-"
 
 	// maxRetryAttempts indicates the number of attempts to be retried in case of failure to upload chunk.
-	maxRetryAttempts            = 5
-	maxChunkDeleteRetryAttempts = 1
-	backupVersionV1             = "v1"
-	backupVersionV2             = "v2"
+	maxRetryAttempts = 5
+
+	backupVersionV1 = "v1"
+	backupVersionV2 = "v2"
 )
 
 type chunk struct {
@@ -39,18 +39,7 @@ type chunk struct {
 	attempt uint
 	id      int
 }
-
-type deleteChunk struct {
-	chunkName  string
-	partNumber int64
-	attempt    uint
-}
 type chunkUploadResult struct {
 	err   error
 	chunk *chunk
-}
-
-type chunkDeleteResult struct {
-	err         error
-	deleteChunk *deleteChunk
 }

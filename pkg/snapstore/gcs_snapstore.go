@@ -167,14 +167,6 @@ func (s *GCSSnapStore) Save(snap brtypes.Snapshot, rc io.ReadCloser) error {
 		return fmt.Errorf("failed uploading composite object for snapshot with error: %v", err)
 	}
 	logrus.Info("Composite object uploaded successfully.")
-
-	// New context to be used for deleting chunks. Timeout same as upload chunk timeout.
-	chunkDeleteCtx, chunkDeleteCancel := context.WithTimeout(context.Background(), chunkUploadTimeout)
-	defer chunkDeleteCancel()
-	// Delete the chunks right after uploading the snapshot to bucket.
-	// To be done once the composite object is successfully uploaded.
-	logrus.Infof("Started deleting the chunk objects from bucket: GCS")
-	s.deleteChunks(chunkDeleteCtx, snap, prefix, noOfChunks, bh)
 	return nil
 }
 
@@ -221,59 +213,6 @@ func (s *GCSSnapStore) componentUploader(wg *sync.WaitGroup, stopCh <-chan struc
 			}
 		}
 	}
-}
-
-// chunkRemover is a GoRoutine to perform the chunk deletion operation
-func (s *GCSSnapStore) chunkRemover(ctx context.Context, deleteWg *sync.WaitGroup, deleteCancelCh chan struct{}, chunkDeleteCh chan deleteChunk, deleteResCh chan chunkDeleteResult, bh stiface.BucketHandle) {
-	defer deleteWg.Done()
-	for {
-		select {
-		case <-deleteCancelCh:
-			return
-		case chunk, ok := <-chunkDeleteCh:
-			if !ok {
-				return
-			}
-			logrus.Infof("Deleting chunk with ID %d", chunk.partNumber)
-			obj := bh.Object(chunk.chunkName)
-			err := obj.Delete(ctx)
-			deleteResCh <- chunkDeleteResult{
-				err:         err,
-				deleteChunk: &chunk,
-			}
-		}
-	}
-
-}
-
-// deleteChunks spans multiple GoRoutines to delete chunks from the GCS store in parallel
-func (s *GCSSnapStore) deleteChunks(ctx context.Context, snap brtypes.Snapshot, prefix string, noOfChunks int64, bh stiface.BucketHandle) {
-
-	var (
-		chunkDeleteCh  = make(chan deleteChunk, noOfChunks)
-		deleteResCh    = make(chan chunkDeleteResult, noOfChunks)
-		deleteWg       sync.WaitGroup
-		deleteCancelCh = make(chan struct{})
-	)
-	// Maximum GoRoutines to span for chunk deletion is same as max allowed parallel chunk uploads
-	for i := uint(0); i < s.maxParallelChunkUploads; i++ {
-		deleteWg.Add(1)
-		go s.chunkRemover(ctx, &deleteWg, deleteCancelCh, chunkDeleteCh, deleteResCh, bh)
-	}
-
-	logrus.Infof("Triggered chunk delete for all chunks, total: %d", noOfChunks)
-	for partNumber := int64(1); partNumber <= noOfChunks; partNumber++ {
-		name := path.Join(prefix, snap.SnapDir, snap.SnapName, fmt.Sprintf("%010d", partNumber))
-		newDeleteChunk := deleteChunk{
-			chunkName:  name,
-			partNumber: partNumber,
-		}
-		chunkDeleteCh <- newDeleteChunk
-	}
-
-	collectChunkDeleteError(chunkDeleteCh, deleteResCh, deleteCancelCh, noOfChunks)
-	deleteWg.Wait()
-	return
 }
 
 // List will return sorted list with all snapshot files on store.
