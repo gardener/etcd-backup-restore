@@ -50,6 +50,8 @@ func (m *mockBucketHandle) Object(name string) stiface.ObjectHandle {
 }
 
 func (m *mockBucketHandle) Objects(context.Context, *storage.Query) stiface.ObjectIterator {
+	m.client.objectMutex.Lock()
+	defer m.client.objectMutex.Unlock()
 	var keys []string
 	for key := range m.client.objects {
 		keys = append(keys, key)
@@ -65,6 +67,8 @@ type mockObjectHandle struct {
 }
 
 func (m *mockObjectHandle) NewReader(ctx context.Context) (stiface.Reader, error) {
+	m.client.objectMutex.Lock()
+	defer m.client.objectMutex.Unlock()
 	if value, ok := m.client.objects[m.object]; ok {
 		return &mockObjectReader{reader: io.NopCloser(bytes.NewReader(*value))}, nil
 	}
@@ -84,6 +88,8 @@ func (m *mockObjectHandle) ComposerFrom(objects ...stiface.ObjectHandle) stiface
 }
 
 func (m *mockObjectHandle) Delete(context.Context) error {
+	m.client.objectMutex.Lock()
+	defer m.client.objectMutex.Unlock()
 	if _, ok := m.client.objects[m.object]; ok {
 		delete(m.client.objects, m.object)
 		return nil
@@ -117,6 +123,7 @@ type mockComposer struct {
 
 func (m *mockComposer) Run(ctx context.Context) (*storage.ObjectAttrs, error) {
 	dstWriter := m.dst.NewWriter(ctx)
+	defer dstWriter.Close()
 	for _, obj := range m.objectHandles {
 		r, err := obj.NewReader(ctx)
 		if err != nil {
