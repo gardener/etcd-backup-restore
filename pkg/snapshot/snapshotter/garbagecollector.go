@@ -24,7 +24,6 @@ import (
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/sirupsen/logrus"
 )
 
 // RunGarbageCollector basically consider the older backups as garbage and deletes it
@@ -61,7 +60,7 @@ func (ssr *Snapshotter) RunGarbageCollector(stopCh <-chan struct{}) {
 
 			// chunksDeleted stores the no of chunks deleted in the current iteration of GC
 			var chunksDeleted int
-			chunksDeleted, snapList = garbageCollectChunks(ssr.store, snapList, ssr.prevSnapshot)
+			chunksDeleted, snapList = ssr.GarbageCollectChunks(snapList, *ssr.prevSnapshot)
 			ssr.logger.Infof("GC: Total number garbage collected chunks: %d", chunksDeleted)
 
 			snapStreamIndexList := getSnapStreamIndexList(snapList)
@@ -198,7 +197,7 @@ func getSnapStreamIndexList(snapList brtypes.SnapList) []int {
 
 // garbageCollectChunks goes through the snapList and deletes any chunks
 // Returns a list of non-chunk snapshots, preserving the original order
-func garbageCollectChunks(store brtypes.SnapStore, snapList brtypes.SnapList, prevSnapshot *brtypes.Snapshot) (int, brtypes.SnapList) {
+func (ssr *Snapshotter) GarbageCollectChunks(snapList brtypes.SnapList, prevSnapshot brtypes.Snapshot) (int, brtypes.SnapList) {
 	var nonChunkSnapList brtypes.SnapList
 	chunksDeleted := 0
 	for _, snap := range snapList {
@@ -206,21 +205,22 @@ func garbageCollectChunks(store brtypes.SnapStore, snapList brtypes.SnapList, pr
 		if !snap.IsChunk {
 			nonChunkSnapList = append(nonChunkSnapList, snap)
 			continue
-		} else if snap.StartRevision > prevSnapshot.LastRevision {
-			continue
-		} else {
-			// delete the chunk object
-			snapPath := path.Join(snap.SnapDir, snap.SnapName)
-			logrus.Infof("GC: Deleting chunk for old snapshot: %s", snapPath)
-			if err := store.Delete(*snap); err != nil {
-				logrus.Warnf("GC: Failed to delete chunk %s: %v", snapPath, err)
-				metrics.SnapshotterOperationFailure.With(prometheus.Labels{metrics.LabelError: err.Error()}).Inc()
-				metrics.GCSnapshotCounter.With(prometheus.Labels{metrics.LabelKind: brtypes.SnapshotKindChunk, metrics.LabelSucceeded: metrics.ValueSucceededFalse}).Inc()
-				continue
-			}
-			chunksDeleted++
-			metrics.GCSnapshotCounter.With(prometheus.Labels{metrics.LabelKind: brtypes.SnapshotKindChunk, metrics.LabelSucceeded: metrics.ValueSucceededTrue}).Inc()
 		}
+		// Skip the chunk deletion if it's corresponding full/delta snapshot is not uploaded yet
+		if snap.StartRevision > prevSnapshot.LastRevision {
+			continue
+		}
+		// delete the chunk object
+		snapPath := path.Join(snap.SnapDir, snap.SnapName)
+		ssr.logger.Infof("GC: Deleting chunk for old snapshot: %s", snapPath)
+		if err := ssr.store.Delete(*snap); err != nil {
+			ssr.logger.Warnf("GC: Failed to delete chunk %s: %v", snapPath, err)
+			metrics.SnapshotterOperationFailure.With(prometheus.Labels{metrics.LabelError: err.Error()}).Inc()
+			metrics.GCSnapshotCounter.With(prometheus.Labels{metrics.LabelKind: brtypes.SnapshotKindChunk, metrics.LabelSucceeded: metrics.ValueSucceededFalse}).Inc()
+			continue
+		}
+		chunksDeleted++
+		metrics.GCSnapshotCounter.With(prometheus.Labels{metrics.LabelKind: brtypes.SnapshotKindChunk, metrics.LabelSucceeded: metrics.ValueSucceededTrue}).Inc()
 	}
 	return chunksDeleted, nonChunkSnapList
 }
