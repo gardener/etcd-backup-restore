@@ -94,6 +94,9 @@ func handleCreateTextObject(w http.ResponseWriter, r *http.Request) {
 // handleDownloadObject creates an HTTP handler at `/testContainer/testObject` on the test handler mux that
 // responds with a `Download` response.
 func handleDownloadObject(w http.ResponseWriter, r *http.Request) {
+	objectMapMutex.Lock()
+	defer objectMapMutex.Unlock()
+
 	prefix := parseObjectNamefromURL(r.URL)
 	var contents []byte
 	for key, val := range objectMap {
@@ -109,8 +112,10 @@ func handleDownloadObject(w http.ResponseWriter, r *http.Request) {
 // handleListObjectNames creates an HTTP handler at `/testContainer` on the test handler mux that
 // responds with a `List` response when only object names are requested.
 func handleListObjectNames(w http.ResponseWriter, r *http.Request) {
-	marker := r.URL.Query().Get("marker")
+	objectMapMutex.Lock()
+	defer objectMapMutex.Unlock()
 
+	marker := r.URL.Query().Get("marker")
 	// To store the keys in slice in sorted order
 	var keys, contents []string
 	for k := range objectMap {
@@ -132,6 +137,8 @@ func handleListObjectNames(w http.ResponseWriter, r *http.Request) {
 // handleDeleteObject creates an HTTP handler at `/testContainer/testObject` on the test handler mux that
 // responds with a `Delete` response.
 func handleDeleteObject(w http.ResponseWriter, r *http.Request) {
+	objectMapMutex.Lock()
+	defer objectMapMutex.Unlock()
 	key := parseObjectNamefromURL(r.URL)
 	if _, ok := objectMap[key]; ok {
 		delete(objectMap, key)
