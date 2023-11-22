@@ -60,7 +60,7 @@ const (
 	etcdConnectionTimeout                                 = 30 * time.Second
 	etcdCompactTimeout                                    = 2 * time.Minute
 	etcdDefragTimeout                                     = 5 * time.Minute
-	periodicallyMakeEtcdLeanAfterDeltaSnapApplied         = 10
+	periodicallyMakeEtcdLeanDeltaSnapshotInterval         = 10
 	thresholdPercentageForDBSizeAlarm             float64 = 80.0 / 100.0
 )
 
@@ -646,7 +646,7 @@ func (r *Restorer) applySnaps(clientKV client.KVCloser, clientMaintenance client
 
 					numberOfDeltaSnapApplied++
 
-					if numberOfDeltaSnapApplied%periodicallyMakeEtcdLeanAfterDeltaSnapApplied == 0 || prevAttemptToMakeEtcdLeanFailed {
+					if numberOfDeltaSnapApplied%periodicallyMakeEtcdLeanDeltaSnapshotInterval == 0 || prevAttemptToMakeEtcdLeanFailed {
 						r.logger.Info("making an embedded etcd lean and check for db size alarm")
 						if err := r.MakeEtcdLeanAndCheckAlarm(int64(remainingSnaps[currSnapIndex].LastRevision), endPoints, embeddedEtcdQuotaBytes, dbSizeAlarmCh, dbSizeAlarmDisarmCh, clientKV, clientMaintenance); err != nil {
 							r.logger.Errorf("unable to make embedded etcd lean: %v", err)
