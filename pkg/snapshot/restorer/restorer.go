@@ -57,11 +57,11 @@ import (
 )
 
 const (
-	etcdConnectionTimeout                     = 30 * time.Second
-	etcdCompactTimeout                        = 2 * time.Minute
-	etcdDefragTimeout                         = 5 * time.Minute
-	periodicallyMakeEtcdLean                  = 10
-	thresholdPercentageForDBSizeAlarm float64 = 80.0 / 100.0
+	etcdConnectionTimeout                                 = 30 * time.Second
+	etcdCompactTimeout                                    = 2 * time.Minute
+	etcdDefragTimeout                                     = 5 * time.Minute
+	periodicallyMakeEtcdLeanAfterDeltaSnapApplied         = 10
+	thresholdPercentageForDBSizeAlarm             float64 = 80.0 / 100.0
 )
 
 // Restorer is a struct for etcd data directory restorer
@@ -455,27 +455,27 @@ func (r *Restorer) applyDeltaSnapshots(clientFactory client.Factory, endPoints [
 	}
 
 	var (
-		remainingSnaps    = snapList[1:]
-		numSnaps          = len(remainingSnaps)
-		numFetchers       = int(math.Min(float64(numMaxFetchers), float64(numSnaps)))
-		snapLocationsCh   = make(chan string, numSnaps)
-		errCh             = make(chan error, numFetchers+1)
-		fetcherInfoCh     = make(chan brtypes.FetcherInfo, numSnaps)
-		applierInfoCh     = make(chan brtypes.ApplierInfo, numSnaps)
-		wg                sync.WaitGroup
-		stopCh            = make(chan bool)
-		stopHandleAlarmCh = make(chan bool)
-		dbSizeAlarmCh     = make(chan string)
-		dbSizeDisAlarmCh  = make(chan bool)
+		remainingSnaps      = snapList[1:]
+		numSnaps            = len(remainingSnaps)
+		numFetchers         = int(math.Min(float64(numMaxFetchers), float64(numSnaps)))
+		snapLocationsCh     = make(chan string, numSnaps)
+		errCh               = make(chan error, numFetchers+1)
+		fetcherInfoCh       = make(chan brtypes.FetcherInfo, numSnaps)
+		applierInfoCh       = make(chan brtypes.ApplierInfo, numSnaps)
+		wg                  sync.WaitGroup
+		stopCh              = make(chan bool)
+		stopHandleAlarmCh   = make(chan bool)
+		dbSizeAlarmCh       = make(chan string)
+		dbSizeAlarmDisarmCh = make(chan bool)
 	)
 
-	go r.applySnaps(clientKV, clientMaintenance, remainingSnaps, dbSizeAlarmCh, dbSizeDisAlarmCh, applierInfoCh, errCh, stopCh, &wg, endPoints, embeddedEtcdQuotaBytes)
+	go r.applySnaps(clientKV, clientMaintenance, remainingSnaps, dbSizeAlarmCh, dbSizeAlarmDisarmCh, applierInfoCh, errCh, stopCh, &wg, endPoints, embeddedEtcdQuotaBytes)
 
 	for f := 0; f < numFetchers; f++ {
 		go r.fetchSnaps(f, fetcherInfoCh, applierInfoCh, snapLocationsCh, errCh, stopCh, &wg, ro.Config.TempSnapshotsDir)
 	}
 
-	go r.HandleAlarm(stopHandleAlarmCh, dbSizeAlarmCh, dbSizeDisAlarmCh, clientMaintenance)
+	go r.HandleAlarm(stopHandleAlarmCh, dbSizeAlarmCh, dbSizeAlarmDisarmCh, clientMaintenance)
 	defer close(stopHandleAlarmCh)
 
 	for i, remainingSnap := range remainingSnaps {
@@ -571,7 +571,7 @@ func (r *Restorer) fetchSnaps(fetcherIndex int, fetcherInfoCh <-chan brtypes.Fet
 }
 
 // applySnaps applies delta snapshot events to the embedded etcd sequentially, in the right order of snapshots, regardless of the order in which they were fetched.
-func (r *Restorer) applySnaps(clientKV client.KVCloser, clientMaintenance client.MaintenanceCloser, remainingSnaps brtypes.SnapList, dbSizeAlarmCh chan string, dbSizeDisAlarmCh <-chan bool, applierInfoCh <-chan brtypes.ApplierInfo, errCh chan<- error, stopCh <-chan bool, wg *sync.WaitGroup, endPoints []string, embeddedEtcdQuotaBytes float64) {
+func (r *Restorer) applySnaps(clientKV client.KVCloser, clientMaintenance client.MaintenanceCloser, remainingSnaps brtypes.SnapList, dbSizeAlarmCh chan string, dbSizeAlarmDisarmCh <-chan bool, applierInfoCh <-chan brtypes.ApplierInfo, errCh chan<- error, stopCh <-chan bool, wg *sync.WaitGroup, endPoints []string, embeddedEtcdQuotaBytes float64) {
 	defer wg.Done()
 	wg.Add(1)
 
@@ -646,9 +646,9 @@ func (r *Restorer) applySnaps(clientKV client.KVCloser, clientMaintenance client
 
 					numberOfDeltaSnapApplied++
 
-					if numberOfDeltaSnapApplied%periodicallyMakeEtcdLean == 0 || prevAttemptToMakeEtcdLeanFailed {
+					if numberOfDeltaSnapApplied%periodicallyMakeEtcdLeanAfterDeltaSnapApplied == 0 || prevAttemptToMakeEtcdLeanFailed {
 						r.logger.Info("making an embedded etcd lean and check for db size alarm")
-						if err := r.MakeEtcdLeanAndCheckAlarm(int64(remainingSnaps[currSnapIndex].LastRevision), endPoints, embeddedEtcdQuotaBytes, dbSizeAlarmCh, dbSizeDisAlarmCh, clientKV, clientMaintenance); err != nil {
+						if err := r.MakeEtcdLeanAndCheckAlarm(int64(remainingSnaps[currSnapIndex].LastRevision), endPoints, embeddedEtcdQuotaBytes, dbSizeAlarmCh, dbSizeAlarmDisarmCh, clientKV, clientMaintenance); err != nil {
 							r.logger.Errorf("unable to make embedded etcd lean: %v", err)
 							r.logger.Warn("etcd mvcc: database space might exceeds its quota limit")
 							r.logger.Info("backup-restore will try again in next attempt...")
@@ -946,7 +946,7 @@ func ErrorArrayToError(errs []error) error {
 }
 
 // HandleAlarm function handles alarm raised by backup-restore.
-func (r *Restorer) HandleAlarm(stopHandleAlarmCh chan bool, dbSizeAlarmCh <-chan string, dbSizeDisAlarmCh chan bool, clientMaintenance client.MaintenanceCloser) {
+func (r *Restorer) HandleAlarm(stopHandleAlarmCh chan bool, dbSizeAlarmCh <-chan string, dbSizeAlarmDisarmCh chan bool, clientMaintenance client.MaintenanceCloser) {
 	r.logger.Info("Starting to handle an alarm...")
 	for {
 		select {
@@ -966,17 +966,17 @@ func (r *Restorer) HandleAlarm(stopHandleAlarmCh chan bool, dbSizeAlarmCh <-chan
 			}(); err != nil {
 				r.logger.Errorf("unable to disalarm as defrag call failed: %v", err)
 				// failed to disalarm
-				dbSizeDisAlarmCh <- false
+				dbSizeAlarmDisarmCh <- false
 			} else {
 				// successfully disalarm
-				dbSizeDisAlarmCh <- true
+				dbSizeAlarmDisarmCh <- true
 			}
 		}
 	}
 }
 
 // MakeEtcdLeanAndCheckAlarm calls etcd compaction on given revision number and raise db size alarm if embedded etcd db size crosses threshold.
-func (r *Restorer) MakeEtcdLeanAndCheckAlarm(revision int64, endPoints []string, embeddedEtcdQuotaBytes float64, dbSizeAlarmCh chan string, dbSizeDisAlarmCh <-chan bool, clientKV client.KVCloser, clientMaintenance client.MaintenanceCloser) error {
+func (r *Restorer) MakeEtcdLeanAndCheckAlarm(revision int64, endPoints []string, embeddedEtcdQuotaBytes float64, dbSizeAlarmCh chan string, dbSizeAlarmDisarmCh <-chan bool, clientKV client.KVCloser, clientMaintenance client.MaintenanceCloser) error {
 	if err := func() error {
 		ctx, cancel := context.WithTimeout(context.Background(), etcdCompactTimeout)
 		defer cancel()
@@ -1007,7 +1007,7 @@ func (r *Restorer) MakeEtcdLeanAndCheckAlarm(revision int64, endPoints []string,
 			// send endpoint to alarm channel to raise an db size alarm
 			dbSizeAlarmCh <- endPoint
 
-			if <-dbSizeDisAlarmCh {
+			if <-dbSizeAlarmDisarmCh {
 				r.logger.Info("Successfully disalarm the embedded etcd dbSize alarm")
 				ctx, cancel := context.WithTimeout(context.Background(), etcdConnectionTimeout)
 				defer cancel()
