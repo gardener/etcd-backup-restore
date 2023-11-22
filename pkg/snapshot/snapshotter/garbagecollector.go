@@ -60,7 +60,7 @@ func (ssr *Snapshotter) RunGarbageCollector(stopCh <-chan struct{}) {
 
 			// chunksDeleted stores the no of chunks deleted in the current iteration of GC
 			var chunksDeleted int
-			chunksDeleted, snapList = ssr.GarbageCollectChunks(snapList, *ssr.prevSnapshot)
+			chunksDeleted, snapList = ssr.GarbageCollectChunks(snapList)
 			ssr.logger.Infof("GC: Total number garbage collected chunks: %d", chunksDeleted)
 
 			snapStreamIndexList := getSnapStreamIndexList(snapList)
@@ -195,9 +195,10 @@ func getSnapStreamIndexList(snapList brtypes.SnapList) []int {
 	return snapStreamIndexList
 }
 
-// garbageCollectChunks goes through the snapList and deletes any chunks
-// Returns a list of non-chunk snapshots, preserving the original order
-func (ssr *Snapshotter) GarbageCollectChunks(snapList brtypes.SnapList, prevSnapshot brtypes.Snapshot) (int, brtypes.SnapList) {
+// GarbageCollectChunks removes obsolete chunks based on the latest recorded snapshot.
+// It eliminates chunks associated with snapshots that have already been uploaded.
+// Additionally, it avoids deleting chunks linked to snapshots currently being uploaded to prevent the garbage collector from removing chunks before the composite is formed.
+func (ssr *Snapshotter) GarbageCollectChunks(snapList brtypes.SnapList) (int, brtypes.SnapList) {
 	var nonChunkSnapList brtypes.SnapList
 	chunksDeleted := 0
 	for _, snap := range snapList {
@@ -207,7 +208,7 @@ func (ssr *Snapshotter) GarbageCollectChunks(snapList brtypes.SnapList, prevSnap
 			continue
 		}
 		// Skip the chunk deletion if it's corresponding full/delta snapshot is not uploaded yet
-		if snap.StartRevision > prevSnapshot.LastRevision {
+		if ssr.prevSnapshot.LastRevision == 0 || snap.StartRevision > ssr.prevSnapshot.LastRevision {
 			continue
 		}
 		// delete the chunk object
