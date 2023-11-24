@@ -651,6 +651,175 @@ var _ = Describe("Snapshotter", func() {
 					})
 				})
 			})
+			Describe("###GarbageCollectChunkSnapshots", func() {
+				const (
+					testDir = "garbagecollector_chunksnapshots.bkp"
+				)
+
+				var snapshotterConfig *brtypes.SnapshotterConfig
+
+				BeforeEach(func() {
+					snapshotterConfig = &brtypes.SnapshotterConfig{
+						FullSnapshotSchedule:     schedule,
+						DeltaSnapshotPeriod:      wrappers.Duration{Duration: 10 * time.Minute},
+						DeltaSnapshotMemoryLimit: brtypes.DefaultDeltaSnapMemoryLimit,
+						GarbageCollectionPeriod:  wrappers.Duration{Duration: garbageCollectionPeriod},
+						GarbageCollectionPolicy:  brtypes.GarbageCollectionPolicyLimitBased,
+						MaxBackups:               maxBackups,
+					}
+				})
+
+				AfterEach(func() {
+					err = os.RemoveAll(path.Join(outputDir, testDir))
+					Expect(err).ShouldNot(HaveOccurred())
+				})
+				Context("Fresh cluster with no chunks or snapshots", func() {
+					It("cannot delete any chunks", func() {
+						store, ssr := getStoreAndSnapshotterFromConfigs(testDir, snapshotterConfig, etcdConnectionConfig, compressionConfig, healthConfig, snapstoreConfig)
+
+						chunkCount, err := getChunkObjectCount(store)
+						Expect(err).ShouldNot(HaveOccurred())
+						Expect(chunkCount).Should(Equal(0))
+
+						list, err := store.List()
+						Expect(err).ShouldNot(HaveOccurred())
+						Expect(len(list)).Should(Equal(0))
+
+						deleted, snapList := ssr.GarbageCollectChunks(list)
+						Expect(deleted).To(Equal(0))
+						Expect(len(snapList)).To(Equal(0))
+					})
+				})
+				Context("No previous snapshots, first snapshot upload is underway with few chunks uploaded", func() {
+					It("should not delete any chunks", func() {
+
+						store, ssr := getStoreAndSnapshotterFromConfigs(testDir, snapshotterConfig, etcdConnectionConfig, compressionConfig, healthConfig, snapstoreConfig)
+
+						// Add 4 chunks of kind Full with startRevision=0, lastRevision=1
+						addObjectsToStore(store, "Chunk", "Full", 0, 1, 4, time.Now())
+
+						chunkCount, err := getChunkObjectCount(store)
+						Expect(err).ShouldNot(HaveOccurred())
+						Expect(chunkCount).Should(Equal(4))
+
+						list, err := store.List()
+						Expect(err).ShouldNot(HaveOccurred())
+						Expect(len(list)).Should(Equal(4))
+
+						// snapList contains only non-chunk objects
+						deleted, snapList := ssr.GarbageCollectChunks(list)
+						Expect(deleted).To(Equal(0))
+						Expect(len(snapList)).To(Equal(0))
+					})
+				})
+				Context("Previous chunks are remaining, current snapshot upload completed", func() {
+					It("Should delete all the chunks", func() {
+
+						store, ssr := getStoreAndSnapshotterFromConfigs(testDir, snapshotterConfig, etcdConnectionConfig, compressionConfig, healthConfig, snapstoreConfig)
+
+						// add 5 chunks of kind delta with startRevision = 1, lastRevision=2
+						addObjectsToStore(store, "Chunk", "Incr", 1, 2, 5, time.Now())
+						// add 4 chunks of kind delta with startRevision = 3, lastRevision=6 which corresponds to the below delta snapshot
+						addObjectsToStore(store, "Chunk", "Incr", 3, 6, 4, time.Now().Add(time.Second*1))
+						// add the delta snapshot of startRevision = 3, lastRevision = 6
+						addObjectsToStore(store, "Composite", "Incr", 3, 6, 1, time.Now().Add(time.Second*2))
+						lastUploadedSnapshot := brtypes.Snapshot{
+							Kind:          "Incr",
+							StartRevision: 3,
+							LastRevision:  6,
+						}
+
+						chunkCount, err := getChunkObjectCount(store)
+						Expect(err).ShouldNot(HaveOccurred())
+						Expect(chunkCount).Should(Equal(9))
+
+						list, err := store.List()
+						Expect(err).ShouldNot(HaveOccurred())
+						Expect(len(list)).Should(Equal(10))
+
+						ssr.PrevSnapshot = &lastUploadedSnapshot
+						// snapList contains only non-chunk objects
+						deleted, snapList := ssr.GarbageCollectChunks(list)
+						Expect(deleted).To(Equal(9))
+						Expect(len(snapList)).To(Equal(1))
+
+						chunkCount, err = getChunkObjectCount(store)
+						Expect(err).ShouldNot(HaveOccurred())
+						Expect(chunkCount).Should(Equal(0))
+					})
+				})
+				Context("Previous snapshot upload is complete, current snapshot upload underway", func() {
+					It("Should not delete chunks of currently uploading snapshot", func() {
+
+						store, ssr := getStoreAndSnapshotterFromConfigs(testDir, snapshotterConfig, etcdConnectionConfig, compressionConfig, healthConfig, snapstoreConfig)
+
+						// add 5 chunks of kind Full with startRevision = 1, lastRevision = 3 which corresponds to the below full snapshot
+						addObjectsToStore(store, "Chunk", "Full", 1, 3, 5, time.Now())
+						// add the full snapshot with startRevision = 1, lastRevision = 3
+						addObjectsToStore(store, "Composite", "Full", 1, 3, 1, time.Now().Add(time.Second))
+						lastUploadedSnapshot := brtypes.Snapshot{
+							Kind:          "Full",
+							StartRevision: 1,
+							LastRevision:  3,
+						}
+						// Now add 4 chunks of kind Incr with startRevision = 4, lastRevision = 5
+						addObjectsToStore(store, "Chunk", "Incr", 4, 5, 4, time.Now().Add(time.Second*2))
+
+						chunkCount, err := getChunkObjectCount(store)
+						Expect(err).ShouldNot(HaveOccurred())
+						Expect(chunkCount).Should(Equal(9))
+
+						list, err := store.List()
+						Expect(err).ShouldNot(HaveOccurred())
+						Expect(len(list)).Should(Equal(10))
+
+						ssr.PrevSnapshot = &lastUploadedSnapshot
+						// snapList contains only non-chunk objects
+						deleted, snapList := ssr.GarbageCollectChunks(list)
+						Expect(deleted).To(Equal(5))
+						Expect(len(snapList)).To(Equal(1))
+
+						chunkCount, err = getChunkObjectCount(store)
+						Expect(err).ShouldNot(HaveOccurred())
+						Expect(chunkCount).Should(Equal(4))
+					})
+				})
+				Context("No chunks remaining, delta/full snapshot are present", func() {
+					It("Should not delete anything", func() {
+						store, ssr := getStoreAndSnapshotterFromConfigs(testDir, snapshotterConfig, etcdConnectionConfig, compressionConfig, healthConfig, snapstoreConfig)
+
+						// add 1 full snapshot of startRevision=0, lastRevision=2
+						addObjectsToStore(store, "Composite", "Full", 0, 2, 1, time.Now())
+						// add 1 delta snapshot of startRevision=3, lastRevision=3
+						addObjectsToStore(store, "Composite", "Incr", 3, 4, 1, time.Now().Add(time.Second))
+						// add another delta snapshot of startRevision=4, lastRevision=5
+						addObjectsToStore(store, "Composite", "Incr", 4, 5, 1, time.Now().Add(time.Second*2))
+						lastUploadedSnapshot := brtypes.Snapshot{
+							Kind:          "Incr",
+							StartRevision: 4,
+							LastRevision:  5,
+						}
+
+						chunkCount, err := getChunkObjectCount(store)
+						Expect(err).ShouldNot(HaveOccurred())
+						Expect(chunkCount).Should(Equal(0))
+
+						list, err := store.List()
+						Expect(err).ShouldNot(HaveOccurred())
+						Expect(len(list)).Should(Equal(3))
+
+						ssr.PrevSnapshot = &lastUploadedSnapshot
+						// snapList contains only non-chunk objects
+						deleted, snapList := ssr.GarbageCollectChunks(list)
+						Expect(deleted).To(Equal(0))
+						Expect(len(snapList)).To(Equal(3))
+
+						chunkCount, err = getChunkObjectCount(store)
+						Expect(err).ShouldNot(HaveOccurred())
+						Expect(chunkCount).Should(Equal(0))
+					})
+				})
+			})
 		})
 
 		Describe("Scenarios to take full-snapshot during startup of backup-restore", func() {
@@ -1114,4 +1283,59 @@ func prepareStoreWithDeltaSnapshots(storeContainer string, numDeltaSnapshots int
 	}
 
 	return store
+}
+
+// addObjectsToStore adds specified number of snapshot objects to the store
+// the objects are determined by the input parameters objectType, kind, revisions, creationTime
+func addObjectsToStore(store brtypes.SnapStore, objectType string, kind string, startRevision int, lastRevision int, numOfSnapshots int, creationTime time.Time) {
+
+	var isChunk bool
+	if objectType == "Chunk" {
+		isChunk = true
+	}
+	for i := 0; i < numOfSnapshots; i++ {
+		snap := brtypes.Snapshot{
+			Kind:          kind,
+			CreatedOn:     creationTime,
+			StartRevision: int64(startRevision),
+			LastRevision:  int64(lastRevision),
+			IsChunk:       isChunk,
+		}
+		if !snap.IsChunk {
+			snap.GenerateSnapshotName()
+		} else {
+			partNumber := i + 1
+			snap.SnapName = fmt.Sprintf("%s-%08d-%08d-%d/%010d%s%s", snap.Kind, snap.StartRevision, snap.LastRevision, snap.CreatedOn.Unix(), partNumber, snap.CompressionSuffix, "")
+		}
+		err := store.Save(snap, io.NopCloser(strings.NewReader(fmt.Sprintf("dummy-snapshot-content for snap created on %s", snap.CreatedOn))))
+		Expect(err).ShouldNot(HaveOccurred())
+	}
+}
+
+// getStoreAndSnapshotterFromConfigs returns a new local snapstore and new snapshotter
+func getStoreAndSnapshotterFromConfigs(container string, config *brtypes.SnapshotterConfig, etcdConnectionConfig *brtypes.EtcdConnectionConfig, compressionConfig *compressor.CompressionConfig, healthConfig *brtypes.HealthConfig, storeConfig *brtypes.SnapstoreConfig) (brtypes.SnapStore, *Snapshotter) {
+
+	snapstoreConf := &brtypes.SnapstoreConfig{Container: path.Join(outputDir, container), Prefix: "v2"}
+	store, err := snapstore.GetSnapstore(snapstoreConf)
+	Expect(err).ShouldNot(HaveOccurred())
+
+	ssr, err := NewSnapshotter(logger, config, store, etcdConnectionConfig, compressionConfig, healthConfig, storeConfig)
+	Expect(err).ShouldNot(HaveOccurred())
+	return store, ssr
+}
+
+// getChunkObjectCount returns the count of chunks in the store
+func getChunkObjectCount(store brtypes.SnapStore) (int, error) {
+
+	list, err := store.List()
+	if err != nil {
+		return 0, err
+	}
+	var chunkCount int
+	for _, snap := range list {
+		if snap.IsChunk {
+			chunkCount++
+		}
+	}
+	return chunkCount, nil
 }
