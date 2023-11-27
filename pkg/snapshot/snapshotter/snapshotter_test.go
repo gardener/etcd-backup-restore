@@ -815,6 +815,7 @@ var _ = Describe("Snapshotter", func() {
 						deletedCount, snapList := ssr.GarbageCollectChunks(list)
 						Expect(deletedCount).To(BeZero())
 						Expect(len(snapList)).To(Equal(3))
+						Expect(list).To(Equal(snapList))
 
 						chunkCount, compositeCount, err := getObjectCount(store)
 						Expect(err).NotTo(HaveOccurred())
