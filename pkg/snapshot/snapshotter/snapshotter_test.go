@@ -655,7 +655,8 @@ var _ = Describe("Snapshotter", func() {
 				const (
 					testDir = "garbagecollector_chunksnapshots.bkp"
 				)
-
+				var store brtypes.SnapStore
+				var ssr *Snapshotter
 				var snapshotterConfig *brtypes.SnapshotterConfig
 
 				BeforeEach(func() {
@@ -667,55 +668,57 @@ var _ = Describe("Snapshotter", func() {
 						GarbageCollectionPolicy:  brtypes.GarbageCollectionPolicyLimitBased,
 						MaxBackups:               maxBackups,
 					}
+					store, ssr = getStoreAndSnapshotterFromConfigs(testDir, snapshotterConfig, etcdConnectionConfig, compressionConfig, healthConfig, snapstoreConfig)
 				})
 
 				AfterEach(func() {
 					err = os.RemoveAll(path.Join(outputDir, testDir))
 					Expect(err).ShouldNot(HaveOccurred())
 				})
-				Context("Fresh cluster with no chunks or snapshots", func() {
+				Context("fresh cluster with no chunks or snapshots", func() {
 					It("cannot delete any chunks", func() {
-						store, ssr := getStoreAndSnapshotterFromConfigs(testDir, snapshotterConfig, etcdConnectionConfig, compressionConfig, healthConfig, snapstoreConfig)
 
-						chunkCount, err := getChunkObjectCount(store)
-						Expect(err).ShouldNot(HaveOccurred())
-						Expect(chunkCount).Should(Equal(0))
+						chunkCount, _, err := getObjectCount(store)
+						Expect(err).NotTo(HaveOccurred())
+						Expect(chunkCount).To(BeZero())
 
 						list, err := store.List()
-						Expect(err).ShouldNot(HaveOccurred())
-						Expect(len(list)).Should(Equal(0))
+						Expect(err).NotTo(HaveOccurred())
+						Expect(len(list)).To(BeZero())
 
-						deleted, snapList := ssr.GarbageCollectChunks(list)
-						Expect(deleted).To(Equal(0))
-						Expect(len(snapList)).To(Equal(0))
+						// snapList contains only non-chunk objects
+						deletedCount, snapList := ssr.GarbageCollectChunks(list)
+						Expect(deletedCount).To(BeZero())
+						Expect(len(snapList)).To(BeZero())
 					})
 				})
-				Context("No previous snapshots, first snapshot upload is underway with few chunks uploaded", func() {
+				Context("no previous snapshots, first snapshot upload is underway with few chunks uploaded", func() {
 					It("should not delete any chunks", func() {
-
-						store, ssr := getStoreAndSnapshotterFromConfigs(testDir, snapshotterConfig, etcdConnectionConfig, compressionConfig, healthConfig, snapstoreConfig)
 
 						// Add 4 chunks of kind Full with startRevision=0, lastRevision=1
 						addObjectsToStore(store, "Chunk", "Full", 0, 1, 4, time.Now())
 
-						chunkCount, err := getChunkObjectCount(store)
-						Expect(err).ShouldNot(HaveOccurred())
-						Expect(chunkCount).Should(Equal(4))
+						chunkCount, _, err := getObjectCount(store)
+						Expect(err).NotTo(HaveOccurred())
+						Expect(chunkCount).To(Equal(4))
 
 						list, err := store.List()
-						Expect(err).ShouldNot(HaveOccurred())
-						Expect(len(list)).Should(Equal(4))
+						Expect(err).NotTo(HaveOccurred())
+						Expect(len(list)).To(Equal(4))
 
 						// snapList contains only non-chunk objects
-						deleted, snapList := ssr.GarbageCollectChunks(list)
-						Expect(deleted).To(Equal(0))
-						Expect(len(snapList)).To(Equal(0))
+						deletedCount, snapList := ssr.GarbageCollectChunks(list)
+						Expect(deletedCount).To(BeZero())
+						Expect(len(snapList)).To(BeZero())
+
+						chunkCount, compositeCount, err := getObjectCount(store)
+						Expect(err).NotTo(HaveOccurred())
+						Expect(chunkCount).To(Equal(4))
+						Expect(compositeCount).To(BeZero())
 					})
 				})
-				Context("Previous chunks are remaining, current snapshot upload completed", func() {
-					It("Should delete all the chunks", func() {
-
-						store, ssr := getStoreAndSnapshotterFromConfigs(testDir, snapshotterConfig, etcdConnectionConfig, compressionConfig, healthConfig, snapstoreConfig)
+				Context("previous chunks are remaining, current snapshot upload completed", func() {
+					It("should delete all the chunks", func() {
 
 						// add 5 chunks of kind delta with startRevision = 1, lastRevision=2
 						addObjectsToStore(store, "Chunk", "Incr", 1, 2, 5, time.Now())
@@ -729,29 +732,28 @@ var _ = Describe("Snapshotter", func() {
 							LastRevision:  6,
 						}
 
-						chunkCount, err := getChunkObjectCount(store)
-						Expect(err).ShouldNot(HaveOccurred())
-						Expect(chunkCount).Should(Equal(9))
+						chunkCount, _, err := getObjectCount(store)
+						Expect(err).NotTo(HaveOccurred())
+						Expect(chunkCount).To(Equal(9))
 
 						list, err := store.List()
-						Expect(err).ShouldNot(HaveOccurred())
-						Expect(len(list)).Should(Equal(10))
+						Expect(err).NotTo(HaveOccurred())
+						Expect(len(list)).To(Equal(10))
 
 						ssr.PrevSnapshot = &lastUploadedSnapshot
 						// snapList contains only non-chunk objects
-						deleted, snapList := ssr.GarbageCollectChunks(list)
-						Expect(deleted).To(Equal(9))
+						deletedCount, snapList := ssr.GarbageCollectChunks(list)
+						Expect(deletedCount).To(Equal(9))
 						Expect(len(snapList)).To(Equal(1))
 
-						chunkCount, err = getChunkObjectCount(store)
-						Expect(err).ShouldNot(HaveOccurred())
-						Expect(chunkCount).Should(Equal(0))
+						chunkCount, compositeCount, err := getObjectCount(store)
+						Expect(err).NotTo(HaveOccurred())
+						Expect(chunkCount).To(BeZero())
+						Expect(compositeCount).To(Equal(1))
 					})
 				})
-				Context("Previous snapshot upload is complete, current snapshot upload underway", func() {
-					It("Should not delete chunks of currently uploading snapshot", func() {
-
-						store, ssr := getStoreAndSnapshotterFromConfigs(testDir, snapshotterConfig, etcdConnectionConfig, compressionConfig, healthConfig, snapstoreConfig)
+				Context("previous snapshot upload is complete, current snapshot upload underway", func() {
+					It("should not delete chunks of currently uploading snapshot", func() {
 
 						// add 5 chunks of kind Full with startRevision = 1, lastRevision = 3 which corresponds to the below full snapshot
 						addObjectsToStore(store, "Chunk", "Full", 1, 3, 5, time.Now())
@@ -765,28 +767,28 @@ var _ = Describe("Snapshotter", func() {
 						// Now add 4 chunks of kind Incr with startRevision = 4, lastRevision = 5
 						addObjectsToStore(store, "Chunk", "Incr", 4, 5, 4, time.Now().Add(time.Second*2))
 
-						chunkCount, err := getChunkObjectCount(store)
-						Expect(err).ShouldNot(HaveOccurred())
-						Expect(chunkCount).Should(Equal(9))
+						chunkCount, _, err := getObjectCount(store)
+						Expect(err).NotTo(HaveOccurred())
+						Expect(chunkCount).To(Equal(9))
 
 						list, err := store.List()
-						Expect(err).ShouldNot(HaveOccurred())
-						Expect(len(list)).Should(Equal(10))
+						Expect(err).NotTo(HaveOccurred())
+						Expect(len(list)).To(Equal(10))
 
 						ssr.PrevSnapshot = &lastUploadedSnapshot
 						// snapList contains only non-chunk objects
-						deleted, snapList := ssr.GarbageCollectChunks(list)
-						Expect(deleted).To(Equal(5))
+						deletedCount, snapList := ssr.GarbageCollectChunks(list)
+						Expect(deletedCount).To(Equal(5))
 						Expect(len(snapList)).To(Equal(1))
 
-						chunkCount, err = getChunkObjectCount(store)
-						Expect(err).ShouldNot(HaveOccurred())
-						Expect(chunkCount).Should(Equal(4))
+						chunkCount, compositeCount, err := getObjectCount(store)
+						Expect(err).NotTo(HaveOccurred())
+						Expect(chunkCount).To(Equal(4))
+						Expect(compositeCount).To(Equal(1))
 					})
 				})
-				Context("No chunks remaining, delta/full snapshot are present", func() {
-					It("Should not delete anything", func() {
-						store, ssr := getStoreAndSnapshotterFromConfigs(testDir, snapshotterConfig, etcdConnectionConfig, compressionConfig, healthConfig, snapstoreConfig)
+				Context("no chunks remaining, delta/full snapshot are present", func() {
+					It("should not delete anything", func() {
 
 						// add 1 full snapshot of startRevision=0, lastRevision=2
 						addObjectsToStore(store, "Composite", "Full", 0, 2, 1, time.Now())
@@ -800,23 +802,24 @@ var _ = Describe("Snapshotter", func() {
 							LastRevision:  5,
 						}
 
-						chunkCount, err := getChunkObjectCount(store)
-						Expect(err).ShouldNot(HaveOccurred())
-						Expect(chunkCount).Should(Equal(0))
+						chunkCount, _, err := getObjectCount(store)
+						Expect(err).NotTo(HaveOccurred())
+						Expect(chunkCount).To(BeZero())
 
 						list, err := store.List()
-						Expect(err).ShouldNot(HaveOccurred())
-						Expect(len(list)).Should(Equal(3))
+						Expect(err).NotTo(HaveOccurred())
+						Expect(len(list)).To(Equal(3))
 
 						ssr.PrevSnapshot = &lastUploadedSnapshot
 						// snapList contains only non-chunk objects
-						deleted, snapList := ssr.GarbageCollectChunks(list)
-						Expect(deleted).To(Equal(0))
+						deletedCount, snapList := ssr.GarbageCollectChunks(list)
+						Expect(deletedCount).To(BeZero())
 						Expect(len(snapList)).To(Equal(3))
 
-						chunkCount, err = getChunkObjectCount(store)
-						Expect(err).ShouldNot(HaveOccurred())
-						Expect(chunkCount).Should(Equal(0))
+						chunkCount, compositeCount, err := getObjectCount(store)
+						Expect(err).NotTo(HaveOccurred())
+						Expect(chunkCount).To(BeZero())
+						Expect(compositeCount).To(Equal(3))
 					})
 				})
 			})
@@ -1324,18 +1327,21 @@ func getStoreAndSnapshotterFromConfigs(container string, config *brtypes.Snapsho
 	return store, ssr
 }
 
-// getChunkObjectCount returns the count of chunks in the store
-func getChunkObjectCount(store brtypes.SnapStore) (int, error) {
+// getObjectCount returns counts of chunk and composite objects in the store
+func getObjectCount(store brtypes.SnapStore) (int, int, error) {
 
 	list, err := store.List()
 	if err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 	var chunkCount int
+	var compositeCount int
 	for _, snap := range list {
 		if snap.IsChunk {
 			chunkCount++
+		} else {
+			compositeCount++
 		}
 	}
-	return chunkCount, nil
+	return chunkCount, compositeCount, nil
 }
