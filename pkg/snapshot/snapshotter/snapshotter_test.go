@@ -660,6 +660,11 @@ var _ = Describe("Snapshotter", func() {
 				var snapshotterConfig *brtypes.SnapshotterConfig
 
 				BeforeEach(func() {
+					// prepare snapstore
+					snapstoreConf := &brtypes.SnapstoreConfig{Container: path.Join(outputDir, testDir), Prefix: "v2"}
+					store, err = snapstore.GetSnapstore(snapstoreConf)
+					Expect(err).NotTo(HaveOccurred())
+					// prepare snapshotter
 					snapshotterConfig = &brtypes.SnapshotterConfig{
 						FullSnapshotSchedule:     schedule,
 						DeltaSnapshotPeriod:      wrappers.Duration{Duration: 10 * time.Minute},
@@ -668,7 +673,8 @@ var _ = Describe("Snapshotter", func() {
 						GarbageCollectionPolicy:  brtypes.GarbageCollectionPolicyLimitBased,
 						MaxBackups:               maxBackups,
 					}
-					store, ssr = getStoreAndSnapshotterFromConfigs(testDir, snapshotterConfig, etcdConnectionConfig, compressionConfig, healthConfig, snapstoreConfig)
+					ssr, err = NewSnapshotter(logger, snapshotterConfig, store, etcdConnectionConfig, compressionConfig, healthConfig, snapstoreConf)
+					Expect(err).NotTo(HaveOccurred())
 				})
 
 				AfterEach(func() {
@@ -677,7 +683,6 @@ var _ = Describe("Snapshotter", func() {
 				})
 				Context("fresh cluster with no chunks or snapshots", func() {
 					It("cannot delete any chunks", func() {
-
 						chunkCount, _, err := getObjectCount(store)
 						Expect(err).NotTo(HaveOccurred())
 						Expect(chunkCount).To(BeZero())
@@ -694,9 +699,9 @@ var _ = Describe("Snapshotter", func() {
 				})
 				Context("no previous snapshots, first snapshot upload is underway with few chunks uploaded", func() {
 					It("should not delete any chunks", func() {
-
 						// Add 4 chunks of kind Full with startRevision=0, lastRevision=1
-						addObjectsToStore(store, "Chunk", "Full", 0, 1, 4, time.Now())
+						err := addObjectsToStore(store, "Chunk", "Full", 0, 1, 4, time.Now())
+						Expect(err).NotTo(HaveOccurred())
 
 						chunkCount, _, err := getObjectCount(store)
 						Expect(err).NotTo(HaveOccurred())
@@ -719,13 +724,15 @@ var _ = Describe("Snapshotter", func() {
 				})
 				Context("previous chunks are remaining, current snapshot upload completed", func() {
 					It("should delete all the chunks", func() {
-
 						// add 5 chunks of kind delta with startRevision = 1, lastRevision=2
-						addObjectsToStore(store, "Chunk", "Incr", 1, 2, 5, time.Now())
+						err := addObjectsToStore(store, "Chunk", "Incr", 1, 2, 5, time.Now())
+						Expect(err).NotTo(HaveOccurred())
 						// add 4 chunks of kind delta with startRevision = 3, lastRevision=6 which corresponds to the below delta snapshot
-						addObjectsToStore(store, "Chunk", "Incr", 3, 6, 4, time.Now().Add(time.Second*1))
+						err = addObjectsToStore(store, "Chunk", "Incr", 3, 6, 4, time.Now().Add(time.Second*1))
+						Expect(err).NotTo(HaveOccurred())
 						// add the delta snapshot of startRevision = 3, lastRevision = 6
-						addObjectsToStore(store, "Composite", "Incr", 3, 6, 1, time.Now().Add(time.Second*2))
+						err = addObjectsToStore(store, "Composite", "Incr", 3, 6, 1, time.Now().Add(time.Second*2))
+						Expect(err).NotTo(HaveOccurred())
 						lastUploadedSnapshot := brtypes.Snapshot{
 							Kind:          "Incr",
 							StartRevision: 3,
@@ -754,18 +761,20 @@ var _ = Describe("Snapshotter", func() {
 				})
 				Context("previous snapshot upload is complete, current snapshot upload underway", func() {
 					It("should not delete chunks of currently uploading snapshot", func() {
-
 						// add 5 chunks of kind Full with startRevision = 1, lastRevision = 3 which corresponds to the below full snapshot
-						addObjectsToStore(store, "Chunk", "Full", 1, 3, 5, time.Now())
+						err := addObjectsToStore(store, "Chunk", "Full", 1, 3, 5, time.Now())
+						Expect(err).NotTo(HaveOccurred())
 						// add the full snapshot with startRevision = 1, lastRevision = 3
-						addObjectsToStore(store, "Composite", "Full", 1, 3, 1, time.Now().Add(time.Second))
+						err = addObjectsToStore(store, "Composite", "Full", 1, 3, 1, time.Now().Add(time.Second))
+						Expect(err).NotTo(HaveOccurred())
 						lastUploadedSnapshot := brtypes.Snapshot{
 							Kind:          "Full",
 							StartRevision: 1,
 							LastRevision:  3,
 						}
 						// Now add 4 chunks of kind Incr with startRevision = 4, lastRevision = 5
-						addObjectsToStore(store, "Chunk", "Incr", 4, 5, 4, time.Now().Add(time.Second*2))
+						err = addObjectsToStore(store, "Chunk", "Incr", 4, 5, 4, time.Now().Add(time.Second*2))
+						Expect(err).NotTo(HaveOccurred())
 
 						chunkCount, _, err := getObjectCount(store)
 						Expect(err).NotTo(HaveOccurred())
@@ -789,13 +798,15 @@ var _ = Describe("Snapshotter", func() {
 				})
 				Context("no chunks remaining, delta/full snapshot are present", func() {
 					It("should not delete anything", func() {
-
 						// add 1 full snapshot of startRevision=0, lastRevision=2
-						addObjectsToStore(store, "Composite", "Full", 0, 2, 1, time.Now())
+						err := addObjectsToStore(store, "Composite", "Full", 0, 2, 1, time.Now())
+						Expect(err).NotTo(HaveOccurred())
 						// add 1 delta snapshot of startRevision=3, lastRevision=3
-						addObjectsToStore(store, "Composite", "Incr", 3, 4, 1, time.Now().Add(time.Second))
+						err = addObjectsToStore(store, "Composite", "Incr", 3, 4, 1, time.Now().Add(time.Second))
+						Expect(err).NotTo(HaveOccurred())
 						// add another delta snapshot of startRevision=4, lastRevision=5
-						addObjectsToStore(store, "Composite", "Incr", 4, 5, 1, time.Now().Add(time.Second*2))
+						err = addObjectsToStore(store, "Composite", "Incr", 4, 5, 1, time.Now().Add(time.Second*2))
+						Expect(err).NotTo(HaveOccurred())
 						lastUploadedSnapshot := brtypes.Snapshot{
 							Kind:          "Incr",
 							StartRevision: 4,
@@ -1289,10 +1300,12 @@ func prepareStoreWithDeltaSnapshots(storeContainer string, numDeltaSnapshots int
 	return store
 }
 
-// addObjectsToStore adds specified number of snapshot objects to the store
-// the objects are determined by the input parameters objectType, kind, revisions, creationTime
-func addObjectsToStore(store brtypes.SnapStore, objectType string, kind string, startRevision int, lastRevision int, numOfSnapshots int, creationTime time.Time) {
-
+// addObjectsToStore adds objects to the given store. It creates and saves objects based on the provided parameters.
+// The objectType can be either "Chunk" or "Composite". The kind specifies the type of the snapshot Full/delta
+// The startRevision and lastRevision define the revision range of the objects.
+// The numOfSnapshots determines the number of objects to be created.
+// The creationTime specifies the creation time of the object
+func addObjectsToStore(store brtypes.SnapStore, objectType string, kind string, startRevision int, lastRevision int, numOfSnapshots int, creationTime time.Time) error {
 	var isChunk bool
 	if objectType == "Chunk" {
 		isChunk = true
@@ -1312,25 +1325,15 @@ func addObjectsToStore(store brtypes.SnapStore, objectType string, kind string, 
 			snap.SnapName = fmt.Sprintf("%s-%08d-%08d-%d/%010d%s%s", snap.Kind, snap.StartRevision, snap.LastRevision, snap.CreatedOn.Unix(), partNumber, snap.CompressionSuffix, "")
 		}
 		err := store.Save(snap, io.NopCloser(strings.NewReader(fmt.Sprintf("dummy-snapshot-content for snap created on %s", snap.CreatedOn))))
-		Expect(err).ShouldNot(HaveOccurred())
+		if err != nil {
+			return err
+		}
 	}
-}
-
-// getStoreAndSnapshotterFromConfigs returns a new local snapstore and new snapshotter
-func getStoreAndSnapshotterFromConfigs(container string, config *brtypes.SnapshotterConfig, etcdConnectionConfig *brtypes.EtcdConnectionConfig, compressionConfig *compressor.CompressionConfig, healthConfig *brtypes.HealthConfig, storeConfig *brtypes.SnapstoreConfig) (brtypes.SnapStore, *Snapshotter) {
-
-	snapstoreConf := &brtypes.SnapstoreConfig{Container: path.Join(outputDir, container), Prefix: "v2"}
-	store, err := snapstore.GetSnapstore(snapstoreConf)
-	Expect(err).ShouldNot(HaveOccurred())
-
-	ssr, err := NewSnapshotter(logger, config, store, etcdConnectionConfig, compressionConfig, healthConfig, storeConfig)
-	Expect(err).ShouldNot(HaveOccurred())
-	return store, ssr
+	return nil
 }
 
 // getObjectCount returns counts of chunk and composite objects in the store
 func getObjectCount(store brtypes.SnapStore) (int, int, error) {
-
 	list, err := store.List()
 	if err != nil {
 		return 0, 0, err
