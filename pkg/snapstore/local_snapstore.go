@@ -58,6 +58,13 @@ func (s *LocalSnapStore) Save(snap brtypes.Snapshot, rc io.ReadCloser) error {
 	if err != nil && !os.IsExist(err) {
 		return err
 	}
+	if snap.IsChunk {
+		tok := strings.Split(snap.SnapName, "/")
+		err = os.MkdirAll(path.Join(s.prefix, snap.SnapDir, tok[0]), 0700)
+		if err != nil && !os.IsExist(err) {
+			return err
+		}
+	}
 	f, err := os.Create(path.Join(s.prefix, snap.SnapDir, snap.SnapName))
 	if err != nil {
 		return err

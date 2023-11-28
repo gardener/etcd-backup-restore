@@ -208,7 +208,7 @@ func (ssr *Snapshotter) GarbageCollectChunks(snapList brtypes.SnapList) (int, br
 			continue
 		}
 		// Skip the chunk deletion if it's corresponding full/delta snapshot is not uploaded yet
-		if ssr.prevSnapshot.LastRevision == 0 || snap.StartRevision > ssr.prevSnapshot.LastRevision {
+		if ssr.PrevSnapshot.LastRevision == 0 || snap.StartRevision > ssr.PrevSnapshot.LastRevision {
 			continue
 		}
 		// delete the chunk object
