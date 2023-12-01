@@ -23,7 +23,6 @@ import (
 	"os"
 	"path"
 	"path/filepath"
-	"sort"
 	"strings"
 	"time"
 
@@ -329,7 +328,7 @@ var _ = Describe("Dynamic access credential rotation for each provider", func() 
 					snapstoreProvider := providerToSnapstoreProviderMap[provider]
 					newSecretModifiedTime, err := GetSnapstoreSecretModifiedTime(snapstoreProvider)
 					Expect(err).Should(HaveOccurred())
-					Expect(newSecretModifiedTime).Should(Equal(time.Time{}))
+					Expect(newSecretModifiedTime.IsZero()).Should(Equal(true))
 				})
 			})
 			credentialFileNames := credentialFilesForProviders[providerIndex]
@@ -341,7 +340,7 @@ var _ = Describe("Dynamic access credential rotation for each provider", func() 
 					It("Should return error.", func() {
 						newSecretModifiedTime, err := GetSnapstoreSecretModifiedTime(providerToSnapstoreProviderMap[provider])
 						Expect(err).Should(HaveOccurred())
-						Expect(newSecretModifiedTime).Should(Equal(time.Time{}))
+						Expect(newSecretModifiedTime.IsZero()).Should(Equal(true))
 					})
 				})
 				Describe("Directory exists", func() {
@@ -355,7 +354,7 @@ var _ = Describe("Dynamic access credential rotation for each provider", func() 
 						It("Should return error", func() {
 							newSecretModifiedTime, err := GetSnapstoreSecretModifiedTime(providerToSnapstoreProviderMap[provider])
 							Expect(err).Should(HaveOccurred())
-							Expect(newSecretModifiedTime).Should(Equal(time.Time{}))
+							Expect(newSecretModifiedTime.IsZero()).Should(Equal(true))
 						})
 					})
 					// same suite to be tested multiple times for randomly chosen access credential files
@@ -377,27 +376,27 @@ var _ = Describe("Dynamic access credential rotation for each provider", func() 
 							It("Should return error", func() {
 								newSecretModifiedTime, err := GetSnapstoreSecretModifiedTime(providerToSnapstoreProviderMap[provider])
 								Expect(err).Should(HaveOccurred())
-								Expect(newSecretModifiedTime).Should(Equal(time.Time{}))
+								Expect(newSecretModifiedTime.IsZero()).Should(Equal(true))
 							})
 						})
 					}
 					Describe("Credential files exist", func() {
 						var credentialFiles []*os.File
-						var credentialFileCreationTimes []time.Time
+						// var credentialFileCreationTimes []time.Time
+						var lastCreationTimeForFile time.Time
 						BeforeEach(func() {
 							var credentialFullPaths []string
 							for i := range credentialFileNames {
 								credentialFullPaths = append(credentialFullPaths, filepath.Join(credentialDirectory, credentialFileNames[i]))
 							}
-							credentialFiles = createCredentialFiles(credentialFullPaths)
-							credentialFileCreationTimes = getModificationTimesOfCredentialFiles(credentialFiles)
+							credentialFiles, lastCreationTimeForFile = createCredentialFiles(credentialFullPaths)
+							// credentialFileCreationTimes = getCreationTimesOfCredentialFiles(credentialFiles)
 						})
 						Context("Files not modified", func() {
 							It("Should return creation timestamp", func() {
 								newSecretModifiedTime, err := GetSnapstoreSecretModifiedTime(providerToSnapstoreProviderMap[provider])
 								Expect(err).ShouldNot(HaveOccurred())
-								// last created file has the latest file modification time
-								Expect(newSecretModifiedTime).Should(Equal(credentialFileCreationTimes[len(credentialFiles)-1]))
+								Expect(newSecretModifiedTime.Equal(lastCreationTimeForFile)).Should(Equal(true))
 							})
 						})
 						// same suite to be tested multiple times for randomly chosen access credential files
@@ -405,16 +404,15 @@ var _ = Describe("Dynamic access credential rotation for each provider", func() 
 							Context("Files have been modified", func() {
 								BeforeEach(func() {
 									// random file should be modified
-									_, err := credentialFiles[rand.Intn(len(credentialFiles))].WriteString("Modifying a random file")
+									fileIndex := rand.Intn(len(credentialFiles))
+									_, err := credentialFiles[fileIndex].WriteString("Modifying a random file" + credentialFiles[fileIndex].Name())
+									Expect(credentialFiles[fileIndex].Close()).ShouldNot(HaveOccurred())
 									Expect(err).ShouldNot(HaveOccurred())
 								})
 								It("Should return modification timestamp", func() {
 									newSecretModifiedTime, err := GetSnapstoreSecretModifiedTime(providerToSnapstoreProviderMap[provider])
 									Expect(err).ShouldNot(HaveOccurred())
-									Expect(newSecretModifiedTime).ShouldNot(Equal(credentialFileCreationTimes[len(credentialFiles)-1]))
-									credentialModificationTimes := getModificationTimesOfCredentialFiles(credentialFiles)
-									// last element of credentialModificationTimes has newest modification time
-									Expect(newSecretModifiedTime).Should(Equal(credentialModificationTimes[len(credentialModificationTimes)-1]))
+									Expect(newSecretModifiedTime.After(lastCreationTimeForFile)).Should(Equal(true))
 								})
 							})
 						}
@@ -431,7 +429,7 @@ var _ = Describe("Dynamic access credential rotation for each provider", func() 
 				It("Should return error.", func() {
 					newSecretModifiedTime, err := GetSnapstoreSecretModifiedTime(snapstoreProvider)
 					Expect(err).Should(HaveOccurred())
-					Expect(newSecretModifiedTime).Should(Equal(time.Time{}))
+					Expect(newSecretModifiedTime.IsZero()).Should(Equal(true))
 				})
 			})
 			Describe("Environment variable set, points to a file", func() {
@@ -442,17 +440,18 @@ var _ = Describe("Dynamic access credential rotation for each provider", func() 
 					It("Should return error", func() {
 						newSecretModifiedTime, err := GetSnapstoreSecretModifiedTime(snapstoreProvider)
 						Expect(err).Should(HaveOccurred())
-						Expect(newSecretModifiedTime).Should(Equal(time.Time{}))
+						Expect(newSecretModifiedTime.IsZero()).Should(Equal(true))
 					})
 				})
 				Describe("File exists", func() {
 					var credentialFiles []*os.File
-					var credentialFileCreationTimes []time.Time
+					// var credentialFileCreationTimes []time.Time
+					var lastCreationTimeForFile time.Time
 					BeforeEach(func() {
 						credentialDirectory = GinkgoT().TempDir()
 						credentialFullPath := filepath.Join(credentialDirectory, "credentials.json")
-						credentialFiles = createCredentialFiles([]string{credentialFullPath})
-						credentialFileCreationTimes = getModificationTimesOfCredentialFiles(credentialFiles)
+						credentialFiles, lastCreationTimeForFile = createCredentialFiles([]string{credentialFullPath})
+						// credentialFileCreationTimes = getCreationTimesOfCredentialFiles(credentialFiles)
 						GinkgoT().Setenv(provider, credentialFullPath)
 						Expect(credentialFullPath).NotTo(Equal(""))
 					})
@@ -460,21 +459,19 @@ var _ = Describe("Dynamic access credential rotation for each provider", func() 
 						It("Should return the creation timestamp", func() {
 							newSecretModifiedTime, err := GetSnapstoreSecretModifiedTime(snapstoreProvider)
 							Expect(err).ShouldNot(HaveOccurred())
-							// last created file has the latest file modification time
-							Expect(newSecretModifiedTime).Should(Equal(credentialFileCreationTimes[0]))
+							Expect(newSecretModifiedTime.Equal(lastCreationTimeForFile)).Should(Equal(true))
 						})
 					})
 					Context("File modified", func() {
 						BeforeEach(func() {
-							_, err := credentialFiles[0].WriteString("Modifying the credential file")
+							_, err := credentialFiles[0].WriteString("Modifying the credential file" + credentialFiles[0].Name())
+							Expect(credentialFiles[0].Close()).ShouldNot(HaveOccurred())
 							Expect(err).ShouldNot(HaveOccurred())
 						})
 						It("Should return the modification timestamp", func() {
 							newSecretModifiedTime, err := GetSnapstoreSecretModifiedTime(snapstoreProvider)
 							Expect(err).ShouldNot(HaveOccurred())
-							Expect(newSecretModifiedTime).ShouldNot(Equal(credentialFileCreationTimes[0]))
-							credentialModificationTimes := getModificationTimesOfCredentialFiles(credentialFiles)
-							Expect(newSecretModifiedTime).Should(Equal(credentialModificationTimes[0]))
+							Expect(newSecretModifiedTime.After(lastCreationTimeForFile)).Should(Equal(true))
 						})
 					})
 				})
@@ -484,7 +481,7 @@ var _ = Describe("Dynamic access credential rotation for each provider", func() 
 })
 
 // creates the access credential files in the temporary directory
-func createCredentialFiles(filenames []string) (credentialFiles []*os.File) {
+func createCredentialFiles(filenames []string) (credentialFiles []*os.File, lastCreationTime time.Time) {
 	for i := range filenames {
 		file, err := os.Create(filenames[i])
 		if err != nil {
@@ -493,23 +490,25 @@ func createCredentialFiles(filenames []string) (credentialFiles []*os.File) {
 		file.Chmod(os.ModePerm)
 		credentialFiles = append(credentialFiles, file)
 	}
+	lastFileInfo, err := credentialFiles[len(credentialFiles)-1].Stat()
+	if err != nil {
+		fmt.Println("Error while getting creation(modification time os call) times of credential files: ", err)
+	}
+	lastCreationTime = lastFileInfo.ModTime()
 	return
 }
 
-// returns the modification timestamps of the access credential files in ascending order
-func getModificationTimesOfCredentialFiles(credentialFiles []*os.File) (creationTimes []time.Time) {
-	for i := range credentialFiles {
-		fileInfo, err := credentialFiles[i].Stat()
-		if err != nil {
-			fmt.Println("Error while getting modification times of credential files: ", err)
-		}
-		creationTimes = append(creationTimes, fileInfo.ModTime())
-	}
-	sort.Slice(creationTimes, func(i, j int) bool {
-		return creationTimes[i].Before(creationTimes[j])
-	})
-	return
-}
+// returns the creation times of the credential files
+// func getCreationTimesOfCredentialFiles(credentialFiles []*os.File) (creationTimes []time.Time) {
+// 	for i := range credentialFiles {
+// 		fileInfo, err := credentialFiles[i].Stat()
+// 		if err != nil {
+// 			fmt.Println("Error while getting creation(modification time os call) times of credential files: ", err)
+// 		}
+// 		creationTimes = append(creationTimes, fileInfo.ModTime())
+// 	}
+// 	return
+// }
 
 func resetObjectMap() {
 	for k := range objectMap {
