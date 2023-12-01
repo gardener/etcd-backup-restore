@@ -324,7 +324,7 @@ var _ = Describe("Dynamic access credential rotation for each provider", func() 
 		provider := provider
 		Describe("Testing secret modification time for each provider (directory): "+providerToSnapstoreProviderMap[provider], func() {
 			Context("No environment variables are present for the credentials", func() {
-				It("Should return error.", func() {
+				It("Should return error", func() {
 					snapstoreProvider := providerToSnapstoreProviderMap[provider]
 					newSecretModifiedTime, err := GetSnapstoreSecretModifiedTime(snapstoreProvider)
 					Expect(err).Should(HaveOccurred())
@@ -337,7 +337,7 @@ var _ = Describe("Dynamic access credential rotation for each provider", func() 
 					GinkgoT().Setenv(provider, credentialDirectory)
 				})
 				Context("Directory does not exist", func() {
-					It("Should return error.", func() {
+					It("Should return error", func() {
 						newSecretModifiedTime, err := GetSnapstoreSecretModifiedTime(providerToSnapstoreProviderMap[provider])
 						Expect(err).Should(HaveOccurred())
 						Expect(newSecretModifiedTime.IsZero()).Should(Equal(true))
@@ -346,6 +346,8 @@ var _ = Describe("Dynamic access credential rotation for each provider", func() 
 				Describe("Directory exists", func() {
 					BeforeEach(func() {
 						credentialDirectory = GinkgoT().TempDir()
+						err := os.Chmod(credentialDirectory, os.ModePerm)
+						Expect(err).ShouldNot(HaveOccurred())
 						// resetting env variable because credentialDirectory has changed
 						GinkgoT().Setenv(provider, credentialDirectory)
 						Expect(credentialDirectory).ShouldNot(Equal(""))
@@ -390,7 +392,6 @@ var _ = Describe("Dynamic access credential rotation for each provider", func() 
 								credentialFullPaths = append(credentialFullPaths, filepath.Join(credentialDirectory, credentialFileNames[i]))
 							}
 							credentialFiles, lastCreationTimeForFile = createCredentialFiles(credentialFullPaths)
-							// credentialFileCreationTimes = getCreationTimesOfCredentialFiles(credentialFiles)
 						})
 						Context("Files not modified", func() {
 							It("Should return creation timestamp", func() {
@@ -426,7 +427,7 @@ var _ = Describe("Dynamic access credential rotation for each provider", func() 
 	for provider, snapstoreProvider := range providerToSnapstoreProviderJSONMap {
 		Describe("Testing secret modification time for each provider (JSON): "+snapstoreProvider, func() {
 			Context("No environment variables are present for the credentials", func() {
-				It("Should return error.", func() {
+				It("Should return error", func() {
 					newSecretModifiedTime, err := GetSnapstoreSecretModifiedTime(snapstoreProvider)
 					Expect(err).Should(HaveOccurred())
 					Expect(newSecretModifiedTime.IsZero()).Should(Equal(true))
@@ -449,9 +450,10 @@ var _ = Describe("Dynamic access credential rotation for each provider", func() 
 					var lastCreationTimeForFile time.Time
 					BeforeEach(func() {
 						credentialDirectory = GinkgoT().TempDir()
+						err := os.Chmod(credentialDirectory, os.ModePerm)
+						Expect(err).ShouldNot(HaveOccurred())
 						credentialFullPath := filepath.Join(credentialDirectory, "credentials.json")
 						credentialFiles, lastCreationTimeForFile = createCredentialFiles([]string{credentialFullPath})
-						// credentialFileCreationTimes = getCreationTimesOfCredentialFiles(credentialFiles)
 						GinkgoT().Setenv(provider, credentialFullPath)
 						Expect(credentialFullPath).NotTo(Equal(""))
 					})
@@ -487,7 +489,10 @@ func createCredentialFiles(filenames []string) (credentialFiles []*os.File, last
 		if err != nil {
 			fmt.Println("Error while creating credential files: ", err)
 		}
-		file.Chmod(os.ModePerm)
+		err = file.Chmod(os.ModePerm)
+		if err != nil {
+			fmt.Println("Error while changing the file permissions: ", err)
+		}
 		credentialFiles = append(credentialFiles, file)
 	}
 	lastFileInfo, err := credentialFiles[len(credentialFiles)-1].Stat()
@@ -497,18 +502,6 @@ func createCredentialFiles(filenames []string) (credentialFiles []*os.File, last
 	lastCreationTime = lastFileInfo.ModTime()
 	return
 }
-
-// returns the creation times of the credential files
-// func getCreationTimesOfCredentialFiles(credentialFiles []*os.File) (creationTimes []time.Time) {
-// 	for i := range credentialFiles {
-// 		fileInfo, err := credentialFiles[i].Stat()
-// 		if err != nil {
-// 			fmt.Println("Error while getting creation(modification time os call) times of credential files: ", err)
-// 		}
-// 		creationTimes = append(creationTimes, fileInfo.ModTime())
-// 	}
-// 	return
-// }
 
 func resetObjectMap() {
 	for k := range objectMap {
