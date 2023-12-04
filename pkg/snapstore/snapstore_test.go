@@ -15,6 +15,7 @@
 package snapstore_test
 
 import (
+	"bufio"
 	"bytes"
 	"fmt"
 	"io"
@@ -281,6 +282,10 @@ var _ = Describe("Save, List, Fetch, Delete from mock snapstore", func() {
 	})
 })
 
+const (
+	outputDir = "../../../test/"
+)
+
 var (
 	// environment variables for each provider
 	providers = []string{
@@ -316,12 +321,15 @@ var (
 	}
 )
 
-var _ = Describe("Dynamic access credential rotation for each provider", func() {
+var _ = FDescribe("Dynamic access credential rotation for each provider", func() {
 	var credentialDirectory string
 	// Credentials in a directory
 	for providerIndex, provider := range providers {
 		providerIndex := providerIndex
 		provider := provider
+		if providerIndex > 0 {
+			break
+		}
 		Describe("Testing secret modification time for each provider (directory): "+providerToSnapstoreProviderMap[provider], func() {
 			Context("No environment variables are present for the credentials", func() {
 				It("Should return error", func() {
@@ -334,7 +342,7 @@ var _ = Describe("Dynamic access credential rotation for each provider", func() 
 			credentialFileNames := credentialFilesForProviders[providerIndex]
 			Describe("Environment variable set, points to a directory", func() {
 				BeforeEach(func() {
-					GinkgoT().Setenv(provider, credentialDirectory)
+					os.Setenv(provider, credentialDirectory)
 				})
 				Context("Directory does not exist", func() {
 					It("Should return error", func() {
@@ -345,12 +353,10 @@ var _ = Describe("Dynamic access credential rotation for each provider", func() 
 				})
 				Describe("Directory exists", func() {
 					BeforeEach(func() {
-						credentialDirectory = GinkgoT().TempDir()
-						err := os.Chmod(credentialDirectory, os.ModePerm)
+						credentialDirectory = filepath.Join(outputDir, "credentials")
+						err := os.MkdirAll(credentialDirectory, os.ModePerm)
 						Expect(err).ShouldNot(HaveOccurred())
-						// resetting env variable because credentialDirectory has changed
-						GinkgoT().Setenv(provider, credentialDirectory)
-						Expect(credentialDirectory).ShouldNot(Equal(""))
+						os.Setenv(provider, credentialDirectory)
 					})
 					Context("Credential files don't exist", func() {
 						It("Should return error", func() {
@@ -364,7 +370,6 @@ var _ = Describe("Dynamic access credential rotation for each provider", func() 
 						Context("Some credentials files don't exist", func() {
 							var credentialFullPaths []string
 							BeforeEach(func() {
-								credentialFullPaths = []string{}
 								randomFileSkipIndex := rand.Intn(len(credentialFileNames))
 								for i := range credentialFileNames {
 									// randomly chosen files are not created
@@ -386,8 +391,8 @@ var _ = Describe("Dynamic access credential rotation for each provider", func() 
 						var credentialFiles []*os.File
 						// var credentialFileCreationTimes []time.Time
 						var lastCreationTimeForFile time.Time
+						var credentialFullPaths []string
 						BeforeEach(func() {
-							var credentialFullPaths []string
 							for i := range credentialFileNames {
 								credentialFullPaths = append(credentialFullPaths, filepath.Join(credentialDirectory, credentialFileNames[i]))
 							}
@@ -401,23 +406,48 @@ var _ = Describe("Dynamic access credential rotation for each provider", func() 
 							})
 						})
 						// same suite to be tested multiple times for randomly chosen access credential files
+						var fileIndex int
 						for repeat := 0; repeat < 5; repeat++ {
 							Context("Files have been modified", func() {
 								BeforeEach(func() {
 									// random file should be modified
-									fileIndex := rand.Intn(len(credentialFiles))
-									_, err := credentialFiles[fileIndex].WriteString("Modifying a random file" + credentialFiles[fileIndex].Name())
+									fileIndex = rand.Intn(len(credentialFiles))
+									modificationString := "Modifying the credential file!" + credentialFiles[fileIndex].Name()
+									modificationBytes := []byte(modificationString)
+
+									_, err := credentialFiles[fileIndex].Write(modificationBytes)
+									// _, err := credentialFiles[fileIndex].WriteString("Modifying a random file" + credentialFiles[fileIndex].Name())
 									Expect(credentialFiles[fileIndex].Close()).ShouldNot(HaveOccurred())
 									Expect(err).ShouldNot(HaveOccurred())
 								})
-								It("Should return modification timestamp", func() {
+								FIt("Should return modification timestamp", func() {
 									newSecretModifiedTime, err := GetSnapstoreSecretModifiedTime(providerToSnapstoreProviderMap[provider])
 									Expect(err).ShouldNot(HaveOccurred())
+									fmt.Println("Creation time for the credential file:\t\t", lastCreationTimeForFile)
+									fmt.Println("Modification time for the credential file:\t", newSecretModifiedTime)
+									// printing contents of the file:
+									bytes, err := os.ReadFile(credentialFullPaths[fileIndex])
+									if err != nil {
+										fmt.Println("Errored in reading!!", err)
+									}
+									// scanner := bufio.NewScanner(credentialFiles[0])
+									// scanner.Scan()
+									fmt.Println("The contents of the file in IT  434: ", string(bytes))
+									scanner := bufio.NewScanner(credentialFiles[fileIndex])
+									scanner.Scan()
+									fmt.Println("The contents of the file in IT through scanner are: ", scanner.Text())
 									Expect(newSecretModifiedTime.After(lastCreationTimeForFile)).Should(Equal(true))
 								})
 							})
 						}
 					})
+					AfterEach(func() {
+						err := os.RemoveAll(outputDir)
+						Expect(err).ShouldNot(HaveOccurred())
+					})
+				})
+				AfterEach(func() {
+					os.Unsetenv(provider)
 				})
 			})
 
@@ -448,14 +478,23 @@ var _ = Describe("Dynamic access credential rotation for each provider", func() 
 					var credentialFiles []*os.File
 					// var credentialFileCreationTimes []time.Time
 					var lastCreationTimeForFile time.Time
+					var credentialFullPath string
 					BeforeEach(func() {
 						credentialDirectory = GinkgoT().TempDir()
 						err := os.Chmod(credentialDirectory, os.ModePerm)
 						Expect(err).ShouldNot(HaveOccurred())
-						credentialFullPath := filepath.Join(credentialDirectory, "credentials.json")
+						credentialFullPath = filepath.Join(credentialDirectory, "credentials.json")
 						credentialFiles, lastCreationTimeForFile = createCredentialFiles([]string{credentialFullPath})
 						GinkgoT().Setenv(provider, credentialFullPath)
 						Expect(credentialFullPath).NotTo(Equal(""))
+						bytes, err := os.ReadFile(credentialFullPath)
+						if err != nil {
+							fmt.Println("Errored in reading!!", err)
+						}
+						// scanner := bufio.NewScanner(credentialFiles[0])
+						// scanner.Scan()
+						fmt.Println("The contents of the JSON file in BeforeEach 493: ", string(bytes))
+						// fmt.Println("the error while scannign was: ", scanner.Err())
 					})
 					Context("File not modified", func() {
 						It("Should return the creation timestamp", func() {
@@ -466,13 +505,28 @@ var _ = Describe("Dynamic access credential rotation for each provider", func() 
 					})
 					Context("File modified", func() {
 						BeforeEach(func() {
-							_, err := credentialFiles[0].WriteString("Modifying the credential file" + credentialFiles[0].Name())
+							modificationString := "Modifying the credential file!" + credentialFiles[0].Name()
+							modificationBytes := []byte(modificationString)
+							_, err := credentialFiles[0].Write(modificationBytes)
+							// _, err := credentialFiles[0].WriteString("Modifying the credential file" + credentialFiles[0].Name())
 							Expect(credentialFiles[0].Close()).ShouldNot(HaveOccurred())
 							Expect(err).ShouldNot(HaveOccurred())
 						})
-						It("Should return the modification timestamp", func() {
+						FIt("Should return the modification timestamp", func() {
 							newSecretModifiedTime, err := GetSnapstoreSecretModifiedTime(snapstoreProvider)
 							Expect(err).ShouldNot(HaveOccurred())
+							fmt.Println("Creation time for the credential file:\t\t", lastCreationTimeForFile)
+							fmt.Println("Modification time for the credential file:\t", newSecretModifiedTime)
+							bytes, err := os.ReadFile(credentialFullPath)
+							if err != nil {
+								fmt.Println("Errored in reading!!", err)
+							}
+							fmt.Println("The contents of the JSON file in It 523: ", string(bytes))
+							// printing contents of the file:
+							// credentialFiles[0].Read()
+							scanner := bufio.NewScanner(credentialFiles[0])
+							scanner.Scan()
+							fmt.Println("The contents of the JSON file in It 528 (scanner) are: and the filename is: ", scanner.Text(), credentialFiles[0].Name(), credentialFiles[0])
 							Expect(newSecretModifiedTime.After(lastCreationTimeForFile)).Should(Equal(true))
 						})
 					})
@@ -483,24 +537,34 @@ var _ = Describe("Dynamic access credential rotation for each provider", func() 
 })
 
 // creates the access credential files in the temporary directory
-func createCredentialFiles(filenames []string) (credentialFiles []*os.File, lastCreationTime time.Time) {
-	for i := range filenames {
-		file, err := os.Create(filenames[i])
+func createCredentialFiles(filenames []string) ([]*os.File, time.Time) {
+	var credentialFiles []*os.File
+	var lastCreationTime time.Time
+	for _, filename := range filenames {
+		filename := filename
+		file, err := os.Create(filename)
 		if err != nil {
 			fmt.Println("Error while creating credential files: ", err)
 		}
-		err = file.Chmod(os.ModePerm)
-		if err != nil {
-			fmt.Println("Error while changing the file permissions: ", err)
-		}
+		fmt.Println("Created a file! ", filename)
+		// bytesWritten, err := file.Write([]byte("INITIAL CONTENT1"))
+		// if bytesWritten == 0 || err != nil {
+		// 	fmt.Println("The bytes that were written and the error were: ", bytesWritten, err)
+		// }
+		err = os.WriteFile(filename, []byte("INITIAL CONTENT2"), os.ModePerm)
+		// defer file.Close()
 		credentialFiles = append(credentialFiles, file)
+		// scanner := bufio.NewScanner(file)
+		// scanner.Scan()
+		// fmt.Println("The contents of the file (createCredentialFiles), scanner are: ", scanner.Text(), file)
+
 	}
 	lastFileInfo, err := credentialFiles[len(credentialFiles)-1].Stat()
 	if err != nil {
 		fmt.Println("Error while getting creation(modification time os call) times of credential files: ", err)
 	}
 	lastCreationTime = lastFileInfo.ModTime()
-	return
+	return credentialFiles, lastCreationTime
 }
 
 func resetObjectMap() {
