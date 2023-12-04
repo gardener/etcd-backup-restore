@@ -15,7 +15,7 @@
 package snapstore_test
 
 import (
-	"bufio"
+	// "bufio"
 	"bytes"
 	"fmt"
 	"io"
@@ -421,10 +421,16 @@ var _ = FDescribe("Dynamic access credential rotation for each provider", func()
 									Expect(err).ShouldNot(HaveOccurred())
 								})
 								FIt("Should return modification timestamp", func() {
+									fileIndex := fileIndex
 									newSecretModifiedTime, err := GetSnapstoreSecretModifiedTime(providerToSnapstoreProviderMap[provider])
 									Expect(err).ShouldNot(HaveOccurred())
+									fileOpen, err := os.Open(credentialFullPaths[fileIndex])
+									Expect(err).ToNot(HaveOccurred())
+									statFile, err := fileOpen.Stat()
+									mod := statFile.ModTime()
 									fmt.Println("Creation time for the credential file:\t\t", lastCreationTimeForFile)
 									fmt.Println("Modification time for the credential file:\t", newSecretModifiedTime)
+									fmt.Println("Modification time through stat file:\t\t", mod)
 									// printing contents of the file:
 									bytes, err := os.ReadFile(credentialFullPaths[fileIndex])
 									if err != nil {
@@ -432,10 +438,10 @@ var _ = FDescribe("Dynamic access credential rotation for each provider", func()
 									}
 									// scanner := bufio.NewScanner(credentialFiles[0])
 									// scanner.Scan()
-									fmt.Println("The contents of the file in IT  434: ", string(bytes))
-									scanner := bufio.NewScanner(credentialFiles[fileIndex])
-									scanner.Scan()
-									fmt.Println("The contents of the file in IT through scanner are: ", scanner.Text())
+									fmt.Println("The contents of the file in IT 440: ", string(bytes))
+									// scanner := bufio.NewScanner(credentialFiles[fileIndex])
+									// scanner.Scan()
+									// fmt.Println("The contents of the file in IT through scanner are: ", scanner.Text())
 									Expect(newSecretModifiedTime.After(lastCreationTimeForFile)).Should(Equal(true))
 								})
 							})
@@ -493,7 +499,7 @@ var _ = FDescribe("Dynamic access credential rotation for each provider", func()
 						}
 						// scanner := bufio.NewScanner(credentialFiles[0])
 						// scanner.Scan()
-						fmt.Println("The contents of the JSON file in BeforeEach 493: ", string(bytes))
+						fmt.Println("The contents of the JSON file in BeforeEach 501: ", string(bytes))
 						// fmt.Println("the error while scannign was: ", scanner.Err())
 					})
 					Context("File not modified", func() {
@@ -515,18 +521,23 @@ var _ = FDescribe("Dynamic access credential rotation for each provider", func()
 						FIt("Should return the modification timestamp", func() {
 							newSecretModifiedTime, err := GetSnapstoreSecretModifiedTime(snapstoreProvider)
 							Expect(err).ShouldNot(HaveOccurred())
+							fileOpen, err := os.Open(credentialFullPath)
+							Expect(err).ToNot(HaveOccurred())
+							statFile, err := fileOpen.Stat()
+							mod := statFile.ModTime()
 							fmt.Println("Creation time for the credential file:\t\t", lastCreationTimeForFile)
 							fmt.Println("Modification time for the credential file:\t", newSecretModifiedTime)
+							fmt.Println("Modification time through stat file:\t\t", mod)
 							bytes, err := os.ReadFile(credentialFullPath)
 							if err != nil {
 								fmt.Println("Errored in reading!!", err)
 							}
-							fmt.Println("The contents of the JSON file in It 523: ", string(bytes))
+							fmt.Println("The contents of the JSON file in It 534: ", string(bytes))
 							// printing contents of the file:
 							// credentialFiles[0].Read()
-							scanner := bufio.NewScanner(credentialFiles[0])
-							scanner.Scan()
-							fmt.Println("The contents of the JSON file in It 528 (scanner) are: and the filename is: ", scanner.Text(), credentialFiles[0].Name(), credentialFiles[0])
+							// scanner := bufio.NewScanner(credentialFiles[0])
+							// scanner.Scan()
+							// fmt.Println("The contents of the JSON file in It 528 (scanner) are: and the filename is: ", scanner.Text(), credentialFiles[0].Name(), credentialFiles[0])
 							Expect(newSecretModifiedTime.After(lastCreationTimeForFile)).Should(Equal(true))
 						})
 					})
@@ -557,7 +568,6 @@ func createCredentialFiles(filenames []string) ([]*os.File, time.Time) {
 		// scanner := bufio.NewScanner(file)
 		// scanner.Scan()
 		// fmt.Println("The contents of the file (createCredentialFiles), scanner are: ", scanner.Text(), file)
-
 	}
 	lastFileInfo, err := credentialFiles[len(credentialFiles)-1].Stat()
 	if err != nil {
