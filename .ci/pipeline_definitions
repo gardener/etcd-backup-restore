@@ -7,7 +7,7 @@ etcd-backup-restore:
         - name: 'landscape_repo'
           path: 'kubernetes-dev/landscape-dev-garden'
           branch: 'master'
-      image: eu.gcr.io/gardener-project/gardener/testmachinery/testmachinery-run:stable
+      image: europe-docker.pkg.dev/gardener-project/releases/testmachinery/testmachinery-run:stable
       execute:
       - tm-tests-playground
       - --flavor-tm-chart=etcd
