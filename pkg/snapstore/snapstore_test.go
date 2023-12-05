@@ -321,7 +321,44 @@ var (
 	}
 )
 
-var _ = FDescribe("Dynamic access credential rotation for each provider", func() {
+var _ = FDescribe("Testing the file modification time for a file", func() {
+	It("The file should return a new modification time", func() {
+		filename := "temporary"
+
+		err := os.WriteFile(filename, []byte("INITIAL CONTENT"), os.ModePerm)
+		Expect(err).ShouldNot(HaveOccurred())
+		file, err := os.Open(filename)
+		Expect(err).ShouldNot(HaveOccurred())
+		fileInfo, err := file.Stat()
+		Expect(err).ShouldNot(HaveOccurred())
+		timeCreation := fileInfo.ModTime()
+		err = file.Close()
+		Expect(err).ShouldNot(HaveOccurred())
+		fmt.Println("The file was created at:", timeCreation)
+		bytesRead, err := os.ReadFile(filename)
+		Expect(err).ShouldNot(HaveOccurred())
+		fmt.Println("The file contents are:", string(bytesRead))
+
+		err = os.WriteFile(filename, []byte("FINAL CONTENT"), os.ModePerm)
+		Expect(err).ShouldNot(HaveOccurred())
+		file, err = os.Open(filename)
+		Expect(err).ShouldNot(HaveOccurred())
+		fileInfo, err = file.Stat()
+		Expect(err).ShouldNot(HaveOccurred())
+		timeModification := fileInfo.ModTime()
+		err = file.Close()
+		Expect(err).ShouldNot(HaveOccurred())
+		fmt.Println("The file was modified at:", timeModification)
+		bytesRead, err = os.ReadFile(filename)
+		Expect(err).ShouldNot(HaveOccurred())
+		fmt.Println("The file contents are:", string(bytesRead))
+
+		Expect(timeModification.After(timeCreation)).Should(Equal(true))
+		os.Remove(filename)
+	})
+})
+
+var _ = Describe("Dynamic access credential rotation for each provider", func() {
 	// Credentials in a directory
 	for providerIndex, provider := range providers {
 		// the value is to be used in the closure capture
