@@ -332,7 +332,7 @@ var _ = Describe("Dynamic access credential rotation for each provider", func() 
 				It("Should return error", func() {
 					newSecretModifiedTime, err := GetSnapstoreSecretModifiedTime(providerToSnapstoreProviderMap[provider])
 					Expect(err).Should(HaveOccurred())
-					Expect(newSecretModifiedTime.IsZero()).Should(Equal(true))
+					Expect(newSecretModifiedTime.IsZero()).Should(BeTrue())
 				})
 			})
 			Describe("Environment variable set, points to a directory", func() {
@@ -343,7 +343,7 @@ var _ = Describe("Dynamic access credential rotation for each provider", func() 
 					It("Should return error", func() {
 						newSecretModifiedTime, err := GetSnapstoreSecretModifiedTime(providerToSnapstoreProviderMap[provider])
 						Expect(err).Should(HaveOccurred())
-						Expect(newSecretModifiedTime.IsZero()).Should(Equal(true))
+						Expect(newSecretModifiedTime.IsZero()).Should(BeTrue())
 					})
 				})
 				Describe("Directory exists", func() {
@@ -356,7 +356,7 @@ var _ = Describe("Dynamic access credential rotation for each provider", func() 
 						It("Should return error", func() {
 							newSecretModifiedTime, err := GetSnapstoreSecretModifiedTime(providerToSnapstoreProviderMap[provider])
 							Expect(err).Should(HaveOccurred())
-							Expect(newSecretModifiedTime.IsZero()).Should(Equal(true))
+							Expect(newSecretModifiedTime.IsZero()).Should(BeTrue())
 						})
 					})
 					// test with each particular credential file missing
@@ -372,12 +372,13 @@ var _ = Describe("Dynamic access credential rotation for each provider", func() 
 									}
 									credentialFullPaths = append(credentialFullPaths, filepath.Join(credentialDirectory, credentialFileNames[i]))
 								}
-								createCredentialFiles(credentialFullPaths)
+								lastCreationTimeForFile := createCredentialFiles(credentialFullPaths)
+								Expect(lastCreationTimeForFile.IsZero()).ShouldNot(BeTrue())
 							})
 							It("Should return error", func() {
 								newSecretModifiedTime, err := GetSnapstoreSecretModifiedTime(providerToSnapstoreProviderMap[provider])
 								Expect(err).Should(HaveOccurred())
-								Expect(newSecretModifiedTime.IsZero()).Should(Equal(true))
+								Expect(newSecretModifiedTime.IsZero()).Should(BeTrue())
 							})
 						})
 					}
@@ -389,12 +390,13 @@ var _ = Describe("Dynamic access credential rotation for each provider", func() 
 								credentialFileFullPaths = append(credentialFileFullPaths, filepath.Join(credentialDirectory, credentialFileNames[i]))
 							}
 							lastCreationTimeForFile = createCredentialFiles(credentialFileFullPaths)
+							Expect(lastCreationTimeForFile.IsZero()).ShouldNot(BeTrue())
 						})
 						Context("Files not modified", func() {
 							It("Should return creation timestamp", func() {
 								newSecretModifiedTime, err := GetSnapstoreSecretModifiedTime(providerToSnapstoreProviderMap[provider])
 								Expect(err).ShouldNot(HaveOccurred())
-								Expect(newSecretModifiedTime.Equal(lastCreationTimeForFile)).Should(Equal(true))
+								Expect(newSecretModifiedTime.Equal(lastCreationTimeForFile)).Should(BeTrue())
 							})
 						})
 						// test with each particular credential file modified
@@ -404,9 +406,7 @@ var _ = Describe("Dynamic access credential rotation for each provider", func() 
 								BeforeEach(func() {
 									fmt.Println("Testing for the provider:", providerToSnapstoreProviderMap[provider])
 									bytesRead, err := os.ReadFile(credentialFileFullPaths[fileModifiedIndex])
-									if err != nil {
-										fmt.Println("Error while reading the unmodified credential file:", err)
-									}
+									Expect(err).ShouldNot(HaveOccurred())
 									fmt.Printf("The original contents of the file are: \"%s\"\n", string(bytesRead))
 									err = modifyCredentialFile(fileModifiedIndex, credentialFileFullPaths)
 									Expect(err).ShouldNot(HaveOccurred())
@@ -418,11 +418,9 @@ var _ = Describe("Dynamic access credential rotation for each provider", func() 
 									fmt.Println("Modification time for the credential file:\t", newSecretModifiedTime)
 									// printing contents of the file
 									bytesRead, err := os.ReadFile(credentialFileFullPaths[fileModifiedIndex])
-									if err != nil {
-										fmt.Println("Error while reading the modified credential file:", err)
-									}
+									Expect(err).ShouldNot(HaveOccurred())
 									fmt.Printf("The new contents of the file are: \"%s\"\n", string(bytesRead))
-									Expect(newSecretModifiedTime.After(lastCreationTimeForFile)).Should(Equal(true))
+									Expect(newSecretModifiedTime.After(lastCreationTimeForFile)).Should(BeTrue())
 								})
 							})
 						}
@@ -436,7 +434,6 @@ var _ = Describe("Dynamic access credential rotation for each provider", func() 
 					os.Unsetenv(provider)
 				})
 			})
-
 		})
 	}
 	// Credentials in JSON
@@ -448,7 +445,7 @@ var _ = Describe("Dynamic access credential rotation for each provider", func() 
 				It("Should return error", func() {
 					newSecretModifiedTime, err := GetSnapstoreSecretModifiedTime(snapstoreProvider)
 					Expect(err).Should(HaveOccurred())
-					Expect(newSecretModifiedTime.IsZero()).Should(Equal(true))
+					Expect(newSecretModifiedTime.IsZero()).Should(BeTrue())
 				})
 			})
 			Describe("Environment variable set, points to a file", func() {
@@ -459,7 +456,7 @@ var _ = Describe("Dynamic access credential rotation for each provider", func() 
 					It("Should return error", func() {
 						newSecretModifiedTime, err := GetSnapstoreSecretModifiedTime(snapstoreProvider)
 						Expect(err).Should(HaveOccurred())
-						Expect(newSecretModifiedTime.IsZero()).Should(Equal(true))
+						Expect(newSecretModifiedTime.IsZero()).Should(BeTrue())
 					})
 				})
 				Describe("File exists", func() {
@@ -470,24 +467,23 @@ var _ = Describe("Dynamic access credential rotation for each provider", func() 
 						Expect(err).ShouldNot(HaveOccurred())
 						credentialFileFullPaths = append(credentialFileFullPaths, filepath.Join(credentialDirectory, "credentials.json"))
 						lastCreationTimeForFile = createCredentialFiles(credentialFileFullPaths)
+						Expect(lastCreationTimeForFile.IsZero()).ShouldNot(BeTrue())
 						os.Setenv(provider, credentialFileFullPaths[0])
-						Expect(credentialFileFullPaths[0]).NotTo(Equal(""))
+						Expect(credentialFileFullPaths[0]).NotTo(BeEmpty())
 					})
 					Context("File not modified", func() {
 						It("Should return the creation timestamp", func() {
 							newSecretModifiedTime, err := GetSnapstoreSecretModifiedTime(snapstoreProvider)
 							Expect(err).ShouldNot(HaveOccurred())
-							Expect(newSecretModifiedTime.Equal(lastCreationTimeForFile)).Should(Equal(true))
+							Expect(newSecretModifiedTime.Equal(lastCreationTimeForFile)).Should(BeTrue())
 						})
 					})
 					Context("File modified", func() {
 						BeforeEach(func() {
 							fmt.Println("Testing for the provider (JSON):", snapstoreProvider)
 							bytesRead, err := os.ReadFile(credentialFileFullPaths[0])
-							if err != nil {
-								fmt.Println("Error while reading the unmodified JSON credential file:", err)
-							}
-							fmt.Printf("The original contents of the JSON file are:\"%s\"\n", string(bytesRead))
+							Expect(err).ShouldNot(HaveOccurred())
+							fmt.Printf("The original contents of the JSON file are: \"%s\"\n", string(bytesRead))
 							err = modifyCredentialFile(0, credentialFileFullPaths)
 							Expect(err).ShouldNot(HaveOccurred())
 						})
@@ -498,11 +494,9 @@ var _ = Describe("Dynamic access credential rotation for each provider", func() 
 							fmt.Println("Modification time for the JSON credential file:\t", newSecretModifiedTime)
 							// printing contents of the file:
 							bytes, err := os.ReadFile(credentialFileFullPaths[0])
-							if err != nil {
-								fmt.Println("Error while reading the modified JSON credential file:", err)
-							}
+							Expect(err).ShouldNot(HaveOccurred())
 							fmt.Printf("The new contents of the JSON file are: \"%s\"\n", string(bytes))
-							Expect(newSecretModifiedTime.After(lastCreationTimeForFile)).Should(Equal(true))
+							Expect(newSecretModifiedTime.After(lastCreationTimeForFile)).Should(BeTrue())
 						})
 					})
 					AfterEach(func() {
@@ -532,11 +526,11 @@ func createCredentialFiles(filenames []string) time.Time {
 	}
 	// the last file created at the end has the latest creation time (modification time)
 	lastFile, err := os.Open(filenames[len(filenames)-1])
-	defer lastFile.Close()
 	if err != nil {
 		fmt.Println("Error while opening the last created credential file:", err)
 		return time.Time{}
 	}
+	defer lastFile.Close()
 	lastFileInfo, err := lastFile.Stat()
 	if err != nil {
 		fmt.Println("Error while fetching information of the last created credential file:", err)
@@ -550,11 +544,7 @@ func modifyCredentialFile(fileIndex int, credentialFileFullPaths []string) error
 	// sleep before the file is modified, file modification timestamp does not change otherwise on concourse
 	time.Sleep(time.Millisecond * 100)
 	err := os.WriteFile(credentialFileFullPaths[fileIndex], []byte("MODIFIED CONTENT"), os.ModePerm)
-	if err != nil {
-		fmt.Println("Error while modifying the credential file: ", err)
-	}
-	fmt.Println("Modified the file! ", credentialFileFullPaths[fileIndex])
-	return nil
+	return err
 }
 
 func parseObjectNamefromURL(u *url.URL) string {
