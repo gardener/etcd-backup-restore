@@ -17,14 +17,13 @@ etcd-backup-restore:
       - --testrun-prefix=playground
       - --set=projectNamespace=garden-it
 
-  template: 'default'
   base_definition:
-    repo: ~
     traits:
       version:
         preprocess:
           'inject-commit-hash'
         inject_effective_version: true
+      component_descriptor: ~
       publish:
         oci-builder: docker-buildx
         platforms:
@@ -32,7 +31,6 @@ etcd-backup-restore:
         - linux/arm64
         dockerimages:
           etcdbrctl:
-            registry: 'gcr-readwrite'
             image: 'eu.gcr.io/gardener-project/gardener/etcdbrctl'
             dockerfile: 'build/Dockerfile'
             inputs:
@@ -63,7 +61,6 @@ etcd-backup-restore:
   jobs:
     head-update:
       traits:
-        component_descriptor: ~
         draft_release: ~
     pull-request:
       traits:
@@ -80,4 +77,3 @@ etcd-backup-restore:
             internal_scp_workspace:
               channel_name: 'C0177NLL8V9' # gardener-etcd
               slack_cfg_name: 'scp_workspace'
-        component_descriptor: ~
