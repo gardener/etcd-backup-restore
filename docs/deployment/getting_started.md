@@ -1,6 +1,6 @@
 # Getting started
 
-Currently we don't publish the binary build with the release, but it is pretty straight forward to build it by following the steps mentioned [here](../development/local_setup.md#build). But we do publish the docker image with each release, please check the [release page](https://github.com/gardener/etcd-backup-restore/releases) for the same. Currently, release docker images are pushed to `eu.gcr.io/gardener-project/gardener/etcdbrctl` to container registry.
+Currently we don't publish the binary build with the release, but it is pretty straight forward to build it by following the steps mentioned [here](../development/local_setup.md#build). But we do publish the docker image with each release, please check the [release page](https://github.com/gardener/etcd-backup-restore/releases) for the same. Currently, release docker images are pushed to `europe-docker.pkg.dev/gardener-project/public/gardener/etcdbrctl` to container registry.
 
 ## Usage
 

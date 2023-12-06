@@ -13,8 +13,8 @@
 # limitations under the License.
 
 VERSION             ?= $(shell cat VERSION)
-REGISTRY            ?= eu.gcr.io/gardener-project/gardener
-IMAGE_REPOSITORY    := $(REGISTRY)/etcdbrctl
+REGISTRY            ?= europe-docker.pkg.dev/gardener-project/public
+IMAGE_REPOSITORY    := $(REGISTRY)/gardener/etcdbrctl
 IMAGE_TAG           := $(VERSION)
 BUILD_DIR           := build
 BIN_DIR             := bin
