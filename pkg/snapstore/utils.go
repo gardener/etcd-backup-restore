@@ -211,6 +211,9 @@ func getLatestCredentialsModifiedTime(credentialFiles []string) (time.Time, erro
 		if err != nil {
 			return time.Time{}, err
 		}
+		if fileInfo.IsDir() {
+			return time.Time{}, fmt.Errorf("a directory %s found in place of a credential file", fileInfo.Name())
+		}
 		fileModifiedTime := fileInfo.ModTime()
 		if latestModifiedTime.Before(fileModifiedTime) {
 			latestModifiedTime = fileModifiedTime
