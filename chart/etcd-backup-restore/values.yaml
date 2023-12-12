@@ -1,13 +1,13 @@
 images:
   # etcd image to use
   etcd:
-    repository: eu.gcr.io/gardener-project/gardener/etcd
-    tag: v3.4.13-bootstrap-1
+    repository: europe-docker.pkg.dev/gardener-project/public/gardener/etcd
+    tag: v3.4.26-3
     pullPolicy: IfNotPresent
   # etcd-backup-restore image to use
   etcdBackupRestore:
-    repository: eu.gcr.io/gardener-project/gardener/etcdbrctl
-    tag: v0.12.1
+    repository: europe-docker.pkg.dev/gardener-project/public/gardener/etcdbrctl
+    tag: v0.24.7
     pullPolicy: IfNotPresent
 
 resources:

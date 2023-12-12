@@ -7,7 +7,7 @@ etcd-backup-restore:
         - name: 'landscape_repo'
           path: 'kubernetes-dev/landscape-dev-garden'
           branch: 'master'
-      image: eu.gcr.io/gardener-project/gardener/testmachinery/testmachinery-run:stable
+      image: europe-docker.pkg.dev/gardener-project/releases/testmachinery/testmachinery-run:stable
       execute:
       - tm-tests-playground
       - --flavor-tm-chart=etcd
@@ -17,14 +17,14 @@ etcd-backup-restore:
       - --testrun-prefix=playground
       - --set=projectNamespace=garden-it
 
-  template: 'default'
   base_definition:
-    repo: ~
     traits:
       version:
         preprocess:
           'inject-commit-hash'
         inject_effective_version: true
+      component_descriptor:
+        ocm_repository: europe-docker.pkg.dev/gardener-project/snapshots
       publish:
         oci-builder: docker-buildx
         platforms:
@@ -32,8 +32,7 @@ etcd-backup-restore:
         - linux/arm64
         dockerimages:
           etcdbrctl:
-            registry: 'gcr-readwrite'
-            image: 'eu.gcr.io/gardener-project/gardener/etcdbrctl'
+            image: europe-docker.pkg.dev/gardener-project/snapshots/gardener/etcdbrctl
             dockerfile: 'build/Dockerfile'
             inputs:
               repos:
@@ -55,7 +54,7 @@ etcd-backup-restore:
       unit_test:
         image: 'golang:1.20.3'
       integration_test:
-        image: 'eu.gcr.io/gardener-project/gardener/testmachinery/base-step:stable'
+        image: europe-docker.pkg.dev/gardener-project/releases/testmachinery/base-step:stable
       build:
         image: 'golang:1.20.3'
         output_dir: 'binary'
@@ -63,8 +62,10 @@ etcd-backup-restore:
   jobs:
     head-update:
       traits:
-        component_descriptor: ~
         draft_release: ~
+        component_descriptor:
+          ocm_repository_mappings:
+          - repository: europe-docker.pkg.dev/gardener-project/releases
     pull-request:
       traits:
         pull-request: ~
@@ -72,6 +73,12 @@ etcd-backup-restore:
       traits:
         version:
           preprocess: 'finalize'
+        component_descriptor:
+          ocm_repository: europe-docker.pkg.dev/gardener-project/releases
+        publish:
+          dockerimages:
+            etcdbrctl:
+              image: europe-docker.pkg.dev/gardener-project/releases/gardener/etcdbrctl
         release:
           nextversion: 'bump_minor'
         slack:
@@ -80,4 +87,3 @@ etcd-backup-restore:
             internal_scp_workspace:
               channel_name: 'C0177NLL8V9' # gardener-etcd
               slack_cfg_name: 'scp_workspace'
-        component_descriptor: ~

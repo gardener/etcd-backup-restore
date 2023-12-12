@@ -43,11 +43,11 @@ fi
 
 ETCD_VERSION=${ETCD_VERSION:-"v3.4.13-bootstrap-1"}
 if [ "$ETCD_VERSION" != "" ]; then
-  ETCD_IMAGE=${ETCD_IMAGE:-"eu.gcr.io/gardener-project/gardener/etcd:$ETCD_VERSION"}
+  ETCD_IMAGE=${ETCD_IMAGE:-"europe-docker.pkg.dev/gardener-project/public/gardener/etcd:$ETCD_VERSION"}
 fi
 
 if [ "$ETCDBR_VERSION" != "" ]; then
-  ETCDBR_IMAGE=${ETCDBR_IMAGE:-"eu.gcr.io/gardener-project/gardener/etcdbrctl:$ETCDBR_VERSION"}
+  ETCDBR_IMAGE=${ETCDBR_IMAGE:-"europe-docker.pkg.dev/gardener-project/public/gardener/etcdbrctl:$ETCDBR_VERSION"}
 fi
 
 if [ -r "$PERF_TEST_KUBECONFIG" ]; then
