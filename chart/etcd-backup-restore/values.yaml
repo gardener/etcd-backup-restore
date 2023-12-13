@@ -90,6 +90,7 @@ backup:
   #   accessKeyID: access-key-id-with-route53-privileges
   # gcs:
   #   serviceAccountJson: service-account-json-with-object-storage-privileges
+  #   storageAPIEndpoint: endpoint-override-for-storage-api # optional
   # abs:
   #   storageAccount: storage-account-with-object-storage-privileges
   #   storageKey: storage-key-with-object-storage-privileges
