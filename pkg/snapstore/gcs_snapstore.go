@@ -36,10 +36,9 @@ import (
 )
 
 const (
-	storeCredentials         = "GOOGLE_APPLICATION_CREDENTIALS"
-	storageAPIEndpoint       = "GOOGLE_STORAGE_API_ENDPOINT"
-	sourceStoreCredentials   = "SOURCE_GOOGLE_APPLICATION_CREDENTIALS"
-	sourceStorageAPIEndpoint = "SOURCE_GOOGLE_STORAGE_API_ENDPOINT"
+	storeCredentials       = "GOOGLE_APPLICATION_CREDENTIALS"
+	storageAPIEndpoint     = "GOOGLE_STORAGE_API_ENDPOINT"
+	sourceStoreCredentials = "SOURCE_GOOGLE_APPLICATION_CREDENTIALS"
 )
 
 // GCSSnapStore is snapstore with GCS object store as backend.
@@ -63,9 +62,11 @@ func NewGCSSnapStore(config *brtypes.SnapstoreConfig) (*GCSSnapStore, error) {
 	ctx := context.TODO()
 	var opts []option.ClientOption // no need to explicitly set store credentials here since the Google SDK picks it up from the standard environment variable
 
-	endpoint := strings.TrimSpace(os.Getenv(storageAPIEndpoint))
-	if endpoint != "" {
-		opts = append(opts, option.WithEndpoint(endpoint))
+	if _, ok := os.LookupEnv(sourceStoreCredentials); !ok { // do not set endpoint override when copying backups between buckets, since the buckets may reside on different regions
+		endpoint := strings.TrimSpace(os.Getenv(storageAPIEndpoint))
+		if endpoint != "" {
+			opts = append(opts, option.WithEndpoint(endpoint))
+		}
 	}
 
 	if config.IsSource {
@@ -74,11 +75,6 @@ func NewGCSSnapStore(config *brtypes.SnapstoreConfig) (*GCSSnapStore, error) {
 			return nil, fmt.Errorf("environment variable %s is not set", sourceStoreCredentials)
 		}
 		opts = append(opts, option.WithCredentialsFile(filename))
-
-		endpoint = strings.TrimSpace(os.Getenv(sourceStorageAPIEndpoint))
-		if endpoint != "" {
-			opts = append(opts, option.WithEndpoint(endpoint))
-		}
 	}
 
 	cli, err := storage.NewClient(ctx, opts...)
