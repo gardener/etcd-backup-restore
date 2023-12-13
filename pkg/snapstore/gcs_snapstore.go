@@ -36,9 +36,9 @@ import (
 )
 
 const (
-	storeCredentials       = "GOOGLE_APPLICATION_CREDENTIALS"
-	storageAPIEndpoint     = "GOOGLE_STORAGE_API_ENDPOINT"
-	sourceStoreCredentials = "SOURCE_GOOGLE_APPLICATION_CREDENTIALS"
+	envStoreCredentials       = "GOOGLE_APPLICATION_CREDENTIALS"
+	envStorageAPIEndpoint     = "GOOGLE_STORAGE_API_ENDPOINT"
+	envSourceStoreCredentials = "SOURCE_GOOGLE_APPLICATION_CREDENTIALS"
 )
 
 // GCSSnapStore is snapstore with GCS object store as backend.
@@ -62,17 +62,17 @@ func NewGCSSnapStore(config *brtypes.SnapstoreConfig) (*GCSSnapStore, error) {
 	ctx := context.TODO()
 	var opts []option.ClientOption // no need to explicitly set store credentials here since the Google SDK picks it up from the standard environment variable
 
-	if _, ok := os.LookupEnv(sourceStoreCredentials); !ok { // do not set endpoint override when copying backups between buckets, since the buckets may reside on different regions
-		endpoint := strings.TrimSpace(os.Getenv(storageAPIEndpoint))
+	if _, ok := os.LookupEnv(envSourceStoreCredentials); !ok { // do not set endpoint override when copying backups between buckets, since the buckets may reside on different regions
+		endpoint := strings.TrimSpace(os.Getenv(envStorageAPIEndpoint))
 		if endpoint != "" {
 			opts = append(opts, option.WithEndpoint(endpoint))
 		}
 	}
 
 	if config.IsSource {
-		filename := os.Getenv(sourceStoreCredentials)
+		filename := os.Getenv(envSourceStoreCredentials)
 		if filename == "" {
-			return nil, fmt.Errorf("environment variable %s is not set", sourceStoreCredentials)
+			return nil, fmt.Errorf("environment variable %s is not set", envSourceStoreCredentials)
 		}
 		opts = append(opts, option.WithCredentialsFile(filename))
 	}
@@ -272,7 +272,7 @@ func (s *GCSSnapStore) Delete(snap brtypes.Snapshot) error {
 
 // GetGCSCredentialsLastModifiedTime returns the latest modification timestamp of the GCS credential file
 func GetGCSCredentialsLastModifiedTime() (time.Time, error) {
-	if filename, isSet := os.LookupEnv(storeCredentials); isSet {
+	if filename, isSet := os.LookupEnv(envStoreCredentials); isSet {
 		credentialFiles := []string{filename}
 		gcsTimeStamp, err := getLatestCredentialsModifiedTime(credentialFiles)
 		if err != nil {
