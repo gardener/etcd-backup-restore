@@ -288,7 +288,6 @@ type CredentialTestConfig struct {
 	CredentialFiles   []string
 }
 
-// Define test entries
 var credentialTestConfigs = []CredentialTestConfig{
 	// AWS
 	{
@@ -387,7 +386,7 @@ var credentialTestConfigs = []CredentialTestConfig{
 var _ = Describe("Dynamic access credential rotation test for each provider", func() {
 	for _, config := range credentialTestConfigs {
 		config := config
-		Context(fmt.Sprintf("testing secret modification for %s with %s", config.Provider, config.EnvVariable), func() {
+		Describe(fmt.Sprintf("testing secret modification for %q with %q", config.Provider, config.EnvVariable), func() {
 			Context("environment variable not set", func() {
 				It("should return error", func() {
 					newSecretModifiedTime, err := GetSnapstoreSecretModifiedTime(config.SnapstoreProvider)
@@ -415,7 +414,7 @@ var _ = Describe("Dynamic access credential rotation test for each provider", fu
 					// one file is missing
 					for _, credentialFile := range config.CredentialFiles {
 						credentialFile := credentialFile
-						It(fmt.Sprintf("should return error when the file '%s' is missing", credentialFile), func() {
+						It(fmt.Sprintf("should return error when the file %q is missing", credentialFile), func() {
 							// create all credential files first
 							lastCreationTime, err := createCredentialFilesInDirectory(credentialDirectory, config.CredentialFiles)
 							Expect(err).ShouldNot(HaveOccurred())
@@ -446,8 +445,7 @@ var _ = Describe("Dynamic access credential rotation test for each provider", fu
 					// modified credentials
 					for _, credentialFile := range config.CredentialFiles {
 						credentialFile := credentialFile
-						It(fmt.Sprintf("should return the modification time of the credential file %s", credentialFile), func() {
-							fmt.Println("Testing dynamic credential rotation for the provider:", config.Provider)
+						It(fmt.Sprintf("should return the modification time of the credential file %q", credentialFile), func() {
 							err := modifyCredentialFileInDirectory(credentialDirectory, credentialFile)
 							Expect(err).ShouldNot(HaveOccurred())
 							newSecretModifiedTime, err := GetSnapstoreSecretModifiedTime(config.SnapstoreProvider)
@@ -461,32 +459,27 @@ var _ = Describe("Dynamic access credential rotation test for each provider", fu
 	}
 })
 
-// creates the access credential files in the temporary directory.
-// the function also returns the timestamp at which the last file was created
+// createCredentialFilesInDirectory creates access credential files in the
+// specified directory and returns the timestamp of the last modified file.
 func createCredentialFilesInDirectory(directory string, filenames []string) (time.Time, error) {
+	var fullFilePath string
 	for _, filename := range filenames {
-		filename := filepath.Join(directory, filename)
+		fullFilePath = filepath.Join(directory, filename)
 		// creates and writes content to the file
-		err := os.WriteFile(filename, []byte("INITIAL CONTENT"), os.ModePerm)
+		err := os.WriteFile(fullFilePath, []byte("INITIAL CONTENT"), os.ModePerm)
 		if err != nil {
 			return time.Time{}, err
 		}
 	}
-	// the last file created at the end has the latest creation time (modification time)
-	fileName := filepath.Join(directory, filenames[len(filenames)-1])
-	lastFile, err := os.Open(fileName)
-	if err != nil {
-		return time.Time{}, err
-	}
-	defer lastFile.Close()
-	lastFileInfo, err := lastFile.Stat()
+	// return the modification time (creation time here) of the last created file
+	lastFileInfo, err := os.Stat(fullFilePath)
 	if err != nil {
 		return time.Time{}, err
 	}
 	return lastFileInfo.ModTime(), nil
 }
 
-// modifies the credential file in the credential directory
+// modifyCredentialFileInDirectory modifies a specific credential file within the given directory.
 func modifyCredentialFileInDirectory(credentialDirectory, credentialFile string) error {
 	// sleep before the file is modified, file modification timestamp does not change otherwise on concourse
 	time.Sleep(time.Millisecond * 100)
