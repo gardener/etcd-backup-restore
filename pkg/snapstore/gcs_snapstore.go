@@ -24,6 +24,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"cloud.google.com/go/storage"
 	stiface "github.com/gardener/etcd-backup-restore/pkg/snapstore/gcs"
@@ -259,24 +260,16 @@ func (s *GCSSnapStore) Delete(snap brtypes.Snapshot) error {
 	return s.client.Bucket(s.bucket).Object(objectName).Delete(context.TODO())
 }
 
-// GCSSnapStoreHash calculates and returns the hash of GCS snapstore secret.
-func GCSSnapStoreHash(config *brtypes.SnapstoreConfig) (string, error) {
-	if _, isSet := os.LookupEnv(storeCredentials); isSet {
-		if file := os.Getenv(storeCredentials); file != "" {
-			credjson, err := readGCSCredentialsFile(file)
-			if err != nil {
-				return "", fmt.Errorf("error getting credentials from %v ", file)
-			}
-			return getHash(credjson), nil
+// GetGCSCredentialsLastModifiedTime returns the latest modification timestamp of the GCS credential file
+func GetGCSCredentialsLastModifiedTime() (time.Time, error) {
+	if filename, isSet := os.LookupEnv(storeCredentials); isSet {
+		credentialFiles := []string{filename}
+		gcsTimeStamp, err := getLatestCredentialsModifiedTime(credentialFiles)
+		if err != nil {
+			return time.Time{}, fmt.Errorf("failed to fetch file information of the GCS JSON credential file %v with error: %v", filename, err)
 		}
+		return gcsTimeStamp, nil
 	}
-	return "", nil
-}
 
-func readGCSCredentialsFile(filename string) ([]byte, error) {
-	b, err := os.ReadFile(filename)
-	if err != nil {
-		return nil, err
-	}
-	return b, nil
+	return time.Time{}, fmt.Errorf("no environment variable set for the GCS credential file")
 }

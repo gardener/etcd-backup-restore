@@ -54,8 +54,7 @@ const (
 )
 
 var (
-	emptyStruct   struct{}
-	snapstoreHash = make(map[string]interface{})
+	emptyStruct struct{}
 )
 
 // event is wrapper over etcd event to keep track of time of event
@@ -83,31 +82,32 @@ func NewSnapshotterConfig() *brtypes.SnapshotterConfig {
 
 // Snapshotter is a struct for etcd snapshot taker
 type Snapshotter struct {
-	logger               *logrus.Entry
-	etcdConnectionConfig *brtypes.EtcdConnectionConfig
-	store                brtypes.SnapStore
-	config               *brtypes.SnapshotterConfig
-	compressionConfig    *compressor.CompressionConfig
-	healthConfig         *brtypes.HealthConfig
-	schedule             cron.Schedule
-	PrevSnapshot         *brtypes.Snapshot
-	PrevFullSnapshot     *brtypes.Snapshot
-	PrevDeltaSnapshots   brtypes.SnapList
-	fullSnapshotReqCh    chan bool
-	deltaSnapshotReqCh   chan struct{}
-	fullSnapshotAckCh    chan result
-	deltaSnapshotAckCh   chan result
-	fullSnapshotTimer    *time.Timer
-	deltaSnapshotTimer   *time.Timer
-	events               []byte
-	watchCh              clientv3.WatchChan
-	etcdWatchClient      *clientv3.Watcher
-	cancelWatch          context.CancelFunc
-	SsrStateMutex        *sync.Mutex
-	SsrState             brtypes.SnapshotterState
-	lastEventRevision    int64
-	K8sClientset         client.Client
-	snapstoreConfig      *brtypes.SnapstoreConfig
+	logger                 *logrus.Entry
+	etcdConnectionConfig   *brtypes.EtcdConnectionConfig
+	store                  brtypes.SnapStore
+	config                 *brtypes.SnapshotterConfig
+	compressionConfig      *compressor.CompressionConfig
+	healthConfig           *brtypes.HealthConfig
+	schedule               cron.Schedule
+	PrevSnapshot           *brtypes.Snapshot
+	PrevFullSnapshot       *brtypes.Snapshot
+	PrevDeltaSnapshots     brtypes.SnapList
+	fullSnapshotReqCh      chan bool
+	deltaSnapshotReqCh     chan struct{}
+	fullSnapshotAckCh      chan result
+	deltaSnapshotAckCh     chan result
+	fullSnapshotTimer      *time.Timer
+	deltaSnapshotTimer     *time.Timer
+	events                 []byte
+	watchCh                clientv3.WatchChan
+	etcdWatchClient        *clientv3.Watcher
+	cancelWatch            context.CancelFunc
+	SsrStateMutex          *sync.Mutex
+	SsrState               brtypes.SnapshotterState
+	lastEventRevision      int64
+	K8sClientset           client.Client
+	snapstoreConfig        *brtypes.SnapstoreConfig
+	lastSecretModifiedTime time.Time
 }
 
 // NewSnapshotter returns the snapshotter object.
@@ -310,13 +310,19 @@ func (ssr *Snapshotter) takeFullSnapshot(isFinal bool) (*brtypes.Snapshot, error
 	// close previous watch and client.
 	ssr.closeEtcdClient()
 
-	var err error
-
-	// Update the snapstore object before taking every full snapshot
-	// Refer: https://github.com/gardener/etcd-backup-restore/issues/422
-	ssr.store, err = snapstore.GetSnapstore(ssr.snapstoreConfig)
+	// Update the snapstore object before taking a full snapshot if the credentials have changed
+	// Refer: https://github.com/gardener/etcd-backup-restore/issues/449
+	hasSecretUpdated, err := ssr.hasSnapStoreSecretUpdated()
 	if err != nil {
-		return nil, fmt.Errorf("failed to create snapstore from configured storage provider: %v", err)
+		return nil, fmt.Errorf("error checking if the credentials were updated %v", err)
+	}
+	if hasSecretUpdated {
+		var err error
+		ssr.store, err = snapstore.GetSnapstore(ssr.snapstoreConfig)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create snapstore from configured storage provider: %v", err)
+		}
+		ssr.logger.Info("Updated the snapstore object with new credentials")
 	}
 
 	clientFactory := etcdutil.NewFactory(*ssr.etcdConnectionConfig)
@@ -441,17 +447,19 @@ func (ssr *Snapshotter) TakeDeltaSnapshot() (*brtypes.Snapshot, error) {
 	}
 	ssr.events = append(ssr.events, byte(']'))
 
-	isSecretUpdated := ssr.checkSnapstoreSecretUpdate()
-	if isSecretUpdated {
+	// Update the snapstore object before taking a delta snapshot if the credentials have changed
+	// Refer: https://github.com/gardener/etcd-backup-restore/issues/449
+	hasSecretUpdated, err := ssr.hasSnapStoreSecretUpdated()
+	if err != nil {
+		return nil, fmt.Errorf("error checking if the credentials were updated %v", err)
+	}
+	if hasSecretUpdated {
 		var err error
-
-		// Update the snapstore object before taking every delta snapshot
-		// Refer: https://github.com/gardener/etcd-backup-restore/issues/422
 		ssr.store, err = snapstore.GetSnapstore(ssr.snapstoreConfig)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create snapstore from configured storage provider: %v", err)
 		}
-		ssr.logger.Info("updated the snapstore object with new credentials")
+		ssr.logger.Info("Updated the snapstore object with new credentials")
 	}
 
 	// compressionSuffix is useful in backward compatibility(restoring from uncompressed snapshots).
@@ -736,20 +744,22 @@ func (ssr *Snapshotter) resetFullSnapshotTimer() error {
 	return nil
 }
 
-func (ssr *Snapshotter) checkSnapstoreSecretUpdate() bool {
-	ssr.logger.Debug("checking the hash of snapstore secret...")
-	newSnapstoreSecretHash, err := snapstore.GetSnapstoreSecretHash(ssr.snapstoreConfig)
+// hasSnapStoreSecretUpdated checks if the snapstore secret has been updated
+func (ssr *Snapshotter) hasSnapStoreSecretUpdated() (bool, error) {
+	ssr.logger.Debug("checking the timestamp of snapstore secret...")
+	newSecretModifiedTime, err := snapstore.GetSnapstoreSecretModifiedTime(ssr.snapstoreConfig.Provider)
 	if err != nil {
-		return true
+		return false, fmt.Errorf("error checking the modification time of the access credentials  %v", err)
 	}
 
-	if snapstoreHash[ssr.snapstoreConfig.Provider] == newSnapstoreSecretHash {
-		return false
+	// the secret has not been modified
+	if !newSecretModifiedTime.After(ssr.lastSecretModifiedTime) {
+		return false, nil
 	}
 
-	//update the map with latest newSnapstoreHash
-	snapstoreHash[ssr.snapstoreConfig.Provider] = newSnapstoreSecretHash
-	return true
+	// update the previous modification time with the latest modification time
+	ssr.lastSecretModifiedTime = newSecretModifiedTime
+	return true, nil
 }
 
 // IsFullSnapshotRequiredAtStartup checks whether to take a full snapshot or not during the startup of backup-restore.
