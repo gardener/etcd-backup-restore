@@ -114,7 +114,7 @@ function setup_etcdbrctl(){
 
 function setup_awscli() {
     echo "Installing awscli..."
-    pip3 install awscli
+    pip3 install --break-system-packages awscli
     echo "Successfully installed awscli."
 }
 
