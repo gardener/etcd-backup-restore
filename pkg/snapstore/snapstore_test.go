@@ -19,7 +19,9 @@ import (
 	"fmt"
 	"io"
 	"net/url"
+	"os"
 	"path"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -277,6 +279,218 @@ var _ = Describe("Save, List, Fetch, Delete from mock snapstore", func() {
 		})
 	})
 })
+
+var credentialDirectory = "../../test/credentials"
+
+type CredentialTestConfig struct {
+	Provider          string
+	EnvVariable       string
+	SnapstoreProvider string
+	CredentialType    string // "file" or "directory"
+	CredentialFiles   []string
+}
+
+var credentialTestConfigs = []CredentialTestConfig{
+	// AWS
+	{
+		Provider:          "AWS",
+		EnvVariable:       "AWS_APPLICATION_CREDENTIALS",
+		SnapstoreProvider: brtypes.SnapstoreProviderS3,
+		CredentialType:    "directory",
+		CredentialFiles:   []string{"accessKeyID", "region", "secretAccessKey"},
+	},
+	{
+		Provider:          "AWS",
+		EnvVariable:       "AWS_APPLICATION_CREDENTIALS_JSON",
+		SnapstoreProvider: brtypes.SnapstoreProviderS3,
+		CredentialType:    "file",
+		CredentialFiles:   []string{"credentials.json"},
+	},
+	// Azure
+	{
+		Provider:          "ABS",
+		EnvVariable:       "AZURE_APPLICATION_CREDENTIALS",
+		SnapstoreProvider: brtypes.SnapstoreProviderABS,
+		CredentialType:    "directory",
+		CredentialFiles:   []string{"storageAccount", "storageKey"},
+	},
+	{
+		Provider:          "ABS",
+		EnvVariable:       "AZURE_APPLICATION_CREDENTIALS_JSON",
+		SnapstoreProvider: brtypes.SnapstoreProviderABS,
+		CredentialType:    "file",
+		CredentialFiles:   []string{"credentials.json"},
+	},
+	// GCS
+	{
+		Provider:          "GCS",
+		EnvVariable:       "GOOGLE_APPLICATION_CREDENTIALS",
+		SnapstoreProvider: brtypes.SnapstoreProviderGCS,
+		CredentialType:    "file",
+		CredentialFiles:   []string{"credentials.json"},
+	},
+	// Swift V3ApplicationCredentials
+	{
+		Provider:          "Swift",
+		EnvVariable:       "OPENSTACK_APPLICATION_CREDENTIALS",
+		SnapstoreProvider: brtypes.SnapstoreProviderSwift,
+		CredentialType:    "directory",
+		CredentialFiles:   []string{"authURL", "tenantName", "domainName", "applicationCredentialID", "applicationCredentialName", "applicationCredentialSecret"},
+	},
+	// Swift Password
+	{
+		Provider:          "Swift",
+		EnvVariable:       "OPENSTACK_APPLICATION_CREDENTIALS",
+		SnapstoreProvider: brtypes.SnapstoreProviderSwift,
+		CredentialType:    "directory",
+		CredentialFiles:   []string{"authURL", "tenantName", "domainName", "username", "password"},
+	},
+	// Swift JSON
+	{
+		Provider:          "Swift",
+		EnvVariable:       "OPENSTACK_APPLICATION_CREDENTIALS_JSON",
+		SnapstoreProvider: brtypes.SnapstoreProviderSwift,
+		CredentialType:    "file",
+		CredentialFiles:   []string{"credentials.json"},
+	},
+	// OSS
+	{
+		Provider:          "OSS",
+		EnvVariable:       "ALICLOUD_APPLICATION_CREDENTIALS",
+		SnapstoreProvider: brtypes.SnapstoreProviderOSS,
+		CredentialType:    "directory",
+		CredentialFiles:   []string{"accessKeyID", "accessKeySecret", "storageEndpoint"},
+	},
+	{
+		Provider:          "OSS",
+		EnvVariable:       "ALICLOUD_APPLICATION_CREDENTIALS_JSON",
+		SnapstoreProvider: brtypes.SnapstoreProviderOSS,
+		CredentialType:    "file",
+		CredentialFiles:   []string{"credentials.json"},
+	},
+	// OCS
+	{
+		Provider:          "OCS",
+		EnvVariable:       "OPENSHIFT_APPLICATION_CREDENTIALS",
+		SnapstoreProvider: brtypes.SnapstoreProviderOCS,
+		CredentialType:    "directory",
+		CredentialFiles:   []string{"accessKeyID", "region", "endpoint", "secretAccessKey"},
+	},
+	{
+		Provider:          "OCS",
+		EnvVariable:       "OPENSHIFT_APPLICATION_CREDENTIALS_JSON",
+		SnapstoreProvider: brtypes.SnapstoreProviderOCS,
+		CredentialType:    "file",
+		CredentialFiles:   []string{"credentials.json"},
+	},
+}
+
+var _ = Describe("Dynamic access credential rotation test for each provider", func() {
+	for _, config := range credentialTestConfigs {
+		config := config
+		Describe(fmt.Sprintf("testing secret modification for %q with %q", config.Provider, config.EnvVariable), func() {
+			Context("environment variable not set", func() {
+				It("should return error", func() {
+					newSecretModifiedTime, err := GetSnapstoreSecretModifiedTime(config.SnapstoreProvider)
+					Expect(err).Should(HaveOccurred())
+					Expect(newSecretModifiedTime.IsZero()).Should(BeTrue())
+				})
+			})
+			Context("environment variable set", func() {
+				BeforeEach(func() {
+					os.Mkdir(credentialDirectory, os.ModePerm)
+					os.Setenv(config.EnvVariable, credentialDirectory)
+					// config.CredentialType == "file" -> env variable set to file
+					if config.CredentialType == "file" {
+						os.Setenv(config.EnvVariable, filepath.Join(credentialDirectory, config.CredentialFiles[0]))
+					}
+				})
+				AfterEach(func() {
+					os.Unsetenv(config.EnvVariable)
+					os.RemoveAll(credentialDirectory)
+				})
+				Context("credentials do not exist", func() {
+					// all files are missing
+					It("should return error when all files are missing", func() {
+						newSecretModifiedTime, err := GetSnapstoreSecretModifiedTime(config.SnapstoreProvider)
+						Expect(err).Should(HaveOccurred())
+						Expect(newSecretModifiedTime.IsZero()).Should(BeTrue())
+					})
+					// one file is missing
+					for _, credentialFile := range config.CredentialFiles {
+						credentialFile := credentialFile
+						It(fmt.Sprintf("should return error when the file %q is missing", credentialFile), func() {
+							// create all credential files first
+							lastCreationTime, err := createCredentialFilesInDirectory(credentialDirectory, config.CredentialFiles)
+							Expect(err).ShouldNot(HaveOccurred())
+							Expect(lastCreationTime.IsZero()).ShouldNot(BeTrue())
+							err = os.Remove(filepath.Join(credentialDirectory, credentialFile))
+							Expect(err).ShouldNot(HaveOccurred())
+							// remove one credential file and then run the test
+							newSecretModifiedTime, err := GetSnapstoreSecretModifiedTime(config.SnapstoreProvider)
+							Expect(err).Should(HaveOccurred())
+							Expect(newSecretModifiedTime.IsZero()).Should(BeTrue())
+						})
+					}
+				})
+				Context("credentials exist", func() {
+					var lastCreationTime time.Time
+					BeforeEach(func() {
+						var err error
+						lastCreationTime, err = createCredentialFilesInDirectory(credentialDirectory, config.CredentialFiles)
+						Expect(err).ShouldNot(HaveOccurred())
+						Expect(lastCreationTime.IsZero()).ShouldNot(BeTrue())
+					})
+					// unmodified credentials
+					It("should return the latest creation time among the credential files", func() {
+						newSecretModifiedTime, err := GetSnapstoreSecretModifiedTime(config.SnapstoreProvider)
+						Expect(err).ShouldNot(HaveOccurred())
+						Expect(newSecretModifiedTime.Equal(lastCreationTime)).Should(BeTrue())
+					})
+					// modified credentials
+					for _, credentialFile := range config.CredentialFiles {
+						credentialFile := credentialFile
+						It(fmt.Sprintf("should return the modification time of the credential file %q", credentialFile), func() {
+							err := modifyCredentialFileInDirectory(credentialDirectory, credentialFile)
+							Expect(err).ShouldNot(HaveOccurred())
+							newSecretModifiedTime, err := GetSnapstoreSecretModifiedTime(config.SnapstoreProvider)
+							Expect(err).ShouldNot(HaveOccurred())
+							Expect(newSecretModifiedTime.After(lastCreationTime)).Should(BeTrue())
+						})
+					}
+				})
+			})
+		})
+	}
+})
+
+// createCredentialFilesInDirectory creates access credential files in the
+// specified directory and returns the timestamp of the last modified file.
+func createCredentialFilesInDirectory(directory string, filenames []string) (time.Time, error) {
+	var fullFilePath string
+	for _, filename := range filenames {
+		fullFilePath = filepath.Join(directory, filename)
+		// creates and writes content to the file
+		err := os.WriteFile(fullFilePath, []byte("INITIAL CONTENT"), os.ModePerm)
+		if err != nil {
+			return time.Time{}, err
+		}
+	}
+	// return the modification time (creation time here) of the last created file
+	lastFileInfo, err := os.Stat(fullFilePath)
+	if err != nil {
+		return time.Time{}, err
+	}
+	return lastFileInfo.ModTime(), nil
+}
+
+// modifyCredentialFileInDirectory modifies a specific credential file within the given directory.
+func modifyCredentialFileInDirectory(credentialDirectory, credentialFile string) error {
+	// sleep before the file is modified, file modification timestamp does not change otherwise on concourse
+	time.Sleep(time.Millisecond * 100)
+	credentialFilePath := filepath.Join(credentialDirectory, credentialFile)
+	return os.WriteFile(credentialFilePath, []byte("MODIFIED CONTENT"), os.ModePerm)
+}
 
 func resetObjectMap() {
 	for k := range objectMap {
