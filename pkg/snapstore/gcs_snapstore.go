@@ -35,8 +35,9 @@ import (
 )
 
 const (
-	storeCredentials       = "GOOGLE_APPLICATION_CREDENTIALS"
-	sourceStoreCredentials = "SOURCE_GOOGLE_APPLICATION_CREDENTIALS"
+	envStoreCredentials       = "GOOGLE_APPLICATION_CREDENTIALS"
+	envStorageAPIEndpoint     = "GOOGLE_STORAGE_API_ENDPOINT"
+	envSourceStoreCredentials = "SOURCE_GOOGLE_APPLICATION_CREDENTIALS"
 )
 
 // GCSSnapStore is snapstore with GCS object store as backend.
@@ -58,14 +59,23 @@ const (
 // NewGCSSnapStore create new GCSSnapStore from shared configuration with specified bucket.
 func NewGCSSnapStore(config *brtypes.SnapstoreConfig) (*GCSSnapStore, error) {
 	ctx := context.TODO()
-	var opts []option.ClientOption
+	var opts []option.ClientOption // no need to explicitly set store credentials here since the Google SDK picks it up from the standard environment variable
+
+	if _, ok := os.LookupEnv(envSourceStoreCredentials); !ok { // do not set endpoint override when copying backups between buckets, since the buckets may reside on different regions
+		endpoint := strings.TrimSpace(os.Getenv(envStorageAPIEndpoint))
+		if endpoint != "" {
+			opts = append(opts, option.WithEndpoint(endpoint))
+		}
+	}
+
 	if config.IsSource {
-		filename := os.Getenv(sourceStoreCredentials)
+		filename := os.Getenv(envSourceStoreCredentials)
 		if filename == "" {
-			return nil, fmt.Errorf("Environment variable %s is not set", sourceStoreCredentials)
+			return nil, fmt.Errorf("environment variable %s is not set", envSourceStoreCredentials)
 		}
 		opts = append(opts, option.WithCredentialsFile(filename))
 	}
+
 	cli, err := storage.NewClient(ctx, opts...)
 	if err != nil {
 		return nil, err
@@ -261,8 +271,8 @@ func (s *GCSSnapStore) Delete(snap brtypes.Snapshot) error {
 
 // GCSSnapStoreHash calculates and returns the hash of GCS snapstore secret.
 func GCSSnapStoreHash(config *brtypes.SnapstoreConfig) (string, error) {
-	if _, isSet := os.LookupEnv(storeCredentials); isSet {
-		if file := os.Getenv(storeCredentials); file != "" {
+	if _, isSet := os.LookupEnv(envStoreCredentials); isSet {
+		if file := os.Getenv(envStoreCredentials); file != "" {
 			credjson, err := readGCSCredentialsFile(file)
 			if err != nil {
 				return "", fmt.Errorf("error getting credentials from %v ", file)

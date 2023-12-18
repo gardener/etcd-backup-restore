@@ -14,18 +14,19 @@ The procedure to provide credentials to access the cloud provider object store v
 ### Various ways to pass Credentials:
 
 * For `AWS S3`: 
-   1. The secret file should be provided and it's file path should be made available as environment variables: `AWS_APPLICATION_CREDENTIALS` or `AWS_APPLICATION_CREDENTIALS_JSON`.
-   2. For `S3-compatible providers` such as MinIO, `endpoint`, `s3ForcePathStyle`, `insecureSkipVerify` and `trustedCaCert`, can also be made available in a above file to configure the S3 client to communicate to a non-AWS provider.
+  1. The secret file should be provided, and the file path should be made available as environment variables: `AWS_APPLICATION_CREDENTIALS` or `AWS_APPLICATION_CREDENTIALS_JSON`.
+  2. For `S3-compatible providers` such as MinIO, `endpoint`, `s3ForcePathStyle`, `insecureSkipVerify` and `trustedCaCert`, can also be made available in a above file to configure the S3 client to communicate to a non-AWS provider.
 
 * For  `Google Cloud Storage`: 
-   1. The service account json file should be provided in the `~/.gcp` as a `service-account-file.json` file.
-   2. The service account json file should be provided and it's file path should be made available as environment variable: `GOOGLE_APPLICATION_CREDENTIALS`
+  1. The service account json file should be provided in the `~/.gcp` as a `service-account-file.json` file.
+  2. The service account json file should be provided, and the file path should be made available as environment variable `GOOGLE_APPLICATION_CREDENTIALS`.
+  3. If using a storage API [endpoint override](https://pkg.go.dev/cloud.google.com/go#hdr-Endpoint_Override), such as a [regional endpoint](https://cloud.google.com/storage/docs/regional-endpoints) or a local GCS emulator endpoint, then the endpoint must be made available via environment variable `GOOGLE_STORAGE_API_ENDPOINT`, in the format `http[s]://host[:port]/storage/v1/`.
 
 * For `Azure Blob storage`:
-   1. The secret file should be provided and it's file path should be made available as environment variables: `AZURE_APPLICATION_CREDENTIALS` or `AZURE_APPLICATION_CREDENTIALS_JSON`.
+  1. The secret file should be provided, and the file path should be made available as environment variables: `AZURE_APPLICATION_CREDENTIALS` or `AZURE_APPLICATION_CREDENTIALS_JSON`.
 
 * For `Openstack Swift`:
-  1. The secret file should be provided and file path should be made available as environment variables: `OPENSTACK_APPLICATION_CREDENTIALS` or `OPENSTACK_APPLICATION_CREDENTIALS_JSON`.
+  1. The secret file should be provided, and the file path should be made available as environment variables: `OPENSTACK_APPLICATION_CREDENTIALS` or `OPENSTACK_APPLICATION_CREDENTIALS_JSON`.
 
 * For `Alicloud OSS`:
   1. The secret file should be provided and file path should be made available as environment variables: `ALICLOUD_APPLICATION_CREDENTIALS` or `ALICLOUD_APPLICATION_CREDENTIALS_JSON`.
@@ -34,7 +35,7 @@ The procedure to provide credentials to access the cloud provider object store v
   1. `ECS_ENDPOINT`, `ECS_ACCESS_KEY_ID`, `ECS_SECRET_ACCESS_KEY` should be made available as environment variables. For development purposes, the environment variables `ECS_DISABLE_SSL` and `ECS_INSECURE_SKIP_VERIFY` can also be set to "true" or "false".
 
 * For `Openshift Container Storage (OCS)`:
-  1. The secret file should be provided and file path should be made available as environment variables: `OPENSHIFT_APPLICATION_CREDENTIALS` or `OPENSHIFT_APPLICATION_CREDENTIALS_JSON`.
+  1. The secret file should be provided, and the file path should be made available as environment variables: `OPENSHIFT_APPLICATION_CREDENTIALS` or `OPENSHIFT_APPLICATION_CREDENTIALS_JSON`.
   For development purposes, the environment variables `OCS_DISABLE_SSL` and `OCS_INSECURE_SKIP_VERIFY` can also be set to "true" or "false".
 
 
