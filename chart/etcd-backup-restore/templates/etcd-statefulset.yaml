@@ -194,6 +194,13 @@ spec:
 {{- else if eq .Values.backup.storageProvider "GCS" }}
         - name: "GOOGLE_APPLICATION_CREDENTIALS"
           value: "/root/.gcp/serviceaccount.json"
+  {{- if .Values.backup.gcs.storageAPIEndpoint }}
+        - name: "GOOGLE_STORAGE_API_ENDPOINT"
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Release.Name }}-etcd-backup
+              key: "storageAPIEndpoint"
+  {{- end }}
 {{- else if eq .Values.backup.storageProvider "Swift" }}
         - name: "OS_AUTH_URL"
           valueFrom:
@@ -221,10 +228,10 @@ spec:
               name: {{ .Release.Name }}-etcd-backup
               key: "tenantName"
         - name: "OS_REGION_NAME"
-            valueFrom:
-              secretKeyRef:
-                name: { { .Release.Name } }-etcd-backup
-                key: "regionName"
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Release.Name }}-etcd-backup
+              key: "regionName"
 {{- else if eq .Values.backup.storageProvider "OSS" }}
         - name: "ALICLOUD_ENDPOINT"
           valueFrom:
