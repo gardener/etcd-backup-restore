@@ -23,9 +23,11 @@ import (
 	"math"
 	"os"
 	"path"
+	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 	"github.com/sirupsen/logrus"
@@ -41,7 +43,7 @@ const (
 	envPrefixSource                 = "SOURCE_OS_"
 	authTypePassword                = "password"
 	authTypeV3ApplicationCredential = "v3applicationcredential"
-	swiftCredentialFile             = "OPENSTACK_APPLICATION_CREDENTIALS"
+	swiftCredentialDirectory        = "OPENSTACK_APPLICATION_CREDENTIALS"
 	swiftCredentialJSONFile         = "OPENSTACK_APPLICATION_CREDENTIALS_JSON"
 )
 
@@ -125,7 +127,7 @@ func getClientOpts(isSource bool) (*clientconfig.ClientOpts, error) {
 		return clientOpts, nil
 	}
 
-	if dir, isSet := os.LookupEnv(prefix + swiftCredentialFile); isSet {
+	if dir, isSet := os.LookupEnv(prefix + swiftCredentialDirectory); isSet {
 		clientOpts, err := readSwiftCredentialFiles(dir)
 		if err != nil {
 			return &clientconfig.ClientOpts{}, fmt.Errorf("error getting credentials from %v directory", dir)
@@ -490,36 +492,47 @@ func (s *SwiftSnapStore) Delete(snap brtypes.Snapshot) error {
 	return result.Err
 }
 
-// SwiftSnapStoreHash calculates and returns the hash of openstack swift snapstore secret.
-func SwiftSnapStoreHash(config *brtypes.SnapstoreConfig) (string, error) {
-	if dir, isSet := os.LookupEnv(swiftCredentialFile); isSet {
-		swiftConfig, err := readSwiftCredentialDir(dir)
+// GetSwiftCredentialsLastModifiedTime returns the latest modification timestamp of the Swift credential file(s)
+func GetSwiftCredentialsLastModifiedTime() (time.Time, error) {
+	if dir, isSet := os.LookupEnv(swiftCredentialDirectory); isSet {
+		// credential files which are essential for creating the snapstore
+		var credentialFiles []string
+		// checking authType
+		dirEntries, err := os.ReadDir(dir)
 		if err != nil {
-			return "", fmt.Errorf("error getting credentials from %v directory", dir)
+			return time.Time{}, err
 		}
-		return getSwiftHash(swiftConfig), nil
+		authType, err := getSwiftCredentialAuthType(dirEntries)
+		if err != nil {
+			return time.Time{}, err
+		}
+
+		if authType == authTypePassword {
+			credentialFiles = []string{"authURL", "tenantName", "domainName", "username", "password"}
+		} else {
+			credentialFiles = []string{"authURL", "tenantName", "domainName", "applicationCredentialID", "applicationCredentialName", "applicationCredentialSecret"}
+		}
+		for i := range credentialFiles {
+			credentialFiles[i] = filepath.Join(dir, credentialFiles[i])
+		}
+
+		swiftTimeStamp, err := getLatestCredentialsModifiedTime(credentialFiles)
+		if err != nil {
+			return time.Time{}, fmt.Errorf("failed to get Swift credential timestamp from the directory %v with error: %v", dir, err)
+		}
+		return swiftTimeStamp, nil
 	}
 
 	if filename, isSet := os.LookupEnv(swiftCredentialJSONFile); isSet {
-		swiftConfig, err := swiftCredentialsFromJSON(filename)
+		credentialFiles := []string{filename}
+		swiftTimeStamp, err := getLatestCredentialsModifiedTime(credentialFiles)
 		if err != nil {
-			return "", fmt.Errorf("error getting credentials using %v file", filename)
+			return time.Time{}, fmt.Errorf("failed to fetch file information of the Swift JSON credential file %v with error: %v", filename, err)
 		}
-		return getSwiftHash(swiftConfig), nil
+		return swiftTimeStamp, nil
 	}
 
-	return "", nil
-}
-
-func getSwiftHash(config *swiftCredentials) string {
-	var data string
-	if config.AuthType == authTypeV3ApplicationCredential {
-		data = fmt.Sprintf("%s%s%s%s%s%s", config.AuthURL, config.TenantName, config.ApplicationCredentialID, config.DomainName, config.ApplicationCredentialName, config.ApplicationCredentialSecret)
-	} else {
-		// config.AuthType == authTypePassword
-		data = fmt.Sprintf("%s%s%s%s%s", config.AuthURL, config.TenantName, config.Username, config.DomainName, config.Password)
-	}
-	return getHash(data)
+	return time.Time{}, fmt.Errorf("no environment variable set for the Swift credential file")
 }
 
 func isSwiftConfigCorrect(config *swiftCredentials) error {

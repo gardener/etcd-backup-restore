@@ -18,14 +18,16 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
+	"time"
 
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 )
 
 const (
-	ocsCredentialFile         string = "OPENSHIFT_APPLICATION_CREDENTIALS"
-	ocsCredentialFileJSONFile string = "OPENSHIFT_APPLICATION_CREDENTIALS_JSON"
+	ocsCredentialDirectory string = "OPENSHIFT_APPLICATION_CREDENTIALS"
+	ocsCredentialJSONFile  string = "OPENSHIFT_APPLICATION_CREDENTIALS_JSON"
 )
 
 type ocsAuthOptions struct {
@@ -48,7 +50,7 @@ func NewOCSSnapStore(config *brtypes.SnapstoreConfig) (*S3SnapStore, error) {
 }
 
 func getOCSAuthOptions(prefix string) (*ocsAuthOptions, error) {
-	if filename, isSet := os.LookupEnv(prefix + ocsCredentialFileJSONFile); isSet {
+	if filename, isSet := os.LookupEnv(prefix + ocsCredentialJSONFile); isSet {
 		ao, err := readOCSCredentialsJSON(filename)
 		if err != nil {
 			return nil, fmt.Errorf("error getting credentials using %v file", filename)
@@ -56,7 +58,7 @@ func getOCSAuthOptions(prefix string) (*ocsAuthOptions, error) {
 		return ao, nil
 	}
 
-	if dir, isSet := os.LookupEnv(prefix + ocsCredentialFile); isSet {
+	if dir, isSet := os.LookupEnv(prefix + ocsCredentialDirectory); isSet {
 		ao, err := readOCSCredentialFromDir(dir)
 		if err != nil {
 			return nil, fmt.Errorf("error getting credentials from %v directory", dir)
@@ -177,17 +179,29 @@ func isOCSConfigEmpty(config ocsAuthOptions) error {
 	return fmt.Errorf("ocs s3 credentials: region, secretAccessKey, endpoint or accessKeyID is missing")
 }
 
-// OCSSnapStoreHash calculates and returns the hash of OCS snapstore secret.
-func OCSSnapStoreHash(config *brtypes.SnapstoreConfig) (string, error) {
-	ao, err := getOCSAuthOptions("")
-	if err != nil {
-		return "", err
+// GetOCSCredentialsLastModifiedTime returns the latest modification timestamp of the OCS credential file(s)
+func GetOCSCredentialsLastModifiedTime() (time.Time, error) {
+	if dir, isSet := os.LookupEnv(ocsCredentialDirectory); isSet {
+		// credential files which are essential for creating the snapstore
+		credentialFiles := []string{"accessKeyID", "region", "endpoint", "secretAccessKey"}
+		for i := range credentialFiles {
+			credentialFiles[i] = filepath.Join(dir, credentialFiles[i])
+		}
+		ocsTimeStamp, err := getLatestCredentialsModifiedTime(credentialFiles)
+		if err != nil {
+			return time.Time{}, fmt.Errorf("failed to get OCS credential timestamp from the directory %v with error: %v", dir, err)
+		}
+		return ocsTimeStamp, nil
 	}
 
-	return getOCSHash(ao), nil
-}
+	if filename, isSet := os.LookupEnv(ocsCredentialJSONFile); isSet {
+		credentialFiles := []string{filename}
+		ocsTimeStamp, err := getLatestCredentialsModifiedTime(credentialFiles)
+		if err != nil {
+			return time.Time{}, fmt.Errorf("failed to fetch file information of the OCS JSON credential file %v with error: %v", filename, err)
+		}
+		return ocsTimeStamp, nil
+	}
 
-func getOCSHash(config *ocsAuthOptions) string {
-	data := fmt.Sprintf("%s%s%s%s", config.AccessKeyID, config.Endpoint, config.Region, config.SecretAccessKey)
-	return getHash(data)
+	return time.Time{}, fmt.Errorf("no environment variable set for the OCS credential file")
 }
