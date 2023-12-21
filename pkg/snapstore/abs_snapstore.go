@@ -25,6 +25,7 @@ import (
 	"path"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -38,6 +39,8 @@ import (
 const (
 	absCredentialDirectory = "AZURE_APPLICATION_CREDENTIALS"
 	absCredentialJSONFile  = "AZURE_APPLICATION_CREDENTIALS_JSON"
+	envEnableAzurite       = "AZURE_ENABLE_STORAGE_EMULATOR" // Azurite (ABS Emulator)
+	azuriteEndpoint        = "AZURE_STORAGE_API_ENDPOINT"
 )
 
 // ABSSnapStore is an ABS backed snapstore.
@@ -73,6 +76,21 @@ func NewABSSnapStore(config *brtypes.SnapstoreConfig) (*ABSSnapStore, error) {
 			TryTimeout: downloadTimeout,
 		}})
 	u, err := url.Parse(fmt.Sprintf("https://%s.%s", storageAccount, brtypes.AzureBlobStorageHostName))
+	// Check if backup-restore is running with the Azure Blob Storage Emulator - Azurite
+	if enableAzurite, ok := os.LookupEnv(envEnableAzurite); ok {
+		isEmulator, err := strconv.ParseBool(enableAzurite)
+		if err != nil {
+			return nil, fmt.Errorf("value %s for the environment variable %s could not be parsed", enableAzurite, envEnableAzurite)
+		}
+		if isEmulator {
+			if endpoint, ok := os.LookupEnv(azuriteEndpoint); ok {
+				// application protocol is set by the user of Azurite, not by backup-restore
+				u, err = url.Parse(fmt.Sprintf("%s/%s", endpoint, credentials.AccountName()))
+			} else {
+				return nil, fmt.Errorf("environment variable %s not set while the environment variable %s is set to true", azuriteEndpoint, envEnableAzurite)
+			}
+		}
+	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse service url: %v", err)
 	}

@@ -94,6 +94,8 @@ backup:
   # abs:
   #   storageAccount: storage-account-with-object-storage-privileges
   #   storageKey: storage-key-with-object-storage-privileges
+  #   enableAzurite: boolean-float-to-enable-e2e-tests-to-use-azure-emulator # optional
+  #   storageAPIEndpoint: endpoint-override-for-storage-api # if enableAzurite is true
   # swift:
   #   authURL: identity-server-url
   #   domainName: domain-name
