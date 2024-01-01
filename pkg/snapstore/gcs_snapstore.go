@@ -12,6 +12,7 @@ import (
 	"os"
 	"path"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -29,6 +30,7 @@ const (
 	envStoreCredentials       = "GOOGLE_APPLICATION_CREDENTIALS"
 	envStorageAPIEndpoint     = "GOOGLE_STORAGE_API_ENDPOINT"
 	envSourceStoreCredentials = "SOURCE_GOOGLE_APPLICATION_CREDENTIALS"
+	envEmulatorEnabled        = "GOOGLE_EMULATOR_ENABLED"
 )
 
 // GCSSnapStore is snapstore with GCS object store as backend.
@@ -40,6 +42,13 @@ type GCSSnapStore struct {
 	maxParallelChunkUploads uint
 	minChunkSize            int64
 	tempDir                 string
+	chunkDirSuffix          string
+}
+
+// gcsEmulatorConfig holds the configuration for the fake GCS emulator
+type gcsEmulatorConfig struct {
+	enabled  bool   // whether the fake GCS emulator is enabled
+	endpoint string // the endpoint of the fake GCS emulator
 }
 
 const (
@@ -50,16 +59,28 @@ const (
 // NewGCSSnapStore create new GCSSnapStore from shared configuration with specified bucket.
 func NewGCSSnapStore(config *brtypes.SnapstoreConfig) (*GCSSnapStore, error) {
 	ctx := context.TODO()
+	var emulatorConfig gcsEmulatorConfig
+	emulatorConfig.enabled = isEmulatorEnabled()
 	var opts []option.ClientOption // no need to explicitly set store credentials here since the Google SDK picks it up from the standard environment variable
 
-	if _, ok := os.LookupEnv(envSourceStoreCredentials); !ok { // do not set endpoint override when copying backups between buckets, since the buckets may reside on different regions
+	if _, ok := os.LookupEnv(envSourceStoreCredentials); !ok || emulatorConfig.enabled { // do not set endpoint override when copying backups between buckets, since the buckets may reside on different regions
 		endpoint := strings.TrimSpace(os.Getenv(envStorageAPIEndpoint))
 		if endpoint != "" {
 			opts = append(opts, option.WithEndpoint(endpoint))
+			if emulatorConfig.enabled {
+				emulatorConfig.endpoint = endpoint
+			}
 		}
 	}
-
-	if config.IsSource {
+	var chunkDirSuffix string
+	if emulatorConfig.enabled {
+		err := emulatorConfig.configureClient(opts)
+		if err != nil {
+			return nil, err
+		}
+		chunkDirSuffix = brtypes.ChunkDirSuffix
+	}
+	if config.IsSource && !emulatorConfig.enabled {
 		filename := os.Getenv(envSourceStoreCredentials)
 		if filename == "" {
 			return nil, fmt.Errorf("environment variable %s is not set", envSourceStoreCredentials)
@@ -73,11 +94,11 @@ func NewGCSSnapStore(config *brtypes.SnapstoreConfig) (*GCSSnapStore, error) {
 	}
 	gcsClient := stiface.AdaptClient(cli)
 
-	return NewGCSSnapStoreFromClient(config.Container, config.Prefix, config.TempDir, config.MaxParallelChunkUploads, config.MinChunkSize, gcsClient), nil
+	return NewGCSSnapStoreFromClient(config.Container, config.Prefix, config.TempDir, config.MaxParallelChunkUploads, config.MinChunkSize, chunkDirSuffix, gcsClient), nil
 }
 
 // NewGCSSnapStoreFromClient create new GCSSnapStore from shared configuration with specified bucket.
-func NewGCSSnapStoreFromClient(bucket, prefix, tempDir string, maxParallelChunkUploads uint, minChunkSize int64, cli stiface.Client) *GCSSnapStore {
+func NewGCSSnapStoreFromClient(bucket, prefix, tempDir string, maxParallelChunkUploads uint, minChunkSize int64, chunkDirSuffix string, cli stiface.Client) *GCSSnapStore {
 	return &GCSSnapStore{
 		prefix:                  prefix,
 		client:                  cli,
@@ -85,7 +106,31 @@ func NewGCSSnapStoreFromClient(bucket, prefix, tempDir string, maxParallelChunkU
 		maxParallelChunkUploads: maxParallelChunkUploads,
 		minChunkSize:            minChunkSize,
 		tempDir:                 tempDir,
+		chunkDirSuffix:          chunkDirSuffix,
 	}
+}
+
+// isEmulatorEnabled checks if the fake GCS emulator is enabled
+func isEmulatorEnabled() bool {
+	isFakeGCSEnabled, ok := os.LookupEnv(envEmulatorEnabled)
+	if !ok {
+		return false
+	}
+	emulatorEnabled, err := strconv.ParseBool(isFakeGCSEnabled)
+	if err != nil {
+		return false
+	}
+	return emulatorEnabled
+}
+
+// configureClient configures the fake gcs emulator
+func (e *gcsEmulatorConfig) configureClient(opts []option.ClientOption) error {
+	err := os.Setenv("STORAGE_EMULATOR_HOST", strings.TrimPrefix(e.endpoint, "http://"))
+	if err != nil {
+		return fmt.Errorf("failed to set the environment variable for the fake GCS emulator: %v", err)
+	}
+	opts = append(opts, option.WithoutAuthentication())
+	return nil
 }
 
 // Fetch should open reader for the snapshot file from store.
@@ -155,7 +200,7 @@ func (s *GCSSnapStore) Save(snap brtypes.Snapshot, rc io.ReadCloser) error {
 	var subObjects []stiface.ObjectHandle
 	prefix := adaptPrefix(&snap, s.prefix)
 	for partNumber := int64(1); partNumber <= noOfChunks; partNumber++ {
-		name := path.Join(prefix, snap.SnapDir, snap.SnapName, fmt.Sprintf("%010d", partNumber))
+		name := path.Join(prefix, snap.SnapDir, fmt.Sprintf("%s%s", snap.SnapName, s.chunkDirSuffix), fmt.Sprintf("%010d", partNumber))
 		obj := bh.Object(name)
 		subObjects = append(subObjects, obj)
 	}
@@ -184,7 +229,7 @@ func (s *GCSSnapStore) uploadComponent(snap *brtypes.Snapshot, file *os.File, of
 	sr := io.NewSectionReader(file, offset, size)
 	bh := s.client.Bucket(s.bucket)
 	partNumber := ((offset / chunkSize) + 1)
-	name := path.Join(adaptPrefix(snap, s.prefix), snap.SnapDir, snap.SnapName, fmt.Sprintf("%010d", partNumber))
+	name := path.Join(adaptPrefix(snap, s.prefix), snap.SnapDir, fmt.Sprintf("%s%s", snap.SnapName, s.chunkDirSuffix), fmt.Sprintf("%010d", partNumber))
 	obj := bh.Object(name)
 	ctx, cancel := context.WithTimeout(context.TODO(), chunkUploadTimeout)
 	defer cancel()

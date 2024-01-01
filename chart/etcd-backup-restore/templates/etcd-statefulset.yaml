@@ -218,6 +218,13 @@ spec:
               key: "storageAPIEndpoint"
               optional: true
   {{- end }}
+  {{- if .Values.backup.gcs.emulatorEnabled }}
+        - name: "GOOGLE_EMULATOR_ENABLED"
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Release.Name }}-etcd-backup
+              key: "emulatorEnabled"
+  {{- end }}
 {{- else if eq .Values.backup.storageProvider "Swift" }}
         - name: "OS_AUTH_URL"
           valueFrom:
