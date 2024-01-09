@@ -109,7 +109,7 @@ var _ = Describe("Save, List, Fetch, Delete from mock snapstore", func() {
 				prefix:           prefixV2,
 				multiPartUploads: map[string]*[][]byte{},
 			}),
-			"swift": NewSwiftSnapstoreFromClient(bucket, prefixV2, "/tmp", 5, brtypes.MinChunkSize, fake.ServiceClient()),
+			"swift": NewSwiftSnapstoreFromClient(bucket, prefixV2, "/tmp", 5, brtypes.MinChunkSize, fake.ServiceClient(), false),
 			"ABS":   newFakeABSSnapstore(),
 			"GCS": NewGCSSnapStoreFromClient(bucket, prefixV2, "/tmp", 5, brtypes.MinChunkSize, &mockGCSClient{
 				objects: objectMap,

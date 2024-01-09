@@ -56,6 +56,10 @@ type SwiftSnapStore struct {
 	maxParallelChunkUploads uint
 	minChunkSize            int64
 	tempDir                 string
+	// deleteChunksForObject decides whether deletion of a (manifest) object should also delete the
+	// associated chunks (segment objects).
+	// Default: true
+	deleteChunksForObject bool
 }
 
 type applicationCredential struct {
@@ -110,10 +114,9 @@ func NewSwiftSnapStore(config *brtypes.SnapstoreConfig) (*SwiftSnapStore, error)
 	})
 	if err != nil {
 		return nil, err
-
 	}
 
-	return NewSwiftSnapstoreFromClient(config.Container, config.Prefix, config.TempDir, config.MaxParallelChunkUploads, config.MinChunkSize, client), nil
+	return NewSwiftSnapstoreFromClient(config.Container, config.Prefix, config.TempDir, config.MaxParallelChunkUploads, config.MinChunkSize, client, true), nil
 
 }
 
@@ -313,7 +316,7 @@ func readSwiftCredentialDir(dirName string) (*swiftCredentials, error) {
 }
 
 // NewSwiftSnapstoreFromClient will create the new Swift snapstore object from Swift client
-func NewSwiftSnapstoreFromClient(bucket, prefix, tempDir string, maxParallelChunkUploads uint, minChunkSize int64, cli *gophercloud.ServiceClient) *SwiftSnapStore {
+func NewSwiftSnapstoreFromClient(bucket, prefix, tempDir string, maxParallelChunkUploads uint, minChunkSize int64, cli *gophercloud.ServiceClient, deleteChunksForObject bool) *SwiftSnapStore {
 	return &SwiftSnapStore{
 		bucket:                  bucket,
 		prefix:                  prefix,
@@ -321,6 +324,7 @@ func NewSwiftSnapstoreFromClient(bucket, prefix, tempDir string, maxParallelChun
 		maxParallelChunkUploads: maxParallelChunkUploads,
 		minChunkSize:            minChunkSize,
 		tempDir:                 tempDir,
+		deleteChunksForObject:   deleteChunksForObject,
 	}
 }
 
@@ -508,23 +512,25 @@ func (s *SwiftSnapStore) getSnapshotChunks(snapshot brtypes.Snapshot) (brtypes.S
 // This includes the manifest object as well as the segment objects, as
 // described in https://docs.openstack.org/swift/latest/overview_large_objects.html
 func (s *SwiftSnapStore) Delete(snap brtypes.Snapshot) error {
-	chunks, err := s.getSnapshotChunks(snap)
-	if err != nil {
-		return err
-	}
+	if s.deleteChunksForObject {
+		chunks, err := s.getSnapshotChunks(snap)
+		if err != nil {
+			return err
+		}
 
-	var chunkObjectNames []string
-	for _, chunk := range chunks {
-		chunkObjectNames = append(chunkObjectNames, path.Join(chunk.Prefix, chunk.SnapDir, chunk.SnapName))
+		var chunkObjectNames []string
+		for _, chunk := range chunks {
+			chunkObjectNames = append(chunkObjectNames, path.Join(chunk.Prefix, chunk.SnapDir, chunk.SnapName))
+		}
+
+		chunkObjectsDeleteResult := objects.BulkDelete(s.client, s.bucket, chunkObjectNames)
+		if chunkObjectsDeleteResult.Err != nil {
+			return chunkObjectsDeleteResult.Err
+		}
 	}
 
 	manifestObjectDeleteResult := objects.Delete(s.client, s.bucket, path.Join(snap.Prefix, snap.SnapDir, snap.SnapName), nil)
-	if manifestObjectDeleteResult.Err != nil {
-		return manifestObjectDeleteResult.Err
-	}
-
-	chunkObjectsDeleteResult := objects.BulkDelete(s.client, s.bucket, chunkObjectNames)
-	return chunkObjectsDeleteResult.Err
+	return manifestObjectDeleteResult.Err
 }
 
 // GetSwiftCredentialsLastModifiedTime returns the latest modification timestamp of the Swift credential file(s)

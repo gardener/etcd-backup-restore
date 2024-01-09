@@ -70,7 +70,9 @@ func handleCreateTextObject(w http.ResponseWriter, r *http.Request) {
 		logrus.Errorf("object name cannot be empty")
 		w.WriteHeader(http.StatusBadRequest)
 	}
+
 	if len(r.Header.Get("X-Object-Manifest")) == 0 {
+		// segment object
 		buf := new(bytes.Buffer)
 		if _, err = io.Copy(buf, r.Body); err != nil {
 			logrus.Errorf("failed to read content %v", err)
@@ -78,12 +80,13 @@ func handleCreateTextObject(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		content = buf.Bytes()
+		objectMapMutex.Lock()
+		objectMap[key] = &content
+		objectMapMutex.Unlock()
 	} else {
 		content = make([]byte, 0)
 	}
-	objectMapMutex.Lock()
-	objectMap[key] = &content
-	objectMapMutex.Unlock()
+
 	hash := md5.New()
 	io.WriteString(hash, string(content))
 	localChecksum := hash.Sum(nil)
