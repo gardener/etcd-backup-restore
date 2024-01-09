@@ -38,7 +38,6 @@ import (
 )
 
 const (
-	mixed     = "mixed"
 	snapsInV1 = "v1"
 	snapsInV2 = "v2"
 )
@@ -120,7 +119,7 @@ var _ = Describe("Snapshotter", func() {
 
 			It("should timeout & not take any snapshot", func() {
 				maxBackups = 2
-				testTimeout := time.Duration(time.Minute * time.Duration(maxBackups+1))
+				testTimeout := time.Minute * time.Duration(maxBackups+1)
 				snapstoreConfig = &brtypes.SnapstoreConfig{Container: path.Join(outputDir, "snapshotter_2.bkp")}
 				store, err = snapstore.GetSnapstore(snapstoreConfig)
 				Expect(err).ShouldNot(HaveOccurred())
@@ -156,7 +155,7 @@ var _ = Describe("Snapshotter", func() {
 				BeforeEach(func() {
 					schedule = "* * 31 2 *"
 					maxBackups = 2
-					testTimeout := time.Duration(time.Minute * time.Duration(maxBackups+1))
+					testTimeout := time.Minute * time.Duration(maxBackups+1)
 					snapstoreConfig = &brtypes.SnapstoreConfig{Container: path.Join(outputDir, "snapshotter_3.bkp")}
 					store, err = snapstore.GetSnapstore(snapstoreConfig)
 					Expect(err).ShouldNot(HaveOccurred())
@@ -202,13 +201,13 @@ var _ = Describe("Snapshotter", func() {
 					schedule = "*/1 * * * *"
 					maxBackups = 2
 					// We will wait for maxBackups+1 times schedule period
-					testTimeout = time.Duration(time.Minute * time.Duration(maxBackups+1))
+					testTimeout = time.Minute * time.Duration(maxBackups+1)
 				})
 
 				Context("with delta snapshot interval set to zero seconds", func() {
 					BeforeEach(func() {
 						deltaSnapshotInterval = 0
-						testTimeout = time.Duration(time.Minute * time.Duration(maxBackups))
+						testTimeout = time.Minute * time.Duration(maxBackups)
 					})
 
 					It("should take periodic backups without delta snapshots", func() {
@@ -263,7 +262,7 @@ var _ = Describe("Snapshotter", func() {
 				Context("with delta snapshots enabled", func() {
 					BeforeEach(func() {
 						deltaSnapshotInterval = 10 * time.Second
-						testTimeout = time.Duration(time.Minute * time.Duration(maxBackups+1))
+						testTimeout = time.Minute * time.Duration(maxBackups+1)
 					})
 
 					Context("with snapshotter starting without first full snapshot", func() {
@@ -390,94 +389,6 @@ var _ = Describe("Snapshotter", func() {
 				}
 			})
 
-			//Test to check backward compatibility of garbage collector
-			//Checks garbage collector behaviour (in exponential config) when both v1 and v2 directories are present
-			//TODO: Consider removing when backward compatibility no longer needed
-			It("should garbage collect exponentially from both v1 and v2 dir structures (backward compatible)", func() {
-				logger.Infoln("creating expected output")
-
-				// Prepare expected resultant snapshot list
-				var (
-					store, snapstoreConfig = prepareStoreForBackwardCompatibleGC(now, "gc_exponential_backward_compatible.bkp")
-					snapTime               = time.Date(now.Year(), now.Month(), now.Day()-35, 0, -30, 0, 0, now.Location())
-					expectedSnapList       = brtypes.SnapList{}
-				)
-
-				expectedSnapList = prepareExpectedSnapshotsList(snapTime, now, expectedSnapList, mixed)
-
-				//start test
-				snapshotterConfig := &brtypes.SnapshotterConfig{
-					FullSnapshotSchedule:     schedule,
-					DeltaSnapshotPeriod:      wrappers.Duration{Duration: 10 * time.Second},
-					DeltaSnapshotMemoryLimit: brtypes.DefaultDeltaSnapMemoryLimit,
-					GarbageCollectionPeriod:  wrappers.Duration{Duration: garbageCollectionPeriod},
-					GarbageCollectionPolicy:  brtypes.GarbageCollectionPolicyExponential,
-					MaxBackups:               maxBackups,
-				}
-
-				ssr, err := NewSnapshotter(logger, snapshotterConfig, store, etcdConnectionConfig, compressionConfig, healthConfig, snapstoreConfig)
-				Expect(err).ShouldNot(HaveOccurred())
-
-				gcCtx, cancel := context.WithTimeout(testCtx, testTimeout)
-				defer cancel()
-				ssr.RunGarbageCollector(gcCtx.Done())
-
-				list, err := store.List()
-				Expect(err).ShouldNot(HaveOccurred())
-				Expect(len(list)).Should(Equal(len(expectedSnapList)))
-
-				for index, snap := range list {
-					fmt.Println("Snap day: ", snap.CreatedOn.Day())
-					fmt.Println("Expected snap day: ", expectedSnapList[index].CreatedOn.Day())
-					Expect(snap.CreatedOn).Should(Equal(expectedSnapList[index].CreatedOn))
-					Expect(snap.Kind).Should(Equal(expectedSnapList[index].Kind))
-					Expect(snap.SnapDir).Should(Equal(expectedSnapList[index].SnapDir))
-				}
-			})
-
-			//Test to check backward compatibility of garbage collector
-			//Tests garbage collector behaviour (in exponential config) when only v1 directory is present
-			//TODO: Consider removing when backward compatibility no longer needed
-			It("should garbage collect exponentially with only v1 dir structure present (backward compatible test)", func() {
-				logger.Infoln("creating expected output")
-
-				// Prepare expected resultant snapshot list
-				var (
-					store, snapstoreConfig = prepareStoreForGarbageCollection(now, "gc_exponential_backward_compatiblev1.bkp", "v1")
-					snapTime               = time.Date(now.Year(), now.Month(), now.Day()-35, 0, -30, 0, 0, now.Location())
-					expectedSnapList       = brtypes.SnapList{}
-				)
-
-				expectedSnapList = prepareExpectedSnapshotsList(snapTime, now, expectedSnapList, snapsInV1)
-
-				//start test
-				snapshotterConfig := &brtypes.SnapshotterConfig{
-					FullSnapshotSchedule:     schedule,
-					DeltaSnapshotPeriod:      wrappers.Duration{Duration: 10 * time.Second},
-					DeltaSnapshotMemoryLimit: brtypes.DefaultDeltaSnapMemoryLimit,
-					GarbageCollectionPeriod:  wrappers.Duration{Duration: garbageCollectionPeriod},
-					GarbageCollectionPolicy:  brtypes.GarbageCollectionPolicyExponential,
-					MaxBackups:               maxBackups,
-				}
-
-				ssr, err := NewSnapshotter(logger, snapshotterConfig, store, etcdConnectionConfig, compressionConfig, healthConfig, snapstoreConfig)
-				Expect(err).ShouldNot(HaveOccurred())
-
-				gcCtx, cancel := context.WithTimeout(testCtx, testTimeout)
-				defer cancel()
-				ssr.RunGarbageCollector(gcCtx.Done())
-
-				list, err := store.List()
-				Expect(err).ShouldNot(HaveOccurred())
-				Expect(len(list)).Should(Equal(len(expectedSnapList)))
-
-				for index, snap := range list {
-					Expect(snap.CreatedOn).Should(Equal(expectedSnapList[index].CreatedOn))
-					Expect(snap.Kind).Should(Equal(expectedSnapList[index].Kind))
-					Expect(snap.SnapDir).Should(Equal(expectedSnapList[index].SnapDir))
-				}
-			})
-
 			It("should garbage collect limitBased", func() {
 				now := time.Now().UTC()
 				store, snapstoreConfig := prepareStoreForGarbageCollection(now, "garbagecollector_limit_based.bkp", "v2")
@@ -514,34 +425,6 @@ var _ = Describe("Snapshotter", func() {
 						Expect(snap.Kind).Should(Equal(brtypes.SnapshotKindDelta))
 					}
 				}
-			})
-
-			// Test to check backward compatibility of garbage collector
-			// Tests garbage collector behaviour (in limit based config) when only v1 directory is present
-			// TODO: Consider removing when backward compatibility no longer needed
-			It("should garbage collect limitBased with only v1 dir structure present (backward compatible test)", func() {
-				now := time.Now().UTC()
-				store, snapstoreConfig := prepareStoreForGarbageCollection(now, "gc_limit_based_backward_compatiblev1.bkp", "v1")
-				snapshotterConfig := &brtypes.SnapshotterConfig{
-					FullSnapshotSchedule:     schedule,
-					DeltaSnapshotPeriod:      wrappers.Duration{Duration: 10 * time.Second},
-					DeltaSnapshotMemoryLimit: brtypes.DefaultDeltaSnapMemoryLimit,
-					GarbageCollectionPeriod:  wrappers.Duration{Duration: garbageCollectionPeriod},
-					GarbageCollectionPolicy:  brtypes.GarbageCollectionPolicyLimitBased,
-					MaxBackups:               maxBackups,
-				}
-
-				ssr, err := NewSnapshotter(logger, snapshotterConfig, store, etcdConnectionConfig, compressionConfig, healthConfig, snapstoreConfig)
-				Expect(err).ShouldNot(HaveOccurred())
-
-				gcCtx, cancel := context.WithTimeout(testCtx, testTimeout)
-				defer cancel()
-				ssr.RunGarbageCollector(gcCtx.Done())
-
-				list, err := store.List()
-				Expect(err).ShouldNot(HaveOccurred())
-
-				validateLimitBasedSnapshots(list, maxBackups, snapsInV1)
 			})
 
 			Describe("###GarbageCollectDeltaSnapshots", func() {
@@ -699,7 +582,7 @@ var _ = Describe("Snapshotter", func() {
 				})
 				Context("no previous snapshots, first snapshot upload is underway with few chunks uploaded", func() {
 					It("should not delete any chunks", func() {
-						// Add 4 chunks of kind Full with startRevision=0, lastRevision=1
+						// Add 4 chunks of kind Full, with startRevision=0, lastRevision=1
 						err := addObjectsToStore(store, "Chunk", "Full", 0, 1, 4, time.Now())
 						Expect(err).NotTo(HaveOccurred())
 
@@ -761,7 +644,7 @@ var _ = Describe("Snapshotter", func() {
 				})
 				Context("previous snapshot upload is complete, current snapshot upload underway", func() {
 					It("should not delete chunks of currently uploading snapshot", func() {
-						// add 5 chunks of kind Full with startRevision = 1, lastRevision = 3 which corresponds to the below full snapshot
+						// add 5 chunks of kind Full, with startRevision = 1, lastRevision = 3 which corresponds to the below full snapshot
 						err := addObjectsToStore(store, "Chunk", "Full", 1, 3, 5, time.Now())
 						Expect(err).NotTo(HaveOccurred())
 						// add the full snapshot with startRevision = 1, lastRevision = 3
@@ -911,7 +794,7 @@ var _ = Describe("Snapshotter", func() {
 					ssr, err = NewSnapshotter(logger, snapshotterConfig, store, etcdConnectionConfig, compressionConfig, healthConfig, snapstoreConfig)
 					Expect(err).ShouldNot(HaveOccurred())
 
-					// Previous full snapshot was taken 1 days before at exactly at scheduled time
+					// Previous full snapshot was taken 1 day before at exactly at scheduled time
 					ssr.PrevFullSnapshot = &brtypes.Snapshot{
 						CreatedOn: time.Date(time.Now().Year(), time.Now().Month(), time.Now().Day()-1, (currentHour+2)%24, (currentMin+1)%60, 0, 0, time.Local),
 					}
@@ -1022,11 +905,11 @@ var _ = Describe("Snapshotter", func() {
 	})
 })
 
-// prepareExpectedSnapshotsList prepares the expected snapshotlist based on directory structure
+// prepareExpectedSnapshotsList prepares the expected snapshot list based on directory structure
 func prepareExpectedSnapshotsList(snapTime time.Time, now time.Time, expectedSnapList brtypes.SnapList, directoryStruct string) brtypes.SnapList {
 	// weekly snapshot
 	for i := 1; i <= 4; i++ {
-		snapTime = snapTime.Add(time.Duration(time.Hour * 24 * 7))
+		snapTime = snapTime.Add(time.Hour * 24 * 7)
 		snap := &brtypes.Snapshot{
 			Kind:          brtypes.SnapshotKindFull,
 			CreatedOn:     snapTime,
@@ -1045,7 +928,7 @@ func prepareExpectedSnapshotsList(snapTime time.Time, now time.Time, expectedSna
 	// daily snapshot
 	// in case of mixed directory structure, we would list snaps of first 3 days from v1 structure and rest of all snaps from v2 structure
 	for i := 1; i <= 7; i++ {
-		snapTime = snapTime.Add(time.Duration(time.Hour * 24))
+		snapTime = snapTime.Add(time.Hour * 24)
 		snap := &brtypes.Snapshot{
 			Kind:          brtypes.SnapshotKindFull,
 			CreatedOn:     snapTime,
@@ -1066,7 +949,7 @@ func prepareExpectedSnapshotsList(snapTime time.Time, now time.Time, expectedSna
 	fmt.Println("Daily snapshot list prepared")
 
 	// hourly snapshot
-	snapTime = snapTime.Add(time.Duration(time.Hour))
+	snapTime = snapTime.Add(time.Hour)
 	for now.Truncate(time.Hour).Sub(snapTime) > 0 {
 		snap := &brtypes.Snapshot{
 			Kind:          brtypes.SnapshotKindFull,
@@ -1079,7 +962,7 @@ func prepareExpectedSnapshotsList(snapTime time.Time, now time.Time, expectedSna
 			snap.GenerateSnapshotDirectory()
 		}
 		expectedSnapList = append(expectedSnapList, snap)
-		snapTime = snapTime.Add(time.Duration(time.Hour))
+		snapTime = snapTime.Add(time.Hour)
 	}
 	fmt.Println("Hourly snapshot list prepared")
 
@@ -1096,7 +979,7 @@ func prepareExpectedSnapshotsList(snapTime time.Time, now time.Time, expectedSna
 		snap.GenerateSnapshotDirectory()
 	}
 	expectedSnapList = append(expectedSnapList, snap)
-	snapTime = snapTime.Add(time.Duration(time.Minute * 30))
+	snapTime = snapTime.Add(time.Minute * 30)
 	for now.Sub(snapTime) >= 0 {
 		snap := &brtypes.Snapshot{
 			Kind:          brtypes.SnapshotKindFull,
@@ -1109,13 +992,13 @@ func prepareExpectedSnapshotsList(snapTime time.Time, now time.Time, expectedSna
 			snap.GenerateSnapshotDirectory()
 		}
 		expectedSnapList = append(expectedSnapList, snap)
-		snapTime = snapTime.Add(time.Duration(time.Minute * 30))
+		snapTime = snapTime.Add(time.Minute * 30)
 	}
 	fmt.Println("Current hour full snapshot list prepared")
 
 	// delta snapshots
-	snapTime = snapTime.Add(time.Duration(-time.Minute * 30))
-	snapTime = snapTime.Add(time.Duration(time.Minute * 10))
+	snapTime = snapTime.Add(-time.Minute * 30)
+	snapTime = snapTime.Add(time.Minute * 10)
 	for now.Sub(snapTime) >= 0 {
 		snap := &brtypes.Snapshot{
 			Kind:          brtypes.SnapshotKindDelta,
@@ -1128,7 +1011,7 @@ func prepareExpectedSnapshotsList(snapTime time.Time, now time.Time, expectedSna
 			snap.GenerateSnapshotDirectory()
 		}
 		expectedSnapList = append(expectedSnapList, snap)
-		snapTime = snapTime.Add(time.Duration(time.Minute * 10))
+		snapTime = snapTime.Add(time.Minute * 10)
 	}
 	fmt.Println("Incremental snapshot list prepared")
 	return expectedSnapList
@@ -1169,100 +1052,10 @@ func prepareStoreForGarbageCollection(forTime time.Time, storeContainer string, 
 		if storePrefix == "v1" {
 			snap.GenerateSnapshotDirectory()
 		}
-		snapTime = snapTime.Add(time.Duration(time.Minute * 10))
-		store.Save(snap, io.NopCloser(strings.NewReader(fmt.Sprintf("dummy-snapshot-content for snap created on %s", snap.CreatedOn))))
+		snapTime = snapTime.Add(time.Minute * 10)
+		Expect(store.Save(snap, io.NopCloser(strings.NewReader(fmt.Sprintf("dummy-snapshot-content for snap created on %s", snap.CreatedOn))))).ShouldNot(HaveOccurred())
 	}
 	return store, snapstoreConf
-}
-
-// prepareStoreForBackwardCompatibleGC populates the store with dummy snapshots in both v1 and v2 drectory structures for backward compatible garbage collection tests
-// Tied up with backward compatibility tests
-// TODO: Consider removing when backward compatibility no longer needed
-func prepareStoreForBackwardCompatibleGC(forTime time.Time, storeContainer string) (brtypes.SnapStore, *brtypes.SnapstoreConfig) {
-	var (
-		// Divide the forTime into two period. First period is during when snapshots would be collected in v1 and second period is when snapshots would be collected in v2.
-		snapTimev1         = time.Date(forTime.Year(), forTime.Month(), forTime.Day()-36, 0, 0, 0, 0, forTime.Location())
-		snapTimev2         = time.Date(forTime.Year(), forTime.Month(), forTime.Day()-4, 0, 0, 0, 0, forTime.Location())
-		count              = 0
-		noOfDeltaSnapshots = 3
-	)
-	fmt.Println("setting up garbage collection test")
-	// Prepare store
-	snapstoreConfig := &brtypes.SnapstoreConfig{Container: path.Join(outputDir, storeContainer), Prefix: "v1"}
-	store, err := snapstore.GetSnapstore(snapstoreConfig)
-	Expect(err).ShouldNot(HaveOccurred())
-
-	for snapTimev2.Sub(snapTimev1) >= 0 {
-		var kind = brtypes.SnapshotKindDelta
-		if count == 0 {
-			kind = brtypes.SnapshotKindFull
-		}
-		count = (count + 1) % noOfDeltaSnapshots
-		snap := brtypes.Snapshot{
-			Kind:          kind,
-			CreatedOn:     snapTimev1,
-			StartRevision: 0,
-			LastRevision:  1001,
-		}
-		snap.GenerateSnapshotName()
-		snap.GenerateSnapshotDirectory()
-		snapTimev1 = snapTimev1.Add(time.Duration(time.Minute * 10))
-		store.Save(snap, io.NopCloser(strings.NewReader(fmt.Sprintf("dummy-snapshot-content for snap created on %s", snap.CreatedOn))))
-	}
-
-	count = 0
-	// Prepare store
-	snapstoreConfig = &brtypes.SnapstoreConfig{Container: path.Join(outputDir, storeContainer), Prefix: "v2"}
-	store, err = snapstore.GetSnapstore(snapstoreConfig)
-	Expect(err).ShouldNot(HaveOccurred())
-
-	for forTime.Sub(snapTimev2) >= 0 {
-		var kind = brtypes.SnapshotKindDelta
-		if count == 0 {
-			kind = brtypes.SnapshotKindFull
-		}
-		count = (count + 1) % noOfDeltaSnapshots
-		snapv2 := brtypes.Snapshot{
-			Kind:          kind,
-			CreatedOn:     snapTimev2,
-			StartRevision: 0,
-			LastRevision:  1001,
-		}
-		snapv2.GenerateSnapshotName()
-		snapTimev2 = snapTimev2.Add(time.Duration(time.Minute * 10))
-		store.Save(snapv2, io.NopCloser(strings.NewReader(fmt.Sprintf("dummy-snapshot-content for snap created on %s", snapv2.CreatedOn))))
-	}
-	return store, snapstoreConfig
-}
-
-// validateLimitBasedSnapshots verifies whether the snapshot list after being garbage collected using the limit-based configuration is a valid snapshot list
-func validateLimitBasedSnapshots(list brtypes.SnapList, maxBackups uint, mode string) {
-	incr := false
-	fullSnapCount := 0
-	for _, snap := range list {
-		if incr == false {
-			if snap.Kind == brtypes.SnapshotKindDelta {
-				//Indicates that no full snapshot can occur after a incr snapshot in an already garbage collected list
-				incr = true
-			} else {
-				//Number of full snapshots in garbage collected list cannot be more than the maxBackups configuration
-				fullSnapCount++
-				Expect(fullSnapCount).Should(BeNumerically("<=", maxBackups))
-			}
-			if mode == snapsInV2 {
-				Expect(snap.SnapDir).Should(Equal(""))
-			} else if mode == snapsInV1 {
-				Expect(snap.SnapDir).Should(ContainSubstring("Backup"))
-			}
-		} else {
-			Expect(snap.Kind).Should(Equal(brtypes.SnapshotKindDelta))
-			if mode == snapsInV2 {
-				Expect(snap.SnapDir).Should(Equal(""))
-			} else if mode == snapsInV1 {
-				Expect(snap.SnapDir).Should(ContainSubstring("Backup"))
-			}
-		}
-	}
 }
 
 /*
@@ -1293,8 +1086,8 @@ func prepareStoreWithDeltaSnapshots(storeContainer string, numDeltaSnapshots int
 			LastRevision:  int64(i+1) * 10,
 		}
 		snap.GenerateSnapshotName()
-		snapTime = snapTime.Add(time.Duration(time.Minute * 10))
-		store.Save(snap, io.NopCloser(strings.NewReader(fmt.Sprintf("dummy-snapshot-content for snap created on %s", snap.CreatedOn))))
+		snapTime = snapTime.Add(time.Minute * 10)
+		Expect(store.Save(snap, io.NopCloser(strings.NewReader(fmt.Sprintf("dummy-snapshot-content for snap created on %s", snap.CreatedOn))))).ShouldNot(HaveOccurred())
 	}
 
 	return store
