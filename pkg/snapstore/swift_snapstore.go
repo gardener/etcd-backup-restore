@@ -518,14 +518,17 @@ func (s *SwiftSnapStore) Delete(snap brtypes.Snapshot) error {
 			return err
 		}
 
-		var chunkObjectNames []string
-		for _, chunk := range chunks {
-			chunkObjectNames = append(chunkObjectNames, path.Join(chunk.Prefix, chunk.SnapDir, chunk.SnapName))
+		if len(chunks) > 0 {
+			var chunkObjectNames []string
+			for _, chunk := range chunks {
+				chunkObjectNames = append(chunkObjectNames, path.Join(chunk.Prefix, chunk.SnapDir, chunk.SnapName))
+			}
+
+			if chunkObjectsDeleteResult := objects.BulkDelete(s.client, s.bucket, chunkObjectNames); chunkObjectsDeleteResult.Err != nil {
+				return chunkObjectsDeleteResult.Err
+			}
 		}
 
-		if chunkObjectsDeleteResult := objects.BulkDelete(s.client, s.bucket, chunkObjectNames); chunkObjectsDeleteResult.Err != nil {
-			return chunkObjectsDeleteResult.Err
-		}
 	}
 
 	// delete manifest object
