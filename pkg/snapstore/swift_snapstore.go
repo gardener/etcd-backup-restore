@@ -54,6 +54,10 @@ type SwiftSnapStore struct {
 	maxParallelChunkUploads uint
 	minChunkSize            int64
 	tempDir                 string
+	// deleteChunksForObject decides whether deletion of a (manifest) object should also delete the
+	// associated chunks (segment objects).
+	// Default: true
+	deleteChunksForObject bool
 }
 
 type applicationCredential struct {
@@ -108,10 +112,9 @@ func NewSwiftSnapStore(config *brtypes.SnapstoreConfig) (*SwiftSnapStore, error)
 	})
 	if err != nil {
 		return nil, err
-
 	}
 
-	return NewSwiftSnapstoreFromClient(config.Container, config.Prefix, config.TempDir, config.MaxParallelChunkUploads, config.MinChunkSize, client), nil
+	return NewSwiftSnapstoreFromClient(config.Container, config.Prefix, config.TempDir, config.MaxParallelChunkUploads, config.MinChunkSize, client, true), nil
 
 }
 
@@ -311,7 +314,7 @@ func readSwiftCredentialDir(dirName string) (*swiftCredentials, error) {
 }
 
 // NewSwiftSnapstoreFromClient will create the new Swift snapstore object from Swift client
-func NewSwiftSnapstoreFromClient(bucket, prefix, tempDir string, maxParallelChunkUploads uint, minChunkSize int64, cli *gophercloud.ServiceClient) *SwiftSnapStore {
+func NewSwiftSnapstoreFromClient(bucket, prefix, tempDir string, maxParallelChunkUploads uint, minChunkSize int64, cli *gophercloud.ServiceClient, deleteChunksForObject bool) *SwiftSnapStore {
 	return &SwiftSnapStore{
 		bucket:                  bucket,
 		prefix:                  prefix,
@@ -319,6 +322,7 @@ func NewSwiftSnapstoreFromClient(bucket, prefix, tempDir string, maxParallelChun
 		maxParallelChunkUploads: maxParallelChunkUploads,
 		minChunkSize:            minChunkSize,
 		tempDir:                 tempDir,
+		deleteChunksForObject:   deleteChunksForObject,
 	}
 }
 
@@ -328,22 +332,23 @@ func (s *SwiftSnapStore) Fetch(snap brtypes.Snapshot) (io.ReadCloser, error) {
 	return resp.Body, resp.Err
 }
 
-// Save will write the snapshot to store
+// Save will write the snapshot to store, as a DLO (dynamic large object), as described
+// in https://docs.openstack.org/swift/latest/overview_large_objects.html
 func (s *SwiftSnapStore) Save(snap brtypes.Snapshot, rc io.ReadCloser) error {
 	// Save it locally
-	tmpfile, err := os.CreateTemp(s.tempDir, tmpBackupFilePrefix)
+	tempFile, err := os.CreateTemp(s.tempDir, tmpBackupFilePrefix)
 	if err != nil {
 		rc.Close()
 		return fmt.Errorf("failed to create snapshot tempfile: %v", err)
 	}
 	defer func() {
-		tmpfile.Close()
-		os.Remove(tmpfile.Name())
+		tempFile.Close()
+		os.Remove(tempFile.Name())
 	}()
-	size, err := io.Copy(tmpfile, rc)
+	size, err := io.Copy(tempFile, rc)
 	rc.Close()
 	if err != nil {
-		return fmt.Errorf("failed to save snapshot to tmpfile: %v", err)
+		return fmt.Errorf("failed to save snapshot to tempFile: %v", err)
 	}
 
 	var (
@@ -363,7 +368,7 @@ func (s *SwiftSnapStore) Save(snap brtypes.Snapshot, rc io.ReadCloser) error {
 
 	for i := uint(0); i < s.maxParallelChunkUploads; i++ {
 		wg.Add(1)
-		go s.chunkUploader(&wg, cancelCh, &snap, tmpfile, chunkUploadCh, resCh)
+		go s.chunkUploader(&wg, cancelCh, &snap, tempFile, chunkUploadCh, resCh)
 	}
 
 	logrus.Infof("Uploading snapshot of size: %d, chunkSize: %d, noOfChunks: %d", size, chunkSize, noOfChunks)
@@ -481,13 +486,51 @@ func (s *SwiftSnapStore) List() (brtypes.SnapList, error) {
 
 	sort.Sort(snapList)
 	return snapList, nil
-
 }
 
-// Delete should delete the snapshot file from store
+func (s *SwiftSnapStore) getSnapshotChunks(snapshot brtypes.Snapshot) (brtypes.SnapList, error) {
+	snaps, err := s.List()
+	if err != nil {
+		return nil, err
+	}
+
+	var chunkList brtypes.SnapList
+	for _, snap := range snaps {
+		if snap.IsChunk {
+			chunkParentSnapPath, _ := path.Split(path.Join(snap.Prefix, snap.SnapDir, snap.SnapName))
+			if strings.TrimSuffix(chunkParentSnapPath, "/") == path.Join(snapshot.Prefix, snapshot.SnapDir, snapshot.SnapName) {
+				chunkList = append(chunkList, snap)
+			}
+		}
+	}
+	return chunkList, nil
+}
+
+// Delete deletes the objects related to the DLO (dynamic large object) from the store.
+// This includes the manifest object as well as the segment objects, as
+// described in https://docs.openstack.org/swift/latest/overview_large_objects.html
 func (s *SwiftSnapStore) Delete(snap brtypes.Snapshot) error {
-	result := objects.Delete(s.client, s.bucket, path.Join(snap.Prefix, snap.SnapDir, snap.SnapName), nil)
-	return result.Err
+	if s.deleteChunksForObject {
+		chunks, err := s.getSnapshotChunks(snap)
+		if err != nil {
+			return err
+		}
+
+		if len(chunks) > 0 {
+			var chunkObjectNames []string
+			for _, chunk := range chunks {
+				chunkObjectNames = append(chunkObjectNames, path.Join(chunk.Prefix, chunk.SnapDir, chunk.SnapName))
+			}
+
+			if chunkObjectsDeleteResult := objects.BulkDelete(s.client, s.bucket, chunkObjectNames); chunkObjectsDeleteResult.Err != nil {
+				return chunkObjectsDeleteResult.Err
+			}
+		}
+
+	}
+
+	// delete manifest object
+	return objects.Delete(s.client, s.bucket, path.Join(snap.Prefix, snap.SnapDir, snap.SnapName), nil).Err
 }
 
 // SwiftSnapStoreHash calculates and returns the hash of openstack swift snapstore secret.

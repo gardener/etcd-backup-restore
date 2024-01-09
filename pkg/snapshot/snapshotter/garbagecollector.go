@@ -58,10 +58,23 @@ func (ssr *Snapshotter) RunGarbageCollector(stopCh <-chan struct{}) {
 				continue
 			}
 
-			// chunksDeleted stores the no of chunks deleted in the current iteration of GC
-			var chunksDeleted int
-			chunksDeleted, snapList = ssr.GarbageCollectChunks(snapList)
-			ssr.logger.Infof("GC: Total number garbage collected chunks: %d", chunksDeleted)
+			// Skip chunk deletion for openstack swift provider, since the manifest object is a virtual
+			// representation of the object, and the actual data is stored in the segment objects, aka chunks
+			// Chunk deletion for this provider is handled in regular snapshot deletion
+			if ssr.snapstoreConfig.Provider == brtypes.SnapstoreProviderSwift {
+				var filteredSnapList brtypes.SnapList
+				for _, snap := range snapList {
+					if !snap.IsChunk {
+						filteredSnapList = append(filteredSnapList, snap)
+					}
+				}
+				snapList = filteredSnapList
+			} else {
+				// chunksDeleted stores the no of chunks deleted in the current iteration of GC.
+				var chunksDeleted int
+				chunksDeleted, snapList = ssr.GarbageCollectChunks(snapList)
+				ssr.logger.Infof("GC: Total number garbage collected chunks: %d", chunksDeleted)
+			}
 
 			snapStreamIndexList := getSnapStreamIndexList(snapList)
 
