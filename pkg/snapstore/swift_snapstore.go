@@ -523,14 +523,13 @@ func (s *SwiftSnapStore) Delete(snap brtypes.Snapshot) error {
 			chunkObjectNames = append(chunkObjectNames, path.Join(chunk.Prefix, chunk.SnapDir, chunk.SnapName))
 		}
 
-		chunkObjectsDeleteResult := objects.BulkDelete(s.client, s.bucket, chunkObjectNames)
-		if chunkObjectsDeleteResult.Err != nil {
+		if chunkObjectsDeleteResult := objects.BulkDelete(s.client, s.bucket, chunkObjectNames); chunkObjectsDeleteResult.Err != nil {
 			return chunkObjectsDeleteResult.Err
 		}
 	}
 
-	manifestObjectDeleteResult := objects.Delete(s.client, s.bucket, path.Join(snap.Prefix, snap.SnapDir, snap.SnapName), nil)
-	return manifestObjectDeleteResult.Err
+	// delete manifest object
+	return objects.Delete(s.client, s.bucket, path.Join(snap.Prefix, snap.SnapDir, snap.SnapName), nil).Err
 }
 
 // GetSwiftCredentialsLastModifiedTime returns the latest modification timestamp of the Swift credential file(s)
