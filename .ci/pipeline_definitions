@@ -4,9 +4,9 @@ etcd-backup-restore:
       trait_depends:
       - publish
       repos:
-        - name: 'landscape_repo'
-          path: 'kubernetes-dev/landscape-dev-garden'
-          branch: 'master'
+      - name: 'landscape_repo'
+        path: 'kubernetes-dev/landscape-dev-garden'
+        branch: 'master'
       image: europe-docker.pkg.dev/gardener-project/releases/testmachinery/testmachinery-run:stable
       execute:
       - tm-tests-playground
@@ -20,8 +20,7 @@ etcd-backup-restore:
   base_definition:
     traits:
       version:
-        preprocess:
-          'inject-commit-hash'
+        preprocess: 'inject-commit-hash'
         inject_effective_version: true
       component_descriptor:
         ocm_repository: europe-docker.pkg.dev/gardener-project/snapshots
@@ -48,6 +47,10 @@ etcd-backup-restore:
                 confidentiality_requirement: 'high'
                 integrity_requirement: 'high'
                 availability_requirement: 'high'
+            - name: 'cloud.gardener.cnudie/responsibles'
+              value:
+              - type: 'githubTeam'
+                teamname: 'gardener/etcd-druid-maintainers'
     steps:
       check:
         image: 'golang:1.20.3'
@@ -65,7 +68,7 @@ etcd-backup-restore:
         draft_release: ~
         component_descriptor:
           ocm_repository_mappings:
-            - repository: europe-docker.pkg.dev/gardener-project/releases
+          - repository: europe-docker.pkg.dev/gardener-project/releases
     pull-request:
       traits:
         pull-request: ~
