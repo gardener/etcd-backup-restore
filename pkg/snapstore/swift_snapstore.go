@@ -56,10 +56,6 @@ type SwiftSnapStore struct {
 	maxParallelChunkUploads uint
 	minChunkSize            int64
 	tempDir                 string
-	// deleteChunksForObject decides whether deletion of a (manifest) object should also delete the
-	// associated chunks (segment objects).
-	// Default: true
-	deleteChunksForObject bool
 }
 
 type applicationCredential struct {
@@ -116,7 +112,7 @@ func NewSwiftSnapStore(config *brtypes.SnapstoreConfig) (*SwiftSnapStore, error)
 		return nil, err
 	}
 
-	return NewSwiftSnapstoreFromClient(config.Container, config.Prefix, config.TempDir, config.MaxParallelChunkUploads, config.MinChunkSize, client, true), nil
+	return NewSwiftSnapstoreFromClient(config.Container, config.Prefix, config.TempDir, config.MaxParallelChunkUploads, config.MinChunkSize, client), nil
 
 }
 
@@ -316,7 +312,7 @@ func readSwiftCredentialDir(dirName string) (*swiftCredentials, error) {
 }
 
 // NewSwiftSnapstoreFromClient will create the new Swift snapstore object from Swift client
-func NewSwiftSnapstoreFromClient(bucket, prefix, tempDir string, maxParallelChunkUploads uint, minChunkSize int64, cli *gophercloud.ServiceClient, deleteChunksForObject bool) *SwiftSnapStore {
+func NewSwiftSnapstoreFromClient(bucket, prefix, tempDir string, maxParallelChunkUploads uint, minChunkSize int64, cli *gophercloud.ServiceClient) *SwiftSnapStore {
 	return &SwiftSnapStore{
 		bucket:                  bucket,
 		prefix:                  prefix,
@@ -324,7 +320,6 @@ func NewSwiftSnapstoreFromClient(bucket, prefix, tempDir string, maxParallelChun
 		maxParallelChunkUploads: maxParallelChunkUploads,
 		minChunkSize:            minChunkSize,
 		tempDir:                 tempDir,
-		deleteChunksForObject:   deleteChunksForObject,
 	}
 }
 
@@ -512,25 +507,21 @@ func (s *SwiftSnapStore) getSnapshotChunks(snapshot brtypes.Snapshot) (brtypes.S
 // This includes the manifest object as well as the segment objects, as
 // described in https://docs.openstack.org/swift/latest/overview_large_objects.html
 func (s *SwiftSnapStore) Delete(snap brtypes.Snapshot) error {
-	if s.deleteChunksForObject {
-		chunks, err := s.getSnapshotChunks(snap)
-		if err != nil {
-			return err
-		}
-
-		if len(chunks) > 0 {
-			var chunkObjectNames []string
-			for _, chunk := range chunks {
-				chunkObjectNames = append(chunkObjectNames, path.Join(chunk.Prefix, chunk.SnapDir, chunk.SnapName))
-			}
-
-			if chunkObjectsDeleteResult := objects.BulkDelete(s.client, s.bucket, chunkObjectNames); chunkObjectsDeleteResult.Err != nil {
-				return chunkObjectsDeleteResult.Err
-			}
-		}
-
+	chunks, err := s.getSnapshotChunks(snap)
+	if err != nil {
+		return err
 	}
 
+	if len(chunks) > 0 {
+		var chunkObjectNames []string
+		for _, chunk := range chunks {
+			chunkObjectNames = append(chunkObjectNames, path.Join(chunk.Prefix, chunk.SnapDir, chunk.SnapName))
+		}
+
+		if chunkObjectsDeleteResult := objects.BulkDelete(s.client, s.bucket, chunkObjectNames); chunkObjectsDeleteResult.Err != nil {
+			return chunkObjectsDeleteResult.Err
+		}
+	}
 	// delete manifest object
 	return objects.Delete(s.client, s.bucket, path.Join(snap.Prefix, snap.SnapDir, snap.SnapName), nil).Err
 }

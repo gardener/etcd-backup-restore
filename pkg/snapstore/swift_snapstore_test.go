@@ -17,9 +17,12 @@ package snapstore_test
 import (
 	"bytes"
 	"crypto/md5"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -29,6 +32,12 @@ import (
 	fake "github.com/gophercloud/gophercloud/testhelper/client"
 	"github.com/sirupsen/logrus"
 )
+
+type bulkDeleteJSONResponse struct {
+	Deleted      int      `json:"deleted"`
+	NotFound     int      `json:"not_found"`
+	ErrorStrings []string `json:"errors,omitempty"`
+}
 
 var objectMapMutex sync.Mutex
 
@@ -51,7 +60,16 @@ func initializeMockSwiftServer(t *testing.T) {
 			handleCreateTextObject(w, r)
 		case "DELETE":
 			th.TestMethod(t, r, "DELETE")
+			// for backwards compatibility
+			if r.URL.RawQuery == "bulk-delete=true" {
+				handleBulkDeleteObject(w, r)
+			}
 			handleDeleteObject(w, r)
+		case "POST":
+			th.TestMethod(t, r, "POST")
+			if r.URL.RawQuery == "bulk-delete=true" {
+				handleBulkDeleteObject(w, r)
+			}
 		default:
 			w.WriteHeader(http.StatusMethodNotAllowed)
 		}
@@ -102,11 +120,18 @@ func handleDownloadObject(w http.ResponseWriter, r *http.Request) {
 
 	prefix := parseObjectNamefromURL(r.URL)
 	var contents []byte
-	for key, val := range objectMap {
+	var sortedKeys []string
+	for key := range objectMap {
 		if strings.HasPrefix(key, prefix) {
-			data := *val
-			contents = append(contents, data...)
+			sortedKeys = append(sortedKeys, key)
 		}
+	}
+
+	// append segment objects in order
+	slices.Sort(sortedKeys)
+	for _, key := range sortedKeys {
+		data := *objectMap[key]
+		contents = append(contents, data...)
 	}
 
 	w.Write(contents)
@@ -149,4 +174,52 @@ func handleDeleteObject(w http.ResponseWriter, r *http.Request) {
 	} else {
 		w.WriteHeader(http.StatusNotFound)
 	}
+}
+
+// handleBulkDeleteObject creates an HTTP handler at `/testContainer/testObject` on the test handler mux that
+// responds with a `Delete` response.
+func handleBulkDeleteObject(w http.ResponseWriter, r *http.Request) {
+	objectMapMutex.Lock()
+	defer objectMapMutex.Unlock()
+
+	var jsonResponse bulkDeleteJSONResponse
+
+	buf := new(bytes.Buffer)
+	if _, err := io.Copy(buf, r.Body); err != nil {
+		errorMessage := fmt.Sprintf("failed to read content %v", err)
+		logrus.Errorf(errorMessage)
+		jsonResponse.ErrorStrings = append(jsonResponse.ErrorStrings, errorMessage)
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	segmentObjects := strings.Split(string(buf.Bytes()), "\n")
+	// last string is an empty string, artefact of '\n' at the end
+	segmentObjects = segmentObjects[:len(segmentObjects)-1]
+	for _, segmentObject := range segmentObjects {
+		// TODO: @renormalize 10000 objects only at once possiblity
+		segmentObject = "/" + segmentObject
+		// objects.BulkDelete() internally calls url.QueryEscape
+		unescapedQueryForObject, err := url.QueryUnescape(segmentObject)
+		if err != nil {
+			errorMessage := fmt.Sprintf("failed to unescape url %v", err)
+			logrus.Errorf(errorMessage)
+			jsonResponse.ErrorStrings = append(jsonResponse.ErrorStrings, errorMessage)
+		}
+
+		key := parseObjectNamefromURL(&url.URL{Path: unescapedQueryForObject})
+		if _, ok := objectMap[key]; ok {
+			delete(objectMap, key)
+			jsonResponse.Deleted++
+		} else {
+			errorMessage := fmt.Sprintf("Resource not found: %s", segmentObject)
+			logrus.Errorf(errorMessage)
+			jsonResponse.NotFound++
+			jsonResponse.ErrorStrings = append(jsonResponse.ErrorStrings, errorMessage)
+		}
+	}
+
+	marshalledResponse, _ := json.Marshal(jsonResponse)
+	w.WriteHeader(http.StatusOK)
+	w.Write(marshalledResponse)
 }
