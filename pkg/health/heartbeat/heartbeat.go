@@ -143,27 +143,28 @@ func (hb *Heartbeat) RenewMemberLease(ctx context.Context) error {
 	return nil
 }
 
-// UpdateFullSnapshotLease renews the full snapshot lease and updates the holderIdentity field with the last revision in the latest full snapshot
-func UpdateFullSnapshotLease(ctx context.Context, logger *logrus.Entry, fullSnapshot *brtypes.Snapshot, k8sClientset client.Client, fullSnapshotLeaseName string) error {
+// UpdateFullSnapshotLease renews the full snapshot lease and updates the holderIdentity field with the last revision in the latest full snapshot.
+// The boolean return value indicates whether the lease was updated or not
+func UpdateFullSnapshotLease(ctx context.Context, logger *logrus.Entry, fullSnapshot *brtypes.Snapshot, k8sClientset client.Client, fullSnapshotLeaseName string) (bool, error) {
 	if k8sClientset == nil {
-		return &errors.EtcdError{
+		return false, &errors.EtcdError{
 			Message: "nil clientset passed",
 		}
 	}
 
 	if fullSnapshot == nil {
-		return &errors.EtcdError{
+		return false, &errors.EtcdError{
 			Message: "can not update full snapshot lease, nil snapshot passed",
 		}
 	}
 
 	namespace, err := utils.GetEnvVarOrError(podNamespace)
 	if err != nil {
-		return &errors.EtcdError{
+		return false, &errors.EtcdError{
 			Message: fmt.Sprintf("Pod namespace env var not present: %v", err),
 		}
 	}
-
+	fullSnapshotLeaseUpdated := false
 	// Retry on conflict is necessary because multiple actors update the full snapshot lease.
 	if err := retry.RetryOnConflict(retry.DefaultBackoff, func() error {
 		fullSnapLease := &v1.Lease{}
@@ -185,7 +186,7 @@ func UpdateFullSnapshotLease(ctx context.Context, logger *logrus.Entry, fullSnap
 			if err != nil {
 				return err
 			}
-			if rev > fullSnapshot.LastRevision {
+			if rev >= fullSnapshot.LastRevision {
 				return nil
 			}
 		}
@@ -205,14 +206,14 @@ func UpdateFullSnapshotLease(ctx context.Context, logger *logrus.Entry, fullSnap
 		}
 
 		logger.Info(logString, " at time ", renewedTime)
+		fullSnapshotLeaseUpdated = true
 		return nil
 	}); err != nil {
-		return &errors.EtcdError{
+		return false, &errors.EtcdError{
 			Message: fmt.Sprintf("Failed to update full snapshot lease: %v", err),
 		}
 	}
-
-	return nil
+	return fullSnapshotLeaseUpdated, nil
 }
 
 // UpdateDeltaSnapshotLease renews delta snapshot lease and updates the holderIdentity field with the total number or revisions stored in delta snapshots since the last full snapshot was taken
@@ -279,14 +280,15 @@ func UpdateDeltaSnapshotLease(ctx context.Context, logger *logrus.Entry, prevDel
 }
 
 // FullSnapshotCaseLeaseUpdate Updates the fullsnapshot lease and the deltasnapshot lease as needed when a full snapshot is taken
-func FullSnapshotCaseLeaseUpdate(ctx context.Context, logger *logrus.Entry, fullSnapshot *brtypes.Snapshot, k8sClientset client.Client, fullSnapshotLeaseName string, deltaSnapshotLeaseName string) error {
-	if err := UpdateFullSnapshotLease(ctx, logger, fullSnapshot, k8sClientset, fullSnapshotLeaseName); err != nil {
-		return &errors.EtcdError{
+func FullSnapshotCaseLeaseUpdate(ctx context.Context, logger *logrus.Entry, fullSnapshot *brtypes.Snapshot, k8sClientset client.Client, fullSnapshotLeaseName string, deltaSnapshotLeaseName string) (bool, error) {
+	fullSnapshotLeaseUpdated, err := UpdateFullSnapshotLease(ctx, logger, fullSnapshot, k8sClientset, fullSnapshotLeaseName)
+	if err != nil {
+		return fullSnapshotLeaseUpdated, &errors.EtcdError{
 			Message: fmt.Sprintf("Failed to update full snapshot lease: %v", err),
 		}
+	} else {
+		return fullSnapshotLeaseUpdated, nil
 	}
-
-	return nil
 }
 
 // DeltaSnapshotCaseLeaseUpdate Updates the fullsnapshot lease and the deltasnapshot lease as needed when a delta snapshot is taken

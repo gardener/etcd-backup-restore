@@ -44,7 +44,8 @@ const (
 )
 
 var (
-	emptyStruct struct{}
+	emptyStruct                          struct{}
+	fullSnapshotLeaseUpdateRetryInterval = 3 * time.Minute
 )
 
 // event is wrapper over etcd event to keep track of time of event
@@ -72,32 +73,33 @@ func NewSnapshotterConfig() *brtypes.SnapshotterConfig {
 
 // Snapshotter is a struct for etcd snapshot taker
 type Snapshotter struct {
-	logger                 *logrus.Entry
-	etcdConnectionConfig   *brtypes.EtcdConnectionConfig
-	store                  brtypes.SnapStore
-	config                 *brtypes.SnapshotterConfig
-	compressionConfig      *compressor.CompressionConfig
-	healthConfig           *brtypes.HealthConfig
-	schedule               cron.Schedule
-	PrevSnapshot           *brtypes.Snapshot
-	PrevFullSnapshot       *brtypes.Snapshot
-	PrevDeltaSnapshots     brtypes.SnapList
-	fullSnapshotReqCh      chan bool
-	deltaSnapshotReqCh     chan struct{}
-	fullSnapshotAckCh      chan result
-	deltaSnapshotAckCh     chan result
-	fullSnapshotTimer      *time.Timer
-	deltaSnapshotTimer     *time.Timer
-	events                 []byte
-	watchCh                clientv3.WatchChan
-	etcdWatchClient        *clientv3.Watcher
-	cancelWatch            context.CancelFunc
-	SsrStateMutex          *sync.Mutex
-	SsrState               brtypes.SnapshotterState
-	lastEventRevision      int64
-	K8sClientset           client.Client
-	snapstoreConfig        *brtypes.SnapstoreConfig
-	lastSecretModifiedTime time.Time
+	logger                       *logrus.Entry
+	etcdConnectionConfig         *brtypes.EtcdConnectionConfig
+	store                        brtypes.SnapStore
+	config                       *brtypes.SnapshotterConfig
+	compressionConfig            *compressor.CompressionConfig
+	healthConfig                 *brtypes.HealthConfig
+	schedule                     cron.Schedule
+	PrevSnapshot                 *brtypes.Snapshot
+	PrevFullSnapshot             *brtypes.Snapshot
+	PrevDeltaSnapshots           brtypes.SnapList
+	fullSnapshotReqCh            chan bool
+	deltaSnapshotReqCh           chan struct{}
+	fullSnapshotAckCh            chan result
+	deltaSnapshotAckCh           chan result
+	fullSnapshotLeaseUpdateTimer *time.Timer
+	fullSnapshotTimer            *time.Timer
+	deltaSnapshotTimer           *time.Timer
+	events                       []byte
+	watchCh                      clientv3.WatchChan
+	etcdWatchClient              *clientv3.Watcher
+	cancelWatch                  context.CancelFunc
+	SsrStateMutex                *sync.Mutex
+	SsrState                     brtypes.SnapshotterState
+	lastEventRevision            int64
+	K8sClientset                 client.Client
+	snapstoreConfig              *brtypes.SnapstoreConfig
+	lastSecretModifiedTime       time.Time
 }
 
 // NewSnapshotter returns the snapshotter object.
@@ -188,6 +190,7 @@ func (ssr *Snapshotter) Run(stopCh <-chan struct{}, startWithFullSnapshot bool) 
 	}
 
 	ssr.deltaSnapshotTimer = time.NewTimer(brtypes.DefaultDeltaSnapshotInterval)
+	ssr.fullSnapshotLeaseUpdateTimer = time.NewTimer(fullSnapshotLeaseUpdateRetryInterval)
 	if ssr.config.DeltaSnapshotPeriod.Duration >= brtypes.DeltaSnapshotIntervalThreshold {
 		ssr.deltaSnapshotTimer.Stop()
 		ssr.deltaSnapshotTimer.Reset(ssr.config.DeltaSnapshotPeriod.Duration)
@@ -241,6 +244,10 @@ func (ssr *Snapshotter) stop() {
 	if ssr.deltaSnapshotTimer != nil {
 		ssr.deltaSnapshotTimer.Stop()
 		ssr.deltaSnapshotTimer = nil
+	}
+	if ssr.fullSnapshotLeaseUpdateTimer != nil {
+		ssr.fullSnapshotLeaseUpdateTimer.Stop()
+		ssr.fullSnapshotLeaseUpdateTimer = nil
 	}
 	ssr.SetSnapshotterInactive()
 	ssr.closeEtcdClient()
@@ -635,11 +642,8 @@ func (ssr *Snapshotter) snapshotEventHandler(stopCh <-chan struct{}) error {
 				return err
 			}
 			if ssr.healthConfig.SnapshotLeaseRenewalEnabled {
-				ctx, cancel := context.WithTimeout(leaseUpdateCtx, brtypes.LeaseUpdateTimeoutDuration)
-				if err = heartbeat.FullSnapshotCaseLeaseUpdate(ctx, ssr.logger, ssr.PrevFullSnapshot, ssr.K8sClientset, ssr.healthConfig.FullSnapshotLeaseName, ssr.healthConfig.DeltaSnapshotLeaseName); err != nil {
-					ssr.logger.Warnf("Snapshot lease update failed : %v", err)
-				}
-				cancel()
+				ssr.fullSnapshotLeaseUpdateTimer.Stop()
+				ssr.fullSnapshotLeaseUpdateTimer.Reset(time.Nanosecond)
 			}
 
 		case <-ssr.deltaSnapshotReqCh:
@@ -665,11 +669,8 @@ func (ssr *Snapshotter) snapshotEventHandler(stopCh <-chan struct{}) error {
 				return err
 			}
 			if ssr.healthConfig.SnapshotLeaseRenewalEnabled {
-				ctx, cancel := context.WithTimeout(leaseUpdateCtx, brtypes.LeaseUpdateTimeoutDuration)
-				if err := heartbeat.FullSnapshotCaseLeaseUpdate(ctx, ssr.logger, ssr.PrevFullSnapshot, ssr.K8sClientset, ssr.healthConfig.FullSnapshotLeaseName, ssr.healthConfig.DeltaSnapshotLeaseName); err != nil {
-					ssr.logger.Warnf("Snapshot lease update failed : %v", err)
-				}
-				cancel()
+				ssr.fullSnapshotLeaseUpdateTimer.Stop()
+				ssr.fullSnapshotLeaseUpdateTimer.Reset(time.Nanosecond)
 			}
 
 		case <-ssr.deltaSnapshotTimer.C:
@@ -683,6 +684,29 @@ func (ssr *Snapshotter) snapshotEventHandler(stopCh <-chan struct{}) error {
 						ssr.logger.Warnf("Snapshot lease update failed : %v", err)
 					}
 					cancel()
+				}
+			}
+
+		case <-ssr.fullSnapshotLeaseUpdateTimer.C:
+			if ssr.healthConfig.SnapshotLeaseRenewalEnabled {
+				if ssr.PrevFullSnapshot != nil {
+					ctx, cancel := context.WithTimeout(leaseUpdateCtx, brtypes.LeaseUpdateTimeoutDuration)
+					if _, err := heartbeat.FullSnapshotCaseLeaseUpdate(ctx, ssr.logger, ssr.PrevFullSnapshot, ssr.K8sClientset, ssr.healthConfig.FullSnapshotLeaseName, ssr.healthConfig.DeltaSnapshotLeaseName); err != nil {
+						ssr.logger.Warnf("FullSnapshot lease update failed : %v", err)
+						ssr.logger.Infof("Resetting the FullSnapshot lease to retry updating with revision %d after %v", ssr.PrevSnapshot.LastRevision, fullSnapshotLeaseUpdateRetryInterval.String())
+						ssr.fullSnapshotLeaseUpdateTimer.Stop()
+						ssr.fullSnapshotLeaseUpdateTimer.Reset(fullSnapshotLeaseUpdateRetryInterval)
+					} else {
+						ssr.logger.Infof("FullSnapshot lease successfully updated with revision %d", ssr.PrevSnapshot.LastRevision)
+						ssr.logger.Infof("Stopping the FullSnapshot lease update")
+						ssr.fullSnapshotLeaseUpdateTimer.Stop()
+					}
+					cancel()
+				} else {
+					ssr.logger.Infof("Skipping the FullSnapshot lease update since no full snapshot has been taken yet")
+					ssr.logger.Infof("Resetting the FullSnapshot lease to retry updating after %v", fullSnapshotLeaseUpdateRetryInterval.String())
+					ssr.fullSnapshotLeaseUpdateTimer.Stop()
+					ssr.fullSnapshotLeaseUpdateTimer.Reset(fullSnapshotLeaseUpdateRetryInterval)
 				}
 			}
 
