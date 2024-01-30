@@ -42,20 +42,25 @@ var (
 
 var _ = Describe("Save, List, Fetch, Delete from mock snapstore", func() {
 	var (
-		snap1           brtypes.Snapshot
-		snap2           brtypes.Snapshot
-		snap3           brtypes.Snapshot
-		snap4           brtypes.Snapshot
-		snap5           brtypes.Snapshot
-		expectedVal1    []byte
-		expectedVal1_02 []byte
-		expectedVal2    []byte
-		expectedVal2_02 []byte
-		expectedVal4    []byte
-		expectedVal5    []byte
-		expectedVal4_02 []byte
-		expectedVal5_02 []byte
-		snapstores      map[string]brtypes.SnapStore
+		snap1        brtypes.Snapshot
+		snap2        brtypes.Snapshot
+		snap3        brtypes.Snapshot
+		snap4        brtypes.Snapshot
+		snap5        brtypes.Snapshot
+		expectedVal1 []byte
+		expectedVal2 []byte
+		expectedVal4 []byte
+		expectedVal5 []byte
+		// segments for Swift
+		expectedVal1Chunk01 []byte
+		expectedVal1Chunk02 []byte
+		expectedVal2Chunk01 []byte
+		expectedVal2Chunk02 []byte
+		expectedVal4Chunk01 []byte
+		expectedVal4Chunk02 []byte
+		expectedVal5Chunk01 []byte
+		expectedVal5Chunk02 []byte
+		snapstores          map[string]brtypes.SnapStore
 	)
 
 	BeforeEach(func() {
@@ -107,15 +112,19 @@ var _ = Describe("Save, List, Fetch, Delete from mock snapstore", func() {
 		expectedVal1 = []byte("value1")
 		expectedVal2 = []byte("value2")
 		// segments for Swift
-		expectedVal1_02 = []byte("value1_02")
-		expectedVal2_02 = []byte("value2_02")
+		expectedVal1Chunk01 = []byte("value1Chunk01")
+		expectedVal1Chunk02 = []byte("value1Chunk02")
+		expectedVal2Chunk01 = []byte("value2Chunk01")
+		expectedVal2Chunk02 = []byte("value2Chunk02")
 
 		// prefixv2
 		expectedVal4 = []byte("value4")
 		expectedVal5 = []byte("value5")
 		// segments for Swift
-		expectedVal4_02 = []byte("value4_02")
-		expectedVal5_02 = []byte("value5_02")
+		expectedVal4Chunk01 = []byte("value4Chunk01")
+		expectedVal4Chunk02 = []byte("value4Chunk02")
+		expectedVal5Chunk01 = []byte("value5Chunk01")
+		expectedVal5Chunk02 = []byte("value5Chunk02")
 
 		snapstores = map[string]brtypes.SnapStore{
 			"s3": NewS3FromClient(bucket, prefixV2, "/tmp", 5, brtypes.MinChunkSize, &mockS3Client{
@@ -156,17 +165,18 @@ var _ = Describe("Save, List, Fetch, Delete from mock snapstore", func() {
 			for provider, snapStore := range snapstores {
 				// Create store for mock tests
 				resetObjectMap()
-				objectMap[path.Join(prefixV1, snap1.SnapDir, snap1.SnapName)] = &expectedVal1
-				objectMap[path.Join(prefixV1, snap2.SnapDir, snap2.SnapName)] = &expectedVal2
 				if provider == "swift" {
 					// segment objects
-					objectMap[path.Join(prefixV1, snap1.SnapDir, snap1.SnapName, "0000000001")] = &expectedVal1
-					objectMap[path.Join(prefixV1, snap1.SnapDir, snap1.SnapName, "0000000002")] = &expectedVal1_02
-					objectMap[path.Join(prefixV1, snap2.SnapDir, snap2.SnapName, "0000000001")] = &expectedVal2
-					objectMap[path.Join(prefixV1, snap2.SnapDir, snap2.SnapName, "0000000002")] = &expectedVal2_02
+					objectMap[path.Join(prefixV1, snap1.SnapDir, snap1.SnapName, "0000000001")] = &expectedVal1Chunk01
+					objectMap[path.Join(prefixV1, snap1.SnapDir, snap1.SnapName, "0000000002")] = &expectedVal1Chunk02
+					objectMap[path.Join(prefixV1, snap2.SnapDir, snap2.SnapName, "0000000001")] = &expectedVal2Chunk01
+					objectMap[path.Join(prefixV1, snap2.SnapDir, snap2.SnapName, "0000000002")] = &expectedVal2Chunk02
 					// manifest objects
 					objectMap[path.Join(prefixV1, snap1.SnapDir, snap1.SnapName)] = &[]byte{}
 					objectMap[path.Join(prefixV1, snap2.SnapDir, snap2.SnapName)] = &[]byte{}
+				} else {
+					objectMap[path.Join(prefixV1, snap1.SnapDir, snap1.SnapName)] = &expectedVal1
+					objectMap[path.Join(prefixV1, snap2.SnapDir, snap2.SnapName)] = &expectedVal2
 				}
 
 				logrus.Infof("Running mock tests for %s when only v1 is present", provider)
@@ -174,7 +184,6 @@ var _ = Describe("Save, List, Fetch, Delete from mock snapstore", func() {
 				// List snap1 and snap2
 				snapList, err := snapStore.List()
 				Expect(err).ShouldNot(HaveOccurred())
-
 				if provider == "swift" {
 					Expect(snapList.Len()).To(Equal(6))
 					Expect(snapList[0].SnapName).To(Equal(snap2.SnapName))
@@ -191,7 +200,7 @@ var _ = Describe("Save, List, Fetch, Delete from mock snapstore", func() {
 					buf := new(bytes.Buffer)
 					_, err = io.Copy(buf, rc)
 					Expect(err).ShouldNot(HaveOccurred())
-					combinedExpectedValue := append(expectedVal1, expectedVal1_02...)
+					combinedExpectedValue := append(expectedVal1Chunk01, expectedVal1Chunk02...)
 					Expect(buf.Bytes()).To(Equal(combinedExpectedValue))
 				} else {
 					rc, err := snapStore.Fetch(*snapList[1])
@@ -213,6 +222,7 @@ var _ = Describe("Save, List, Fetch, Delete from mock snapstore", func() {
 				// reset the objectMap
 				resetObjectMap()
 				dummyData := make([]byte, 6*1024*1024)
+
 				// Save a new snapshot 'snap3'
 				err = snapStore.Save(snap3, io.NopCloser(bytes.NewReader(dummyData)))
 				Expect(err).ShouldNot(HaveOccurred())
@@ -226,21 +236,22 @@ var _ = Describe("Save, List, Fetch, Delete from mock snapstore", func() {
 			for provider, snapStore := range snapstores {
 				// Create store for mock tests
 				resetObjectMap()
-				objectMap[path.Join(prefixV1, snap1.SnapDir, snap1.SnapName)] = &expectedVal1
-				objectMap[path.Join(prefixV2, snap4.SnapDir, snap4.SnapName)] = &expectedVal4
-				objectMap[path.Join(prefixV2, snap5.SnapDir, snap5.SnapName)] = &expectedVal5
 				if provider == "swift" {
 					// segment objects
-					objectMap[path.Join(prefixV1, snap1.SnapDir, snap1.SnapName, "0000000001")] = &expectedVal1
-					objectMap[path.Join(prefixV1, snap1.SnapDir, snap1.SnapName, "0000000002")] = &expectedVal1_02
-					objectMap[path.Join(prefixV2, snap4.SnapDir, snap4.SnapName, "0000000001")] = &expectedVal4
-					objectMap[path.Join(prefixV2, snap4.SnapDir, snap4.SnapName, "0000000002")] = &expectedVal4_02
-					objectMap[path.Join(prefixV2, snap5.SnapDir, snap5.SnapName, "0000000001")] = &expectedVal5
-					objectMap[path.Join(prefixV2, snap5.SnapDir, snap5.SnapName, "0000000002")] = &expectedVal5_02
+					objectMap[path.Join(prefixV1, snap1.SnapDir, snap1.SnapName, "0000000001")] = &expectedVal1Chunk01
+					objectMap[path.Join(prefixV1, snap1.SnapDir, snap1.SnapName, "0000000002")] = &expectedVal1Chunk02
+					objectMap[path.Join(prefixV2, snap4.SnapDir, snap4.SnapName, "0000000001")] = &expectedVal4Chunk01
+					objectMap[path.Join(prefixV2, snap4.SnapDir, snap4.SnapName, "0000000002")] = &expectedVal4Chunk02
+					objectMap[path.Join(prefixV2, snap5.SnapDir, snap5.SnapName, "0000000001")] = &expectedVal5Chunk01
+					objectMap[path.Join(prefixV2, snap5.SnapDir, snap5.SnapName, "0000000002")] = &expectedVal5Chunk02
 					// manifest objects
 					objectMap[path.Join(prefixV1, snap1.SnapDir, snap1.SnapName)] = &[]byte{}
 					objectMap[path.Join(prefixV2, snap4.SnapDir, snap4.SnapName)] = &[]byte{}
 					objectMap[path.Join(prefixV2, snap5.SnapDir, snap5.SnapName)] = &[]byte{}
+				} else {
+					objectMap[path.Join(prefixV1, snap1.SnapDir, snap1.SnapName)] = &expectedVal1
+					objectMap[path.Join(prefixV2, snap4.SnapDir, snap4.SnapName)] = &expectedVal4
+					objectMap[path.Join(prefixV2, snap5.SnapDir, snap5.SnapName)] = &expectedVal5
 				}
 
 				logrus.Infof("Running mock tests for %s when both v1 and v2 are present", provider)
@@ -262,7 +273,7 @@ var _ = Describe("Save, List, Fetch, Delete from mock snapstore", func() {
 					defer rc.Close()
 					buf := new(bytes.Buffer)
 					_, err = io.Copy(buf, rc)
-					combinedExpectedValue := append(expectedVal1, expectedVal1_02...)
+					combinedExpectedValue := append(expectedVal1Chunk01, expectedVal1Chunk02...)
 					Expect(err).ShouldNot(HaveOccurred())
 					Expect(buf.Bytes()).To(Equal(combinedExpectedValue))
 
@@ -271,7 +282,7 @@ var _ = Describe("Save, List, Fetch, Delete from mock snapstore", func() {
 					defer rc.Close()
 					buf = new(bytes.Buffer)
 					_, err = io.Copy(buf, rc)
-					combinedExpectedValue = append(expectedVal4, expectedVal4_02...)
+					combinedExpectedValue = append(expectedVal4Chunk01, expectedVal4Chunk02...)
 					Expect(err).ShouldNot(HaveOccurred())
 					Expect(buf.Bytes()).To(Equal(combinedExpectedValue))
 				} else {
@@ -312,6 +323,7 @@ var _ = Describe("Save, List, Fetch, Delete from mock snapstore", func() {
 					Expect(err).ShouldNot(HaveOccurred())
 					Expect(len(objectMap)).To(Equal(prevLen - 1))
 				}
+
 				// reset the objectMap
 				resetObjectMap()
 				// Save a new snapshot 'snap1'
@@ -335,20 +347,22 @@ var _ = Describe("Save, List, Fetch, Delete from mock snapstore", func() {
 			for provider, snapStore := range snapstores {
 				// Create store for mock tests
 				resetObjectMap()
-				objectMap[path.Join(prefixV2, snap4.SnapDir, snap4.SnapName)] = &expectedVal4
-				objectMap[path.Join(prefixV2, snap5.SnapDir, snap5.SnapName)] = &expectedVal5
 				if provider == "swift" {
 					// segment objects
-					objectMap[path.Join(prefixV2, snap4.SnapDir, snap4.SnapName, "0000000001")] = &expectedVal4
-					objectMap[path.Join(prefixV2, snap4.SnapDir, snap4.SnapName, "0000000002")] = &expectedVal4_02
-					objectMap[path.Join(prefixV2, snap5.SnapDir, snap5.SnapName, "0000000001")] = &expectedVal5
-					objectMap[path.Join(prefixV2, snap5.SnapDir, snap5.SnapName, "0000000002")] = &expectedVal5_02
+					objectMap[path.Join(prefixV2, snap4.SnapDir, snap4.SnapName, "0000000001")] = &expectedVal4Chunk01
+					objectMap[path.Join(prefixV2, snap4.SnapDir, snap4.SnapName, "0000000002")] = &expectedVal4Chunk02
+					objectMap[path.Join(prefixV2, snap5.SnapDir, snap5.SnapName, "0000000001")] = &expectedVal5Chunk01
+					objectMap[path.Join(prefixV2, snap5.SnapDir, snap5.SnapName, "0000000002")] = &expectedVal5Chunk02
 					// manifest objects
 					objectMap[path.Join(prefixV2, snap4.SnapDir, snap4.SnapName)] = &[]byte{}
 					objectMap[path.Join(prefixV2, snap5.SnapDir, snap5.SnapName)] = &[]byte{}
+				} else {
+					objectMap[path.Join(prefixV2, snap4.SnapDir, snap4.SnapName)] = &expectedVal4
+					objectMap[path.Join(prefixV2, snap5.SnapDir, snap5.SnapName)] = &expectedVal5
 				}
 
 				logrus.Infof("Running mock tests for %s when only v2 is present", provider)
+
 				// List snap4 and snap5
 				snapList, err := snapStore.List()
 				Expect(err).ShouldNot(HaveOccurred())
@@ -364,6 +378,7 @@ var _ = Describe("Save, List, Fetch, Delete from mock snapstore", func() {
 					Expect(snapList[0].SnapName).To(Equal(snap4.SnapName))
 					Expect(snapList[1].SnapName).To(Equal(snap5.SnapName))
 				}
+
 				// Fetch snap5
 				if provider == "swift" {
 					rc, err := snapStore.Fetch(*snapList[3])
@@ -373,7 +388,7 @@ var _ = Describe("Save, List, Fetch, Delete from mock snapstore", func() {
 					_, err = io.Copy(buf, rc)
 					Expect(err).ShouldNot(HaveOccurred())
 					// all segment objects combined
-					combinedExpectedValue := append(expectedVal5, expectedVal5_02...)
+					combinedExpectedValue := append(expectedVal5Chunk01, expectedVal5Chunk02...)
 					Expect(buf.Bytes()).To(Equal(combinedExpectedValue))
 				} else {
 					rc, err := snapStore.Fetch(*snapList[1])
@@ -384,6 +399,7 @@ var _ = Describe("Save, List, Fetch, Delete from mock snapstore", func() {
 					Expect(err).ShouldNot(HaveOccurred())
 					Expect(buf.Bytes()).To(Equal(expectedVal5))
 				}
+
 				// Delete snap5
 				prevLen := len(objectMap)
 				if provider == "swift" {
@@ -401,6 +417,7 @@ var _ = Describe("Save, List, Fetch, Delete from mock snapstore", func() {
 				}
 				// Reset the objectMap
 				resetObjectMap()
+
 				// Save a new snapshot 'snap4'
 				dummyData := make([]byte, 6*1024*1024)
 				err = snapStore.Save(snap4, io.NopCloser(bytes.NewReader(dummyData)))

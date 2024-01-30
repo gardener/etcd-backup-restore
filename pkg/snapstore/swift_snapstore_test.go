@@ -22,7 +22,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -128,7 +127,7 @@ func handleDownloadObject(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// append segment objects in order
-	slices.Sort(sortedKeys)
+	sort.Strings(sortedKeys)
 	for _, key := range sortedKeys {
 		data := *objectMap[key]
 		contents = append(contents, data...)
@@ -197,7 +196,6 @@ func handleBulkDeleteObject(w http.ResponseWriter, r *http.Request) {
 	// last string is an empty string, artefact of '\n' at the end
 	segmentObjects = segmentObjects[:len(segmentObjects)-1]
 	for _, segmentObject := range segmentObjects {
-		// TODO: @renormalize 10000 objects only at once possiblity
 		segmentObject = "/" + segmentObject
 		// objects.BulkDelete() internally calls url.QueryEscape
 		unescapedQueryForObject, err := url.QueryUnescape(segmentObject)
