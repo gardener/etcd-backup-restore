@@ -286,9 +286,8 @@ func FullSnapshotCaseLeaseUpdate(ctx context.Context, logger *logrus.Entry, full
 		return fullSnapshotLeaseUpdated, &errors.EtcdError{
 			Message: fmt.Sprintf("Failed to update full snapshot lease: %v", err),
 		}
-	} else {
-		return fullSnapshotLeaseUpdated, nil
 	}
+	return fullSnapshotLeaseUpdated, nil
 }
 
 // DeltaSnapshotCaseLeaseUpdate Updates the fullsnapshot lease and the deltasnapshot lease as needed when a delta snapshot is taken

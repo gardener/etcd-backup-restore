@@ -45,7 +45,7 @@ const (
 
 var (
 	emptyStruct                          struct{}
-	fullSnapshotLeaseUpdateRetryInterval = 3 * time.Minute
+	fullSnapshotLeaseUpdateRetryInterval = 3 * time.Minute // retry interval for updating full snapshot lease. Ideally should be >= 1 minute
 )
 
 // event is wrapper over etcd event to keep track of time of event
