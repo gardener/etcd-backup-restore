@@ -279,8 +279,8 @@ func UpdateDeltaSnapshotLease(ctx context.Context, logger *logrus.Entry, prevDel
 	return nil
 }
 
-// FullSnapshotCaseLeaseUpdate Updates the fullsnapshot lease and the deltasnapshot lease as needed when a full snapshot is taken
-func FullSnapshotCaseLeaseUpdate(ctx context.Context, logger *logrus.Entry, fullSnapshot *brtypes.Snapshot, k8sClientset client.Client, fullSnapshotLeaseName string, deltaSnapshotLeaseName string) (bool, error) {
+// FullSnapshotCaseLeaseUpdate Updates the fullsnapshot lease as needed when a full snapshot is taken
+func FullSnapshotCaseLeaseUpdate(ctx context.Context, logger *logrus.Entry, fullSnapshot *brtypes.Snapshot, k8sClientset client.Client, fullSnapshotLeaseName string) (bool, error) {
 	fullSnapshotLeaseUpdated, err := UpdateFullSnapshotLease(ctx, logger, fullSnapshot, k8sClientset, fullSnapshotLeaseName)
 	if err != nil {
 		return fullSnapshotLeaseUpdated, &errors.EtcdError{
@@ -290,7 +290,7 @@ func FullSnapshotCaseLeaseUpdate(ctx context.Context, logger *logrus.Entry, full
 	return fullSnapshotLeaseUpdated, nil
 }
 
-// DeltaSnapshotCaseLeaseUpdate Updates the fullsnapshot lease and the deltasnapshot lease as needed when a delta snapshot is taken
+// DeltaSnapshotCaseLeaseUpdate Updates the deltasnapshot lease as needed when a delta snapshot is taken
 func DeltaSnapshotCaseLeaseUpdate(ctx context.Context, logger *logrus.Entry, k8sClientset client.Client, deltaSnapshotLeaseName string, store brtypes.SnapStore) error {
 	_, latestDeltaSnapshotList, err := miscellaneous.GetLatestFullSnapshotAndDeltaSnapList(store)
 	if err == nil {
@@ -344,7 +344,7 @@ func RenewMemberLeasePeriodically(ctx context.Context, stopCh chan struct{}, hco
 			hb.logger.Info("Stopped member lease renewal timer")
 			return nil
 		case <-stopCh:
-			hb.logger.Info("Stoping the member lease renewal")
+			hb.logger.Info("Stopping the member lease renewal")
 			return nil
 		}
 	}

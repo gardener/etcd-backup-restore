@@ -44,8 +44,7 @@ const (
 )
 
 var (
-	emptyStruct                          struct{}
-	fullSnapshotLeaseUpdateRetryInterval = 3 * time.Minute // retry interval for updating full snapshot lease. Ideally should be >= 1 minute
+	emptyStruct struct{}
 )
 
 // event is wrapper over etcd event to keep track of time of event
@@ -87,7 +86,8 @@ type Snapshotter struct {
 	deltaSnapshotReqCh           chan struct{}
 	fullSnapshotAckCh            chan result
 	deltaSnapshotAckCh           chan result
-	fullSnapshotLeaseUpdateTimer *time.Timer
+	FullSnapshotLeaseUpdateTimer *time.Timer
+	FullSnapshotLeaseStopCh      chan struct{}
 	fullSnapshotTimer            *time.Timer
 	deltaSnapshotTimer           *time.Timer
 	events                       []byte
@@ -140,26 +140,26 @@ func NewSnapshotter(logger *logrus.Entry, config *brtypes.SnapshotterConfig, sto
 	}
 
 	return &Snapshotter{
-		logger:               logger.WithField("actor", "snapshotter"),
-		store:                store,
-		config:               config,
-		etcdConnectionConfig: etcdConnectionConfig,
-		compressionConfig:    compressionConfig,
-		healthConfig:         healthConfig,
-
-		schedule:           sdl,
-		PrevSnapshot:       prevSnapshot,
-		PrevFullSnapshot:   fullSnap,
-		PrevDeltaSnapshots: deltaSnapList,
-		SsrState:           brtypes.SnapshotterInactive,
-		SsrStateMutex:      &sync.Mutex{},
-		fullSnapshotReqCh:  make(chan bool),
-		deltaSnapshotReqCh: make(chan struct{}),
-		fullSnapshotAckCh:  make(chan result),
-		deltaSnapshotAckCh: make(chan result),
-		cancelWatch:        func() {},
-		K8sClientset:       clientSet,
-		snapstoreConfig:    storeConfig,
+		logger:                  logger.WithField("actor", "snapshotter"),
+		store:                   store,
+		config:                  config,
+		etcdConnectionConfig:    etcdConnectionConfig,
+		compressionConfig:       compressionConfig,
+		healthConfig:            healthConfig,
+		schedule:                sdl,
+		PrevSnapshot:            prevSnapshot,
+		PrevFullSnapshot:        fullSnap,
+		PrevDeltaSnapshots:      deltaSnapList,
+		SsrState:                brtypes.SnapshotterInactive,
+		SsrStateMutex:           &sync.Mutex{},
+		fullSnapshotReqCh:       make(chan bool),
+		deltaSnapshotReqCh:      make(chan struct{}),
+		fullSnapshotAckCh:       make(chan result),
+		deltaSnapshotAckCh:      make(chan result),
+		FullSnapshotLeaseStopCh: make(chan struct{}),
+		cancelWatch:             func() {},
+		K8sClientset:            clientSet,
+		snapstoreConfig:         storeConfig,
 	}, nil
 }
 
@@ -188,9 +188,8 @@ func (ssr *Snapshotter) Run(stopCh <-chan struct{}, startWithFullSnapshot bool) 
 			return fmt.Errorf("failed to reset full snapshot timer: %v", err)
 		}
 	}
-
+	go ssr.RenewFullSnapshotLeasePeriodically()
 	ssr.deltaSnapshotTimer = time.NewTimer(brtypes.DefaultDeltaSnapshotInterval)
-	ssr.fullSnapshotLeaseUpdateTimer = time.NewTimer(fullSnapshotLeaseUpdateRetryInterval)
 	if ssr.config.DeltaSnapshotPeriod.Duration >= brtypes.DeltaSnapshotIntervalThreshold {
 		ssr.deltaSnapshotTimer.Stop()
 		ssr.deltaSnapshotTimer.Reset(ssr.config.DeltaSnapshotPeriod.Duration)
@@ -245,10 +244,7 @@ func (ssr *Snapshotter) stop() {
 		ssr.deltaSnapshotTimer.Stop()
 		ssr.deltaSnapshotTimer = nil
 	}
-	if ssr.fullSnapshotLeaseUpdateTimer != nil {
-		ssr.fullSnapshotLeaseUpdateTimer.Stop()
-		ssr.fullSnapshotLeaseUpdateTimer = nil
-	}
+	ssr.FullSnapshotLeaseStopCh <- emptyStruct
 	ssr.SetSnapshotterInactive()
 	ssr.closeEtcdClient()
 }
@@ -642,8 +638,8 @@ func (ssr *Snapshotter) snapshotEventHandler(stopCh <-chan struct{}) error {
 				return err
 			}
 			if ssr.healthConfig.SnapshotLeaseRenewalEnabled {
-				ssr.fullSnapshotLeaseUpdateTimer.Stop()
-				ssr.fullSnapshotLeaseUpdateTimer.Reset(time.Nanosecond)
+				ssr.FullSnapshotLeaseUpdateTimer.Stop()
+				ssr.FullSnapshotLeaseUpdateTimer.Reset(time.Nanosecond)
 			}
 
 		case <-ssr.deltaSnapshotReqCh:
@@ -669,8 +665,8 @@ func (ssr *Snapshotter) snapshotEventHandler(stopCh <-chan struct{}) error {
 				return err
 			}
 			if ssr.healthConfig.SnapshotLeaseRenewalEnabled {
-				ssr.fullSnapshotLeaseUpdateTimer.Stop()
-				ssr.fullSnapshotLeaseUpdateTimer.Reset(time.Nanosecond)
+				ssr.FullSnapshotLeaseUpdateTimer.Stop()
+				ssr.FullSnapshotLeaseUpdateTimer.Reset(time.Nanosecond)
 			}
 
 		case <-ssr.deltaSnapshotTimer.C:
@@ -684,29 +680,6 @@ func (ssr *Snapshotter) snapshotEventHandler(stopCh <-chan struct{}) error {
 						ssr.logger.Warnf("Snapshot lease update failed : %v", err)
 					}
 					cancel()
-				}
-			}
-
-		case <-ssr.fullSnapshotLeaseUpdateTimer.C:
-			if ssr.healthConfig.SnapshotLeaseRenewalEnabled {
-				if ssr.PrevFullSnapshot != nil {
-					ctx, cancel := context.WithTimeout(leaseUpdateCtx, brtypes.LeaseUpdateTimeoutDuration)
-					if _, err := heartbeat.FullSnapshotCaseLeaseUpdate(ctx, ssr.logger, ssr.PrevFullSnapshot, ssr.K8sClientset, ssr.healthConfig.FullSnapshotLeaseName, ssr.healthConfig.DeltaSnapshotLeaseName); err != nil {
-						ssr.logger.Warnf("FullSnapshot lease update failed : %v", err)
-						ssr.logger.Infof("Resetting the FullSnapshot lease to retry updating with revision %d after %v", ssr.PrevSnapshot.LastRevision, fullSnapshotLeaseUpdateRetryInterval.String())
-						ssr.fullSnapshotLeaseUpdateTimer.Stop()
-						ssr.fullSnapshotLeaseUpdateTimer.Reset(fullSnapshotLeaseUpdateRetryInterval)
-					} else {
-						ssr.logger.Infof("FullSnapshot lease successfully updated with revision %d", ssr.PrevSnapshot.LastRevision)
-						ssr.logger.Infof("Stopping the FullSnapshot lease update")
-						ssr.fullSnapshotLeaseUpdateTimer.Stop()
-					}
-					cancel()
-				} else {
-					ssr.logger.Infof("Skipping the FullSnapshot lease update since no full snapshot has been taken yet")
-					ssr.logger.Infof("Resetting the FullSnapshot lease to retry updating after %v", fullSnapshotLeaseUpdateRetryInterval.String())
-					ssr.fullSnapshotLeaseUpdateTimer.Stop()
-					ssr.fullSnapshotLeaseUpdateTimer.Reset(fullSnapshotLeaseUpdateRetryInterval)
 				}
 			}
 
