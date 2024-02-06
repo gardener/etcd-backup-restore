@@ -19,7 +19,7 @@ const (
 	DefaultMemberLeaseRenewalEnabled = false
 	// DefaultEtcdMemberGCEnabled is a default value for enabling the etcd member garbage collection feature
 	DefaultEtcdMemberGCEnabled = false
-	// DefaultFullSnapshotLeaseName is the name for the delta snapshot lease.
+	// DefaultFullSnapshotLeaseName is the name for the full snapshot lease.
 	DefaultFullSnapshotLeaseName = "full-snapshot-revisions"
 	// DefaultDeltaSnapshotLeaseName is the name for the delta snapshot lease.
 	DefaultDeltaSnapshotLeaseName = "delta-snapshot-revisions"

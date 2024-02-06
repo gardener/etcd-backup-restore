@@ -20,15 +20,16 @@ import (
 
 	"github.com/gardener/etcd-backup-restore/pkg/health/heartbeat"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
+	"github.com/sirupsen/logrus"
 )
 
 var (
-	fullSnapshotLeaseUpdateRetryInterval = 3 * time.Minute // retry interval for updating full snapshot lease. Ideally should be >= 1 minute
+	logger = logrus.NewEntry(logrus.New()).WithField("actor", "FullSnapLeaseUpdater")
 )
 
 // RenewFullSnapshotLeasePeriodically has a timer and will periodically call FullSnapshotCaseLeaseUpdate to renew the fullsnapshot lease until it is updated or stopped.
 // The timer starts upon snapshotter initialization and is reset after every full snapshot is taken.
-func (ssr *Snapshotter) RenewFullSnapshotLeasePeriodically() {
+func (ssr *Snapshotter) RenewFullSnapshotLeasePeriodically(fullSnapshotLeaseUpdateRetryInterval time.Duration) {
 	ssr.FullSnapshotLeaseUpdateTimer = time.NewTimer(fullSnapshotLeaseUpdateRetryInterval)
 	fullSnapshotLeaseUpdateCtx, fullSnapshotLeaseUpdateCancel := context.WithCancel(context.TODO())
 	defer fullSnapshotLeaseUpdateCancel()
@@ -38,27 +39,27 @@ func (ssr *Snapshotter) RenewFullSnapshotLeasePeriodically() {
 			if ssr.healthConfig.SnapshotLeaseRenewalEnabled {
 				if ssr.PrevFullSnapshot != nil {
 					ctx, cancel := context.WithTimeout(fullSnapshotLeaseUpdateCtx, brtypes.LeaseUpdateTimeoutDuration)
-					if _, err := heartbeat.FullSnapshotCaseLeaseUpdate(ctx, ssr.logger, ssr.PrevFullSnapshot, ssr.K8sClientset, ssr.healthConfig.FullSnapshotLeaseName); err != nil {
-						ssr.logger.Warnf("FullSnapshot lease update failed : %v", err)
-						ssr.logger.Infof("Resetting the FullSnapshot lease to retry updating with revision %d after %v", ssr.PrevSnapshot.LastRevision, fullSnapshotLeaseUpdateRetryInterval.String())
+					if _, err := heartbeat.FullSnapshotCaseLeaseUpdate(ctx, logger, ssr.PrevFullSnapshot, ssr.K8sClientset, ssr.healthConfig.FullSnapshotLeaseName); err != nil {
+						logger.Warnf("FullSnapshot lease update failed : %v", err)
+						logger.Infof("Resetting the FullSnapshot lease to retry updating with revision %d after %v", ssr.PrevFullSnapshot.LastRevision, fullSnapshotLeaseUpdateRetryInterval.String())
 						ssr.FullSnapshotLeaseUpdateTimer.Stop()
 						ssr.FullSnapshotLeaseUpdateTimer.Reset(fullSnapshotLeaseUpdateRetryInterval)
 					} else {
-						ssr.logger.Infof("FullSnapshot lease successfully updated with revision %d", ssr.PrevSnapshot.LastRevision)
-						ssr.logger.Infof("Stopping the FullSnapshot lease update")
+						logger.Infof("FullSnapshot lease successfully updated with revision %d", ssr.PrevFullSnapshot.LastRevision)
+						logger.Infof("Stopping the FullSnapshot lease update")
 						ssr.FullSnapshotLeaseUpdateTimer.Stop()
 					}
 					cancel()
 				} else {
-					ssr.logger.Infof("Skipping the FullSnapshot lease update since no full snapshot has been taken yet")
-					ssr.logger.Infof("Resetting the FullSnapshot lease to retry updating after %v", fullSnapshotLeaseUpdateRetryInterval.String())
+					logger.Infof("Skipping the FullSnapshot lease update since no full snapshot has been taken yet")
+					logger.Infof("Resetting the FullSnapshot lease to retry updating after %v", fullSnapshotLeaseUpdateRetryInterval.String())
 					ssr.FullSnapshotLeaseUpdateTimer.Stop()
 					ssr.FullSnapshotLeaseUpdateTimer.Reset(fullSnapshotLeaseUpdateRetryInterval)
 				}
 			}
 
 		case <-ssr.FullSnapshotLeaseStopCh:
-			ssr.logger.Info("Closing the full snapshot lease renewal")
+			logger.Info("Closing the full snapshot lease renewal")
 			if ssr.FullSnapshotLeaseUpdateTimer != nil {
 				ssr.FullSnapshotLeaseUpdateTimer.Stop()
 				ssr.FullSnapshotLeaseUpdateTimer = nil

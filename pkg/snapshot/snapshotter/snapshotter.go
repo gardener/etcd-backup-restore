@@ -44,7 +44,8 @@ const (
 )
 
 var (
-	emptyStruct struct{}
+	emptyStruct                          struct{}
+	fullSnapshotLeaseUpdateRetryInterval = 3 * time.Minute // retry interval for updating full snapshot lease. Ideally should be >= 1 minute
 )
 
 // event is wrapper over etcd event to keep track of time of event
@@ -188,7 +189,7 @@ func (ssr *Snapshotter) Run(stopCh <-chan struct{}, startWithFullSnapshot bool) 
 			return fmt.Errorf("failed to reset full snapshot timer: %v", err)
 		}
 	}
-	go ssr.RenewFullSnapshotLeasePeriodically()
+	go ssr.RenewFullSnapshotLeasePeriodically(fullSnapshotLeaseUpdateRetryInterval)
 	ssr.deltaSnapshotTimer = time.NewTimer(brtypes.DefaultDeltaSnapshotInterval)
 	if ssr.config.DeltaSnapshotPeriod.Duration >= brtypes.DeltaSnapshotIntervalThreshold {
 		ssr.deltaSnapshotTimer.Stop()
