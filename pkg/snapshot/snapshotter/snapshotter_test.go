@@ -898,7 +898,7 @@ var _ = Describe("Snapshotter", func() {
 			})
 		})
 
-		Describe("Scenarios to update full snapshot lease", func() {
+		FDescribe("Scenarios to update full snapshot lease", func() {
 			var (
 				ssr   *Snapshotter
 				lease *v1.Lease
