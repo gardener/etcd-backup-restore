@@ -39,7 +39,6 @@ import (
 const (
 	absCredentialDirectory = "AZURE_APPLICATION_CREDENTIALS"
 	absCredentialJSONFile  = "AZURE_APPLICATION_CREDENTIALS_JSON"
-	envEnableAzurite       = "AZURE_ENABLE_STORAGE_EMULATOR" // Azurite (ABS Emulator)
 	azuriteEndpoint        = "AZURE_STORAGE_API_ENDPOINT"
 )
 
@@ -63,7 +62,7 @@ type absCredentials struct {
 func NewABSSnapStore(config *brtypes.SnapstoreConfig) (*ABSSnapStore, error) {
 	storageAccount, storageKey, err := getCredentials(getEnvPrefixString(config.IsSource))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to get credentials: %v", err)
 	}
 
 	credentials, err := azblob.NewSharedKeyCredential(storageAccount, storageKey)
@@ -71,33 +70,44 @@ func NewABSSnapStore(config *brtypes.SnapstoreConfig) (*ABSSnapStore, error) {
 		return nil, fmt.Errorf("failed to create shared key credentials: %v", err)
 	}
 
-	p := azblob.NewPipeline(credentials, azblob.PipelineOptions{
+	pipeline := azblob.NewPipeline(credentials, azblob.PipelineOptions{
 		Retry: azblob.RetryOptions{
 			TryTimeout: downloadTimeout,
 		}})
-	u, err := url.Parse(fmt.Sprintf("https://%s.%s", storageAccount, brtypes.AzureBlobStorageHostName))
-	// Check if backup-restore is running with the Azure Blob Storage Emulator - Azurite
-	if enableAzurite, ok := os.LookupEnv(envEnableAzurite); ok {
-		isEmulator, err := strconv.ParseBool(enableAzurite)
-		if err != nil {
-			return nil, fmt.Errorf("value %s for the environment variable %s could not be parsed", enableAzurite, envEnableAzurite)
-		}
-		if isEmulator {
-			if endpoint, ok := os.LookupEnv(azuriteEndpoint); ok {
-				// application protocol is set by the user of Azurite, not by backup-restore
-				u, err = url.Parse(fmt.Sprintf("%s/%s", endpoint, credentials.AccountName()))
-			} else {
-				return nil, fmt.Errorf("environment variable %s not set while the environment variable %s is set to true", azuriteEndpoint, envEnableAzurite)
-			}
-		}
-	}
+
+	blobURL, err := constructBlobServiceURL(storageAccount, credentials)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse service url: %v", err)
+		return nil, err
 	}
-	serviceURL := azblob.NewServiceURL(*u, p)
+
+	serviceURL := azblob.NewServiceURL(*blobURL, pipeline)
 	containerURL := serviceURL.NewContainerURL(config.Container)
 
 	return GetABSSnapstoreFromClient(config.Container, config.Prefix, config.TempDir, config.MaxParallelChunkUploads, config.MinChunkSize, &containerURL)
+}
+
+func constructBlobServiceURL(storageAccount string, credentials *azblob.SharedKeyCredential) (*url.URL, error) {
+	defaultURL, err := url.Parse(fmt.Sprintf("https://%s.%s", storageAccount, brtypes.AzureBlobStorageHostName))
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse default service URL: %v", err)
+	}
+
+	if emulatorEnabled, ok := os.LookupEnv(envEmulatorEnabled); ok {
+		isEmulator, err := strconv.ParseBool(emulatorEnabled)
+		if err != nil {
+			return nil, fmt.Errorf("invalid value for %s: %s, error: %v", envEmulatorEnabled, emulatorEnabled, err)
+		}
+
+		if isEmulator {
+			if endpoint, ok := os.LookupEnv(azuriteEndpoint); ok {
+				// application protocol is set by the user of Azurite, not by backup-restore
+				return url.Parse(fmt.Sprintf("%s/%s", endpoint, credentials.AccountName()))
+			}
+			return nil, fmt.Errorf("%s environment variable not set while %s is true", azuriteEndpoint, envEmulatorEnabled)
+		}
+	}
+
+	return defaultURL, nil
 }
 
 func getCredentials(prefixString string) (string, string, error) {

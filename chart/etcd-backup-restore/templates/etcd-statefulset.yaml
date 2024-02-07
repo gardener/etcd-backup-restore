@@ -191,12 +191,12 @@ spec:
             secretKeyRef:
               name: {{ .Release.Name }}-etcd-backup
               key: "storageKey"
-  {{- if .Values.backup.abs.enableAzurite }}
-        - name: "AZURE_ENABLE_STORAGE_EMULATOR"
+  {{- if .Values.backup.abs.emulatorEnabled }}
+        - name: "EMULATOR_ENABLED"
           valueFrom:
             secretKeyRef:
               name: {{ .Release.Name }}-etcd-backup
-              key: "enableAzurite"
+              key: "emulatorEnabled"
   {{- end }}
   {{- if .Values.backup.abs.storageAPIEndpoint }}
         - name: "AZURE_STORAGE_API_ENDPOINT"
