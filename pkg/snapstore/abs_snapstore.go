@@ -58,7 +58,7 @@ type absCredentials struct {
 	StorageAccount string `json:"storageAccount"`
 }
 
-// NewABSSnapStore create new ABSSnapStore from shared configuration with specified bucket
+// NewABSSnapStore creates a new ABSSnapStore using a shared configuration and a specified bucket
 func NewABSSnapStore(config *brtypes.SnapstoreConfig) (*ABSSnapStore, error) {
 	storageAccount, storageKey, err := getCredentials(getEnvPrefixString(config.IsSource))
 	if err != nil {
@@ -75,7 +75,7 @@ func NewABSSnapStore(config *brtypes.SnapstoreConfig) (*ABSSnapStore, error) {
 			TryTimeout: downloadTimeout,
 		}})
 
-	blobURL, err := constructBlobServiceURL(storageAccount, credentials)
+	blobURL, err := ConstructBlobServiceURL(credentials)
 	if err != nil {
 		return nil, err
 	}
@@ -86,8 +86,9 @@ func NewABSSnapStore(config *brtypes.SnapstoreConfig) (*ABSSnapStore, error) {
 	return GetABSSnapstoreFromClient(config.Container, config.Prefix, config.TempDir, config.MaxParallelChunkUploads, config.MinChunkSize, &containerURL)
 }
 
-func constructBlobServiceURL(storageAccount string, credentials *azblob.SharedKeyCredential) (*url.URL, error) {
-	defaultURL, err := url.Parse(fmt.Sprintf("https://%s.%s", storageAccount, brtypes.AzureBlobStorageHostName))
+// ConstructBlobServiceURL constructs the Blob Service URL based on whether the Azurite Emulator is enabled or not
+func ConstructBlobServiceURL(credentials *azblob.SharedKeyCredential) (*url.URL, error) {
+	defaultURL, err := url.Parse(fmt.Sprintf("https://%s.%s", credentials.AccountName(), brtypes.AzureBlobStorageHostName))
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse default service URL: %v", err)
 	}
