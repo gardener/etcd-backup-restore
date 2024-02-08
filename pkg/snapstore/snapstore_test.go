@@ -469,22 +469,22 @@ var _ = Describe("Blob Service URL construction for Azure", func() {
 		credentials, err = azblob.NewSharedKeyCredential(storageAccount, storageKey)
 		Expect(err).ShouldNot(HaveOccurred())
 	})
-	Context("when the environment variable \"EMULATOR_ENABLED\" is not set", func() {
+	Context(fmt.Sprintf("when the environment variable %q is not set", EnvEmulatorEnabled), func() {
 		It("should return the default blob service URL", func() {
 			blobServiceURL, err := ConstructBlobServiceURL(credentials)
 			Expect(err).ShouldNot(HaveOccurred())
 			Expect(blobServiceURL.String()).Should(Equal(fmt.Sprintf("https://%s.%s", credentials.AccountName(), brtypes.AzureBlobStorageHostName)))
 		})
 	})
-	Context("when the environment variable \"EMULATOR_ENABLED\" is set", func() {
+	Context(fmt.Sprintf("when the environment variable %q is set", EnvEmulatorEnabled), func() {
 		Context("to values which are not \"true\"", func() {
 			It("should error when the environment variable is not \"true\" or \"false\"", func() {
-				GinkgoT().Setenv("EMULATOR_ENABLED", "")
+				GinkgoT().Setenv(EnvEmulatorEnabled, "")
 				_, err := ConstructBlobServiceURL(credentials)
 				Expect(err).Should(HaveOccurred())
 			})
 			It("should return the default blob service URL when the environment variable is set to \"false\"", func() {
-				GinkgoT().Setenv("EMULATOR_ENABLED", "false")
+				GinkgoT().Setenv(EnvEmulatorEnabled, "false")
 				blobServiceURL, err := ConstructBlobServiceURL(credentials)
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(blobServiceURL.String()).Should(Equal(fmt.Sprintf("https://%s.%s", credentials.AccountName(), brtypes.AzureBlobStorageHostName)))
@@ -493,14 +493,14 @@ var _ = Describe("Blob Service URL construction for Azure", func() {
 		Context("to \"true\"", func() {
 			const endpoint string = "http://localhost:12345"
 			BeforeEach(func() {
-				GinkgoT().Setenv("EMULATOR_ENABLED", "true")
+				GinkgoT().Setenv(EnvEmulatorEnabled, "true")
 			})
-			It("should error when the \"AZURE_STORAGE_API_ENDPOINT\" environment variable is not set", func() {
+			It(fmt.Sprintf("should error when the %q environment variable is not set", AzuriteEndpoint), func() {
 				_, err := ConstructBlobServiceURL(credentials)
 				Expect(err).Should(HaveOccurred())
 			})
-			It(fmt.Sprintf("should return the Azurite blob service URL when the \"AZURE_STORAGE_API_ENDPOINT\" environment variable is set to \"%s\"", endpoint), func() {
-				GinkgoT().Setenv("AZURE_STORAGE_API_ENDPOINT", endpoint)
+			It(fmt.Sprintf("should return the Azurite blob service URL when the %q environment variable is set to %q", AzuriteEndpoint, endpoint), func() {
+				GinkgoT().Setenv(AzuriteEndpoint, endpoint)
 				blobServiceURL, err := ConstructBlobServiceURL(credentials)
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(blobServiceURL.String()).Should(Equal(fmt.Sprintf("%s/%s", endpoint, credentials.AccountName())))
