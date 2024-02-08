@@ -38,7 +38,7 @@ test_with_coverage() {
 ################################################################################
 
 # To run a specific package, run TEST_PACKAGES=<PATH_TO_PACKAGE> make test
-TEST_PACKAGES="${TEST_PACKAGES:-"pkg/snapshot/snapshotter"}"
+TEST_PACKAGES="${TEST_PACKAGES:-"cmd pkg"}"
 
 RUN_NEGATIVE="${RUN_NEGATIVE:-"true"}"
 

@@ -1,4 +1,4 @@
-// Copyright (c) 2021 SAP SE or an SAP affiliate company. All rights reserved. This file is licensed under the Apache Software License, v. 2 except as noted otherwise in the LICENSE file.
+// Copyright (c) 2024 SAP SE or an SAP affiliate company. All rights reserved. This file is licensed under the Apache Software License, v. 2 except as noted otherwise in the LICENSE file.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -23,38 +23,34 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-var (
-	logger = logrus.NewEntry(logrus.New()).WithField("actor", "FullSnapLeaseUpdater")
-)
-
 // RenewFullSnapshotLeasePeriodically has a timer and will periodically call FullSnapshotCaseLeaseUpdate to renew the fullsnapshot lease until it is updated or stopped.
 // The timer starts upon snapshotter initialization and is reset after every full snapshot is taken.
-func (ssr *Snapshotter) RenewFullSnapshotLeasePeriodically(fullSnapshotLeaseUpdateRetryInterval time.Duration) {
-	ssr.FullSnapshotLeaseUpdateTimer = time.NewTimer(fullSnapshotLeaseUpdateRetryInterval)
+func (ssr *Snapshotter) RenewFullSnapshotLeasePeriodically(FullSnapshotLeaseUpdateInterval time.Duration) {
+	logger := logrus.NewEntry(logrus.New()).WithField("actor", "FullSnapLeaseUpdater")
+	ssr.FullSnapshotLeaseUpdateTimer = time.NewTimer(FullSnapshotLeaseUpdateInterval)
 	fullSnapshotLeaseUpdateCtx, fullSnapshotLeaseUpdateCancel := context.WithCancel(context.TODO())
 	defer fullSnapshotLeaseUpdateCancel()
+	logger.Infof("Starting the FullSnapshot lease renewal with interval %v", FullSnapshotLeaseUpdateInterval)
 	for {
 		select {
 		case <-ssr.FullSnapshotLeaseUpdateTimer.C:
 			if ssr.healthConfig.SnapshotLeaseRenewalEnabled {
 				if ssr.PrevFullSnapshot != nil {
 					ctx, cancel := context.WithTimeout(fullSnapshotLeaseUpdateCtx, brtypes.LeaseUpdateTimeoutDuration)
+					defer cancel()
 					if _, err := heartbeat.FullSnapshotCaseLeaseUpdate(ctx, logger, ssr.PrevFullSnapshot, ssr.K8sClientset, ssr.healthConfig.FullSnapshotLeaseName); err != nil {
-						logger.Warnf("FullSnapshot lease update failed : %v", err)
-						logger.Infof("Resetting the FullSnapshot lease to retry updating with revision %d after %v", ssr.PrevFullSnapshot.LastRevision, fullSnapshotLeaseUpdateRetryInterval.String())
+						//FullSnapshot lease update failed. Retry after interval
 						ssr.FullSnapshotLeaseUpdateTimer.Stop()
-						ssr.FullSnapshotLeaseUpdateTimer.Reset(fullSnapshotLeaseUpdateRetryInterval)
+						ssr.FullSnapshotLeaseUpdateTimer.Reset(FullSnapshotLeaseUpdateInterval)
 					} else {
 						logger.Infof("FullSnapshot lease successfully updated with revision %d", ssr.PrevFullSnapshot.LastRevision)
 						logger.Infof("Stopping the FullSnapshot lease update")
 						ssr.FullSnapshotLeaseUpdateTimer.Stop()
 					}
-					cancel()
 				} else {
-					logger.Infof("Skipping the FullSnapshot lease update since no full snapshot has been taken yet")
-					logger.Infof("Resetting the FullSnapshot lease to retry updating after %v", fullSnapshotLeaseUpdateRetryInterval.String())
+					//Skip the FullSnapshot lease update as no full snapshot has been taken yet. Reset the timer to retry after interval
 					ssr.FullSnapshotLeaseUpdateTimer.Stop()
-					ssr.FullSnapshotLeaseUpdateTimer.Reset(fullSnapshotLeaseUpdateRetryInterval)
+					ssr.FullSnapshotLeaseUpdateTimer.Reset(FullSnapshotLeaseUpdateInterval)
 				}
 			}
 
