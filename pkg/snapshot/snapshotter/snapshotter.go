@@ -188,7 +188,9 @@ func (ssr *Snapshotter) Run(stopCh <-chan struct{}, startWithFullSnapshot bool) 
 			return fmt.Errorf("failed to reset full snapshot timer: %v", err)
 		}
 	}
-	go ssr.RenewFullSnapshotLeasePeriodically()
+	if ssr.healthConfig.SnapshotLeaseRenewalEnabled {
+		go ssr.RenewFullSnapshotLeasePeriodically()
+	}
 	ssr.deltaSnapshotTimer = time.NewTimer(brtypes.DefaultDeltaSnapshotInterval)
 	if ssr.config.DeltaSnapshotPeriod.Duration >= brtypes.DeltaSnapshotIntervalThreshold {
 		ssr.deltaSnapshotTimer.Stop()
@@ -244,7 +246,9 @@ func (ssr *Snapshotter) stop() {
 		ssr.deltaSnapshotTimer.Stop()
 		ssr.deltaSnapshotTimer = nil
 	}
-	ssr.FullSnapshotLeaseStopCh <- emptyStruct
+	if ssr.healthConfig.SnapshotLeaseRenewalEnabled {
+		ssr.FullSnapshotLeaseStopCh <- emptyStruct
+	}
 	ssr.SetSnapshotterInactive()
 	ssr.closeEtcdClient()
 }
