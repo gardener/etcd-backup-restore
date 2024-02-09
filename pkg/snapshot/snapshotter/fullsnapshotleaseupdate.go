@@ -27,10 +27,11 @@ import (
 // The timer starts upon snapshotter initialization and is reset after every full snapshot is taken.
 func (ssr *Snapshotter) RenewFullSnapshotLeasePeriodically() {
 	logger := logrus.NewEntry(logrus.New()).WithField("actor", "FullSnapLeaseUpdater")
-	ssr.FullSnapshotLeaseUpdateTimer = time.NewTimer(ssr.healthConfig.FullSnapshotLeaseUpdateInterval.Duration)
+	fullSnapshotLeaseUpdateInterval := ssr.healthConfig.FullSnapshotLeaseUpdateInterval.Duration
+	ssr.FullSnapshotLeaseUpdateTimer = time.NewTimer(fullSnapshotLeaseUpdateInterval)
 	fullSnapshotLeaseUpdateCtx, fullSnapshotLeaseUpdateCancel := context.WithCancel(context.TODO())
 	defer fullSnapshotLeaseUpdateCancel()
-	logger.Infof("Starting the FullSnapshot lease renewal with interval %v", ssr.healthConfig.FullSnapshotLeaseUpdateInterval.Duration)
+	logger.Infof("Starting the FullSnapshot lease renewal with interval %v", fullSnapshotLeaseUpdateInterval)
 	for {
 		select {
 		case <-ssr.FullSnapshotLeaseUpdateTimer.C:
@@ -41,9 +42,9 @@ func (ssr *Snapshotter) RenewFullSnapshotLeasePeriodically() {
 					if _, err := heartbeat.FullSnapshotCaseLeaseUpdate(ctx, logger, ssr.PrevFullSnapshot, ssr.K8sClientset, ssr.healthConfig.FullSnapshotLeaseName); err != nil {
 						//FullSnapshot lease update failed. Retry after interval
 						logger.Warnf("FullSnapshot lease update failed with error: %v", err)
-						logger.Infof("Resetting the FullSnapshot lease to retry updating with revision %d after %v", ssr.PrevFullSnapshot.LastRevision, ssr.healthConfig.FullSnapshotLeaseUpdateInterval.Duration)
+						logger.Infof("Resetting the FullSnapshot lease to retry updating with revision %d after %v", ssr.PrevFullSnapshot.LastRevision, fullSnapshotLeaseUpdateInterval)
 						ssr.FullSnapshotLeaseUpdateTimer.Stop()
-						ssr.FullSnapshotLeaseUpdateTimer.Reset(ssr.healthConfig.FullSnapshotLeaseUpdateInterval.Duration)
+						ssr.FullSnapshotLeaseUpdateTimer.Reset(fullSnapshotLeaseUpdateInterval)
 					} else {
 						//FullSnapshot lease successfully updated. Stop the timer
 						logger.Infof("Stopping the FullSnapshot lease update")
@@ -52,7 +53,7 @@ func (ssr *Snapshotter) RenewFullSnapshotLeasePeriodically() {
 				} else {
 					//Skip the FullSnapshot lease update as no full snapshot has been taken yet. Reset the timer to retry after interval
 					ssr.FullSnapshotLeaseUpdateTimer.Stop()
-					ssr.FullSnapshotLeaseUpdateTimer.Reset(ssr.healthConfig.FullSnapshotLeaseUpdateInterval.Duration)
+					ssr.FullSnapshotLeaseUpdateTimer.Reset(fullSnapshotLeaseUpdateInterval)
 				}
 			}
 
