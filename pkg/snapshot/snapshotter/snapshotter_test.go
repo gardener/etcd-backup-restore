@@ -944,7 +944,8 @@ var _ = Describe("Snapshotter", func() {
 					err := ssr.K8sClientset.Create(context.TODO(), lease)
 					Expect(err).ShouldNot(HaveOccurred())
 
-					go ssr.RenewFullSnapshotLeasePeriodically(time.Second)
+					ssr.SetFullSnapshotLeaseUpdatePeriod(2 * time.Second)
+					go ssr.RenewFullSnapshotLeasePeriodically()
 					time.Sleep(2 * time.Second)
 					ssr.FullSnapshotLeaseStopCh <- struct{}{}
 
@@ -977,7 +978,8 @@ var _ = Describe("Snapshotter", func() {
 					err := ssr.K8sClientset.Create(context.TODO(), lease)
 					Expect(err).ShouldNot(HaveOccurred())
 
-					go ssr.RenewFullSnapshotLeasePeriodically(time.Second)
+					ssr.SetFullSnapshotLeaseUpdatePeriod(time.Second)
+					go ssr.RenewFullSnapshotLeasePeriodically()
 					time.Sleep(time.Second)
 					ssr.FullSnapshotLeaseStopCh <- struct{}{}
 
@@ -1006,7 +1008,8 @@ var _ = Describe("Snapshotter", func() {
 					ssr.FullSnapshotLeaseStopCh = make(chan struct{})
 					ssr.K8sClientset = fake.NewClientBuilder().Build()
 
-					go ssr.RenewFullSnapshotLeasePeriodically(2 * time.Second)
+					ssr.SetFullSnapshotLeaseUpdatePeriod(2 * time.Second)
+					go ssr.RenewFullSnapshotLeasePeriodically()
 					time.Sleep(time.Second)
 					err := ssr.K8sClientset.Create(context.TODO(), lease)
 					Expect(err).ShouldNot(HaveOccurred())
