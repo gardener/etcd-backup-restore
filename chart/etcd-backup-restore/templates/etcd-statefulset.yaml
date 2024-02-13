@@ -191,6 +191,20 @@ spec:
             secretKeyRef:
               name: {{ .Release.Name }}-etcd-backup
               key: "storageKey"
+  {{- if .Values.backup.abs.emulatorEnabled }}
+        - name: "EMULATOR_ENABLED"
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Release.Name }}-etcd-backup
+              key: "emulatorEnabled"
+  {{- end }}
+  {{- if .Values.backup.abs.storageAPIEndpoint }}
+        - name: "AZURE_STORAGE_API_ENDPOINT"
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Release.Name }}-etcd-backup
+              key: "storageAPIEndpoint"
+  {{- end }}
 {{- else if eq .Values.backup.storageProvider "GCS" }}
         - name: "GOOGLE_APPLICATION_CREDENTIALS"
           value: "/root/.gcp/serviceaccount.json"

@@ -25,6 +25,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Azure/azure-storage-blob-go/azblob"
 	. "github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 	fake "github.com/gophercloud/gophercloud/testhelper/client"
@@ -457,6 +458,55 @@ var _ = Describe("Dynamic access credential rotation test for each provider", fu
 			})
 		})
 	}
+})
+
+var _ = Describe("Blob Service URL construction for Azure", func() {
+	var credentials *azblob.SharedKeyCredential
+	BeforeEach(func() {
+		var err error
+		// test strings
+		storageAccount, storageKey := "testAccountName", "dGVzdEFjY291bnRLZXk="
+		credentials, err = azblob.NewSharedKeyCredential(storageAccount, storageKey)
+		Expect(err).ShouldNot(HaveOccurred())
+	})
+	Context(fmt.Sprintf("when the environment variable %q is not set", EnvEmulatorEnabled), func() {
+		It("should return the default blob service URL", func() {
+			blobServiceURL, err := ConstructBlobServiceURL(credentials)
+			Expect(err).ShouldNot(HaveOccurred())
+			Expect(blobServiceURL.String()).Should(Equal(fmt.Sprintf("https://%s.%s", credentials.AccountName(), brtypes.AzureBlobStorageHostName)))
+		})
+	})
+	Context(fmt.Sprintf("when the environment variable %q is set", EnvEmulatorEnabled), func() {
+		Context("to values which are not \"true\"", func() {
+			It("should error when the environment variable is not \"true\" or \"false\"", func() {
+				GinkgoT().Setenv(EnvEmulatorEnabled, "")
+				_, err := ConstructBlobServiceURL(credentials)
+				Expect(err).Should(HaveOccurred())
+			})
+			It("should return the default blob service URL when the environment variable is set to \"false\"", func() {
+				GinkgoT().Setenv(EnvEmulatorEnabled, "false")
+				blobServiceURL, err := ConstructBlobServiceURL(credentials)
+				Expect(err).ShouldNot(HaveOccurred())
+				Expect(blobServiceURL.String()).Should(Equal(fmt.Sprintf("https://%s.%s", credentials.AccountName(), brtypes.AzureBlobStorageHostName)))
+			})
+		})
+		Context("to \"true\"", func() {
+			const endpoint string = "http://localhost:12345"
+			BeforeEach(func() {
+				GinkgoT().Setenv(EnvEmulatorEnabled, "true")
+			})
+			It(fmt.Sprintf("should error when the %q environment variable is not set", AzuriteEndpoint), func() {
+				_, err := ConstructBlobServiceURL(credentials)
+				Expect(err).Should(HaveOccurred())
+			})
+			It(fmt.Sprintf("should return the Azurite blob service URL when the %q environment variable is set to %q", AzuriteEndpoint, endpoint), func() {
+				GinkgoT().Setenv(AzuriteEndpoint, endpoint)
+				blobServiceURL, err := ConstructBlobServiceURL(credentials)
+				Expect(err).ShouldNot(HaveOccurred())
+				Expect(blobServiceURL.String()).Should(Equal(fmt.Sprintf("%s/%s", endpoint, credentials.AccountName())))
+			})
+		})
+	})
 })
 
 // createCredentialFilesInDirectory creates access credential files in the

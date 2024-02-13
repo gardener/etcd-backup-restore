@@ -25,6 +25,7 @@ import (
 	"path"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -38,6 +39,8 @@ import (
 const (
 	absCredentialDirectory = "AZURE_APPLICATION_CREDENTIALS"
 	absCredentialJSONFile  = "AZURE_APPLICATION_CREDENTIALS_JSON"
+	// AzuriteEndpoint is the environment variable which indicates the endpoint at which the Azurite emulator is hosted
+	AzuriteEndpoint = "AZURE_STORAGE_API_ENDPOINT"
 )
 
 // ABSSnapStore is an ABS backed snapstore.
@@ -56,11 +59,11 @@ type absCredentials struct {
 	StorageAccount string `json:"storageAccount"`
 }
 
-// NewABSSnapStore create new ABSSnapStore from shared configuration with specified bucket
+// NewABSSnapStore creates a new ABSSnapStore using a shared configuration and a specified bucket
 func NewABSSnapStore(config *brtypes.SnapstoreConfig) (*ABSSnapStore, error) {
 	storageAccount, storageKey, err := getCredentials(getEnvPrefixString(config.IsSource))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to get credentials: %v", err)
 	}
 
 	credentials, err := azblob.NewSharedKeyCredential(storageAccount, storageKey)
@@ -68,18 +71,49 @@ func NewABSSnapStore(config *brtypes.SnapstoreConfig) (*ABSSnapStore, error) {
 		return nil, fmt.Errorf("failed to create shared key credentials: %v", err)
 	}
 
-	p := azblob.NewPipeline(credentials, azblob.PipelineOptions{
+	pipeline := azblob.NewPipeline(credentials, azblob.PipelineOptions{
 		Retry: azblob.RetryOptions{
 			TryTimeout: downloadTimeout,
 		}})
-	u, err := url.Parse(fmt.Sprintf("https://%s.%s", storageAccount, brtypes.AzureBlobStorageHostName))
+
+	blobURL, err := ConstructBlobServiceURL(credentials)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse service url: %v", err)
+		return nil, err
 	}
-	serviceURL := azblob.NewServiceURL(*u, p)
+
+	serviceURL := azblob.NewServiceURL(*blobURL, pipeline)
 	containerURL := serviceURL.NewContainerURL(config.Container)
 
 	return GetABSSnapstoreFromClient(config.Container, config.Prefix, config.TempDir, config.MaxParallelChunkUploads, config.MinChunkSize, &containerURL)
+}
+
+// ConstructBlobServiceURL constructs the Blob Service URL based on the activation status of the Azurite Emulator.
+// It checks the environment variables for emulator configuration and constructs the URL accordingly.
+// The function expects two environment variables:
+// - EMULATOR_ENABLED: Indicates whether the Azurite Emulator is enabled (expects "true" or "false").
+// - AZURE_STORAGE_API_ENDPOINT: Specifies the Azurite Emulator endpoint when the emulator is enabled.
+func ConstructBlobServiceURL(credentials *azblob.SharedKeyCredential) (*url.URL, error) {
+	defaultURL, err := url.Parse(fmt.Sprintf("https://%s.%s", credentials.AccountName(), brtypes.AzureBlobStorageHostName))
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse default service URL: %w", err)
+	}
+	emulatorEnabled, ok := os.LookupEnv(EnvEmulatorEnabled)
+	if !ok {
+		return defaultURL, nil
+	}
+	isEmulator, err := strconv.ParseBool(emulatorEnabled)
+	if err != nil {
+		return nil, fmt.Errorf("invalid value for %s: %s, error: %w", EnvEmulatorEnabled, emulatorEnabled, err)
+	}
+	if !isEmulator {
+		return defaultURL, nil
+	}
+	endpoint, ok := os.LookupEnv(AzuriteEndpoint)
+	if !ok {
+		return nil, fmt.Errorf("%s environment variable not set while %s is true", AzuriteEndpoint, EnvEmulatorEnabled)
+	}
+	// Application protocol (http or https) is determined by the user of the Azurite, not by this function.
+	return url.Parse(fmt.Sprintf("%s/%s", endpoint, credentials.AccountName()))
 }
 
 func getCredentials(prefixString string) (string, string, error) {
