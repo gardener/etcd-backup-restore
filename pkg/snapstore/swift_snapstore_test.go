@@ -101,7 +101,11 @@ func handleCreateTextObject(w http.ResponseWriter, r *http.Request) {
 		objectMap[key] = &content
 		objectMapMutex.Unlock()
 	} else {
+		// manifest object
 		content = make([]byte, 0)
+		objectMapMutex.Lock()
+		objectMap[key] = &content
+		objectMapMutex.Unlock()
 	}
 
 	hash := md5.New()

@@ -33,34 +33,31 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+const (
+	prefixV1 string = "v1"
+	prefixV2 string = "v2"
+)
+
 var (
 	bucket    string = "mock-bucket"
 	objectMap        = map[string]*[]byte{}
-	prefixV1  string = "v1"
-	prefixV2  string = "v2"
 )
+
+// testSnapStore embedds brtypes.Snapstore and contains the number of
+// objects that are stored per snapshot for a given storage provider
+type testSnapStore struct {
+	brtypes.SnapStore
+	numberObjectsPerSnapshot int
+}
 
 var _ = Describe("Save, List, Fetch, Delete from mock snapstore", func() {
 	var (
-		snap1        brtypes.Snapshot
-		snap2        brtypes.Snapshot
-		snap3        brtypes.Snapshot
-		snap4        brtypes.Snapshot
-		snap5        brtypes.Snapshot
-		expectedVal1 []byte
-		expectedVal2 []byte
-		expectedVal4 []byte
-		expectedVal5 []byte
-		// segments for Swift
-		expectedVal1Chunk01 []byte
-		expectedVal1Chunk02 []byte
-		expectedVal2Chunk01 []byte
-		expectedVal2Chunk02 []byte
-		expectedVal4Chunk01 []byte
-		expectedVal4Chunk02 []byte
-		expectedVal5Chunk01 []byte
-		expectedVal5Chunk02 []byte
-		snapstores          map[string]brtypes.SnapStore
+		snap1      brtypes.Snapshot
+		snap2      brtypes.Snapshot
+		snap3      brtypes.Snapshot
+		snap4      brtypes.Snapshot
+		snap5      brtypes.Snapshot
+		snapstores map[string]testSnapStore
 	)
 
 	BeforeEach(func() {
@@ -70,30 +67,35 @@ var _ = Describe("Save, List, Fetch, Delete from mock snapstore", func() {
 			StartRevision: 0,
 			LastRevision:  2088,
 			Kind:          brtypes.SnapshotKindFull,
+			Prefix:        prefixV1,
 		}
 		snap2 = brtypes.Snapshot{
 			CreatedOn:     time.Unix(now+100, 0).UTC(),
 			StartRevision: 0,
 			LastRevision:  1988,
 			Kind:          brtypes.SnapshotKindFull,
+			Prefix:        prefixV1,
 		}
 		snap3 = brtypes.Snapshot{
 			CreatedOn:     time.Unix(now+200, 0).UTC(),
 			StartRevision: 0,
 			LastRevision:  1958,
 			Kind:          brtypes.SnapshotKindFull,
+			Prefix:        prefixV1,
 		}
 		snap4 = brtypes.Snapshot{
 			CreatedOn:     time.Unix(now+300, 0).UTC(),
 			StartRevision: 0,
 			LastRevision:  3058,
 			Kind:          brtypes.SnapshotKindFull,
+			Prefix:        prefixV2,
 		}
 		snap5 = brtypes.Snapshot{
 			CreatedOn:     time.Unix(now+400, 0).UTC(),
 			StartRevision: 3058,
 			LastRevision:  3088,
 			Kind:          brtypes.SnapshotKindDelta,
+			Prefix:        prefixV2,
 		}
 
 		// prefixv1
@@ -108,54 +110,58 @@ var _ = Describe("Save, List, Fetch, Delete from mock snapstore", func() {
 		snap4.GenerateSnapshotName()
 		snap5.GenerateSnapshotName()
 
-		// prefixv1
-		expectedVal1 = []byte("value1")
-		expectedVal2 = []byte("value2")
-		// segments for Swift
-		expectedVal1Chunk01 = []byte("value1Chunk01")
-		expectedVal1Chunk02 = []byte("value1Chunk02")
-		expectedVal2Chunk01 = []byte("value2Chunk01")
-		expectedVal2Chunk02 = []byte("value2Chunk02")
-
-		// prefixv2
-		expectedVal4 = []byte("value4")
-		expectedVal5 = []byte("value5")
-		// segments for Swift
-		expectedVal4Chunk01 = []byte("value4Chunk01")
-		expectedVal4Chunk02 = []byte("value4Chunk02")
-		expectedVal5Chunk01 = []byte("value5Chunk01")
-		expectedVal5Chunk02 = []byte("value5Chunk02")
-
-		snapstores = map[string]brtypes.SnapStore{
-			"s3": NewS3FromClient(bucket, prefixV2, "/tmp", 5, brtypes.MinChunkSize, &mockS3Client{
-				objects:          objectMap,
-				prefix:           prefixV2,
-				multiPartUploads: map[string]*[][]byte{},
-			}),
-			"swift": NewSwiftSnapstoreFromClient(bucket, prefixV2, "/tmp", 5, brtypes.MinChunkSize, fake.ServiceClient()),
-			"ABS":   newFakeABSSnapstore(),
-			"GCS": NewGCSSnapStoreFromClient(bucket, prefixV2, "/tmp", 5, brtypes.MinChunkSize, &mockGCSClient{
-				objects: objectMap,
-				prefix:  prefixV2,
-			}),
-			"OSS": NewOSSFromBucket(prefixV2, "/tmp", 5, brtypes.MinChunkSize, &mockOSSBucket{
-				objects:          objectMap,
-				prefix:           prefixV2,
-				multiPartUploads: map[string]*[][]byte{},
-				bucketName:       bucket,
-			}),
-			"ECS": NewS3FromClient(bucket, prefixV2, "/tmp", 5, brtypes.MinChunkSize, &mockS3Client{
-				objects:          objectMap,
-				prefix:           prefixV2,
-				multiPartUploads: map[string]*[][]byte{},
-			}),
-			"OCS": NewS3FromClient(bucket, prefixV2, "/tmp", 5, brtypes.MinChunkSize, &mockS3Client{
-				objects:          objectMap,
-				prefix:           prefixV2,
-				multiPartUploads: map[string]*[][]byte{},
-			}),
+		snapstores = map[string]testSnapStore{
+			"s3": {
+				SnapStore: NewS3FromClient(bucket, prefixV2, "/tmp", 5, brtypes.MinChunkSize, &mockS3Client{
+					objects:          objectMap,
+					prefix:           prefixV2,
+					multiPartUploads: map[string]*[][]byte{},
+				}),
+				numberObjectsPerSnapshot: 1,
+			},
+			"swift": {
+				SnapStore:                NewSwiftSnapstoreFromClient(bucket, prefixV2, "/tmp", 5, brtypes.MinChunkSize, fake.ServiceClient()),
+				numberObjectsPerSnapshot: 3,
+			},
+			"ABS": {
+				SnapStore:                newFakeABSSnapstore(),
+				numberObjectsPerSnapshot: 1,
+			},
+			"GCS": {
+				SnapStore: NewGCSSnapStoreFromClient(bucket, prefixV2, "/tmp", 5, brtypes.MinChunkSize, &mockGCSClient{
+					objects: objectMap,
+					prefix:  prefixV2,
+				}),
+				numberObjectsPerSnapshot: 1,
+			},
+			"OSS": {
+				SnapStore: NewOSSFromBucket(prefixV2, "/tmp", 5, brtypes.MinChunkSize, &mockOSSBucket{
+					objects:          objectMap,
+					prefix:           prefixV2,
+					multiPartUploads: map[string]*[][]byte{},
+					bucketName:       bucket,
+				}),
+				numberObjectsPerSnapshot: 1,
+			},
+			"ECS": {
+				SnapStore: NewS3FromClient(bucket, prefixV2, "/tmp", 5, brtypes.MinChunkSize, &mockS3Client{
+					objects:          objectMap,
+					prefix:           prefixV2,
+					multiPartUploads: map[string]*[][]byte{},
+				}),
+				numberObjectsPerSnapshot: 1,
+			},
+			"OCS": {
+				SnapStore: NewS3FromClient(bucket, prefixV2, "/tmp", 5, brtypes.MinChunkSize, &mockS3Client{
+					objects:          objectMap,
+					prefix:           prefixV2,
+					multiPartUploads: map[string]*[][]byte{},
+				}),
+				numberObjectsPerSnapshot: 1,
+			},
 		}
 	})
+
 	AfterEach(func() {
 		resetObjectMap()
 	})
@@ -165,68 +171,48 @@ var _ = Describe("Save, List, Fetch, Delete from mock snapstore", func() {
 			for provider, snapStore := range snapstores {
 				// Create store for mock tests
 				resetObjectMap()
-				if provider == "swift" {
-					// segment objects
-					objectMap[path.Join(prefixV1, snap1.SnapDir, snap1.SnapName, "0000000001")] = &expectedVal1Chunk01
-					objectMap[path.Join(prefixV1, snap1.SnapDir, snap1.SnapName, "0000000002")] = &expectedVal1Chunk02
-					objectMap[path.Join(prefixV1, snap2.SnapDir, snap2.SnapName, "0000000001")] = &expectedVal2Chunk01
-					objectMap[path.Join(prefixV1, snap2.SnapDir, snap2.SnapName, "0000000002")] = &expectedVal2Chunk02
-					// manifest objects
-					objectMap[path.Join(prefixV1, snap1.SnapDir, snap1.SnapName)] = &[]byte{}
-					objectMap[path.Join(prefixV1, snap2.SnapDir, snap2.SnapName)] = &[]byte{}
-				} else {
-					objectMap[path.Join(prefixV1, snap1.SnapDir, snap1.SnapName)] = &expectedVal1
-					objectMap[path.Join(prefixV1, snap2.SnapDir, snap2.SnapName)] = &expectedVal2
-				}
+
+				var objectMapSnapshots brtypes.SnapList
+				objectMapSnapshots = append(objectMapSnapshots, &snap1, &snap2)
+
+				// number of snapshots that are added to the objectMap
+				numberSnapshotsInObjectMap := setObjectMap(provider, objectMapSnapshots)
+				secondSnapshotIndex := 1 * snapStore.numberObjectsPerSnapshot
 
 				logrus.Infof("Running mock tests for %s when only v1 is present", provider)
 
 				// List snap1 and snap2
 				snapList, err := snapStore.List()
 				Expect(err).ShouldNot(HaveOccurred())
-				if provider == "swift" {
-					Expect(snapList.Len()).To(Equal(6))
-					Expect(snapList[0].SnapName).To(Equal(snap2.SnapName))
-				} else {
-					Expect(snapList.Len()).To(Equal(2))
-					Expect(snapList[0].SnapName).To(Equal(snap2.SnapName))
-				}
+				Expect(snapList.Len()).To(Equal(numberSnapshotsInObjectMap * snapStore.numberObjectsPerSnapshot))
+				Expect(snapList[0].SnapName).To(Equal(snap2.SnapName))
+				Expect(snapList[secondSnapshotIndex].SnapName).To(Equal(snap1.SnapName))
 
-				// Fetch snap2
-				if provider == "swift" {
-					rc, err := snapStore.Fetch(*snapList[3])
-					Expect(err).ShouldNot(HaveOccurred())
-					defer rc.Close()
-					buf := new(bytes.Buffer)
-					_, err = io.Copy(buf, rc)
-					Expect(err).ShouldNot(HaveOccurred())
-					combinedExpectedValue := append(expectedVal1Chunk01, expectedVal1Chunk02...)
-					Expect(buf.Bytes()).To(Equal(combinedExpectedValue))
-				} else {
-					rc, err := snapStore.Fetch(*snapList[1])
-					Expect(err).ShouldNot(HaveOccurred())
-					defer rc.Close()
-					buf := new(bytes.Buffer)
-					_, err = io.Copy(buf, rc)
-					Expect(err).ShouldNot(HaveOccurred())
-					Expect(buf.Bytes()).To(Equal(expectedVal1))
-				}
+				// Fetch snap1 - 2nd in sorted order
+				rc, err := snapStore.Fetch(*snapList[secondSnapshotIndex])
+				Expect(err).ShouldNot(HaveOccurred())
+				defer rc.Close()
+				buf := new(bytes.Buffer)
+				_, err = io.Copy(buf, rc)
+				Expect(err).ShouldNot(HaveOccurred())
+				expectedBytes := []byte(generateContentsForSnapshot(&snap1))
+				Expect(buf.Bytes()).To(Equal(expectedBytes))
 
-				// Delete snap2
+				// Delete snap1
 				prevLen := len(objectMap)
-				err = snapStore.Delete(*snapList[1])
+				err = snapStore.Delete(*snapList[secondSnapshotIndex])
 				Expect(err).ShouldNot(HaveOccurred())
 				snapList, err = snapStore.List()
 				Expect(err).ShouldNot(HaveOccurred())
-				Expect(snapList.Len()).To(Equal(prevLen - 1))
+				Expect(snapList.Len()).To(Equal(prevLen - 1*snapStore.numberObjectsPerSnapshot))
+
 				// reset the objectMap
 				resetObjectMap()
 				dummyData := make([]byte, 6*1024*1024)
-
 				// Save a new snapshot 'snap3'
 				err = snapStore.Save(snap3, io.NopCloser(bytes.NewReader(dummyData)))
 				Expect(err).ShouldNot(HaveOccurred())
-				Expect(len(objectMap)).Should(BeNumerically(">=", 1))
+				Expect(len(objectMap)).Should(BeNumerically(">=", 1*snapStore.numberObjectsPerSnapshot))
 			}
 		})
 	})
@@ -236,93 +222,52 @@ var _ = Describe("Save, List, Fetch, Delete from mock snapstore", func() {
 			for provider, snapStore := range snapstores {
 				// Create store for mock tests
 				resetObjectMap()
-				if provider == "swift" {
-					// segment objects
-					objectMap[path.Join(prefixV1, snap1.SnapDir, snap1.SnapName, "0000000001")] = &expectedVal1Chunk01
-					objectMap[path.Join(prefixV1, snap1.SnapDir, snap1.SnapName, "0000000002")] = &expectedVal1Chunk02
-					objectMap[path.Join(prefixV2, snap4.SnapDir, snap4.SnapName, "0000000001")] = &expectedVal4Chunk01
-					objectMap[path.Join(prefixV2, snap4.SnapDir, snap4.SnapName, "0000000002")] = &expectedVal4Chunk02
-					objectMap[path.Join(prefixV2, snap5.SnapDir, snap5.SnapName, "0000000001")] = &expectedVal5Chunk01
-					objectMap[path.Join(prefixV2, snap5.SnapDir, snap5.SnapName, "0000000002")] = &expectedVal5Chunk02
-					// manifest objects
-					objectMap[path.Join(prefixV1, snap1.SnapDir, snap1.SnapName)] = &[]byte{}
-					objectMap[path.Join(prefixV2, snap4.SnapDir, snap4.SnapName)] = &[]byte{}
-					objectMap[path.Join(prefixV2, snap5.SnapDir, snap5.SnapName)] = &[]byte{}
-				} else {
-					objectMap[path.Join(prefixV1, snap1.SnapDir, snap1.SnapName)] = &expectedVal1
-					objectMap[path.Join(prefixV2, snap4.SnapDir, snap4.SnapName)] = &expectedVal4
-					objectMap[path.Join(prefixV2, snap5.SnapDir, snap5.SnapName)] = &expectedVal5
-				}
+
+				var objectMapSnapshots brtypes.SnapList
+				objectMapSnapshots = append(objectMapSnapshots, &snap1, &snap4, &snap5)
+
+				// number of snapshots that are added to the objectMap
+				numberSnapshotsInObjectMap := setObjectMap(provider, objectMapSnapshots)
+				secondSnapshotIndex := 1 * snapStore.numberObjectsPerSnapshot
+				thirdSnapshotIndex := 2 * snapStore.numberObjectsPerSnapshot
 
 				logrus.Infof("Running mock tests for %s when both v1 and v2 are present", provider)
 
 				// List snap1, snap4, snap5
 				snapList, err := snapStore.List()
 				Expect(err).ShouldNot(HaveOccurred())
-				if provider == "swift" {
-					Expect(snapList.Len()).To(Equal(9))
-				} else {
-					Expect(snapList.Len()).To(Equal(3))
-				}
+				Expect(snapList.Len()).To(Equal(numberSnapshotsInObjectMap * snapStore.numberObjectsPerSnapshot))
 				Expect(snapList[0].SnapName).To(Equal(snap1.SnapName))
+				Expect(snapList[secondSnapshotIndex].SnapName).To(Equal(snap4.SnapName))
+				Expect(snapList[thirdSnapshotIndex].SnapName).To(Equal(snap5.SnapName))
 
 				// Fetch snap1 and snap4
-				if provider == "swift" {
-					rc, err := snapStore.Fetch(*snapList[0])
-					Expect(err).ShouldNot(HaveOccurred())
-					defer rc.Close()
-					buf := new(bytes.Buffer)
-					_, err = io.Copy(buf, rc)
-					combinedExpectedValue := append(expectedVal1Chunk01, expectedVal1Chunk02...)
-					Expect(err).ShouldNot(HaveOccurred())
-					Expect(buf.Bytes()).To(Equal(combinedExpectedValue))
-
-					rc, err = snapStore.Fetch(*snapList[3])
-					Expect(err).ShouldNot(HaveOccurred())
-					defer rc.Close()
-					buf = new(bytes.Buffer)
-					_, err = io.Copy(buf, rc)
-					combinedExpectedValue = append(expectedVal4Chunk01, expectedVal4Chunk02...)
-					Expect(err).ShouldNot(HaveOccurred())
-					Expect(buf.Bytes()).To(Equal(combinedExpectedValue))
-				} else {
-					rc, err := snapStore.Fetch(*snapList[0])
-					Expect(err).ShouldNot(HaveOccurred())
-					defer rc.Close()
-					buf := new(bytes.Buffer)
-					_, err = io.Copy(buf, rc)
-					Expect(err).ShouldNot(HaveOccurred())
-					Expect(buf.Bytes()).To(Equal(expectedVal1))
-
-					rc, err = snapStore.Fetch(*snapList[1])
-					Expect(err).ShouldNot(HaveOccurred())
-					defer rc.Close()
-					buf = new(bytes.Buffer)
-					_, err = io.Copy(buf, rc)
-					Expect(err).ShouldNot(HaveOccurred())
-					Expect(buf.Bytes()).To(Equal(expectedVal4))
-				}
+				rc, err := snapStore.Fetch(*snapList[0])
+				Expect(err).ShouldNot(HaveOccurred())
+				defer rc.Close()
+				buf := new(bytes.Buffer)
+				_, err = io.Copy(buf, rc)
+				expectedBytes := []byte(generateContentsForSnapshot(&snap1))
+				Expect(err).ShouldNot(HaveOccurred())
+				Expect(buf.Bytes()).To(Equal(expectedBytes))
+				rc, err = snapStore.Fetch(*snapList[secondSnapshotIndex])
+				Expect(err).ShouldNot(HaveOccurred())
+				defer rc.Close()
+				buf = new(bytes.Buffer)
+				_, err = io.Copy(buf, rc)
+				expectedBytes = []byte(generateContentsForSnapshot(&snap4))
+				Expect(err).ShouldNot(HaveOccurred())
+				Expect(buf.Bytes()).To(Equal(expectedBytes))
 
 				// Delete snap1 and snap5
-				if provider == "swift" {
-					prevLen := len(objectMap)
-					err = snapStore.Delete(*snapList[0])
-					Expect(err).ShouldNot(HaveOccurred())
-					Expect(len(objectMap)).To(Equal(prevLen - 3))
-					prevLen = len(objectMap)
-					err = snapStore.Delete(*snapList[3])
-					Expect(err).ShouldNot(HaveOccurred())
-					Expect(len(objectMap)).To(Equal(prevLen - 3))
-				} else {
-					prevLen := len(objectMap)
-					err = snapStore.Delete(*snapList[0])
-					Expect(err).ShouldNot(HaveOccurred())
-					Expect(len(objectMap)).To(Equal(prevLen - 1))
-					prevLen = len(objectMap)
-					err = snapStore.Delete(*snapList[2])
-					Expect(err).ShouldNot(HaveOccurred())
-					Expect(len(objectMap)).To(Equal(prevLen - 1))
-				}
+				prevLen := len(objectMap)
+				err = snapStore.Delete(*snapList[0])
+				Expect(err).ShouldNot(HaveOccurred())
+				Expect(len(objectMap)).To(Equal(prevLen - snapStore.numberObjectsPerSnapshot))
+				prevLen = len(objectMap)
+				err = snapStore.Delete(*snapList[thirdSnapshotIndex])
+				Expect(err).ShouldNot(HaveOccurred())
+				Expect(len(objectMap)).To(Equal(prevLen - snapStore.numberObjectsPerSnapshot))
 
 				// reset the objectMap
 				resetObjectMap()
@@ -330,14 +275,14 @@ var _ = Describe("Save, List, Fetch, Delete from mock snapstore", func() {
 				dummyData := make([]byte, 6*1024*1024)
 				err = snapStore.Save(snap1, io.NopCloser(bytes.NewReader(dummyData)))
 				Expect(err).ShouldNot(HaveOccurred())
-				Expect(len(objectMap)).Should(BeNumerically(">=", 1))
+				Expect(len(objectMap)).Should(BeNumerically(">=", snapStore.numberObjectsPerSnapshot))
 
 				// Save another new snapshot 'snap4'
-				prevLen := len(objectMap)
+				prevLen = len(objectMap)
 				dummyData = make([]byte, 6*1024*1024)
 				err = snapStore.Save(snap4, io.NopCloser(bytes.NewReader(dummyData)))
 				Expect(err).ShouldNot(HaveOccurred())
-				Expect(len(objectMap)).Should(BeNumerically(">=", prevLen+1))
+				Expect(len(objectMap)).Should(BeNumerically(">=", prevLen+snapStore.numberObjectsPerSnapshot))
 			}
 		})
 	})
@@ -347,82 +292,48 @@ var _ = Describe("Save, List, Fetch, Delete from mock snapstore", func() {
 			for provider, snapStore := range snapstores {
 				// Create store for mock tests
 				resetObjectMap()
-				if provider == "swift" {
-					// segment objects
-					objectMap[path.Join(prefixV2, snap4.SnapDir, snap4.SnapName, "0000000001")] = &expectedVal4Chunk01
-					objectMap[path.Join(prefixV2, snap4.SnapDir, snap4.SnapName, "0000000002")] = &expectedVal4Chunk02
-					objectMap[path.Join(prefixV2, snap5.SnapDir, snap5.SnapName, "0000000001")] = &expectedVal5Chunk01
-					objectMap[path.Join(prefixV2, snap5.SnapDir, snap5.SnapName, "0000000002")] = &expectedVal5Chunk02
-					// manifest objects
-					objectMap[path.Join(prefixV2, snap4.SnapDir, snap4.SnapName)] = &[]byte{}
-					objectMap[path.Join(prefixV2, snap5.SnapDir, snap5.SnapName)] = &[]byte{}
-				} else {
-					objectMap[path.Join(prefixV2, snap4.SnapDir, snap4.SnapName)] = &expectedVal4
-					objectMap[path.Join(prefixV2, snap5.SnapDir, snap5.SnapName)] = &expectedVal5
-				}
+
+				var objectMapSnapshots brtypes.SnapList
+				objectMapSnapshots = append(objectMapSnapshots, &snap4, &snap5)
+
+				// number of snapshots that are added to the objectMap
+				numberSnapshotsInObjectMap := setObjectMap(provider, objectMapSnapshots)
+				secondSnapshotIndex := 1 * snapStore.numberObjectsPerSnapshot
 
 				logrus.Infof("Running mock tests for %s when only v2 is present", provider)
 
 				// List snap4 and snap5
 				snapList, err := snapStore.List()
 				Expect(err).ShouldNot(HaveOccurred())
-				if provider == "swift" {
-					Expect(snapList.Len()).To(Equal(6))
-				} else {
-					Expect(snapList.Len()).To(Equal(2))
-				}
-				if provider == "swift" {
-					Expect(snapList[0].SnapName).To(Equal(snap4.SnapName))
-					Expect(snapList[3].SnapName).To(Equal(snap5.SnapName))
-				} else {
-					Expect(snapList[0].SnapName).To(Equal(snap4.SnapName))
-					Expect(snapList[1].SnapName).To(Equal(snap5.SnapName))
-				}
+				Expect(snapList.Len()).To(Equal(numberSnapshotsInObjectMap * snapStore.numberObjectsPerSnapshot))
+				Expect(snapList[0].SnapName).To(Equal(snap4.SnapName))
+				Expect(snapList[secondSnapshotIndex].SnapName).To(Equal(snap5.SnapName))
 
 				// Fetch snap5
-				if provider == "swift" {
-					rc, err := snapStore.Fetch(*snapList[3])
-					Expect(err).ShouldNot(HaveOccurred())
-					defer rc.Close()
-					buf := new(bytes.Buffer)
-					_, err = io.Copy(buf, rc)
-					Expect(err).ShouldNot(HaveOccurred())
-					// all segment objects combined
-					combinedExpectedValue := append(expectedVal5Chunk01, expectedVal5Chunk02...)
-					Expect(buf.Bytes()).To(Equal(combinedExpectedValue))
-				} else {
-					rc, err := snapStore.Fetch(*snapList[1])
-					Expect(err).ShouldNot(HaveOccurred())
-					defer rc.Close()
-					buf := new(bytes.Buffer)
-					_, err = io.Copy(buf, rc)
-					Expect(err).ShouldNot(HaveOccurred())
-					Expect(buf.Bytes()).To(Equal(expectedVal5))
-				}
+				rc, err := snapStore.Fetch(*snapList[secondSnapshotIndex])
+				Expect(err).ShouldNot(HaveOccurred())
+				defer rc.Close()
+				buf := new(bytes.Buffer)
+				_, err = io.Copy(buf, rc)
+				Expect(err).ShouldNot(HaveOccurred())
+				expectedBytes := []byte(generateContentsForSnapshot(&snap5))
+				Expect(buf.Bytes()).To(Equal(expectedBytes))
 
 				// Delete snap5
 				prevLen := len(objectMap)
-				if provider == "swift" {
-					err = snapStore.Delete(*snapList[0])
-				} else {
-					err = snapStore.Delete(*snapList[1])
-				}
+				err = snapStore.Delete(*snapList[0])
 				Expect(err).ShouldNot(HaveOccurred())
 				snapList, err = snapStore.List()
 				Expect(err).ShouldNot(HaveOccurred())
-				if provider == "swift" {
-					Expect(snapList.Len()).To(Equal(prevLen - 3))
-				} else {
-					Expect(snapList.Len()).To(Equal(prevLen - 1))
-				}
+				Expect(snapList.Len()).To(Equal(prevLen - snapStore.numberObjectsPerSnapshot))
+
 				// Reset the objectMap
 				resetObjectMap()
-
 				// Save a new snapshot 'snap4'
 				dummyData := make([]byte, 6*1024*1024)
 				err = snapStore.Save(snap4, io.NopCloser(bytes.NewReader(dummyData)))
 				Expect(err).ShouldNot(HaveOccurred())
-				Expect(len(objectMap)).Should(BeNumerically(">=", 1))
+				Expect(len(objectMap)).Should(BeNumerically(">=", snapStore.numberObjectsPerSnapshot))
 			}
 		})
 	})
@@ -633,6 +544,35 @@ func modifyCredentialFileInDirectory(credentialDirectory, credentialFile string)
 	time.Sleep(time.Millisecond * 100)
 	credentialFilePath := filepath.Join(credentialDirectory, credentialFile)
 	return os.WriteFile(credentialFilePath, []byte("MODIFIED CONTENT"), os.ModePerm)
+}
+
+// generates a unique string that would be the contents of a snapshot
+func generateContentsForSnapshot(snapshot *brtypes.Snapshot) string {
+	return fmt.Sprintf("%s%d%d%s%s%t%s%s%t", snapshot.Kind, snapshot.StartRevision, snapshot.LastRevision,
+		snapshot.SnapDir, snapshot.SnapName, snapshot.IsChunk, snapshot.Prefix, snapshot.CompressionSuffix, snapshot.IsFinal)
+}
+
+// Changes the contents of the objectMap according the to the snapshots and the provider and returns the number of snapshots added
+func setObjectMap(provider string, snapshots brtypes.SnapList) int {
+	var numberSnapshotsAdded int
+	for _, snapshot := range snapshots {
+		if provider == "swift" {
+			// contents of the snapshot split into segments
+			generatedContents := generateContentsForSnapshot(snapshot)
+			segmentBytes01 := []byte(generatedContents[:len(generatedContents)/2])
+			segmentBytes02 := []byte(generatedContents[len(generatedContents)/2:])
+			// segment objects
+			objectMap[path.Join(snapshot.Prefix, snapshot.SnapDir, snapshot.SnapName, "0000000001")] = &segmentBytes01
+			objectMap[path.Join(snapshot.Prefix, snapshot.SnapDir, snapshot.SnapName, "0000000002")] = &segmentBytes02
+			// manifest object
+			objectMap[path.Join(snapshot.Prefix, snapshot.SnapDir, snapshot.SnapName)] = &[]byte{}
+		} else {
+			expectedValue := []byte(generateContentsForSnapshot(snapshot))
+			objectMap[path.Join(snapshot.Prefix, snapshot.SnapDir, snapshot.SnapName)] = &expectedValue
+		}
+		numberSnapshotsAdded++
+	}
+	return numberSnapshotsAdded
 }
 
 func resetObjectMap() {
