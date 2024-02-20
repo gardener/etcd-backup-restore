@@ -905,14 +905,13 @@ var _ = Describe("Snapshotter", func() {
 			)
 			BeforeEach(func() {
 				healthConfig.SnapshotLeaseRenewalEnabled = true
-				healthConfig.FullSnapshotLeaseName = brtypes.DefaultFullSnapshotLeaseName
-
 				snapstoreConfig = &brtypes.SnapstoreConfig{Container: path.Join(outputDir, "default.bkp")}
 				store, err = snapstore.GetSnapstore(snapstoreConfig)
 				Expect(err).ShouldNot(HaveOccurred())
 
 				Expect(os.Setenv("POD_NAME", "test_pod")).To(Succeed())
 				Expect(os.Setenv("POD_NAMESPACE", "test_namespace")).To(Succeed())
+				os.Setenv("UNIT_TEST", "true")
 
 				lease = &v1.Lease{
 					TypeMeta: metav1.TypeMeta{
@@ -929,6 +928,7 @@ var _ = Describe("Snapshotter", func() {
 			AfterEach(func() {
 				Expect(os.Unsetenv("POD_NAME")).To(Succeed())
 				Expect(os.Unsetenv("POD_NAMESPACE")).To(Succeed())
+				Expect(os.Unsetenv("UNIT_TEST")).To(Succeed())
 			})
 			Context("Without previous full snapshot", func() {
 				It("cannot update the lease", func() {

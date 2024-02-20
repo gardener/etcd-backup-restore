@@ -130,9 +130,9 @@ func NewSnapshotter(logger *logrus.Entry, config *brtypes.SnapshotterConfig, sto
 
 	metrics.LatestSnapshotRevision.With(prometheus.Labels{metrics.LabelKind: prevSnapshot.Kind}).Set(float64(prevSnapshot.LastRevision))
 
-	//Attempt to create clientset only if `enable-snapshot-lease-renewal` flag of healthConfig is set
+	//Attempt to create clientset only if `enable-snapshot-lease-renewal` flag of healthConfig is set & when not running in unit test environment
 	var clientSet client.Client
-	if healthConfig.SnapshotLeaseRenewalEnabled {
+	if healthConfig.SnapshotLeaseRenewalEnabled && !miscellaneous.IsUnitTestEnv() {
 		clientSet, err = miscellaneous.GetKubernetesClientSetOrError()
 		if err != nil {
 			return nil, err
