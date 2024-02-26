@@ -1,5 +1,5 @@
 # Etcd-Backup-Restore
-
+[![REUSE status](https://api.reuse.software/badge/github.com/gardener/etcd-backup-restore)](https://api.reuse.software/info/github.com/gardener/etcd-backup-restore)
 [![CI Build status](https://concourse.ci.gardener.cloud/api/v1/teams/gardener-tests/pipelines/etcd-backup-restore-master/jobs/master-head-update-job/badge)](https://concourse.ci.gardener.cloud/teams/gardener-tests/pipelines/etcd-backup-restore-master/jobs/master-head-update-job)
 [![Go Report Card](https://goreportcard.com/badge/github.com/gardener/etcd-backup-restore)](https://goreportcard.com/report/github.com/gardener/etcd-backup-restore)
 [![GoDoc](https://godoc.org/github.com/gardener/etcd-backup-restore?status.svg)](https://godoc.org/github.com/gardener/etcd-backup-restore)
