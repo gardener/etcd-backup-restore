@@ -608,14 +608,14 @@ var _ = Describe("Miscellaneous Tests", func() {
 
 		Context("parse peer url", func() {
 			It("parsing well-defined initial-advertise-peer-urls", func() {
-				initialAdPeerURL = "https@etcd-events-peer@shoot--dev--test@2380"
+				initialAdPeerURL = "https://etcd-events-peer.shoot--dev--test:2380"
 				peerURL, err := ParsePeerURL(initialAdPeerURL, podName)
 				Expect(err).To(BeNil())
 				Expect(peerURL).To(Equal("https://etcd-test-pod-0.etcd-events-peer.shoot--dev--test.svc:2380"))
 			})
 
 			It("parsing malformed initial-advertise-peer-urls", func() {
-				initialAdPeerURL = "https@etcd-events-peer@shoot--dev--test"
+				initialAdPeerURL = "https://etcd-events-peer.shoot--dev--test"
 				_, err := ParsePeerURL(initialAdPeerURL, podName)
 				Expect(err).ToNot(BeNil())
 			})
@@ -724,7 +724,7 @@ var _ = Describe("Miscellaneous Tests", func() {
 		Context("with non-TLS enabled peer url", func() {
 			BeforeEach(func() {
 				etcdConfigYaml := `name: etcd1
-initial-advertise-peer-urls: http@etcd-main-peer@default@2380
+initial-advertise-peer-urls: http://etcd-main-peer.default:2380
 initial-cluster: etcd1=http://0.0.0.0:2380`
 				err := os.WriteFile(outfile, []byte(etcdConfigYaml), 0755)
 				Expect(err).ShouldNot(HaveOccurred())
@@ -740,7 +740,7 @@ initial-cluster: etcd1=http://0.0.0.0:2380`
 		Context("with TLS enabled peer url", func() {
 			BeforeEach(func() {
 				etcdConfigYaml := `name: etcd1
-initial-advertise-peer-urls: https@etcd-main-peer@default@2380
+initial-advertise-peer-urls: https://etcd-main-peer.default:2380
 initial-cluster: etcd1=https://0.0.0.0:2380`
 				err := os.WriteFile(outfile, []byte(etcdConfigYaml), 0755)
 				Expect(err).ShouldNot(HaveOccurred())
