@@ -79,6 +79,9 @@ type Control interface {
 
 	// IsLearnerPresent checks for the learner(non-voting) member in a cluster.
 	IsLearnerPresent(context.Context) (bool, error)
+
+	// GetMemberPeerURL returns the current peer URL of the member.
+	GetMemberPeerURL(context.Context) (string, error)
 }
 
 // memberControl holds the configuration for the mechanism of adding a new member to the cluster.
@@ -86,13 +89,11 @@ type memberControl struct {
 	clientFactory etcdClient.Factory
 	logger        logrus.Entry
 	podName       string
-	configFile    string
 	podNamespace  string
 }
 
 // NewMemberControl returns new ExponentialBackoff.
 func NewMemberControl(etcdConnConfig *brtypes.EtcdConnectionConfig) Control {
-	var configFile string
 	logger := logrus.New().WithField("actor", "member-add")
 	etcdConn := *etcdConnConfig
 
@@ -108,14 +109,10 @@ func NewMemberControl(etcdConnConfig *brtypes.EtcdConnectionConfig) Control {
 		logger.Fatalf("Error reading POD_NAMESPACE env var : %v", err)
 	}
 
-	//TODO: Refactor needed
-	configFile = miscellaneous.GetConfigFilePath()
-
 	return &memberControl{
 		clientFactory: clientFactory,
 		logger:        *logger,
 		podName:       podName,
-		configFile:    configFile,
 		podNamespace:  podNamespace,
 	}
 }
@@ -123,7 +120,7 @@ func NewMemberControl(etcdConnConfig *brtypes.EtcdConnectionConfig) Control {
 // AddMemberAsLearner add a member as a learner to the etcd cluster
 func (m *memberControl) AddMemberAsLearner(ctx context.Context) error {
 	//Add member as learner to cluster
-	memberURL, err := getMemberPeerURL(m.configFile, m.podName)
+	memberPeerURL, err := miscellaneous.GetMemberPeerURLFromConfig()
 	if err != nil {
 		m.logger.Fatalf("Error fetching etcd member URL : %v", err)
 	}
@@ -132,15 +129,17 @@ func (m *memberControl) AddMemberAsLearner(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to build etcd cluster client : %v", err)
 	}
-	defer cli.Close()
+	defer func() {
+		_ = cli.Close()
+	}()
 
 	memAddCtx, cancel := context.WithTimeout(ctx, EtcdTimeout)
 	defer cancel()
 	start := time.Now()
-	response, err := cli.MemberAddAsLearner(memAddCtx, []string{memberURL})
+	response, err := cli.MemberAddAsLearner(memAddCtx, []string{memberPeerURL})
 	if err != nil {
 		if errors.Is(err, rpctypes.Error(rpctypes.ErrGRPCPeerURLExist)) || errors.Is(err, rpctypes.Error(rpctypes.ErrGRPCMemberExist)) {
-			m.logger.Infof("Member %s already part of etcd cluster", memberURL)
+			m.logger.Infof("Member %s already part of etcd cluster", memberPeerURL)
 			return nil
 		} else if errors.Is(err, rpctypes.Error(rpctypes.ErrGRPCTooManyLearners)) {
 			m.logger.Infof("Unable to add member %s as a learner because the cluster already has a learner", m.podName)
@@ -167,7 +166,7 @@ func (m *memberControl) IsMemberInCluster(ctx context.Context) (bool, error) {
 	err := retry.OnError(backoff, func(err error) bool {
 		return err != nil
 	}, func() error {
-		etcdProbeCtx, cancel := context.WithTimeout(context.TODO(), EtcdTimeout)
+		etcdProbeCtx, cancel := context.WithTimeout(ctx, EtcdTimeout)
 		defer cancel()
 		return miscellaneous.ProbeEtcd(etcdProbeCtx, m.clientFactory, &m.logger)
 	})
@@ -180,14 +179,18 @@ func (m *memberControl) IsMemberInCluster(ctx context.Context) (bool, error) {
 		m.logger.Errorf("failed to build etcd cluster client")
 		return false, err
 	}
-	defer cli.Close()
+	defer func() {
+		if err = cli.Close(); err != nil {
+			m.logger.Errorf("error while closing etcd client : %v", err)
+		}
+	}()
 
 	// List members in cluster
 	var etcdMemberList *clientv3.MemberListResponse
 	err = retry.OnError(backoff, func(err error) bool {
 		return err != nil
 	}, func() error {
-		memListCtx, cancel := context.WithTimeout(context.TODO(), EtcdTimeout)
+		memListCtx, cancel := context.WithTimeout(ctx, EtcdTimeout)
 		defer cancel()
 		etcdMemberList, err = cli.MemberList(memListCtx)
 		return err
@@ -208,28 +211,12 @@ func (m *memberControl) IsMemberInCluster(ctx context.Context) (bool, error) {
 	return false, nil
 }
 
-func getMemberPeerURL(configFile string, podName string) (string, error) {
-	config, err := miscellaneous.ReadConfigFileAsMap(configFile)
-	if err != nil {
-		return "", err
-	}
-	initAdPeerURL := config["initial-advertise-peer-urls"]
-	if initAdPeerURL == nil {
-		return "", errors.New("initial-advertise-peer-urls must be set in etcd config")
-	}
-	peerURL, err := miscellaneous.ParsePeerURL(initAdPeerURL.(string), podName)
-	if err != nil {
-		return "", fmt.Errorf("could not parse peer URL from the config file : %v", err)
-	}
-	return peerURL, nil
-}
-
 // doUpdateMemberPeerAddress updated the peer address of a specified etcd member
 func (m *memberControl) doUpdateMemberPeerAddress(ctx context.Context, cli etcdClient.ClusterCloser, id uint64) error {
 	// Already existing clusters or cluster after restoration have `http://localhost:2380` as the peer address. This needs to explicitly updated to the correct peer address.
 	m.logger.Infof("Updating member peer URL for %s", m.podName)
 
-	memberPeerURL, err := getMemberPeerURL(m.configFile, m.podName)
+	memberPeerURL, err := miscellaneous.GetMemberPeerURLFromConfig()
 	if err != nil {
 		return fmt.Errorf("could not fetch member URL : %v", err)
 	}
@@ -251,7 +238,11 @@ func (m *memberControl) PromoteMember(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to build etcd cluster client : %v", err)
 	}
-	defer cli.Close()
+	defer func() {
+		if err = cli.Close(); err != nil {
+			m.logger.Errorf("error while closing etcd client : %v", err)
+		}
+	}()
 
 	//List all members in the etcd cluster
 	//Member URL will appear in the memberlist call response as soon as the member has been added to the cluster as a learner
@@ -303,7 +294,11 @@ func (m *memberControl) RemoveMember(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to build etcd cluster client : %v", err)
 	}
-	defer cli.Close()
+	defer func() {
+		if err = cli.Close(); err != nil {
+			m.logger.Errorf("error while closing etcd client : %v", err)
+		}
+	}()
 
 	memRemoveCtx, memRemoveCtxCancel := context.WithTimeout(ctx, brtypes.DefaultEtcdConnectionTimeout)
 	defer memRemoveCtxCancel()
@@ -329,7 +324,11 @@ func (m *memberControl) IsLearnerPresent(ctx context.Context) (bool, error) {
 	if err != nil {
 		return false, fmt.Errorf("failed to build etcd cluster client : %v", err)
 	}
-	defer cli.Close()
+	defer func() {
+		if err = cli.Close(); err != nil {
+			m.logger.Errorf("error while closing etcd client : %v", err)
+		}
+	}()
 
 	learnerCtx, learnerCtxCancel := context.WithTimeout(ctx, brtypes.DefaultEtcdConnectionTimeout)
 	defer learnerCtxCancel()
@@ -362,7 +361,7 @@ func (m *memberControl) IsClusterScaledUp(ctx context.Context, clientSet client.
 	return false, nil
 }
 
-// WasMemberInCluster checks the whether etcd member was part of etcd cluster.
+// WasMemberInCluster checks whether etcd member was part of etcd cluster.
 func (m *memberControl) WasMemberInCluster(ctx context.Context, clientSet client.Client) bool {
 
 	if etcdMemberPresent, err := m.IsMemberInCluster(ctx); err != nil {
@@ -387,6 +386,22 @@ func (m *memberControl) WasMemberInCluster(ctx context.Context, clientSet client
 	return true
 }
 
+func (m *memberControl) GetMemberPeerURL(ctx context.Context) (string, error) {
+	cli, err := m.clientFactory.NewCluster()
+	if err != nil {
+		return "", fmt.Errorf("failed to create etcd cluster client : %w", err)
+	}
+	memberListResp, err := cli.MemberList(ctx)
+	if err != nil {
+		return "", fmt.Errorf("failed to list members : %w", err)
+	}
+	foundMember := findMember(memberListResp.Members, m.podName)
+	if foundMember == nil {
+		return "", fmt.Errorf("failed to determine peer URL: %w", ErrMissingMember)
+	}
+	return foundMember.GetPeerURLs()[0], nil
+}
+
 // AddLearnerWithRetry add a new member as a learner with exponential backoff.
 func AddLearnerWithRetry(ctx context.Context, m Control, retrySteps int, dataDir string) error {
 	backoff := miscellaneous.CreateBackoff(RetryPeriod, retrySteps)
@@ -398,7 +413,9 @@ func AddLearnerWithRetry(ctx context.Context, m Control, retrySteps int, dataDir
 		}
 		if err := m.AddMemberAsLearner(ctx); err != nil {
 			if errors.Is(err, rpctypes.Error(rpctypes.ErrGRPCTooManyLearners)) {
-				miscellaneous.SleepWithContext(ctx, EtcdTimeout)
+				if err = miscellaneous.SleepWithContext(ctx, EtcdTimeout); err != nil {
+					return err
+				}
 			}
 			return err
 		}

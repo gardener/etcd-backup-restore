@@ -539,42 +539,32 @@ func ReadConfigFileAsMap(path string) (map[string]interface{}, error) {
 	return c, nil
 }
 
-// ParsePeerURL forms a PeerURL, given podName by parsing the initial-advertise-peer-urls
-func ParsePeerURL(initialAdvertisePeerURLs, podName string) (string, error) {
+// GetMemberPeerURLFromConfig gets the peer URL from the etcd config file.
+func GetMemberPeerURLFromConfig() (string, error) {
+	podName, err := GetEnvVarOrError("POD_NAME")
+	if err != nil {
+		return "", err
+	}
+	cfgPath := GetConfigFilePath()
+	cfg, err := ReadConfigFileAsMap(cfgPath)
+	if err != nil {
+		return "", err
+	}
+	initAdPeerURL, ok := cfg["initial-advertise-peer-urls"]
+	if !ok {
+		return "", fmt.Errorf("initial-advertise-peer-urls not found in etcd config file")
+	}
+	return parsePeerURL(initAdPeerURL.(string), podName)
+}
+
+// parsePeerURL forms a PeerURL, given podName by parsing the initial-advertise-peer-urls
+func parsePeerURL(initialAdvertisePeerURLs, podName string) (string, error) {
 	tokens := strings.Split(initialAdvertisePeerURLs, "@")
 	if len(tokens) < 4 {
 		return "", fmt.Errorf("invalid peer URL : %s", initialAdvertisePeerURLs)
 	}
-	domaiName := fmt.Sprintf("%s.%s.%s", tokens[1], tokens[2], "svc")
-	return fmt.Sprintf("%s://%s.%s:%s", tokens[0], podName, domaiName, tokens[3]), nil
-}
-
-// IsPeerURLTLSEnabled checks whether the peer address is TLS enabled or not.
-func IsPeerURLTLSEnabled() (bool, error) {
-	podName, err := GetEnvVarOrError("POD_NAME")
-	if err != nil {
-		return false, err
-	}
-
-	configFile := GetConfigFilePath()
-
-	config, err := ReadConfigFileAsMap(configFile)
-	if err != nil {
-		return false, err
-	}
-	initAdPeerURL := config["initial-advertise-peer-urls"]
-
-	memberPeerURL, err := ParsePeerURL(initAdPeerURL.(string), podName)
-	if err != nil {
-		return false, err
-	}
-
-	peerURL, err := url.Parse(memberPeerURL)
-	if err != nil {
-		return false, err
-	}
-
-	return peerURL.Scheme == https, nil
+	domainName := fmt.Sprintf("%s.%s.%s", tokens[1], tokens[2], "svc")
+	return fmt.Sprintf("%s://%s.%s:%s", tokens[0], podName, domainName, tokens[3]), nil
 }
 
 // GetPrevScheduledSnapTime returns the previous schedule snapshot time.

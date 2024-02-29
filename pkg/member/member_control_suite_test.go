@@ -49,7 +49,7 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 	err = os.RemoveAll(outputDir)
 	Expect(err).ShouldNot(HaveOccurred())
 
-	etcd, err = utils.StartEmbeddedEtcd(testCtx, etcdDir, logger, podName, "")
+	etcd, err = utils.StartEmbeddedEtcd(testCtx, etcdDir, logger, podName, "2380")
 	Expect(err).ShouldNot(HaveOccurred())
 	var data []byte
 	return data

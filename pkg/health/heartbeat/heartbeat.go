@@ -17,11 +17,13 @@ package heartbeat
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"strconv"
 	"time"
 
 	"github.com/gardener/etcd-backup-restore/pkg/errors"
 	"github.com/gardener/etcd-backup-restore/pkg/etcdutil"
+	"github.com/gardener/etcd-backup-restore/pkg/member"
 	"github.com/gardener/etcd-backup-restore/pkg/miscellaneous"
 	utils "github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
@@ -317,8 +319,8 @@ func DeltaSnapshotCaseLeaseUpdate(ctx context.Context, logger *logrus.Entry, k8s
 }
 
 // RenewMemberLeasePeriodically has a timer and will periodically call RenewMemberLeases to renew the member lease until stopped
-func RenewMemberLeasePeriodically(ctx context.Context, stopCh chan struct{}, hconfig *brtypes.HealthConfig, logger *logrus.Entry, etcdConfig *brtypes.EtcdConnectionConfig) error {
-	peerURLTLSEnabled, err := miscellaneous.IsPeerURLTLSEnabled()
+func RenewMemberLeasePeriodically(ctx context.Context, stopCh chan struct{}, hconfig *brtypes.HealthConfig, logger *logrus.Entry, etcdConfig *brtypes.EtcdConnectionConfig, mc member.Control) error {
+	peerURLTLSEnabled, err := isPeerURLTLSEnabled(ctx, mc)
 	if err != nil {
 		return fmt.Errorf("unable to check peer TLS enabled or not: %v", err)
 	}
@@ -353,8 +355,20 @@ func RenewMemberLeasePeriodically(ctx context.Context, stopCh chan struct{}, hco
 			hb.logger.Info("Stopped member lease renewal timer")
 			return nil
 		case <-stopCh:
-			hb.logger.Info("Stoping the member lease renewal")
+			hb.logger.Info("Stopping the member lease renewal")
 			return nil
 		}
 	}
+}
+
+func isPeerURLTLSEnabled(ctx context.Context, mc member.Control) (bool, error) {
+	actualMemberPeerURL, err := mc.GetMemberPeerURL(ctx)
+	if err != nil {
+		return false, fmt.Errorf("failed to get member peer URL: %w", err)
+	}
+	peerURL, err := url.Parse(actualMemberPeerURL)
+	if err != nil {
+		return false, fmt.Errorf("failed to parse member peer URL: %w", err)
+	}
+	return peerURL.Scheme == "https", nil
 }

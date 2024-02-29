@@ -609,14 +609,14 @@ var _ = Describe("Miscellaneous Tests", func() {
 		Context("parse peer url", func() {
 			It("parsing well-defined initial-advertise-peer-urls", func() {
 				initialAdPeerURL = "https@etcd-events-peer@shoot--dev--test@2380"
-				peerURL, err := ParsePeerURL(initialAdPeerURL, podName)
+				peerURL, err := parsePeerURL(initialAdPeerURL, podName)
 				Expect(err).To(BeNil())
 				Expect(peerURL).To(Equal("https://etcd-test-pod-0.etcd-events-peer.shoot--dev--test.svc:2380"))
 			})
 
 			It("parsing malformed initial-advertise-peer-urls", func() {
 				initialAdPeerURL = "https@etcd-events-peer@shoot--dev--test"
-				_, err := ParsePeerURL(initialAdPeerURL, podName)
+				_, err := parsePeerURL(initialAdPeerURL, podName)
 				Expect(err).ToNot(BeNil())
 			})
 		})
@@ -708,62 +708,44 @@ var _ = Describe("Miscellaneous Tests", func() {
 		})
 	})
 
-	Describe("Checking IsPeerURLTLSEnabled", func() {
-		var (
-			outfile = "/tmp/etcd.conf.yaml"
-		)
+	Describe("Get member peer URL from etcd config", func() {
+		var etcdConfigFilePath string
+		var etcdConfigYaml string
 		BeforeEach(func() {
-			Expect(os.Setenv("POD_NAME", "test_pod")).To(Succeed())
-			Expect(os.Setenv("ETCD_CONF", outfile)).To(Succeed())
+			etcdConfigFile, err := os.CreateTemp("", "etcd.conf.yaml")
+			Expect(err).To(BeNil())
+			etcdConfigFilePath = etcdConfigFile.Name()
+			Expect(os.Setenv("POD_NAME", "test-pod")).To(Succeed())
+			Expect(os.Setenv("ETCD_CONF", etcdConfigFilePath)).To(Succeed())
 		})
 		AfterEach(func() {
+			Expect(os.Remove(etcdConfigFilePath)).To(Succeed())
 			Expect(os.Unsetenv("POD_NAME")).To(Succeed())
 			Expect(os.Unsetenv("ETCD_CONF")).To(Succeed())
 		})
-
-		Context("with non-TLS enabled peer url", func() {
-			BeforeEach(func() {
-				etcdConfigYaml := `name: etcd1
-initial-advertise-peer-urls: http@etcd-main-peer@default@2380
-initial-cluster: etcd1=http://0.0.0.0:2380`
-				err := os.WriteFile(outfile, []byte(etcdConfigYaml), 0755)
-				Expect(err).ShouldNot(HaveOccurred())
-			})
-			It("should return false", func() {
-				enabled, err := IsPeerURLTLSEnabled()
-				Expect(err).To(BeNil())
-				Expect(enabled).To(BeFalse())
-			})
-
+		JustBeforeEach(func() {
+			Expect(os.WriteFile(etcdConfigFilePath, []byte(etcdConfigYaml), 0755)).To(Succeed())
 		})
-
-		Context("with TLS enabled peer url", func() {
+		When("when peer url is defined in config yaml", func() {
 			BeforeEach(func() {
-				etcdConfigYaml := `name: etcd1
+				etcdConfigYaml = `name: etcd1
 initial-advertise-peer-urls: https@etcd-main-peer@default@2380
-initial-cluster: etcd1=https://0.0.0.0:2380`
-				err := os.WriteFile(outfile, []byte(etcdConfigYaml), 0755)
-				Expect(err).ShouldNot(HaveOccurred())
+initial-cluster: etcd-main-0=https://0.0.0.0:2380`
 			})
-			It("should return true", func() {
-				enabled, err := IsPeerURLTLSEnabled()
+			It("should return configured peer url", func() {
+				peerURL, err := GetMemberPeerURLFromConfig()
 				Expect(err).To(BeNil())
-				Expect(enabled).To(BeTrue())
+				Expect(peerURL).To(Equal("https://test-pod.etcd-main-peer.default.svc:2380"))
 			})
 		})
-
-		Context("with empty peer url passed", func() {
+		When("when peer url is missing in config yaml", func() {
 			BeforeEach(func() {
-				etcdConfigYaml := `name: etcd1
-initial-advertise-peer-urls: ""
-initial-cluster: etcd1=http://0.0.0.0:2380`
-				err := os.WriteFile(outfile, []byte(etcdConfigYaml), 0755)
-				Expect(err).ShouldNot(HaveOccurred())
+				etcdConfigYaml = `name: etcd1
+initial-cluster: etcd-main-0=https://0.0.0.0:2380`
 			})
-			It("should return error", func() {
-				enabled, err := IsPeerURLTLSEnabled()
-				Expect(err).Should(HaveOccurred())
-				Expect(enabled).To(BeFalse())
+			It("should return an error", func() {
+				_, err := GetMemberPeerURLFromConfig()
+				Expect(err).To(HaveOccurred())
 			})
 		})
 	})

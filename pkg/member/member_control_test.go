@@ -48,8 +48,8 @@ var _ = Describe("Membercontrol", func() {
 		etcdConnectionConfig.SnapshotTimeout.Duration = 30 * time.Second
 		etcdConnectionConfig.DefragTimeout.Duration = 30 * time.Second
 
-		os.Setenv("POD_NAME", podName)
-		os.Setenv("POD_NAMESPACE", podNamespace)
+		Expect(os.Setenv("POD_NAME", podName)).To(Succeed())
+		Expect(os.Setenv("POD_NAMESPACE", podNamespace)).To(Succeed())
 
 		ctrl = gomock.NewController(GinkgoT())
 		factory = mockfactory.NewMockFactory(ctrl)
@@ -74,14 +74,14 @@ var _ = Describe("Membercontrol", func() {
 
 		err := os.WriteFile(outfile, []byte(etcdConfigYaml), 0755)
 		Expect(err).ShouldNot(HaveOccurred())
-		os.Setenv("ETCD_CONF", outfile)
+		Expect(os.Setenv("ETCD_CONF", outfile)).To(Succeed())
 
 	})
 
 	AfterEach(func() {
-		os.Unsetenv("POD_NAME")
-		os.Unsetenv("ETCD_CONF")
-		os.Unsetenv("POD_NAMESPACE")
+		Expect(os.Unsetenv("POD_NAME")).To(Succeed())
+		Expect(os.Unsetenv("ETCD_CONF")).To(Succeed())
+		Expect(os.Unsetenv("POD_NAMESPACE")).To(Succeed())
 	})
 
 	Describe("Creating NewMemberControl", func() {
@@ -245,6 +245,14 @@ var _ = Describe("Membercontrol", func() {
 				Expect(isScaleUp).Should(BeFalse())
 				Expect(err).ShouldNot(HaveOccurred())
 			})
+		})
+	})
+	Describe("Get Member Peer URL", func() {
+		It("Should return member peer URL", func() {
+			mc := member.NewMemberControl(etcdConnectionConfig)
+			actualMemberPeerURL, err := mc.GetMemberPeerURL(context.Background())
+			Expect(err).ShouldNot(HaveOccurred())
+			Expect(actualMemberPeerURL).To(Equal(fmt.Sprintf("http://localhost:2381")))
 		})
 	})
 })
