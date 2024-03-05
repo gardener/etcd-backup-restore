@@ -47,7 +47,7 @@ var (
 // objects that are stored per snapshot for a given storage provider
 type testSnapStore struct {
 	brtypes.SnapStore
-	numberObjectsPerSnapshot int
+	objectCountPerSnapshot int
 }
 
 var _ = Describe("Save, List, Fetch, Delete from mock snapstore", func() {
@@ -117,22 +117,22 @@ var _ = Describe("Save, List, Fetch, Delete from mock snapstore", func() {
 					prefix:           prefixV2,
 					multiPartUploads: map[string]*[][]byte{},
 				}),
-				numberObjectsPerSnapshot: 1,
+				objectCountPerSnapshot: 1,
 			},
 			"swift": {
-				SnapStore:                NewSwiftSnapstoreFromClient(bucket, prefixV2, "/tmp", 5, brtypes.MinChunkSize, fake.ServiceClient()),
-				numberObjectsPerSnapshot: 3,
+				SnapStore:              NewSwiftSnapstoreFromClient(bucket, prefixV2, "/tmp", 5, brtypes.MinChunkSize, fake.ServiceClient()),
+				objectCountPerSnapshot: 3,
 			},
 			"ABS": {
-				SnapStore:                newFakeABSSnapstore(),
-				numberObjectsPerSnapshot: 1,
+				SnapStore:              newFakeABSSnapstore(),
+				objectCountPerSnapshot: 1,
 			},
 			"GCS": {
 				SnapStore: NewGCSSnapStoreFromClient(bucket, prefixV2, "/tmp", 5, brtypes.MinChunkSize, &mockGCSClient{
 					objects: objectMap,
 					prefix:  prefixV2,
 				}),
-				numberObjectsPerSnapshot: 1,
+				objectCountPerSnapshot: 1,
 			},
 			"OSS": {
 				SnapStore: NewOSSFromBucket(prefixV2, "/tmp", 5, brtypes.MinChunkSize, &mockOSSBucket{
@@ -141,7 +141,7 @@ var _ = Describe("Save, List, Fetch, Delete from mock snapstore", func() {
 					multiPartUploads: map[string]*[][]byte{},
 					bucketName:       bucket,
 				}),
-				numberObjectsPerSnapshot: 1,
+				objectCountPerSnapshot: 1,
 			},
 			"ECS": {
 				SnapStore: NewS3FromClient(bucket, prefixV2, "/tmp", 5, brtypes.MinChunkSize, &mockS3Client{
@@ -149,7 +149,7 @@ var _ = Describe("Save, List, Fetch, Delete from mock snapstore", func() {
 					prefix:           prefixV2,
 					multiPartUploads: map[string]*[][]byte{},
 				}),
-				numberObjectsPerSnapshot: 1,
+				objectCountPerSnapshot: 1,
 			},
 			"OCS": {
 				SnapStore: NewS3FromClient(bucket, prefixV2, "/tmp", 5, brtypes.MinChunkSize, &mockS3Client{
@@ -157,7 +157,7 @@ var _ = Describe("Save, List, Fetch, Delete from mock snapstore", func() {
 					prefix:           prefixV2,
 					multiPartUploads: map[string]*[][]byte{},
 				}),
-				numberObjectsPerSnapshot: 1,
+				objectCountPerSnapshot: 1,
 			},
 		}
 	})
@@ -177,14 +177,14 @@ var _ = Describe("Save, List, Fetch, Delete from mock snapstore", func() {
 
 				// number of snapshots that are added to the objectMap
 				numberSnapshotsInObjectMap := setObjectMap(provider, objectMapSnapshots)
-				secondSnapshotIndex := 1 * snapStore.numberObjectsPerSnapshot
+				secondSnapshotIndex := 1 * snapStore.objectCountPerSnapshot
 
 				logrus.Infof("Running mock tests for %s when only v1 is present", provider)
 
 				// List snap1 and snap2
 				snapList, err := snapStore.List()
 				Expect(err).ShouldNot(HaveOccurred())
-				Expect(snapList.Len()).To(Equal(numberSnapshotsInObjectMap * snapStore.numberObjectsPerSnapshot))
+				Expect(snapList.Len()).To(Equal(numberSnapshotsInObjectMap * snapStore.objectCountPerSnapshot))
 				Expect(snapList[0].SnapName).To(Equal(snap2.SnapName))
 				Expect(snapList[secondSnapshotIndex].SnapName).To(Equal(snap1.SnapName))
 
@@ -204,7 +204,7 @@ var _ = Describe("Save, List, Fetch, Delete from mock snapstore", func() {
 				Expect(err).ShouldNot(HaveOccurred())
 				snapList, err = snapStore.List()
 				Expect(err).ShouldNot(HaveOccurred())
-				Expect(snapList.Len()).To(Equal(prevLen - 1*snapStore.numberObjectsPerSnapshot))
+				Expect(snapList.Len()).To(Equal(prevLen - 1*snapStore.objectCountPerSnapshot))
 
 				// reset the objectMap
 				resetObjectMap()
@@ -212,7 +212,7 @@ var _ = Describe("Save, List, Fetch, Delete from mock snapstore", func() {
 				// Save a new snapshot 'snap3'
 				err = snapStore.Save(snap3, io.NopCloser(bytes.NewReader(dummyData)))
 				Expect(err).ShouldNot(HaveOccurred())
-				Expect(len(objectMap)).Should(BeNumerically(">=", 1*snapStore.numberObjectsPerSnapshot))
+				Expect(len(objectMap)).Should(BeNumerically(">=", 1*snapStore.objectCountPerSnapshot))
 			}
 		})
 	})
@@ -228,15 +228,15 @@ var _ = Describe("Save, List, Fetch, Delete from mock snapstore", func() {
 
 				// number of snapshots that are added to the objectMap
 				numberSnapshotsInObjectMap := setObjectMap(provider, objectMapSnapshots)
-				secondSnapshotIndex := 1 * snapStore.numberObjectsPerSnapshot
-				thirdSnapshotIndex := 2 * snapStore.numberObjectsPerSnapshot
+				secondSnapshotIndex := 1 * snapStore.objectCountPerSnapshot
+				thirdSnapshotIndex := 2 * snapStore.objectCountPerSnapshot
 
 				logrus.Infof("Running mock tests for %s when both v1 and v2 are present", provider)
 
 				// List snap1, snap4, snap5
 				snapList, err := snapStore.List()
 				Expect(err).ShouldNot(HaveOccurred())
-				Expect(snapList.Len()).To(Equal(numberSnapshotsInObjectMap * snapStore.numberObjectsPerSnapshot))
+				Expect(snapList.Len()).To(Equal(numberSnapshotsInObjectMap * snapStore.objectCountPerSnapshot))
 				Expect(snapList[0].SnapName).To(Equal(snap1.SnapName))
 				Expect(snapList[secondSnapshotIndex].SnapName).To(Equal(snap4.SnapName))
 				Expect(snapList[thirdSnapshotIndex].SnapName).To(Equal(snap5.SnapName))
@@ -263,11 +263,11 @@ var _ = Describe("Save, List, Fetch, Delete from mock snapstore", func() {
 				prevLen := len(objectMap)
 				err = snapStore.Delete(*snapList[0])
 				Expect(err).ShouldNot(HaveOccurred())
-				Expect(len(objectMap)).To(Equal(prevLen - snapStore.numberObjectsPerSnapshot))
+				Expect(len(objectMap)).To(Equal(prevLen - snapStore.objectCountPerSnapshot))
 				prevLen = len(objectMap)
 				err = snapStore.Delete(*snapList[thirdSnapshotIndex])
 				Expect(err).ShouldNot(HaveOccurred())
-				Expect(len(objectMap)).To(Equal(prevLen - snapStore.numberObjectsPerSnapshot))
+				Expect(len(objectMap)).To(Equal(prevLen - snapStore.objectCountPerSnapshot))
 
 				// reset the objectMap
 				resetObjectMap()
@@ -275,14 +275,14 @@ var _ = Describe("Save, List, Fetch, Delete from mock snapstore", func() {
 				dummyData := make([]byte, 6*1024*1024)
 				err = snapStore.Save(snap1, io.NopCloser(bytes.NewReader(dummyData)))
 				Expect(err).ShouldNot(HaveOccurred())
-				Expect(len(objectMap)).Should(BeNumerically(">=", snapStore.numberObjectsPerSnapshot))
+				Expect(len(objectMap)).Should(BeNumerically(">=", snapStore.objectCountPerSnapshot))
 
 				// Save another new snapshot 'snap4'
 				prevLen = len(objectMap)
 				dummyData = make([]byte, 6*1024*1024)
 				err = snapStore.Save(snap4, io.NopCloser(bytes.NewReader(dummyData)))
 				Expect(err).ShouldNot(HaveOccurred())
-				Expect(len(objectMap)).Should(BeNumerically(">=", prevLen+snapStore.numberObjectsPerSnapshot))
+				Expect(len(objectMap)).Should(BeNumerically(">=", prevLen+snapStore.objectCountPerSnapshot))
 			}
 		})
 	})
@@ -298,14 +298,14 @@ var _ = Describe("Save, List, Fetch, Delete from mock snapstore", func() {
 
 				// number of snapshots that are added to the objectMap
 				numberSnapshotsInObjectMap := setObjectMap(provider, objectMapSnapshots)
-				secondSnapshotIndex := 1 * snapStore.numberObjectsPerSnapshot
+				secondSnapshotIndex := 1 * snapStore.objectCountPerSnapshot
 
 				logrus.Infof("Running mock tests for %s when only v2 is present", provider)
 
 				// List snap4 and snap5
 				snapList, err := snapStore.List()
 				Expect(err).ShouldNot(HaveOccurred())
-				Expect(snapList.Len()).To(Equal(numberSnapshotsInObjectMap * snapStore.numberObjectsPerSnapshot))
+				Expect(snapList.Len()).To(Equal(numberSnapshotsInObjectMap * snapStore.objectCountPerSnapshot))
 				Expect(snapList[0].SnapName).To(Equal(snap4.SnapName))
 				Expect(snapList[secondSnapshotIndex].SnapName).To(Equal(snap5.SnapName))
 
@@ -325,7 +325,7 @@ var _ = Describe("Save, List, Fetch, Delete from mock snapstore", func() {
 				Expect(err).ShouldNot(HaveOccurred())
 				snapList, err = snapStore.List()
 				Expect(err).ShouldNot(HaveOccurred())
-				Expect(snapList.Len()).To(Equal(prevLen - snapStore.numberObjectsPerSnapshot))
+				Expect(snapList.Len()).To(Equal(prevLen - snapStore.objectCountPerSnapshot))
 
 				// Reset the objectMap
 				resetObjectMap()
@@ -333,7 +333,7 @@ var _ = Describe("Save, List, Fetch, Delete from mock snapstore", func() {
 				dummyData := make([]byte, 6*1024*1024)
 				err = snapStore.Save(snap4, io.NopCloser(bytes.NewReader(dummyData)))
 				Expect(err).ShouldNot(HaveOccurred())
-				Expect(len(objectMap)).Should(BeNumerically(">=", snapStore.numberObjectsPerSnapshot))
+				Expect(len(objectMap)).Should(BeNumerically(">=", snapStore.objectCountPerSnapshot))
 			}
 		})
 	})

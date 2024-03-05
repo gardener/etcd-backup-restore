@@ -17,6 +17,7 @@ package snapstore
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -518,10 +519,39 @@ func (s *SwiftSnapStore) Delete(snap brtypes.Snapshot) error {
 			chunkObjectNames = append(chunkObjectNames, path.Join(chunk.Prefix, chunk.SnapDir, chunk.SnapName))
 		}
 
-		if chunkObjectsDeleteResult := objects.BulkDelete(s.client, s.bucket, chunkObjectNames); chunkObjectsDeleteResult.Err != nil {
+		chunkObjectsDeleteResult := objects.BulkDelete(s.client, s.bucket, chunkObjectNames)
+		if chunkObjectsDeleteResult.Err != nil {
+			// chunkObjectsDeleteResult.Err is the error that occurs while creating the POST request
 			return chunkObjectsDeleteResult.Err
 		}
+
+		// See https://docs.openstack.org/swift/latest/api/bulk-delete.html for more information about this error handling
+		var bulkDeleteErrors []error
+		bulkDeleteResponse, err := chunkObjectsDeleteResult.Extract()
+		if err != nil {
+			return fmt.Errorf("error while extracting the bulk delete information from the response %w", err)
+		}
+
+		if bulkDeleteResponse.NumberNotFound > 0 {
+			bulkDeleteErrors = append(bulkDeleteErrors, fmt.Errorf("error while deleting segment objects with error: %d segment objects not found in the store", bulkDeleteResponse.NumberNotFound))
+		}
+		for _, errorsPerObject := range bulkDeleteResponse.Errors {
+			var filteredErrorStrings []string
+			for _, errorString := range errorsPerObject {
+				if errorString != "" {
+					filteredErrorStrings = append(filteredErrorStrings, errorString)
+				}
+			}
+			bulkDeleteErrorString := strings.Join(filteredErrorStrings, ", ")
+			if bulkDeleteErrorString != "" {
+				bulkDeleteErrors = append(bulkDeleteErrors, fmt.Errorf("error while deleting segment object with error: %s", bulkDeleteErrorString))
+			}
+		}
+		if len(bulkDeleteErrors) > 0 {
+			return errors.Join(bulkDeleteErrors...)
+		}
 	}
+
 	// delete manifest object
 	return objects.Delete(s.client, s.bucket, path.Join(snap.Prefix, snap.SnapDir, snap.SnapName), nil).Err
 }

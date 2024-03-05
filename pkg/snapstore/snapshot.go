@@ -65,7 +65,7 @@ func ParseSnapshot(snapPath string) (*brtypes.Snapshot, error) {
 	}
 
 	lastIndex = lastIndex + 3
-	prefix := snapPath[:lastIndex-1]
+	prefix := snapPath[:lastIndex]
 	snapPath = snapPath[lastIndex:]
 
 	tok := strings.Split(snapPath, "/")

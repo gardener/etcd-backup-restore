@@ -27,16 +27,11 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/gophercloud/gophercloud/openstack/objectstorage/v1/objects"
 	th "github.com/gophercloud/gophercloud/testhelper"
 	fake "github.com/gophercloud/gophercloud/testhelper/client"
 	"github.com/sirupsen/logrus"
 )
-
-type bulkDeleteJSONResponse struct {
-	Deleted      int      `json:"deleted"`
-	NotFound     int      `json:"not_found"`
-	ErrorStrings []string `json:"errors,omitempty"`
-}
 
 var objectMapMutex sync.Mutex
 
@@ -185,43 +180,46 @@ func handleBulkDeleteObject(w http.ResponseWriter, r *http.Request) {
 	objectMapMutex.Lock()
 	defer objectMapMutex.Unlock()
 
-	var jsonResponse bulkDeleteJSONResponse
+	var bulkDeleteResponse objects.BulkDeleteResponse
 
 	buf := new(bytes.Buffer)
 	if _, err := io.Copy(buf, r.Body); err != nil {
 		errorMessage := fmt.Sprintf("failed to read content %v", err)
 		logrus.Errorf(errorMessage)
-		jsonResponse.ErrorStrings = append(jsonResponse.ErrorStrings, errorMessage)
+		bulkDeleteResponse.Errors = append(bulkDeleteResponse.Errors, []string{errorMessage})
+		marshalledResponse, _ := json.Marshal(bulkDeleteResponse)
 		w.WriteHeader(http.StatusOK)
+		w.Write(marshalledResponse)
 		return
 	}
 
-	segmentObjects := strings.Split(string(buf.Bytes()), "\n")
-	// last string is an empty string, artefact of '\n' at the end
-	segmentObjects = segmentObjects[:len(segmentObjects)-1]
+	segmentObjects := strings.Split(strings.TrimSpace(string(buf.Bytes())), "\n")
 	for _, segmentObject := range segmentObjects {
 		segmentObject = "/" + segmentObject
 		// objects.BulkDelete() internally calls url.QueryEscape
 		unescapedQueryForObject, err := url.QueryUnescape(segmentObject)
+
+		var errorStrings []string
 		if err != nil {
 			errorMessage := fmt.Sprintf("failed to unescape url %v", err)
 			logrus.Errorf(errorMessage)
-			jsonResponse.ErrorStrings = append(jsonResponse.ErrorStrings, errorMessage)
+			errorStrings = append(errorStrings, errorMessage)
 		}
 
 		key := parseObjectNamefromURL(&url.URL{Path: unescapedQueryForObject})
 		if _, ok := objectMap[key]; ok {
 			delete(objectMap, key)
-			jsonResponse.Deleted++
+			bulkDeleteResponse.NumberDeleted++
 		} else {
 			errorMessage := fmt.Sprintf("Resource not found: %s", segmentObject)
 			logrus.Errorf(errorMessage)
-			jsonResponse.NotFound++
-			jsonResponse.ErrorStrings = append(jsonResponse.ErrorStrings, errorMessage)
+			bulkDeleteResponse.NumberNotFound++
+			errorStrings = append(errorStrings, errorMessage)
 		}
+		bulkDeleteResponse.Errors = append(bulkDeleteResponse.Errors, errorStrings)
 	}
 
-	marshalledResponse, _ := json.Marshal(jsonResponse)
+	marshalledResponse, _ := json.Marshal(bulkDeleteResponse)
 	w.WriteHeader(http.StatusOK)
 	w.Write(marshalledResponse)
 }

@@ -162,13 +162,13 @@ var _ = Describe("Snapshot", func() {
 				snapPath := "/abc/v1/Backup--00000000-00002088-2387428/Full-00000000-00002088-2387428"
 				snap, err := ParseSnapshot(snapPath)
 				Expect(err).ShouldNot(HaveOccurred())
-				Expect(snap.Prefix).To(Equal("/abc/v1"))
+				Expect(snap.Prefix).To(Equal("/abc/v1/"))
 				Expect(snap.SnapDir).To(Equal("Backup--00000000-00002088-2387428"))
 				Expect(snap.SnapName).To(Equal("Full-00000000-00002088-2387428"))
 				snapPath = "v1/Backup--00000000-00002088-2387428/Full-00000000-00002088-2387428"
 				snap, err = ParseSnapshot(snapPath)
 				Expect(err).ShouldNot(HaveOccurred())
-				Expect(snap.Prefix).To(Equal("v1"))
+				Expect(snap.Prefix).To(Equal("v1/"))
 				Expect(snap.SnapDir).To(Equal("Backup--00000000-00002088-2387428"))
 				Expect(snap.SnapName).To(Equal("Full-00000000-00002088-2387428"))
 			})
@@ -178,13 +178,13 @@ var _ = Describe("Snapshot", func() {
 				snapPath := "/abc/v2/Full-00000000-00002088-2387428"
 				snap, err := ParseSnapshot(snapPath)
 				Expect(err).ShouldNot(HaveOccurred())
-				Expect(snap.Prefix).To(Equal("/abc/v2"))
+				Expect(snap.Prefix).To(Equal("/abc/v2/"))
 				Expect(snap.SnapDir).To(Equal(""))
 				Expect(snap.SnapName).To(Equal("Full-00000000-00002088-2387428"))
 				snapPath = "v2/Full-00000000-00002088-2387428"
 				snap, err = ParseSnapshot(snapPath)
 				Expect(err).ShouldNot(HaveOccurred())
-				Expect(snap.Prefix).To(Equal("v2"))
+				Expect(snap.Prefix).To(Equal("v2/"))
 				Expect(snap.SnapDir).To(Equal(""))
 				Expect(snap.SnapName).To(Equal("Full-00000000-00002088-2387428"))
 			})
@@ -217,7 +217,7 @@ var _ = Describe("Snapshot", func() {
 					LastRevision:  30009,
 					CreatedOn:     time.Unix(1518427675, 0).UTC(),
 					SnapName:      "Full-00000000-00030009-1518427675",
-					Prefix:        "v2",
+					Prefix:        "v2/",
 				}))
 			})
 			It("correctly parses a snapshot name with a compression suffix", func() {
@@ -230,7 +230,7 @@ var _ = Describe("Snapshot", func() {
 					LastRevision:      30009,
 					CreatedOn:         time.Unix(1518427675, 0).UTC(),
 					SnapName:          "Full-00000000-00030009-1518427675.gz",
-					Prefix:            "v2",
+					Prefix:            "v2/",
 					CompressionSuffix: compressor.GzipCompressionExtension,
 				}))
 			})
@@ -244,7 +244,7 @@ var _ = Describe("Snapshot", func() {
 					LastRevision:  30009,
 					CreatedOn:     time.Unix(1518427675, 0).UTC(),
 					SnapName:      "Full-00000000-00030009-1518427675.final",
-					Prefix:        "v2",
+					Prefix:        "v2/",
 					IsFinal:       true,
 				}))
 			})
@@ -258,7 +258,7 @@ var _ = Describe("Snapshot", func() {
 					LastRevision:      30009,
 					CreatedOn:         time.Unix(1518427675, 0).UTC(),
 					SnapName:          "Full-00000000-00030009-1518427675.gz.final",
-					Prefix:            "v2",
+					Prefix:            "v2/",
 					CompressionSuffix: compressor.GzipCompressionExtension,
 					IsFinal:           true,
 				}))
