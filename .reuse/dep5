@@ -29,6 +29,10 @@ Files: pkg/snapstore/gcs/adapters.go
 Copyright: 2018 Google LLC
 License: Apache-2.0
 
+Files: pkg/snapshot/restorer/restorer.go
+Copyright: 2018 The etcd Authors
+License: Apache-2.0
+
 # --- vendor folder dependencies ---
 Files: vendor/github.com/google/gnostic/*
 Copyright: 2024 github.com/google/gnostic contributors.
