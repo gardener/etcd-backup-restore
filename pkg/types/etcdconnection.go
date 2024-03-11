@@ -32,6 +32,9 @@ const (
 	// DefaultSnapshotTimeout defines default timeout duration for taking FullSnapshot.
 	DefaultSnapshotTimeout time.Duration = 15 * time.Minute
 
+	// defaultEtcdWrapperHostPort is the default Host and Port to be used to connect to the etcd-wrapper server.
+	defaultEtcdWrapperHostPort = ":9095"
+
 	// DefragRetryPeriod is used as the duration after which a defragmentation is retried.
 	DefragRetryPeriod time.Duration = 1 * time.Minute
 )
@@ -53,17 +56,21 @@ type EtcdConnectionConfig struct {
 	KeyFile            string            `json:"keyFile,omitempty"`
 	CaFile             string            `json:"caFile,omitempty"`
 	MaxCallSendMsgSize int               `json:"maxCallSendMsgSize,omitempty"`
+
+	// EtcdWrapperHostPort is the Host and Port to be used to connect to the etcd-wrapper server.
+	EtcdWrapperHostPort string `json:"etcdWrapperHostPort,omitempty"`
 }
 
 // NewEtcdConnectionConfig returns etcd connection config.
 func NewEtcdConnectionConfig() *EtcdConnectionConfig {
 	return &EtcdConnectionConfig{
-		Endpoints:          []string{defaultEtcdConnectionEndpoint},
-		ConnectionTimeout:  wrappers.Duration{Duration: DefaultEtcdConnectionTimeout},
-		SnapshotTimeout:    wrappers.Duration{Duration: DefaultSnapshotTimeout},
-		DefragTimeout:      wrappers.Duration{Duration: DefaultDefragConnectionTimeout},
-		InsecureTransport:  true,
-		InsecureSkipVerify: false,
+		Endpoints:           []string{defaultEtcdConnectionEndpoint},
+		ConnectionTimeout:   wrappers.Duration{Duration: DefaultEtcdConnectionTimeout},
+		SnapshotTimeout:     wrappers.Duration{Duration: DefaultSnapshotTimeout},
+		DefragTimeout:       wrappers.Duration{Duration: DefaultDefragConnectionTimeout},
+		InsecureTransport:   true,
+		InsecureSkipVerify:  false,
+		EtcdWrapperHostPort: defaultEtcdWrapperHostPort,
 	}
 }
 
@@ -81,6 +88,9 @@ func (c *EtcdConnectionConfig) AddFlags(fs *flag.FlagSet) {
 	fs.StringVar(&c.CertFile, "cert", c.CertFile, "identify secure client using this TLS certificate file")
 	fs.StringVar(&c.KeyFile, "key", c.KeyFile, "identify secure client using this TLS key file")
 	fs.StringVar(&c.CaFile, "cacert", c.CaFile, "verify certificates of TLS-enabled secure servers using this CA bundle")
+	
+	// Etcd-wrapper-related flags
+	fs.StringVar(&c.EtcdWrapperHostPort, "etcd-wrapper-host-port", c.EtcdWrapperHostPort, "Host and Port to be used to connect to the etcd-wrapper server")
 }
 
 // Validate validates the config.

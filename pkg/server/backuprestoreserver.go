@@ -26,6 +26,7 @@ import (
 	"github.com/gardener/etcd-backup-restore/pkg/defragmentor"
 	"github.com/gardener/etcd-backup-restore/pkg/errors"
 	"github.com/gardener/etcd-backup-restore/pkg/etcdaccess"
+	"github.com/gardener/etcd-backup-restore/pkg/etcdwrapper"
 	"github.com/gardener/etcd-backup-restore/pkg/health/heartbeat"
 	"github.com/gardener/etcd-backup-restore/pkg/health/membergarbagecollector"
 	"github.com/gardener/etcd-backup-restore/pkg/initializer"
@@ -51,6 +52,7 @@ type BackupRestoreServer struct {
 	defragmentationSchedule cron.Schedule
 	backoffConfig           *backoff.ExponentialBackoff
 	mc                      member.Control
+	etcdWrapperClient       *etcdwrapper.Client
 }
 
 var (
@@ -69,12 +71,17 @@ func NewBackupRestoreServer(logger *logrus.Logger, config *BackupRestoreComponen
 	}
 	exponentialBackoffConfig := backoff.NewExponentialBackOffConfig(config.ExponentialBackoffConfig.AttemptLimit, config.ExponentialBackoffConfig.Multiplier, config.ExponentialBackoffConfig.ThresholdTime.Duration)
 	mc := member.NewMemberControl(config.EtcdConnectionConfig)
+	etcdWrapperClient, err := etcdwrapper.NewClient(config.EtcdConnectionConfig)
+	if err != nil {
+		return nil, err
+	}
 	return &BackupRestoreServer{
 		logger:                  serverLogger,
 		config:                  config,
 		defragmentationSchedule: defragmentationSchedule,
 		backoffConfig:           exponentialBackoffConfig,
 		mc:                      mc,
+		etcdWrapperClient:       etcdWrapperClient,
 	}, nil
 }
 
@@ -363,8 +370,12 @@ func (b *BackupRestoreServer) ensurePeerURLTLSIsReflectedInETCD(ctx context.Cont
 		if err = b.doUpdateMemberPeerURL(ctx, expectedPeerURL); err != nil {
 			return err
 		}
-		// call the etcd-etcdwrapper /stop endpoint to force a restart of the etcdwrapper
-		// wait for etcd to become ready
+		if err = b.etcdWrapperClient.StopWrapperProcess(ctx); err != nil {
+			return err
+		}
+		if err = waitUntilEtcdRunning(ctx, b.config.EtcdConnectionConfig, b.logger.Logger); err != nil {
+			return err
+		}
 	}
 	return nil
 }
