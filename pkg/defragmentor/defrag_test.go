@@ -20,6 +20,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/gardener/etcd-backup-restore/pkg/etcdaccess"
 	"github.com/gardener/etcd-backup-restore/pkg/etcdutil"
 	mockfactory "github.com/gardener/etcd-backup-restore/pkg/mock/etcdutil/client"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
@@ -216,7 +217,7 @@ var _ = Describe("Defrag", func() {
 	Context("Defragmentation", func() {
 		BeforeEach(func() {
 			now := time.Now().Unix()
-			clientFactory := etcdutil.NewFactory(*etcdConnectionConfig)
+			clientFactory := etcdaccess.NewFactory(*etcdConnectionConfig)
 			clientKV, err := clientFactory.NewKV()
 			Expect(err).ShouldNot(HaveOccurred())
 			defer clientKV.Close()
@@ -234,7 +235,7 @@ var _ = Describe("Defrag", func() {
 		})
 
 		It("should defragment and reduce size of DB within time", func() {
-			clientFactory := etcdutil.NewFactory(*etcdConnectionConfig)
+			clientFactory := etcdaccess.NewFactory(*etcdConnectionConfig)
 
 			clientMaintenance, err := clientFactory.NewMaintenance()
 			Expect(err).ShouldNot(HaveOccurred())
@@ -268,7 +269,7 @@ var _ = Describe("Defrag", func() {
 
 		It("should keep size of DB same in case of timeout", func() {
 			etcdConnectionConfig.DefragTimeout.Duration = time.Microsecond
-			clientFactory := etcdutil.NewFactory(*etcdConnectionConfig)
+			clientFactory := etcdaccess.NewFactory(*etcdConnectionConfig)
 
 			clientMaintenance, err := clientFactory.NewMaintenance()
 			Expect(err).ShouldNot(HaveOccurred())
@@ -311,7 +312,7 @@ var _ = Describe("Defrag", func() {
 			// Wait unitil the populator finishes with populating ETCD
 			wg.Wait()
 
-			clientFactory := etcdutil.NewFactory(*etcdConnectionConfig)
+			clientFactory := etcdaccess.NewFactory(*etcdConnectionConfig)
 			clientMaintenance, err := clientFactory.NewMaintenance()
 			Expect(err).ShouldNot(HaveOccurred())
 			defer clientMaintenance.Close()

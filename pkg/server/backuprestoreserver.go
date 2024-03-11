@@ -25,7 +25,7 @@ import (
 	"github.com/gardener/etcd-backup-restore/pkg/backoff"
 	"github.com/gardener/etcd-backup-restore/pkg/defragmentor"
 	"github.com/gardener/etcd-backup-restore/pkg/errors"
-	"github.com/gardener/etcd-backup-restore/pkg/etcdutil"
+	"github.com/gardener/etcd-backup-restore/pkg/etcdaccess"
 	"github.com/gardener/etcd-backup-restore/pkg/health/heartbeat"
 	"github.com/gardener/etcd-backup-restore/pkg/health/membergarbagecollector"
 	"github.com/gardener/etcd-backup-restore/pkg/initializer"
@@ -38,7 +38,7 @@ import (
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 
 	"github.com/prometheus/client_golang/prometheus"
-	cron "github.com/robfig/cron/v3"
+	"github.com/robfig/cron/v3"
 	"github.com/sirupsen/logrus"
 	"go.etcd.io/etcd/pkg/types"
 	"k8s.io/client-go/util/retry"
@@ -50,12 +50,13 @@ type BackupRestoreServer struct {
 	config                  *BackupRestoreComponentConfig
 	defragmentationSchedule cron.Schedule
 	backoffConfig           *backoff.ExponentialBackoff
+	mc                      member.Control
 }
 
 var (
 	// runServerWithSnapshotter indicates whether to start server with or without snapshotter.
-	runServerWithSnapshotter bool = true
-	retryTimeout                  = 5 * time.Second
+	runServerWithSnapshotter = true
+	retryTimeout             = 5 * time.Second
 )
 
 // NewBackupRestoreServer return new backup restore server.
@@ -67,12 +68,13 @@ func NewBackupRestoreServer(logger *logrus.Logger, config *BackupRestoreComponen
 		return nil, err
 	}
 	exponentialBackoffConfig := backoff.NewExponentialBackOffConfig(config.ExponentialBackoffConfig.AttemptLimit, config.ExponentialBackoffConfig.Multiplier, config.ExponentialBackoffConfig.ThresholdTime.Duration)
-
+	mc := member.NewMemberControl(config.EtcdConnectionConfig)
 	return &BackupRestoreServer{
 		logger:                  serverLogger,
 		config:                  config,
 		defragmentationSchedule: defragmentationSchedule,
 		backoffConfig:           exponentialBackoffConfig,
+		mc:                      mc,
 	}, nil
 }
 
@@ -169,20 +171,23 @@ func waitUntilEtcdRunning(ctx context.Context, etcdConnectionConfig *brtypes.Etc
 }
 
 func isEtcdRunning(ctx context.Context, timeout time.Duration, etcdConnectionConfig *brtypes.EtcdConnectionConfig, logger *logrus.Logger) bool {
-	factory := etcdutil.NewFactory(*etcdConnectionConfig)
+	if len(etcdConnectionConfig.Endpoints) == 0 {
+		logger.Errorf("etcd endpoints are not passed correctly")
+		return false
+	}
+	endpoint := etcdConnectionConfig.Endpoints[0]
+
+	factory := etcdaccess.NewFactory(*etcdConnectionConfig)
 	client, err := factory.NewMaintenance()
 	if err != nil {
 		logger.Errorf("failed to create etcd maintenance client: %v", err)
 		return false
 	}
-	defer client.Close()
-
-	if len(etcdConnectionConfig.Endpoints) == 0 {
-		logger.Errorf("etcd endpoints are not passed correctly")
-		return false
-	}
-
-	endpoint := etcdConnectionConfig.Endpoints[0]
+	defer func() {
+		if err = client.Close(); err != nil {
+			logger.Errorf("failed to close etcd maintenance client: %v", err)
+		}
+	}()
 
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
@@ -227,22 +232,30 @@ func (b *BackupRestoreServer) runServer(ctx context.Context, restoreOpts *brtype
 		return err
 	}
 
-	m := member.NewMemberControl(b.config.EtcdConnectionConfig)
-	if err := retry.OnError(retry.DefaultBackoff, errors.IsErrNotNil, func() error {
-		cli, err := etcdutil.NewFactory(*b.config.EtcdConnectionConfig).NewCluster()
-		if err != nil {
-			return err
-		}
-		defer cli.Close()
-
-		if err := m.UpdateMemberPeerURL(ctx, cli); err != nil {
+	if err = retry.OnError(retry.DefaultBackoff, errors.IsErrNotNil, func() error {
+		if err = b.ensurePeerURLTLSIsReflectedInETCD(ctx); err != nil {
 			return err
 		}
 		return nil
 	}); err != nil {
-		b.logger.Errorf("failed to update member peer url: %v", err)
+
 	}
 
+	//if err := retry.OnError(retry.DefaultBackoff, errors.IsErrNotNil, func() error {
+	//	cli, err := etcdutil.NewFactory(*b.config.EtcdConnectionConfig).NewCluster()
+	//	if err != nil {
+	//		return err
+	//	}
+	//	defer cli.Close()
+	//
+	//	if err := m.UpdateMemberPeerURL(ctx, cli); err != nil {
+	//		return err
+	//	}
+	//	return nil
+	//}); err != nil {
+	//	b.logger.Errorf("failed to update member peer url: %v", err)
+	//}
+	//
 	leaderCallbacks := &brtypes.LeaderCallbacks{
 		OnStartedLeading: func(leCtx context.Context) {
 			ssrStopCh = make(chan struct{})
@@ -289,7 +302,7 @@ func (b *BackupRestoreServer) runServer(ctx context.Context, restoreOpts *brtype
 			mmStopCh = make(chan struct{})
 			if b.config.HealthConfig.MemberLeaseRenewalEnabled {
 				go func() {
-					if err := heartbeat.RenewMemberLeasePeriodically(ctx, mmStopCh, b.config.HealthConfig, b.logger, b.config.EtcdConnectionConfig, m); err != nil {
+					if err = heartbeat.RenewMemberLeasePeriodically(ctx, mmStopCh, b.config.HealthConfig, b.logger, b.config.EtcdConnectionConfig, b.mc); err != nil {
 						b.logger.Fatalf("failed RenewMemberLeases: %v", err)
 					}
 				}()
@@ -305,8 +318,7 @@ func (b *BackupRestoreServer) runServer(ctx context.Context, restoreOpts *brtype
 	promoteCallback := &brtypes.PromoteLearnerCallback{
 		Promote: func(ctx context.Context, logger *logrus.Entry) {
 			if restoreOpts.OriginalClusterSize > 1 {
-				m := member.NewMemberControl(b.config.EtcdConnectionConfig)
-				if err := m.PromoteMember(ctx); err == nil {
+				if err = b.mc.PromoteMember(ctx); err == nil {
 					logger.Info("Successfully promoted the learner to a voting member...")
 				} else if err != nil {
 					logger.Errorf("unable to promote the learner to a voting member: %v", err)
@@ -329,13 +341,45 @@ func (b *BackupRestoreServer) runServer(ctx context.Context, restoreOpts *brtype
 
 	if b.config.HealthConfig.MemberLeaseRenewalEnabled {
 		go func() {
-			if err := heartbeat.RenewMemberLeasePeriodically(ctx, mmStopCh, b.config.HealthConfig, b.logger, b.config.EtcdConnectionConfig, m); err != nil {
+			if err = heartbeat.RenewMemberLeasePeriodically(ctx, mmStopCh, b.config.HealthConfig, b.logger, b.config.EtcdConnectionConfig, b.mc); err != nil {
 				b.logger.Fatalf("failed RenewMemberLeases: %v", err)
 			}
 		}()
 	}
 
 	return le.Run(ctx)
+}
+
+func (b *BackupRestoreServer) ensurePeerURLTLSIsReflectedInETCD(ctx context.Context) error {
+	expectedPeerURL, err := miscellaneous.GetMemberPeerURLFromConfig()
+	if err != nil {
+		return err
+	}
+	existingPeerURL, err := b.mc.GetMemberPeerURL(ctx)
+	if err != nil {
+		return err
+	}
+	if existingPeerURL != expectedPeerURL {
+		if err = b.doUpdateMemberPeerURL(ctx, expectedPeerURL); err != nil {
+			return err
+		}
+		// call the etcd-etcdwrapper /stop endpoint to force a restart of the etcdwrapper
+		// wait for etcd to become ready
+	}
+	return nil
+}
+
+func (b *BackupRestoreServer) doUpdateMemberPeerURL(ctx context.Context, peerURL string) error {
+	cli, err := etcdaccess.NewFactory(*b.config.EtcdConnectionConfig).NewCluster()
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err := cli.Close(); err != nil {
+			b.logger.Errorf("failed to close etcd maintenance client: %v", err)
+		}
+	}()
+	return b.mc.UpdateMemberPeerURL(ctx, cli, peerURL)
 }
 
 // runEtcdProbeLoopWithSnapshotter runs the etcd probe loop
@@ -488,13 +532,17 @@ func (b *BackupRestoreServer) runEtcdProbeLoopWithSnapshotter(ctx context.Contex
 func (b *BackupRestoreServer) probeEtcd(ctx context.Context) error {
 	b.logger.Info("Probing Etcd by checking etcd status ...")
 	var endPoint string
-	client, err := etcdutil.NewFactory(*b.config.EtcdConnectionConfig).NewMaintenance()
+	client, err := etcdaccess.NewFactory(*b.config.EtcdConnectionConfig).NewMaintenance()
 	if err != nil {
 		return &errors.EtcdError{
 			Message: fmt.Sprintf("failed to create etcd maintenance client: %v", err),
 		}
 	}
-	defer client.Close()
+	defer func() {
+		if err = client.Close(); err != nil {
+			b.logger.Errorf("failed to close etcd maintenance client: %v", err)
+		}
+	}()
 
 	ctx, cancel := context.WithTimeout(ctx, brtypes.DefaultEtcdStatusConnecTimeout)
 	defer cancel()

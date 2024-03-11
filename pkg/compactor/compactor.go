@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/gardener/etcd-backup-restore/pkg/compressor"
+	"github.com/gardener/etcd-backup-restore/pkg/etcdaccess"
 	"github.com/gardener/etcd-backup-restore/pkg/etcdutil"
 	"github.com/gardener/etcd-backup-restore/pkg/health/heartbeat"
 	"github.com/gardener/etcd-backup-restore/pkg/miscellaneous"
@@ -119,7 +120,7 @@ func (cp *Compactor) Compact(ctx context.Context, opts *brtypes.CompactOptions) 
 	// Then compact ETCD
 
 	// Build Client
-	clientFactory := etcdutil.NewClientFactory(compactorRestoreOptions.NewClientFactory, brtypes.EtcdConnectionConfig{
+	clientFactory := etcdaccess.NewClientFactory(compactorRestoreOptions.NewClientFactory, brtypes.EtcdConnectionConfig{
 		MaxCallSendMsgSize: compactorRestoreOptions.Config.MaxCallSendMsgSize,
 		Endpoints:          ep,
 		InsecureTransport:  true,

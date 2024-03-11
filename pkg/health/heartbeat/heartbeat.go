@@ -22,7 +22,7 @@ import (
 	"time"
 
 	"github.com/gardener/etcd-backup-restore/pkg/errors"
-	"github.com/gardener/etcd-backup-restore/pkg/etcdutil"
+	"github.com/gardener/etcd-backup-restore/pkg/etcdaccess"
 	"github.com/gardener/etcd-backup-restore/pkg/member"
 	"github.com/gardener/etcd-backup-restore/pkg/miscellaneous"
 	utils "github.com/gardener/etcd-backup-restore/pkg/snapstore"
@@ -107,14 +107,18 @@ func (hb *Heartbeat) RenewMemberLease(ctx context.Context) error {
 	}
 
 	//Create etcd client maintenance to get etcd ID
-	clientFactory := etcdutil.NewFactory(*hb.etcdConfig)
+	clientFactory := etcdaccess.NewFactory(*hb.etcdConfig)
 	etcdClient, err := clientFactory.NewMaintenance()
 	if err != nil {
 		return &errors.EtcdError{
 			Message: fmt.Sprintf("Failed to create etcd maintenance client: %v", err),
 		}
 	}
-	defer etcdClient.Close()
+	defer func() {
+		if err = etcdClient.Close(); err != nil {
+			hb.logger.Warnf("Failed to close etcd maintenance client: %v", err)
+		}
+	}()
 
 	response, err := etcdClient.Status(ctx, hb.etcdConfig.Endpoints[0])
 	if err != nil {

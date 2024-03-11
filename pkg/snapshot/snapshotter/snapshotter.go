@@ -29,6 +29,7 @@ import (
 
 	"github.com/gardener/etcd-backup-restore/pkg/compressor"
 	"github.com/gardener/etcd-backup-restore/pkg/errors"
+	"github.com/gardener/etcd-backup-restore/pkg/etcdaccess"
 	"github.com/gardener/etcd-backup-restore/pkg/etcdutil"
 	"github.com/gardener/etcd-backup-restore/pkg/health/heartbeat"
 	"github.com/gardener/etcd-backup-restore/pkg/metrics"
@@ -57,7 +58,7 @@ var (
 	emptyStruct struct{}
 )
 
-// event is wrapper over etcd event to keep track of time of event
+// event is etcdwrapper over etcd event to keep track of time of event
 type event struct {
 	EtcdEvent *clientv3.Event `json:"etcdEvent"`
 	Time      time.Time       `json:"time"`
@@ -325,7 +326,7 @@ func (ssr *Snapshotter) takeFullSnapshot(isFinal bool) (*brtypes.Snapshot, error
 		ssr.logger.Info("Updated the snapstore object with new credentials")
 	}
 
-	clientFactory := etcdutil.NewFactory(*ssr.etcdConnectionConfig)
+	clientFactory := etcdaccess.NewFactory(*ssr.etcdConnectionConfig)
 	clientKV, err := clientFactory.NewKV()
 	if err != nil {
 		return nil, &errors.EtcdError{
@@ -518,7 +519,7 @@ func (ssr *Snapshotter) CollectEventsSincePrevSnapshot(stopCh <-chan struct{}) (
 	// close any previous watch and client.
 	ssr.closeEtcdClient()
 
-	clientFactory := etcdutil.NewFactory(*ssr.etcdConnectionConfig)
+	clientFactory := etcdaccess.NewFactory(*ssr.etcdConnectionConfig)
 	clientKV, err := clientFactory.NewKV()
 	if err != nil {
 		return false, &errors.EtcdError{

@@ -22,8 +22,7 @@ import (
 	"time"
 
 	utilError "github.com/gardener/etcd-backup-restore/pkg/errors"
-	"github.com/gardener/etcd-backup-restore/pkg/etcdutil"
-	etcdClient "github.com/gardener/etcd-backup-restore/pkg/etcdutil/client"
+	"github.com/gardener/etcd-backup-restore/pkg/etcdaccess"
 	"github.com/gardener/etcd-backup-restore/pkg/metrics"
 	"github.com/gardener/etcd-backup-restore/pkg/miscellaneous"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
@@ -71,8 +70,8 @@ type Control interface {
 	// This will succeed if and only if learner is in a healthy state and the learner is in sync with leader.
 	PromoteMember(context.Context) error
 
-	// UpdateMemberPeerURL updates the peer address of a specified etcd cluster member.
-	UpdateMemberPeerURL(context.Context, etcdClient.ClusterCloser) error
+	// UpdateMemberPeerURL updates the passed in peer URL of the member.
+	UpdateMemberPeerURL(context.Context, etcdaccess.ClusterCloser, string) error
 
 	// RemoveMember removes the member from the etcd cluster.
 	RemoveMember(context.Context) error
@@ -86,7 +85,7 @@ type Control interface {
 
 // memberControl holds the configuration for the mechanism of adding a new member to the cluster.
 type memberControl struct {
-	clientFactory etcdClient.Factory
+	clientFactory etcdaccess.Factory
 	logger        logrus.Entry
 	podName       string
 	podNamespace  string
@@ -98,7 +97,7 @@ func NewMemberControl(etcdConnConfig *brtypes.EtcdConnectionConfig) Control {
 	etcdConn := *etcdConnConfig
 
 	// We want to use the service endpoint since we're only supposed to connect to ready etcd members.
-	clientFactory := etcdutil.NewFactory(etcdConn, etcdClient.UseServiceEndpoints(true))
+	clientFactory := etcdaccess.NewFactory(etcdConn, etcdaccess.UseServiceEndpoints(true))
 	podName, err := miscellaneous.GetEnvVarOrError("POD_NAME")
 	if err != nil {
 		logger.Fatalf("Error reading POD_NAME env var : %v", err)
@@ -211,26 +210,6 @@ func (m *memberControl) IsMemberInCluster(ctx context.Context) (bool, error) {
 	return false, nil
 }
 
-// doUpdateMemberPeerAddress updated the peer address of a specified etcd member
-func (m *memberControl) doUpdateMemberPeerAddress(ctx context.Context, cli etcdClient.ClusterCloser, id uint64) error {
-	// Already existing clusters or cluster after restoration have `http://localhost:2380` as the peer address. This needs to explicitly updated to the correct peer address.
-	m.logger.Infof("Updating member peer URL for %s", m.podName)
-
-	memberPeerURL, err := miscellaneous.GetMemberPeerURLFromConfig()
-	if err != nil {
-		return fmt.Errorf("could not fetch member URL : %v", err)
-	}
-
-	memberUpdateCtx, cancel := context.WithTimeout(ctx, EtcdTimeout)
-	defer cancel()
-
-	if _, err = cli.MemberUpdate(memberUpdateCtx, id, []string{memberPeerURL}); err == nil {
-		m.logger.Info("Successfully updated the member peer URL")
-		return nil
-	}
-	return err
-}
-
 // PromoteMember promotes an etcd member from a learner to a voting member of the cluster. This will succeed only if its logs are caught up with the leader
 func (m *memberControl) PromoteMember(ctx context.Context) error {
 	m.logger.Infof("Attempting to promote member %s", m.podName)
@@ -273,17 +252,22 @@ func findMember(existingMembers []*etcdserverpb.Member, memberName string) *etcd
 }
 
 // UpdateMemberPeerURL updates the peer address of a specified etcd cluster member.
-func (m *memberControl) UpdateMemberPeerURL(ctx context.Context, cli etcdClient.ClusterCloser) error {
+func (m *memberControl) UpdateMemberPeerURL(ctx context.Context, cli etcdaccess.ClusterCloser, peerURL string) error {
 	m.logger.Infof("Attempting to update the member Info: %v", m.podName)
 	ctx, cancel := context.WithTimeout(ctx, brtypes.DefaultEtcdConnectionTimeout)
 	defer cancel()
 
 	membersInfo, err := cli.MemberList(ctx)
 	if err != nil {
-		return fmt.Errorf("error listing members: %v", err)
+		return fmt.Errorf("error listing members: %w", err)
 	}
 
-	return m.doUpdateMemberPeerAddress(ctx, cli, membersInfo.Header.GetMemberId())
+	memberID := membersInfo.Header.GetMemberId()
+	if _, err = cli.MemberUpdate(ctx, memberID, []string{peerURL}); err != nil {
+		return fmt.Errorf("error updating member peer URL: %w", err)
+	}
+	m.logger.Infof("Successfully updated the member peer URL %s", peerURL)
+	return nil
 }
 
 // RemoveMember removes the member from the etcd cluster.
