@@ -119,23 +119,26 @@ var _ = Describe("Heartbeat", func() {
 				err := k8sClientset.Create(context.TODO(), lease)
 				Expect(err).ShouldNot(HaveOccurred())
 
-				// Update full snapshot lease with latest full snapshot
-				fullSnapshotLeaseUpdated, err := heartbeat.UpdateFullSnapshotLease(context.TODO(), logger, latestFullSnap, k8sClientset, brtypes.DefaultFullSnapshotLeaseName)
+				// Update full snapshot lease with the first full snapshot
+				err = heartbeat.UpdateFullSnapshotLease(context.TODO(), logger, prevFullSnap, k8sClientset, brtypes.DefaultFullSnapshotLeaseName)
 				Expect(err).ShouldNot(HaveOccurred())
-				Expect(fullSnapshotLeaseUpdated).To(BeTrue())
-
-				// Trigger full snapshot lease update with previous full snapshot.
-				// Should result in no update as the lease is already upto date, thus fullSnapshotLeaseUpdated should be false
-				fullSnapshotLeaseUpdated, err = heartbeat.UpdateFullSnapshotLease(context.TODO(), logger, prevFullSnap, k8sClientset, brtypes.DefaultFullSnapshotLeaseName)
-				Expect(err).ShouldNot(HaveOccurred())
-				Expect(fullSnapshotLeaseUpdated).To(BeFalse())
 
 				l := &v1.Lease{}
 				Expect(k8sClientset.Get(context.TODO(), client.ObjectKey{
 					Namespace: lease.Namespace,
 					Name:      lease.Name,
 				}, l)).To(Succeed())
+				Expect(l.Spec.HolderIdentity).To(PointTo(Equal("980")))
 
+				// Trigger full snapshot lease update with latest full snapshot which is not the first full snapshot
+				err = heartbeat.UpdateFullSnapshotLease(context.TODO(), logger, latestFullSnap, k8sClientset, brtypes.DefaultFullSnapshotLeaseName)
+				Expect(err).ShouldNot(HaveOccurred())
+
+				l = &v1.Lease{}
+				Expect(k8sClientset.Get(context.TODO(), client.ObjectKey{
+					Namespace: lease.Namespace,
+					Name:      lease.Name,
+				}, l)).To(Succeed())
 				Expect(l.Spec.HolderIdentity).To(PointTo(Equal("989")))
 
 				err = k8sClientset.Delete(context.TODO(), l)
@@ -147,7 +150,7 @@ var _ = Describe("Heartbeat", func() {
 
 				Expect(k8sClientset.Create(context.TODO(), lease)).To(Succeed())
 
-				_, err = heartbeat.UpdateFullSnapshotLease(context.TODO(), logger, nil, k8sClientset, brtypes.DefaultFullSnapshotLeaseName)
+				err := heartbeat.UpdateFullSnapshotLease(context.TODO(), logger, nil, k8sClientset, brtypes.DefaultFullSnapshotLeaseName)
 				Expect(err).Should(HaveOccurred())
 
 				err = k8sClientset.Delete(context.TODO(), lease)

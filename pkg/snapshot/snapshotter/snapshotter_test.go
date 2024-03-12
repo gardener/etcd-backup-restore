@@ -941,7 +941,10 @@ var _ = Describe("Snapshotter", func() {
 					ssr.PrevFullSnapshot = nil
 					ssr.FullSnapshotLeaseStopCh = make(chan struct{})
 					ssr.K8sClientset = fake.NewClientBuilder().Build()
-					err := ssr.K8sClientset.Create(context.TODO(), lease)
+
+					ctx, cancel := context.WithCancel(context.Background())
+					defer cancel()
+					err := ssr.K8sClientset.Create(ctx, lease)
 					Expect(err).ShouldNot(HaveOccurred())
 
 					ssr.SetFullSnapshotLeaseUpdatePeriod(2 * time.Second)
@@ -950,7 +953,7 @@ var _ = Describe("Snapshotter", func() {
 					ssr.FullSnapshotLeaseStopCh <- struct{}{}
 
 					l := &v1.Lease{}
-					Expect(ssr.K8sClientset.Get(context.TODO(), client.ObjectKey{
+					Expect(ssr.K8sClientset.Get(ctx, client.ObjectKey{
 						Namespace: lease.Namespace,
 						Name:      lease.Name,
 					}, l)).To(Succeed())
@@ -975,7 +978,10 @@ var _ = Describe("Snapshotter", func() {
 					ssr.PrevFullSnapshot = prevFullSnap
 					ssr.FullSnapshotLeaseStopCh = make(chan struct{})
 					ssr.K8sClientset = fake.NewClientBuilder().Build()
-					err := ssr.K8sClientset.Create(context.TODO(), lease)
+
+					ctx, cancel := context.WithCancel(context.Background())
+					defer cancel()
+					err := ssr.K8sClientset.Create(ctx, lease)
 					Expect(err).ShouldNot(HaveOccurred())
 
 					ssr.SetFullSnapshotLeaseUpdatePeriod(time.Second)
@@ -984,7 +990,7 @@ var _ = Describe("Snapshotter", func() {
 					ssr.FullSnapshotLeaseStopCh <- struct{}{}
 
 					l := &v1.Lease{}
-					Expect(ssr.K8sClientset.Get(context.TODO(), client.ObjectKey{
+					Expect(ssr.K8sClientset.Get(ctx, client.ObjectKey{
 						Namespace: lease.Namespace,
 						Name:      lease.Name,
 					}, l)).To(Succeed())
@@ -1008,21 +1014,23 @@ var _ = Describe("Snapshotter", func() {
 					ssr.FullSnapshotLeaseStopCh = make(chan struct{})
 					ssr.K8sClientset = fake.NewClientBuilder().Build()
 
+					ctx, cancel := context.WithCancel(context.Background())
+					defer cancel()
 					ssr.SetFullSnapshotLeaseUpdatePeriod(3 * time.Second)
 					go ssr.RenewFullSnapshotLeasePeriodically()
 					time.Sleep(time.Second)
-					err := ssr.K8sClientset.Create(context.TODO(), lease)
+					err := ssr.K8sClientset.Create(ctx, lease)
 					Expect(err).ShouldNot(HaveOccurred())
 
 					l := &v1.Lease{}
-					Expect(ssr.K8sClientset.Get(context.TODO(), client.ObjectKey{
+					Expect(ssr.K8sClientset.Get(ctx, client.ObjectKey{
 						Namespace: lease.Namespace,
 						Name:      lease.Name,
 					}, l)).To(Succeed())
 					Expect(l.Spec.HolderIdentity).To(BeNil())
 					time.Sleep(3 * time.Second)
 
-					Expect(ssr.K8sClientset.Get(context.TODO(), client.ObjectKey{
+					Expect(ssr.K8sClientset.Get(ctx, client.ObjectKey{
 						Namespace: lease.Namespace,
 						Name:      lease.Name,
 					}, l)).To(Succeed())

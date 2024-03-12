@@ -63,7 +63,7 @@ func NewHealthConfig() *HealthConfig {
 func (c *HealthConfig) AddFlags(fs *flag.FlagSet) {
 
 	fs.BoolVar(&c.SnapshotLeaseRenewalEnabled, "enable-snapshot-lease-renewal", c.SnapshotLeaseRenewalEnabled, "Allows sidecar to renew the snapshot leases when snapshots are taken")
-	fs.DurationVar(&c.FullSnapshotLeaseUpdateInterval.Duration, "full-snapshot-lease-update-interval", c.FullSnapshotLeaseUpdateInterval.Duration, "Full snapshot lease update interval")
+	fs.DurationVar(&c.FullSnapshotLeaseUpdateInterval.Duration, "full-snapshot-lease-update-interval", c.FullSnapshotLeaseUpdateInterval.Duration, "Interval for Periodic Full Snapshot lease updates")
 	fs.BoolVar(&c.MemberLeaseRenewalEnabled, "enable-member-lease-renewal", c.MemberLeaseRenewalEnabled, "Allows sidecar to periodically renew the member leases")
 	fs.BoolVar(&c.EtcdMemberGCEnabled, "enable-etcd-member-gc", c.EtcdMemberGCEnabled, "Allows leading sidecar to remove any superfluous etcd members from the cluster")
 	fs.DurationVar(&c.HeartbeatDuration.Duration, "k8s-heartbeat-duration", c.HeartbeatDuration.Duration, "Heartbeat duration")
