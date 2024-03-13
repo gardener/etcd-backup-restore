@@ -132,7 +132,7 @@ func NewSnapshotter(logger *logrus.Entry, config *brtypes.SnapshotterConfig, sto
 
 	//Attempt to create clientset only if `enable-snapshot-lease-renewal` flag of healthConfig is set & when not running in unit test environment
 	var clientSet client.Client
-	if healthConfig.SnapshotLeaseRenewalEnabled && !miscellaneous.IsUnitTestEnv() {
+	if healthConfig.SnapshotLeaseRenewalEnabled {
 		clientSet, err = miscellaneous.GetKubernetesClientSetOrError()
 		if err != nil {
 			return nil, err

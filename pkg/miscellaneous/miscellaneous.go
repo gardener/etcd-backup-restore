@@ -604,8 +604,3 @@ func RemoveDir(dir string) error {
 	}
 	return nil
 }
-
-// IsUnitTestEnv checks whether the environment is unit test or not by checking the UNIT_TEST environment variable.
-func IsUnitTestEnv() bool {
-	return os.Getenv("UNIT_TEST") == "true"
-}

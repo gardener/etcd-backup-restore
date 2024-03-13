@@ -35,8 +35,7 @@ func (ssr *Snapshotter) RenewFullSnapshotLeasePeriodically() {
 				if err := func() error {
 					ctx, cancel := context.WithTimeout(fullSnapshotLeaseUpdateCtx, brtypes.LeaseUpdateTimeoutDuration)
 					defer cancel()
-					err := heartbeat.FullSnapshotCaseLeaseUpdate(ctx, logger, ssr.PrevFullSnapshot, ssr.K8sClientset, ssr.healthConfig.FullSnapshotLeaseName)
-					return err
+					return heartbeat.FullSnapshotCaseLeaseUpdate(ctx, logger, ssr.PrevFullSnapshot, ssr.K8sClientset, ssr.healthConfig.FullSnapshotLeaseName)
 				}(); err != nil {
 					//FullSnapshot lease update failed. Retry after interval
 					logger.Warnf("FullSnapshot lease update failed with error: %v", err)

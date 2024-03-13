@@ -900,8 +900,10 @@ var _ = Describe("Snapshotter", func() {
 
 		Describe("Scenarios to update full snapshot lease", func() {
 			var (
-				ssr   *Snapshotter
-				lease *v1.Lease
+				ssr    *Snapshotter
+				lease  *v1.Lease
+				ctx    context.Context
+				cancel context.CancelFunc
 			)
 			BeforeEach(func() {
 				healthConfig.SnapshotLeaseRenewalEnabled = true
@@ -911,8 +913,6 @@ var _ = Describe("Snapshotter", func() {
 
 				Expect(os.Setenv("POD_NAME", "test_pod")).To(Succeed())
 				Expect(os.Setenv("POD_NAMESPACE", "test_namespace")).To(Succeed())
-				os.Setenv("UNIT_TEST", "true")
-
 				lease = &v1.Lease{
 					TypeMeta: metav1.TypeMeta{
 						Kind:       "Lease",
@@ -923,34 +923,29 @@ var _ = Describe("Snapshotter", func() {
 						Namespace: os.Getenv("POD_NAMESPACE"),
 					},
 				}
-
+				snapshotterConfig := &brtypes.SnapshotterConfig{
+					FullSnapshotSchedule: fmt.Sprintf("%d %d * * *", 0, 0),
+				}
+				ssr, err = NewSnapshotter(logger, snapshotterConfig, store, etcdConnectionConfig, compressionConfig, healthConfig, snapstoreConfig)
+				Expect(err).ShouldNot(HaveOccurred())
+				ssr.PrevFullSnapshot = nil
+				ssr.K8sClientset = fake.NewClientBuilder().Build()
+				ctx, cancel = context.WithCancel(context.Background())
+				defer cancel()
 			})
 			AfterEach(func() {
 				Expect(os.Unsetenv("POD_NAME")).To(Succeed())
 				Expect(os.Unsetenv("POD_NAMESPACE")).To(Succeed())
-				Expect(os.Unsetenv("UNIT_TEST")).To(Succeed())
 			})
 			Context("Without previous full snapshot", func() {
-				It("cannot update the lease", func() {
-					snapshotterConfig := &brtypes.SnapshotterConfig{
-						FullSnapshotSchedule: fmt.Sprintf("%d %d * * *", 0, 0),
-					}
-					ssr, err = NewSnapshotter(logger, snapshotterConfig, store, etcdConnectionConfig, compressionConfig, healthConfig, snapstoreConfig)
-					Expect(err).ShouldNot(HaveOccurred())
-
-					ssr.PrevFullSnapshot = nil
-					ssr.FullSnapshotLeaseStopCh = make(chan struct{})
-					ssr.K8sClientset = fake.NewClientBuilder().Build()
-
-					ctx, cancel := context.WithCancel(context.Background())
-					defer cancel()
+				It("should not update the lease", func() {
 					err := ssr.K8sClientset.Create(ctx, lease)
 					Expect(err).ShouldNot(HaveOccurred())
 
 					ssr.SetFullSnapshotLeaseUpdatePeriod(2 * time.Second)
 					go ssr.RenewFullSnapshotLeasePeriodically()
 					time.Sleep(2 * time.Second)
-					ssr.FullSnapshotLeaseStopCh <- struct{}{}
+					close(ssr.FullSnapshotLeaseStopCh)
 
 					l := &v1.Lease{}
 					Expect(ssr.K8sClientset.Get(ctx, client.ObjectKey{
@@ -961,13 +956,7 @@ var _ = Describe("Snapshotter", func() {
 				})
 			})
 			Context("With previous full snapshot", func() {
-				It("is able to fetch and update the lease", func() {
-					snapshotterConfig := &brtypes.SnapshotterConfig{
-						FullSnapshotSchedule: fmt.Sprintf("%d %d * * *", 0, 0),
-					}
-					ssr, err = NewSnapshotter(logger, snapshotterConfig, store, etcdConnectionConfig, compressionConfig, healthConfig, snapstoreConfig)
-					Expect(err).ShouldNot(HaveOccurred())
-
+				It("should be able to fetch and update the full snapshot lease", func() {
 					prevFullSnap := &brtypes.Snapshot{
 						Kind:          brtypes.SnapshotKindFull,
 						CreatedOn:     time.Now(),
@@ -976,18 +965,13 @@ var _ = Describe("Snapshotter", func() {
 					}
 					prevFullSnap.GenerateSnapshotName()
 					ssr.PrevFullSnapshot = prevFullSnap
-					ssr.FullSnapshotLeaseStopCh = make(chan struct{})
-					ssr.K8sClientset = fake.NewClientBuilder().Build()
-
-					ctx, cancel := context.WithCancel(context.Background())
-					defer cancel()
 					err := ssr.K8sClientset.Create(ctx, lease)
 					Expect(err).ShouldNot(HaveOccurred())
 
 					ssr.SetFullSnapshotLeaseUpdatePeriod(time.Second)
 					go ssr.RenewFullSnapshotLeasePeriodically()
 					time.Sleep(2 * time.Second)
-					ssr.FullSnapshotLeaseStopCh <- struct{}{}
+					close(ssr.FullSnapshotLeaseStopCh)
 
 					l := &v1.Lease{}
 					Expect(ssr.K8sClientset.Get(ctx, client.ObjectKey{
@@ -996,13 +980,7 @@ var _ = Describe("Snapshotter", func() {
 					}, l)).To(Succeed())
 					Expect(*l.Spec.HolderIdentity).To(Equal(strconv.FormatInt(prevFullSnap.LastRevision, 10)))
 				})
-				It("unable to fetch the lease at first, update the lease in the next attempt", func() {
-					snapshotterConfig := &brtypes.SnapshotterConfig{
-						FullSnapshotSchedule: fmt.Sprintf("%d %d * * *", 0, 0),
-					}
-					ssr, err = NewSnapshotter(logger, snapshotterConfig, store, etcdConnectionConfig, compressionConfig, healthConfig, snapstoreConfig)
-					Expect(err).ShouldNot(HaveOccurred())
-
+				It("should not be able to fetch the lease at first but should be able to update the lease in the next attempt", func() {
 					prevFullSnap := &brtypes.Snapshot{
 						Kind:          brtypes.SnapshotKindFull,
 						CreatedOn:     time.Now(),
@@ -1011,11 +989,6 @@ var _ = Describe("Snapshotter", func() {
 					}
 					prevFullSnap.GenerateSnapshotName()
 					ssr.PrevFullSnapshot = prevFullSnap
-					ssr.FullSnapshotLeaseStopCh = make(chan struct{})
-					ssr.K8sClientset = fake.NewClientBuilder().Build()
-
-					ctx, cancel := context.WithCancel(context.Background())
-					defer cancel()
 					ssr.SetFullSnapshotLeaseUpdatePeriod(3 * time.Second)
 					go ssr.RenewFullSnapshotLeasePeriodically()
 					time.Sleep(time.Second)
@@ -1035,7 +1008,7 @@ var _ = Describe("Snapshotter", func() {
 						Name:      lease.Name,
 					}, l)).To(Succeed())
 					Expect(*l.Spec.HolderIdentity).To(Equal(strconv.FormatInt(prevFullSnap.LastRevision, 10)))
-					ssr.FullSnapshotLeaseStopCh <- struct{}{}
+					close(ssr.FullSnapshotLeaseStopCh)
 				})
 			})
 		})
