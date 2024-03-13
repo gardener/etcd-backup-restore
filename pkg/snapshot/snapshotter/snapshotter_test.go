@@ -926,6 +926,7 @@ var _ = Describe("Snapshotter", func() {
 				snapshotterConfig := &brtypes.SnapshotterConfig{
 					FullSnapshotSchedule: fmt.Sprintf("%d %d * * *", 0, 0),
 				}
+				os.Setenv("UNIT_TEST", "true")
 				ssr, err = NewSnapshotter(logger, snapshotterConfig, store, etcdConnectionConfig, compressionConfig, healthConfig, snapstoreConfig)
 				Expect(err).ShouldNot(HaveOccurred())
 				ssr.PrevFullSnapshot = nil
@@ -936,6 +937,7 @@ var _ = Describe("Snapshotter", func() {
 			AfterEach(func() {
 				Expect(os.Unsetenv("POD_NAME")).To(Succeed())
 				Expect(os.Unsetenv("POD_NAMESPACE")).To(Succeed())
+				Expect(os.Unsetenv("UNIT_TEST")).To(Succeed())
 			})
 			Context("Without previous full snapshot", func() {
 				It("should not update the lease", func() {

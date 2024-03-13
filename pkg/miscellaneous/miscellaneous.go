@@ -604,3 +604,7 @@ func RemoveDir(dir string) error {
 	}
 	return nil
 }
+
+func IsUnitTestEnv() bool {
+	return os.Getenv("UNIT_TEST") == "true"
+}
