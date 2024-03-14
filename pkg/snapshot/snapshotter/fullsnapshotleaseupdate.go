@@ -15,9 +15,9 @@ import (
 
 // RenewFullSnapshotLeasePeriodically has a timer and will periodically call FullSnapshotCaseLeaseUpdate to renew the fullsnapshot lease until it is updated or stopped.
 // The timer starts upon snapshotter initialization and is reset after every full snapshot is taken.
-func (ssr *Snapshotter) RenewFullSnapshotLeasePeriodically() {
+func (ssr *Snapshotter) RenewFullSnapshotLeasePeriodically(FullSnapshotLeaseStopCh chan struct{}) {
 	logger := logrus.NewEntry(logrus.New()).WithField("actor", "FullSnapLeaseUpdater")
-	fullSnapshotLeaseUpdateInterval := ssr.healthConfig.FullSnapshotLeaseUpdateInterval.Duration
+	fullSnapshotLeaseUpdateInterval := ssr.HealthConfig.FullSnapshotLeaseUpdateInterval.Duration
 	ssr.FullSnapshotLeaseUpdateTimer = time.NewTimer(fullSnapshotLeaseUpdateInterval)
 	fullSnapshotLeaseUpdateCtx, fullSnapshotLeaseUpdateCancel := context.WithCancel(context.TODO())
 	defer func() {
@@ -35,7 +35,7 @@ func (ssr *Snapshotter) RenewFullSnapshotLeasePeriodically() {
 				if err := func() error {
 					ctx, cancel := context.WithTimeout(fullSnapshotLeaseUpdateCtx, brtypes.LeaseUpdateTimeoutDuration)
 					defer cancel()
-					return heartbeat.FullSnapshotCaseLeaseUpdate(ctx, logger, ssr.PrevFullSnapshot, ssr.K8sClientset, ssr.healthConfig.FullSnapshotLeaseName)
+					return heartbeat.FullSnapshotCaseLeaseUpdate(ctx, logger, ssr.PrevFullSnapshot, ssr.K8sClientset, ssr.HealthConfig.FullSnapshotLeaseName)
 				}(); err != nil {
 					//FullSnapshot lease update failed. Retry after interval
 					logger.Warnf("FullSnapshot lease update failed with error: %v", err)
@@ -53,14 +53,9 @@ func (ssr *Snapshotter) RenewFullSnapshotLeasePeriodically() {
 				ssr.FullSnapshotLeaseUpdateTimer.Reset(fullSnapshotLeaseUpdateInterval)
 			}
 
-		case <-ssr.FullSnapshotLeaseStopCh:
+		case <-FullSnapshotLeaseStopCh:
 			logger.Info("Closing the full snapshot lease renewal")
 			return
 		}
 	}
-}
-
-// SetFullSnapshotLeaseUpdatePeriod sets the interval for updating the full snapshot lease.
-func (ssr *Snapshotter) SetFullSnapshotLeaseUpdatePeriod(period time.Duration) {
-	ssr.healthConfig.FullSnapshotLeaseUpdateInterval.Duration = period
 }
