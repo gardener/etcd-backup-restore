@@ -6,8 +6,10 @@ package snapstore
 
 import (
 	"context"
+	"crypto/md5"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -38,6 +40,9 @@ const (
 	s3NoOfChunk            int64 = 9999
 	awsCredentialDirectory       = "AWS_APPLICATION_CREDENTIALS"
 	awsCredentialJSONFile        = "AWS_APPLICATION_CREDENTIALS_JSON"
+	// For server-side encryption
+	sseCustomerKey       = "AWS_SSE_CUSTOMER_KEY"
+	sseCustomerAlgorithm = "AES256"
 )
 
 type awsCredentials struct {
@@ -275,9 +280,13 @@ func NewS3FromClient(bucket, prefix, tempDir string, maxParallelChunkUploads uin
 
 // Fetch should open reader for the snapshot file from store
 func (s *S3SnapStore) Fetch(snap brtypes.Snapshot) (io.ReadCloser, error) {
+	sseCreds := getSSECreds()
 	resp, err := s.client.GetObject(&s3.GetObjectInput{
-		Bucket: aws.String(s.bucket),
-		Key:    aws.String(path.Join(snap.Prefix, snap.SnapDir, snap.SnapName)),
+		Bucket:               aws.String(s.bucket),
+		Key:                  aws.String(path.Join(snap.Prefix, snap.SnapDir, snap.SnapName)),
+		SSECustomerAlgorithm: &sseCreds.SSECustomerAlgorithm,
+		SSECustomerKey:       &sseCreds.SSECustomerKey,
+		SSECustomerKeyMD5:    &sseCreds.SSECustomerKeyMD5,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("error while accessing %s: %v", path.Join(snap.Prefix, snap.SnapDir, snap.SnapName), err)
@@ -311,9 +320,13 @@ func (s *S3SnapStore) Save(snap brtypes.Snapshot, rc io.ReadCloser) error {
 	ctx, cancel := context.WithTimeout(ctx, chunkUploadTimeout)
 	defer cancel()
 	prefix := adaptPrefix(&snap, s.prefix)
+	sseCreds := getSSECreds()
 	uploadOutput, err := s.client.CreateMultipartUploadWithContext(ctx, &s3.CreateMultipartUploadInput{
-		Bucket: aws.String(s.bucket),
-		Key:    aws.String(path.Join(prefix, snap.SnapDir, snap.SnapName)),
+		Bucket:               aws.String(s.bucket),
+		Key:                  aws.String(path.Join(prefix, snap.SnapDir, snap.SnapName)),
+		SSECustomerAlgorithm: &sseCreds.SSECustomerAlgorithm,
+		SSECustomerKey:       &sseCreds.SSECustomerKey,
+		SSECustomerKeyMD5:    &sseCreds.SSECustomerKeyMD5,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to initiate multipart upload %v", err)
@@ -403,12 +416,16 @@ func (s *S3SnapStore) uploadPart(snap *brtypes.Snapshot, file *os.File, uploadID
 	ctx, cancel := context.WithTimeout(context.TODO(), chunkUploadTimeout)
 	defer cancel()
 	partNumber := ((offset / chunkSize) + 1)
+	sseCreds := getSSECreds()
 	in := &s3.UploadPartInput{
-		Bucket:     aws.String(s.bucket),
-		Key:        aws.String(path.Join(adaptPrefix(snap, s.prefix), snap.SnapDir, snap.SnapName)),
-		PartNumber: &partNumber,
-		UploadId:   uploadID,
-		Body:       sr,
+		Bucket:               aws.String(s.bucket),
+		Key:                  aws.String(path.Join(adaptPrefix(snap, s.prefix), snap.SnapDir, snap.SnapName)),
+		PartNumber:           &partNumber,
+		UploadId:             uploadID,
+		Body:                 sr,
+		SSECustomerAlgorithm: &sseCreds.SSECustomerAlgorithm,
+		SSECustomerKey:       &sseCreds.SSECustomerKey,
+		SSECustomerKeyMD5:    &sseCreds.SSECustomerKeyMD5,
 	}
 
 	part, err := s.client.UploadPartWithContext(ctx, in)
@@ -518,4 +535,26 @@ func isAWSConfigEmpty(config *awsCredentials) error {
 		return nil
 	}
 	return fmt.Errorf("aws s3 credentials: region, secretAccessKey or accessKeyID is missing")
+}
+
+// sseCredentials to hold fields for server-side encryption in I/O operations
+type sseCredentials struct {
+	SSECustomerAlgorithm string
+	SSECustomerKey       string
+	SSECustomerKeyMD5    string
+}
+
+// Checks for SSECustomerKey env var and creates the creds necessary
+func getSSECreds() (ssecreds sseCredentials) {
+	if SSECustomerKey, isSet := os.LookupEnv(sseCustomerKey); isSet {
+		SSECustomerKeyMD5Bytes := md5.Sum([]byte(SSECustomerKey))
+		SSECustomerKeyMD5 := base64.StdEncoding.EncodeToString(SSECustomerKeyMD5Bytes[:])
+		SSECustomerAlgorithm := sseCustomerAlgorithm
+		return sseCredentials{
+			SSECustomerAlgorithm: SSECustomerAlgorithm,
+			SSECustomerKey:       SSECustomerKey,
+			SSECustomerKeyMD5:    SSECustomerKeyMD5,
+		}
+	}
+	return sseCredentials{}
 }

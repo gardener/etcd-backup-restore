@@ -153,3 +153,6 @@ backupRestoreTLS: {}
 
 # podAnnotations that will be passed to the resulting etcd pod
 podAnnotations: {}
+
+# sseCustomerKey is the AES Key used to enable Server Side Encryption
+sseCustomerKey: ""
