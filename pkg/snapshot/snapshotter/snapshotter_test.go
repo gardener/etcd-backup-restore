@@ -21,10 +21,15 @@ import (
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 	"github.com/gardener/etcd-backup-restore/pkg/wrappers"
+	v1 "k8s.io/api/coordination/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/gardener/etcd-backup-restore/test/utils"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
 
 const (
@@ -889,6 +894,130 @@ var _ = Describe("Snapshotter", func() {
 
 					timeWindow := ssr.GetFullSnapshotMaxTimeWindow(snapshotterConfig.FullSnapshotSchedule)
 					Expect(timeWindow).Should(Equal(float64(scheduleHour)))
+				})
+			})
+		})
+
+		Describe("Scenarios to update full snapshot lease", func() {
+			var (
+				ssr                     *Snapshotter
+				lease                   *v1.Lease
+				FullSnapshotLeaseStopCh chan struct{}
+				ctx                     context.Context
+				cancel                  context.CancelFunc
+			)
+			BeforeEach(func() {
+				snapstoreConfig = &brtypes.SnapstoreConfig{Container: path.Join(outputDir, "default.bkp")}
+				store, err = snapstore.GetSnapstore(snapstoreConfig)
+				Expect(err).ShouldNot(HaveOccurred())
+
+				Expect(os.Setenv("POD_NAME", "test_pod")).To(Succeed())
+				Expect(os.Setenv("POD_NAMESPACE", "test_namespace")).To(Succeed())
+				lease = &v1.Lease{
+					TypeMeta: metav1.TypeMeta{
+						Kind:       "Lease",
+						APIVersion: "v1",
+					},
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      brtypes.DefaultFullSnapshotLeaseName,
+						Namespace: os.Getenv("POD_NAMESPACE"),
+					},
+				}
+				snapshotterConfig := &brtypes.SnapshotterConfig{
+					FullSnapshotSchedule: fmt.Sprintf("%d %d * * *", 0, 0),
+				}
+				ssr, err = NewSnapshotter(logger, snapshotterConfig, store, etcdConnectionConfig, compressionConfig, healthConfig, snapstoreConfig)
+				Expect(err).ShouldNot(HaveOccurred())
+				ssr.PrevFullSnapshot = nil
+				ssr.K8sClientset = fake.NewClientBuilder().Build()
+				ssr.HealthConfig.SnapshotLeaseRenewalEnabled = true
+				FullSnapshotLeaseStopCh = make(chan struct{})
+			})
+			AfterEach(func() {
+				Expect(os.Unsetenv("POD_NAME")).To(Succeed())
+				Expect(os.Unsetenv("POD_NAMESPACE")).To(Succeed())
+			})
+			Context("Without previous full snapshot", func() {
+				It("should not update the lease", func() {
+					ctx, cancel = context.WithCancel(context.Background())
+					defer cancel()
+
+					err := ssr.K8sClientset.Create(ctx, lease)
+					Expect(err).ShouldNot(HaveOccurred())
+
+					ssr.HealthConfig.FullSnapshotLeaseUpdateInterval.Duration = 2 * time.Second
+					go ssr.RenewFullSnapshotLeasePeriodically(FullSnapshotLeaseStopCh)
+					time.Sleep(2 * time.Second)
+					close(FullSnapshotLeaseStopCh)
+
+					l := &v1.Lease{}
+					Expect(ssr.K8sClientset.Get(ctx, client.ObjectKey{
+						Namespace: lease.Namespace,
+						Name:      lease.Name,
+					}, l)).To(Succeed())
+					Expect(l.Spec.HolderIdentity).To(BeNil())
+				})
+			})
+			Context("With previous full snapshot", func() {
+				It("should be able to fetch and update the full snapshot lease", func() {
+					ctx, cancel = context.WithCancel(context.Background())
+					defer cancel()
+
+					prevFullSnap := &brtypes.Snapshot{
+						Kind:          brtypes.SnapshotKindFull,
+						CreatedOn:     time.Now(),
+						StartRevision: 0,
+						LastRevision:  123,
+					}
+					prevFullSnap.GenerateSnapshotName()
+					ssr.PrevFullSnapshot = prevFullSnap
+					err := ssr.K8sClientset.Create(ctx, lease)
+					Expect(err).ShouldNot(HaveOccurred())
+
+					ssr.HealthConfig.FullSnapshotLeaseUpdateInterval.Duration = time.Second
+					go ssr.RenewFullSnapshotLeasePeriodically(FullSnapshotLeaseStopCh)
+					time.Sleep(2 * time.Second)
+					close(FullSnapshotLeaseStopCh)
+
+					l := &v1.Lease{}
+					Expect(ssr.K8sClientset.Get(ctx, client.ObjectKey{
+						Namespace: lease.Namespace,
+						Name:      lease.Name,
+					}, l)).To(Succeed())
+					Expect(*l.Spec.HolderIdentity).To(Equal(strconv.FormatInt(prevFullSnap.LastRevision, 10)))
+				})
+				It("should not be able to fetch the lease at first but should be able to update the lease in the next attempt", func() {
+					ctx, cancel = context.WithCancel(context.Background())
+					defer cancel()
+
+					prevFullSnap := &brtypes.Snapshot{
+						Kind:          brtypes.SnapshotKindFull,
+						CreatedOn:     time.Now(),
+						StartRevision: 0,
+						LastRevision:  123,
+					}
+					prevFullSnap.GenerateSnapshotName()
+					ssr.PrevFullSnapshot = prevFullSnap
+					ssr.HealthConfig.FullSnapshotLeaseUpdateInterval.Duration = 3 * time.Second
+					go ssr.RenewFullSnapshotLeasePeriodically(FullSnapshotLeaseStopCh)
+					time.Sleep(time.Second)
+					err := ssr.K8sClientset.Create(ctx, lease)
+					Expect(err).ShouldNot(HaveOccurred())
+
+					l := &v1.Lease{}
+					Expect(ssr.K8sClientset.Get(ctx, client.ObjectKey{
+						Namespace: lease.Namespace,
+						Name:      lease.Name,
+					}, l)).To(Succeed())
+					Expect(l.Spec.HolderIdentity).To(BeNil())
+					time.Sleep(3 * time.Second)
+
+					Expect(ssr.K8sClientset.Get(ctx, client.ObjectKey{
+						Namespace: lease.Namespace,
+						Name:      lease.Name,
+					}, l)).To(Succeed())
+					Expect(*l.Spec.HolderIdentity).To(Equal(strconv.FormatInt(prevFullSnap.LastRevision, 10)))
+					close(FullSnapshotLeaseStopCh)
 				})
 			})
 		})
