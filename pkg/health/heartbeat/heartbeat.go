@@ -185,7 +185,7 @@ func UpdateFullSnapshotLease(ctx context.Context, logger *logrus.Entry, fullSnap
 			if err != nil {
 				return err
 			}
-			if rev >= fullSnapshot.LastRevision {
+			if rev > fullSnapshot.LastRevision {
 				return nil
 			}
 		}
