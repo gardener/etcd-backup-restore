@@ -197,6 +197,7 @@ spec:
             secretKeyRef:
               name: {{ .Release.Name }}-etcd-backup
               key: "emulatorEnabled"
+              optional: true
   {{- end }}
   {{- if .Values.backup.abs.storageAPIEndpoint }}
         - name: "AZURE_STORAGE_API_ENDPOINT"
@@ -204,6 +205,7 @@ spec:
             secretKeyRef:
               name: {{ .Release.Name }}-etcd-backup
               key: "storageAPIEndpoint"
+              optional: true
   {{- end }}
 {{- else if eq .Values.backup.storageProvider "GCS" }}
         - name: "GOOGLE_APPLICATION_CREDENTIALS"
@@ -214,6 +216,7 @@ spec:
             secretKeyRef:
               name: {{ .Release.Name }}-etcd-backup
               key: "storageAPIEndpoint"
+              optional: true
   {{- end }}
 {{- else if eq .Values.backup.storageProvider "Swift" }}
         - name: "OS_AUTH_URL"
@@ -284,6 +287,7 @@ spec:
             secretKeyRef:
               name: {{ .Release.Name }}-etcd-backup
               key: "disableSsl"
+              optional: true
   {{- end }}
   {{- if .Values.backup.ecs.insecureSkipVerify }}
         - name: "ECS_INSECURE_SKIP_VERIFY"
@@ -291,6 +295,7 @@ spec:
             secretKeyRef:
               name: {{ .Release.Name }}-etcd-backup
               key: "insecureSkipVerify"
+              optional: true
   {{- end }}
 {{- end }}
         volumeMounts:
