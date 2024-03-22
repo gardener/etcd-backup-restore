@@ -165,8 +165,10 @@ spec:
         - name: STORAGE_CONTAINER
           value: {{ .Values.backup.storageContainer }}
 {{- if eq .Values.backup.storageProvider "S3" }}
+        {{- if .Values.sseCustomerKey }}
         - name: "AWS_SSE_CUSTOMER_KEY"
           value: {{ .Values.sseCustomerKey }}
+        {{- end }}
         - name: "AWS_REGION"
           valueFrom:
             secretKeyRef:

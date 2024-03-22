@@ -155,4 +155,4 @@ backupRestoreTLS: {}
 podAnnotations: {}
 
 # sseCustomerKey is the AES Key used to enable Server Side Encryption
-sseCustomerKey: ""
+# sseCustomerKey: <aes-256-key> # Expects a string value
