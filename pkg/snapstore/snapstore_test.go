@@ -119,7 +119,7 @@ var _ = Describe("Save, List, Fetch, Delete from mock snapstore", func() {
 				objectCountPerSnapshot: 1,
 			},
 			"GCS": {
-				SnapStore: NewGCSSnapStoreFromClient(bucket, prefixV2, "/tmp", 5, brtypes.MinChunkSize, &mockGCSClient{
+				SnapStore: NewGCSSnapStoreFromClient(bucket, prefixV2, "/tmp", 5, brtypes.MinChunkSize, "", &mockGCSClient{
 					objects: objectMap,
 					prefix:  prefixV2,
 				}),
@@ -518,22 +518,22 @@ var _ = Describe("Blob Service URL construction for Azure", func() {
 		credentials, err = azblob.NewSharedKeyCredential(storageAccount, storageKey)
 		Expect(err).ShouldNot(HaveOccurred())
 	})
-	Context(fmt.Sprintf("when the environment variable %q is not set", EnvEmulatorEnabled), func() {
+	Context(fmt.Sprintf("when the environment variable %q is not set", EnvAzureEmulatorEnabled), func() {
 		It("should return the default blob service URL", func() {
 			blobServiceURL, err := ConstructBlobServiceURL(credentials)
 			Expect(err).ShouldNot(HaveOccurred())
 			Expect(blobServiceURL.String()).Should(Equal(fmt.Sprintf("https://%s.%s", credentials.AccountName(), brtypes.AzureBlobStorageHostName)))
 		})
 	})
-	Context(fmt.Sprintf("when the environment variable %q is set", EnvEmulatorEnabled), func() {
+	Context(fmt.Sprintf("when the environment variable %q is set", EnvAzureEmulatorEnabled), func() {
 		Context("to values which are not \"true\"", func() {
 			It("should error when the environment variable is not \"true\" or \"false\"", func() {
-				GinkgoT().Setenv(EnvEmulatorEnabled, "")
+				GinkgoT().Setenv(EnvAzureEmulatorEnabled, "")
 				_, err := ConstructBlobServiceURL(credentials)
 				Expect(err).Should(HaveOccurred())
 			})
 			It("should return the default blob service URL when the environment variable is set to \"false\"", func() {
-				GinkgoT().Setenv(EnvEmulatorEnabled, "false")
+				GinkgoT().Setenv(EnvAzureEmulatorEnabled, "false")
 				blobServiceURL, err := ConstructBlobServiceURL(credentials)
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(blobServiceURL.String()).Should(Equal(fmt.Sprintf("https://%s.%s", credentials.AccountName(), brtypes.AzureBlobStorageHostName)))
@@ -542,7 +542,7 @@ var _ = Describe("Blob Service URL construction for Azure", func() {
 		Context("to \"true\"", func() {
 			const endpoint string = "http://localhost:12345"
 			BeforeEach(func() {
-				GinkgoT().Setenv(EnvEmulatorEnabled, "true")
+				GinkgoT().Setenv(EnvAzureEmulatorEnabled, "true")
 			})
 			It(fmt.Sprintf("should error when the %q environment variable is not set", AzuriteEndpoint), func() {
 				_, err := ConstructBlobServiceURL(credentials)

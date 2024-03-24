@@ -30,7 +30,6 @@ const (
 	envStoreCredentials       = "GOOGLE_APPLICATION_CREDENTIALS"
 	envStorageAPIEndpoint     = "GOOGLE_STORAGE_API_ENDPOINT"
 	envSourceStoreCredentials = "SOURCE_GOOGLE_APPLICATION_CREDENTIALS"
-	envEmulatorEnabled        = "GOOGLE_EMULATOR_ENABLED"
 )
 
 // GCSSnapStore is snapstore with GCS object store as backend.
@@ -112,7 +111,7 @@ func NewGCSSnapStoreFromClient(bucket, prefix, tempDir string, maxParallelChunkU
 
 // isEmulatorEnabled checks if the fake GCS emulator is enabled
 func isEmulatorEnabled() bool {
-	isFakeGCSEnabled, ok := os.LookupEnv(envEmulatorEnabled)
+	isFakeGCSEnabled, ok := os.LookupEnv(EnvGcsEmulatorEnabled)
 	if !ok {
 		return false
 	}

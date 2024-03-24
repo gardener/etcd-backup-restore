@@ -192,7 +192,7 @@ spec:
               name: {{ .Release.Name }}-etcd-backup
               key: "storageKey"
   {{- if .Values.backup.abs.emulatorEnabled }}
-        - name: "EMULATOR_ENABLED"
+        - name: "AZURE_EMULATOR_ENABLED"
           valueFrom:
             secretKeyRef:
               name: {{ .Release.Name }}-etcd-backup
@@ -224,6 +224,7 @@ spec:
             secretKeyRef:
               name: {{ .Release.Name }}-etcd-backup
               key: "emulatorEnabled"
+              optional: true
   {{- end }}
 {{- else if eq .Values.backup.storageProvider "Swift" }}
         - name: "OS_AUTH_URL"
