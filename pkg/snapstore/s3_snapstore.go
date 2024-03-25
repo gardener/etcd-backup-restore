@@ -48,7 +48,7 @@ type awsCredentials struct {
 	AccessKeyID        string  `json:"accessKeyID"`
 	Region             string  `json:"region"`
 	SecretAccessKey    string  `json:"secretAccessKey"`
-	SSECustomerKey     string  `json:"sseCustomerKey"`
+	SSECustomerKey     string  `json:"sseCustomerKey,omitempty"`
 	BucketName         string  `json:"bucketName"`
 	Endpoint           *string `json:"endpoint,omitempty"`
 	S3ForcePathStyle   *bool   `json:"s3ForcePathStyle,omitempty"`
@@ -78,21 +78,16 @@ type S3SnapStore struct {
 
 // NewS3SnapStore create new S3SnapStore from shared configuration with specified bucket
 func NewS3SnapStore(config *brtypes.SnapstoreConfig) (*S3SnapStore, error) {
-	credentials, sseCreds, err := getSessionOptions(getEnvPrefixString(config.IsSource))
+	sessionOpts, sseCreds, err := getSessionOptions(getEnvPrefixString(config.IsSource))
 	if err != nil {
 		return nil, err
 	}
-	return newS3FromSessionOpt(config.Container, config.Prefix, config.TempDir, config.MaxParallelChunkUploads, config.MinChunkSize, credentials, sseCreds)
-}
-
-// newS3FromSessionOpt will create the new S3 snapstore object from S3 session options
-func newS3FromSessionOpt(bucket, prefix, tempDir string, maxParallelChunkUploads uint, minChunkSize int64, so session.Options, sseCreds sseCredentials) (*S3SnapStore, error) {
-	sess, err := session.NewSessionWithOptions(so)
+	sess, err := session.NewSessionWithOptions(sessionOpts)
 	if err != nil {
 		return nil, fmt.Errorf("new AWS session failed: %v", err)
 	}
 	cli := s3.New(sess)
-	return NewS3FromClient(bucket, prefix, tempDir, maxParallelChunkUploads, minChunkSize, cli, sseCreds), nil
+	return NewS3FromClient(config.Container, config.Prefix, config.TempDir, config.MaxParallelChunkUploads, config.MinChunkSize, cli, sseCreds), nil
 }
 
 func getSessionOptions(prefixString string) (session.Options, sseCredentials, error) {
@@ -553,7 +548,7 @@ func isAWSConfigEmpty(config *awsCredentials) error {
 }
 
 // Checks for SSECustomerKey env var and creates the creds necessary
-func getSSECreds(key string) (ssecreds sseCredentials) {
+func getSSECreds(key string) sseCredentials {
 	if key != "" {
 		SSECustomerKeyMD5Bytes := md5.Sum([]byte(key))
 		SSECustomerKeyMD5 := base64.StdEncoding.EncodeToString(SSECustomerKeyMD5Bytes[:])
