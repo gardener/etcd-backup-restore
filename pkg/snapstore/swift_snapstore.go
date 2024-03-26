@@ -7,6 +7,7 @@ package snapstore
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -46,10 +47,6 @@ type SwiftSnapStore struct {
 	maxParallelChunkUploads uint
 	minChunkSize            int64
 	tempDir                 string
-	// deleteChunksForObject decides whether deletion of a (manifest) object should also delete the
-	// associated chunks (segment objects).
-	// Default: true
-	deleteChunksForObject bool
 }
 
 type applicationCredential struct {
@@ -106,7 +103,7 @@ func NewSwiftSnapStore(config *brtypes.SnapstoreConfig) (*SwiftSnapStore, error)
 		return nil, err
 	}
 
-	return NewSwiftSnapstoreFromClient(config.Container, config.Prefix, config.TempDir, config.MaxParallelChunkUploads, config.MinChunkSize, client, true), nil
+	return NewSwiftSnapstoreFromClient(config.Container, config.Prefix, config.TempDir, config.MaxParallelChunkUploads, config.MinChunkSize, client), nil
 
 }
 
@@ -306,7 +303,7 @@ func readSwiftCredentialDir(dirName string) (*swiftCredentials, error) {
 }
 
 // NewSwiftSnapstoreFromClient will create the new Swift snapstore object from Swift client
-func NewSwiftSnapstoreFromClient(bucket, prefix, tempDir string, maxParallelChunkUploads uint, minChunkSize int64, cli *gophercloud.ServiceClient, deleteChunksForObject bool) *SwiftSnapStore {
+func NewSwiftSnapstoreFromClient(bucket, prefix, tempDir string, maxParallelChunkUploads uint, minChunkSize int64, cli *gophercloud.ServiceClient) *SwiftSnapStore {
 	return &SwiftSnapStore{
 		bucket:                  bucket,
 		prefix:                  prefix,
@@ -314,7 +311,6 @@ func NewSwiftSnapstoreFromClient(bucket, prefix, tempDir string, maxParallelChun
 		maxParallelChunkUploads: maxParallelChunkUploads,
 		minChunkSize:            minChunkSize,
 		tempDir:                 tempDir,
-		deleteChunksForObject:   deleteChunksForObject,
 	}
 }
 
@@ -502,23 +498,48 @@ func (s *SwiftSnapStore) getSnapshotChunks(snapshot brtypes.Snapshot) (brtypes.S
 // This includes the manifest object as well as the segment objects, as
 // described in https://docs.openstack.org/swift/latest/overview_large_objects.html
 func (s *SwiftSnapStore) Delete(snap brtypes.Snapshot) error {
-	if s.deleteChunksForObject {
-		chunks, err := s.getSnapshotChunks(snap)
+	chunks, err := s.getSnapshotChunks(snap)
+	if err != nil {
+		return err
+	}
+
+	if len(chunks) > 0 {
+		var chunkObjectNames []string
+		for _, chunk := range chunks {
+			chunkObjectNames = append(chunkObjectNames, path.Join(chunk.Prefix, chunk.SnapDir, chunk.SnapName))
+		}
+
+		chunkObjectsDeleteResult := objects.BulkDelete(s.client, s.bucket, chunkObjectNames)
+		if chunkObjectsDeleteResult.Err != nil {
+			// chunkObjectsDeleteResult.Err is the error that occurs while creating the POST request
+			return chunkObjectsDeleteResult.Err
+		}
+
+		// See https://docs.openstack.org/swift/latest/api/bulk-delete.html for more information about this error handling
+		var bulkDeleteErrors []error
+		bulkDeleteResponse, err := chunkObjectsDeleteResult.Extract()
 		if err != nil {
-			return err
+			return fmt.Errorf("error while extracting the bulk delete information from the response %w", err)
 		}
 
-		if len(chunks) > 0 {
-			var chunkObjectNames []string
-			for _, chunk := range chunks {
-				chunkObjectNames = append(chunkObjectNames, path.Join(chunk.Prefix, chunk.SnapDir, chunk.SnapName))
+		if bulkDeleteResponse.NumberNotFound > 0 {
+			bulkDeleteErrors = append(bulkDeleteErrors, fmt.Errorf("error while deleting segment objects with error: %d segment objects not found in the store", bulkDeleteResponse.NumberNotFound))
+		}
+		for _, errorsPerObject := range bulkDeleteResponse.Errors {
+			var filteredErrorStrings []string
+			for _, errorString := range errorsPerObject {
+				if errorString != "" {
+					filteredErrorStrings = append(filteredErrorStrings, errorString)
+				}
 			}
-
-			if chunkObjectsDeleteResult := objects.BulkDelete(s.client, s.bucket, chunkObjectNames); chunkObjectsDeleteResult.Err != nil {
-				return chunkObjectsDeleteResult.Err
+			bulkDeleteErrorString := strings.Join(filteredErrorStrings, ", ")
+			if bulkDeleteErrorString != "" {
+				bulkDeleteErrors = append(bulkDeleteErrors, fmt.Errorf("error while deleting segment object with error: %s", bulkDeleteErrorString))
 			}
 		}
-
+		if len(bulkDeleteErrors) > 0 {
+			return errors.Join(bulkDeleteErrors...)
+		}
 	}
 
 	// delete manifest object
