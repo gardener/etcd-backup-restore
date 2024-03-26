@@ -46,6 +46,5 @@ func newGenericS3FromAuthOpt(bucket, prefix, tempDir string, maxParallelChunkUpl
 		return nil, fmt.Errorf("could not create S3 session: %v", err)
 	}
 	cli := s3.New(sess)
-	sseCreds := sseCredentials{}
-	return NewS3FromClient(bucket, prefix, tempDir, maxParallelChunkUploads, minChunkSize, cli, sseCreds), nil
+	return NewS3FromClient(bucket, prefix, tempDir, maxParallelChunkUploads, minChunkSize, cli, SSECredentials{}), nil
 }

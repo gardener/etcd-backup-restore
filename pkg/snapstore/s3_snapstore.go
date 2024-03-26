@@ -56,8 +56,8 @@ type awsCredentials struct {
 	TrustedCaCert      *string `json:"trustedCaCert,omitempty"`
 }
 
-// sseCredentials to hold fields for server-side encryption in I/O operations
-type sseCredentials struct {
+// SSECredentials to hold fields for server-side encryption in I/O operations
+type SSECredentials struct {
 	SSECustomerAlgorithm string
 	SSECustomerKey       string
 	SSECustomerKeyMD5    string
@@ -73,7 +73,7 @@ type S3SnapStore struct {
 	maxParallelChunkUploads uint
 	minChunkSize            int64
 	tempDir                 string
-	sseCreds                sseCredentials
+	sseCreds                SSECredentials
 }
 
 // NewS3SnapStore create new S3SnapStore from shared configuration with specified bucket
@@ -90,12 +90,12 @@ func NewS3SnapStore(config *brtypes.SnapstoreConfig) (*S3SnapStore, error) {
 	return NewS3FromClient(config.Container, config.Prefix, config.TempDir, config.MaxParallelChunkUploads, config.MinChunkSize, cli, sseCreds), nil
 }
 
-func getSessionOptions(prefixString string) (session.Options, sseCredentials, error) {
+func getSessionOptions(prefixString string) (session.Options, SSECredentials, error) {
 
 	if filename, isSet := os.LookupEnv(prefixString + awsCredentialJSONFile); isSet {
 		creds, sseCreds, err := readAWSCredentialsJSONFile(filename)
 		if err != nil {
-			return session.Options{}, sseCredentials{}, fmt.Errorf("error getting credentials using %v file", filename)
+			return session.Options{}, SSECredentials{}, fmt.Errorf("error getting credentials using %v file", filename)
 		}
 		return creds, sseCreds, nil
 	}
@@ -103,7 +103,7 @@ func getSessionOptions(prefixString string) (session.Options, sseCredentials, er
 	if dir, isSet := os.LookupEnv(prefixString + awsCredentialDirectory); isSet {
 		creds, sseCreds, err := readAWSCredentialFiles(dir)
 		if err != nil {
-			return session.Options{}, sseCredentials{}, fmt.Errorf("error getting credentials from %v directory", dir)
+			return session.Options{}, SSECredentials{}, fmt.Errorf("error getting credentials from %v directory", dir)
 		}
 		return creds, sseCreds, nil
 	}
@@ -112,13 +112,13 @@ func getSessionOptions(prefixString string) (session.Options, sseCredentials, er
 		// Setting this is equal to the AWS_SDK_LOAD_CONFIG environment variable was set.
 		// We want to save the work to set AWS_SDK_LOAD_CONFIG=1 outside.
 		SharedConfigState: session.SharedConfigEnable,
-	}, sseCredentials{}, nil
+	}, SSECredentials{}, nil
 }
 
-func readAWSCredentialsJSONFile(filename string) (session.Options, sseCredentials, error) {
+func readAWSCredentialsJSONFile(filename string) (session.Options, SSECredentials, error) {
 	awsConfig, err := credentialsFromJSON(filename)
 	if err != nil {
-		return session.Options{}, sseCredentials{}, err
+		return session.Options{}, SSECredentials{}, err
 	}
 
 	httpClient := http.DefaultClient
@@ -166,10 +166,10 @@ func credentialsFromJSON(filename string) (*awsCredentials, error) {
 	return awsConfig, nil
 }
 
-func readAWSCredentialFiles(dirname string) (session.Options, sseCredentials, error) {
+func readAWSCredentialFiles(dirname string) (session.Options, SSECredentials, error) {
 	awsConfig, err := readAWSCredentialFromDir(dirname)
 	if err != nil {
-		return session.Options{}, sseCredentials{}, err
+		return session.Options{}, SSECredentials{}, err
 	}
 
 	httpClient := http.DefaultClient
@@ -279,7 +279,7 @@ func readAWSCredentialFromDir(dirname string) (*awsCredentials, error) {
 }
 
 // NewS3FromClient will create the new S3 snapstore object from S3 client
-func NewS3FromClient(bucket, prefix, tempDir string, maxParallelChunkUploads uint, minChunkSize int64, cli s3iface.S3API, sseCreds sseCredentials) *S3SnapStore {
+func NewS3FromClient(bucket, prefix, tempDir string, maxParallelChunkUploads uint, minChunkSize int64, cli s3iface.S3API, sseCreds SSECredentials) *S3SnapStore {
 	return &S3SnapStore{
 		bucket:                  bucket,
 		prefix:                  prefix,
@@ -548,15 +548,15 @@ func isAWSConfigEmpty(config *awsCredentials) error {
 }
 
 // Checks for SSECustomerKey env var and creates the creds necessary
-func getSSECreds(key string) sseCredentials {
+func getSSECreds(key string) SSECredentials {
 	if key != "" {
 		SSECustomerKeyMD5Bytes := md5.Sum([]byte(key))
 		SSECustomerKeyMD5 := base64.StdEncoding.EncodeToString(SSECustomerKeyMD5Bytes[:])
-		return sseCredentials{
+		return SSECredentials{
 			SSECustomerKey:       key,
 			SSECustomerKeyMD5:    SSECustomerKeyMD5,
 			SSECustomerAlgorithm: sseCustomerAlgorithm,
 		}
 	}
-	return sseCredentials{}
+	return SSECredentials{}
 }
