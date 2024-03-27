@@ -6,8 +6,10 @@ package snapstore
 
 import (
 	"context"
+	"crypto/md5"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -38,17 +40,27 @@ const (
 	s3NoOfChunk            int64 = 9999
 	awsCredentialDirectory       = "AWS_APPLICATION_CREDENTIALS"
 	awsCredentialJSONFile        = "AWS_APPLICATION_CREDENTIALS_JSON"
+	// For server-side encryption
+	sseCustomerAlgorithm = "AES256"
 )
 
 type awsCredentials struct {
 	AccessKeyID        string  `json:"accessKeyID"`
 	Region             string  `json:"region"`
 	SecretAccessKey    string  `json:"secretAccessKey"`
+	SSECustomerKey     string  `json:"sseCustomerKey,omitempty"`
 	BucketName         string  `json:"bucketName"`
 	Endpoint           *string `json:"endpoint,omitempty"`
 	S3ForcePathStyle   *bool   `json:"s3ForcePathStyle,omitempty"`
 	InsecureSkipVerify *bool   `json:"insecureSkipVerify,omitempty"`
 	TrustedCaCert      *string `json:"trustedCaCert,omitempty"`
+}
+
+// SSECredentials to hold fields for server-side encryption in I/O operations
+type SSECredentials struct {
+	SSECustomerAlgorithm string
+	SSECustomerKey       string
+	SSECustomerKeyMD5    string
 }
 
 // S3SnapStore is snapstore with AWS S3 object store as backend
@@ -61,56 +73,52 @@ type S3SnapStore struct {
 	maxParallelChunkUploads uint
 	minChunkSize            int64
 	tempDir                 string
+	sseCreds                SSECredentials
 }
 
 // NewS3SnapStore create new S3SnapStore from shared configuration with specified bucket
 func NewS3SnapStore(config *brtypes.SnapstoreConfig) (*S3SnapStore, error) {
-	credentials, err := getSessionOptions(getEnvPrefixString(config.IsSource))
+	sessionOpts, sseCreds, err := getSessionOptions(getEnvPrefixString(config.IsSource))
 	if err != nil {
 		return nil, err
 	}
-	return newS3FromSessionOpt(config.Container, config.Prefix, config.TempDir, config.MaxParallelChunkUploads, config.MinChunkSize, credentials)
-}
-
-// newS3FromSessionOpt will create the new S3 snapstore object from S3 session options
-func newS3FromSessionOpt(bucket, prefix, tempDir string, maxParallelChunkUploads uint, minChunkSize int64, so session.Options) (*S3SnapStore, error) {
-	sess, err := session.NewSessionWithOptions(so)
+	sess, err := session.NewSessionWithOptions(sessionOpts)
 	if err != nil {
 		return nil, fmt.Errorf("new AWS session failed: %v", err)
 	}
 	cli := s3.New(sess)
-	return NewS3FromClient(bucket, prefix, tempDir, maxParallelChunkUploads, minChunkSize, cli), nil
+	return NewS3FromClient(config.Container, config.Prefix, config.TempDir, config.MaxParallelChunkUploads, config.MinChunkSize, cli, sseCreds), nil
 }
 
-func getSessionOptions(prefixString string) (session.Options, error) {
+func getSessionOptions(prefixString string) (session.Options, SSECredentials, error) {
 
 	if filename, isSet := os.LookupEnv(prefixString + awsCredentialJSONFile); isSet {
-		creds, err := readAWSCredentialsJSONFile(filename)
+		creds, sseCreds, err := readAWSCredentialsJSONFile(filename)
 		if err != nil {
-			return session.Options{}, fmt.Errorf("error getting credentials using %v file", filename)
+			return session.Options{}, SSECredentials{}, fmt.Errorf("error getting credentials using %v file", filename)
 		}
-		return creds, nil
+		return creds, sseCreds, nil
 	}
 
 	if dir, isSet := os.LookupEnv(prefixString + awsCredentialDirectory); isSet {
-		creds, err := readAWSCredentialFiles(dir)
+		creds, sseCreds, err := readAWSCredentialFiles(dir)
 		if err != nil {
-			return session.Options{}, fmt.Errorf("error getting credentials from %v directory", dir)
+			return session.Options{}, SSECredentials{}, fmt.Errorf("error getting credentials from %v directory", dir)
 		}
-		return creds, nil
+		return creds, sseCreds, nil
 	}
 
 	return session.Options{
 		// Setting this is equal to the AWS_SDK_LOAD_CONFIG environment variable was set.
 		// We want to save the work to set AWS_SDK_LOAD_CONFIG=1 outside.
 		SharedConfigState: session.SharedConfigEnable,
-	}, nil
+	}, SSECredentials{}, nil
 }
 
-func readAWSCredentialsJSONFile(filename string) (session.Options, error) {
+func readAWSCredentialsJSONFile(filename string) (session.Options, SSECredentials, error) {
 	awsConfig, err := credentialsFromJSON(filename)
 	if err != nil {
-		return session.Options{}, err
+		return session.Options{}, SSECredentials{}, err
 	}
 
 	httpClient := http.DefaultClient
@@ -132,6 +140,8 @@ func readAWSCredentialsJSONFile(filename string) (session.Options, error) {
 		}
 	}
 
+	sseCreds := getSSECreds(awsConfig.SSECustomerKey)
+
 	return session.Options{
 		Config: aws.Config{
 			Credentials:      credentials.NewStaticCredentials(awsConfig.AccessKeyID, awsConfig.SecretAccessKey, ""),
@@ -140,7 +150,7 @@ func readAWSCredentialsJSONFile(filename string) (session.Options, error) {
 			S3ForcePathStyle: awsConfig.S3ForcePathStyle,
 			HTTPClient:       httpClient,
 		},
-	}, nil
+	}, sseCreds, nil
 }
 
 // credentialsFromJSON obtains AWS credentials from a JSON value.
@@ -156,10 +166,10 @@ func credentialsFromJSON(filename string) (*awsCredentials, error) {
 	return awsConfig, nil
 }
 
-func readAWSCredentialFiles(dirname string) (session.Options, error) {
+func readAWSCredentialFiles(dirname string) (session.Options, SSECredentials, error) {
 	awsConfig, err := readAWSCredentialFromDir(dirname)
 	if err != nil {
-		return session.Options{}, err
+		return session.Options{}, SSECredentials{}, err
 	}
 
 	httpClient := http.DefaultClient
@@ -180,6 +190,7 @@ func readAWSCredentialFiles(dirname string) (session.Options, error) {
 			},
 		}
 	}
+	sseCreds := getSSECreds(awsConfig.SSECustomerKey)
 
 	return session.Options{
 		Config: aws.Config{
@@ -189,7 +200,7 @@ func readAWSCredentialFiles(dirname string) (session.Options, error) {
 			S3ForcePathStyle: awsConfig.S3ForcePathStyle,
 			HTTPClient:       httpClient,
 		},
-	}, nil
+	}, sseCreds, nil
 }
 
 func readAWSCredentialFromDir(dirname string) (*awsCredentials, error) {
@@ -252,6 +263,12 @@ func readAWSCredentialFromDir(dirname string) (*awsCredentials, error) {
 				return nil, err
 			}
 			awsConfig.TrustedCaCert = pointer.StringPtr(string(data))
+		case "sseCustomerKey":
+			data, err := os.ReadFile(dirname + "/sseCustomerKey")
+			if err != nil {
+				return nil, err
+			}
+			awsConfig.SSECustomerKey = string(data)
 		}
 	}
 
@@ -262,7 +279,7 @@ func readAWSCredentialFromDir(dirname string) (*awsCredentials, error) {
 }
 
 // NewS3FromClient will create the new S3 snapstore object from S3 client
-func NewS3FromClient(bucket, prefix, tempDir string, maxParallelChunkUploads uint, minChunkSize int64, cli s3iface.S3API) *S3SnapStore {
+func NewS3FromClient(bucket, prefix, tempDir string, maxParallelChunkUploads uint, minChunkSize int64, cli s3iface.S3API, sseCreds SSECredentials) *S3SnapStore {
 	return &S3SnapStore{
 		bucket:                  bucket,
 		prefix:                  prefix,
@@ -270,14 +287,18 @@ func NewS3FromClient(bucket, prefix, tempDir string, maxParallelChunkUploads uin
 		maxParallelChunkUploads: maxParallelChunkUploads,
 		minChunkSize:            minChunkSize,
 		tempDir:                 tempDir,
+		sseCreds:                sseCreds,
 	}
 }
 
 // Fetch should open reader for the snapshot file from store
 func (s *S3SnapStore) Fetch(snap brtypes.Snapshot) (io.ReadCloser, error) {
 	resp, err := s.client.GetObject(&s3.GetObjectInput{
-		Bucket: aws.String(s.bucket),
-		Key:    aws.String(path.Join(snap.Prefix, snap.SnapDir, snap.SnapName)),
+		Bucket:               aws.String(s.bucket),
+		Key:                  aws.String(path.Join(snap.Prefix, snap.SnapDir, snap.SnapName)),
+		SSECustomerAlgorithm: aws.String(s.sseCreds.SSECustomerAlgorithm),
+		SSECustomerKey:       aws.String(s.sseCreds.SSECustomerKey),
+		SSECustomerKeyMD5:    aws.String(s.sseCreds.SSECustomerKeyMD5),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("error while accessing %s: %v", path.Join(snap.Prefix, snap.SnapDir, snap.SnapName), err)
@@ -312,8 +333,11 @@ func (s *S3SnapStore) Save(snap brtypes.Snapshot, rc io.ReadCloser) error {
 	defer cancel()
 	prefix := adaptPrefix(&snap, s.prefix)
 	uploadOutput, err := s.client.CreateMultipartUploadWithContext(ctx, &s3.CreateMultipartUploadInput{
-		Bucket: aws.String(s.bucket),
-		Key:    aws.String(path.Join(prefix, snap.SnapDir, snap.SnapName)),
+		Bucket:               aws.String(s.bucket),
+		Key:                  aws.String(path.Join(prefix, snap.SnapDir, snap.SnapName)),
+		SSECustomerAlgorithm: aws.String(s.sseCreds.SSECustomerAlgorithm),
+		SSECustomerKey:       aws.String(s.sseCreds.SSECustomerKey),
+		SSECustomerKeyMD5:    aws.String(s.sseCreds.SSECustomerKeyMD5),
 	})
 	if err != nil {
 		return fmt.Errorf("failed to initiate multipart upload %v", err)
@@ -404,11 +428,14 @@ func (s *S3SnapStore) uploadPart(snap *brtypes.Snapshot, file *os.File, uploadID
 	defer cancel()
 	partNumber := ((offset / chunkSize) + 1)
 	in := &s3.UploadPartInput{
-		Bucket:     aws.String(s.bucket),
-		Key:        aws.String(path.Join(adaptPrefix(snap, s.prefix), snap.SnapDir, snap.SnapName)),
-		PartNumber: &partNumber,
-		UploadId:   uploadID,
-		Body:       sr,
+		Bucket:               aws.String(s.bucket),
+		Key:                  aws.String(path.Join(adaptPrefix(snap, s.prefix), snap.SnapDir, snap.SnapName)),
+		PartNumber:           &partNumber,
+		UploadId:             uploadID,
+		Body:                 sr,
+		SSECustomerAlgorithm: aws.String(s.sseCreds.SSECustomerAlgorithm),
+		SSECustomerKey:       aws.String(s.sseCreds.SSECustomerKey),
+		SSECustomerKeyMD5:    aws.String(s.sseCreds.SSECustomerKeyMD5),
 	}
 
 	part, err := s.client.UploadPartWithContext(ctx, in)
@@ -518,4 +545,18 @@ func isAWSConfigEmpty(config *awsCredentials) error {
 		return nil
 	}
 	return fmt.Errorf("aws s3 credentials: region, secretAccessKey or accessKeyID is missing")
+}
+
+// Checks for SSECustomerKey env var and creates the creds necessary
+func getSSECreds(key string) SSECredentials {
+	if key != "" {
+		SSECustomerKeyMD5Bytes := md5.Sum([]byte(key))
+		SSECustomerKeyMD5 := base64.StdEncoding.EncodeToString(SSECustomerKeyMD5Bytes[:])
+		return SSECredentials{
+			SSECustomerKey:       key,
+			SSECustomerKeyMD5:    SSECustomerKeyMD5,
+			SSECustomerAlgorithm: sseCustomerAlgorithm,
+		}
+	}
+	return SSECredentials{}
 }

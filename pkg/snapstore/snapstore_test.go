@@ -107,7 +107,7 @@ var _ = Describe("Save, List, Fetch, Delete from mock snapstore", func() {
 					objects:          objectMap,
 					prefix:           prefixV2,
 					multiPartUploads: map[string]*[][]byte{},
-				}),
+				}, SSECredentials{}),
 				objectCountPerSnapshot: 1,
 			},
 			"swift": {
@@ -139,7 +139,7 @@ var _ = Describe("Save, List, Fetch, Delete from mock snapstore", func() {
 					objects:          objectMap,
 					prefix:           prefixV2,
 					multiPartUploads: map[string]*[][]byte{},
-				}),
+				}, SSECredentials{}),
 				objectCountPerSnapshot: 1,
 			},
 			"OCS": {
@@ -147,12 +147,11 @@ var _ = Describe("Save, List, Fetch, Delete from mock snapstore", func() {
 					objects:          objectMap,
 					prefix:           prefixV2,
 					multiPartUploads: map[string]*[][]byte{},
-				}),
+				}, SSECredentials{}),
 				objectCountPerSnapshot: 1,
 			},
 		}
 	})
-
 	AfterEach(func() {
 		resetObjectMap()
 	})
