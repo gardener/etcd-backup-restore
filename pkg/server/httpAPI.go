@@ -429,7 +429,7 @@ func (h *HTTPHandler) serveConfig(rw http.ResponseWriter, req *http.Request) {
 	config["name"] = podName
 
 	initAdPeerURL := config["initial-advertise-peer-urls"]
-	protocol, svcName, namespace, peerPort, err := parsePeerURL(fmt.Sprint(initAdPeerURL))
+	protocol, svcName, namespace, peerPort, err := ParseAdvertiseURL(fmt.Sprint(initAdPeerURL))
 	if err != nil {
 		h.Logger.Warnf("Unable to determine service name, namespace, peer port from advertise peer urls : %v", err)
 		rw.WriteHeader(http.StatusInternalServerError)
@@ -439,7 +439,7 @@ func (h *HTTPHandler) serveConfig(rw http.ResponseWriter, req *http.Request) {
 	config["initial-advertise-peer-urls"] = fmt.Sprintf("%s://%s.%s:%s", protocol, podName, domaiName, peerPort)
 
 	advClientURL := config["advertise-client-urls"]
-	protocol, svcName, namespace, clientPort, err := parseAdvClientURL(fmt.Sprint(advClientURL))
+	protocol, svcName, namespace, clientPort, err := ParseAdvertiseURL(fmt.Sprint(advClientURL))
 	if err != nil {
 		h.Logger.Warnf("Unable to determine service name, namespace, peer port from advertise client url : %v", err)
 		rw.WriteHeader(http.StatusInternalServerError)
@@ -568,20 +568,24 @@ func getInitialCluster(ctx context.Context, initialCluster string, etcdConn brty
 	return initialCluster
 }
 
-func parsePeerURL(peerURL string) (string, string, string, string, error) {
-	tokens := strings.Split(peerURL, "@")
-	if len(tokens) < 4 {
-		return "", "", "", "", fmt.Errorf("total length of tokens is less than four")
+// ParseAdvertiseURL parses the advertise URL and returns the protocol, service name, namespace and port.
+func ParseAdvertiseURL(url string) (string, string, string, string, error) {
+	tokens := strings.Split(url, "://")
+	if len(tokens) < 2 {
+		return "", "", "", "", fmt.Errorf("invalid URL format : %s", url)
 	}
-	return tokens[0], tokens[1], tokens[2], tokens[3], nil
-}
-
-func parseAdvClientURL(advClientURL string) (string, string, string, string, error) {
-	tokens := strings.Split(advClientURL, "@")
-	if len(tokens) < 4 {
-		return "", "", "", "", fmt.Errorf("total length of tokens is less than four")
+	protocol := tokens[0]
+	tokens = strings.Split(tokens[1], ".")
+	if len(tokens) < 2 {
+		return "", "", "", "", fmt.Errorf("invalid URL format : %s", url)
 	}
-	return tokens[0], tokens[1], tokens[2], tokens[3], nil
+	svcName := tokens[0]
+	tokens = strings.Split(tokens[1], ":")
+	if len(tokens) < 2 {
+		return "", "", "", "", fmt.Errorf("invalid URL format : %s", url)
+	}
+	namespace, port := tokens[0], tokens[1]
+	return protocol, svcName, namespace, port, nil
 }
 
 // delegateReqToLeader forwards the incoming http/https request to BackupLeader.
