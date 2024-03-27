@@ -80,27 +80,27 @@ func NewABSSnapStore(config *brtypes.SnapstoreConfig) (*ABSSnapStore, error) {
 // ConstructBlobServiceURL constructs the Blob Service URL based on the activation status of the Azurite Emulator.
 // It checks the environment variables for emulator configuration and constructs the URL accordingly.
 // The function expects two environment variables:
-// - EMULATOR_ENABLED: Indicates whether the Azurite Emulator is enabled (expects "true" or "false").
+// - AZURE_EMULATOR_ENABLED: Indicates whether the Azurite Emulator is enabled (expects "true" or "false").
 // - AZURE_STORAGE_API_ENDPOINT: Specifies the Azurite Emulator endpoint when the emulator is enabled.
 func ConstructBlobServiceURL(credentials *azblob.SharedKeyCredential) (*url.URL, error) {
 	defaultURL, err := url.Parse(fmt.Sprintf("https://%s.%s", credentials.AccountName(), brtypes.AzureBlobStorageHostName))
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse default service URL: %w", err)
 	}
-	emulatorEnabled, ok := os.LookupEnv(EnvEmulatorEnabled)
+	emulatorEnabled, ok := os.LookupEnv(EnvAzureEmulatorEnabled)
 	if !ok {
 		return defaultURL, nil
 	}
 	isEmulator, err := strconv.ParseBool(emulatorEnabled)
 	if err != nil {
-		return nil, fmt.Errorf("invalid value for %s: %s, error: %w", EnvEmulatorEnabled, emulatorEnabled, err)
+		return nil, fmt.Errorf("invalid value for %s: %s, error: %w", EnvAzureEmulatorEnabled, emulatorEnabled, err)
 	}
 	if !isEmulator {
 		return defaultURL, nil
 	}
 	endpoint, ok := os.LookupEnv(AzuriteEndpoint)
 	if !ok {
-		return nil, fmt.Errorf("%s environment variable not set while %s is true", AzuriteEndpoint, EnvEmulatorEnabled)
+		return nil, fmt.Errorf("%s environment variable not set while %s is true", AzuriteEndpoint, EnvAzureEmulatorEnabled)
 	}
 	// Application protocol (http or https) is determined by the user of the Azurite, not by this function.
 	return url.Parse(fmt.Sprintf("%s/%s", endpoint, credentials.AccountName()))

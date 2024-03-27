@@ -21,9 +21,10 @@ const (
 
 	backupVersionV1 = "v1"
 	backupVersionV2 = "v2"
-
-	// EnvEmulatorEnabled is the environment variable which indicates the usage of a storage emulator like Azurite, fake-gcs-server
-	EnvEmulatorEnabled = "EMULATOR_ENABLED"
+	// EnvAzureEmulatorEnabled is the environment variable which indicates whether the Azurite emulator is enabled
+	EnvAzureEmulatorEnabled = "AZURE_EMULATOR_ENABLED"
+	// EnvGCSEmulatorEnabled is the environment variable which indicates whether the GCS emulator is enabled
+	EnvGCSEmulatorEnabled = "GOOGLE_EMULATOR_ENABLED"
 )
 
 type chunk struct {

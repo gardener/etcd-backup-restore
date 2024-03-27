@@ -116,6 +116,10 @@ func ParseSnapshot(snapPath string) (*brtypes.Snapshot, error) {
 	//parse creation time as well as parse the Snapshot compression suffix
 	lastNameToken := strings.Split(tokens[3], "/")
 	timeWithSnapSuffix := strings.Split(lastNameToken[0], ".")
+	// Check & remove if the last token is a chunk directory. The chunkDirSuffix is set by only GCS snapstore when using a emulator for testing.
+	if fmt.Sprintf(".%s", timeWithSnapSuffix[len(timeWithSnapSuffix)-1]) == brtypes.ChunkDirSuffix {
+		timeWithSnapSuffix = timeWithSnapSuffix[:len(timeWithSnapSuffix)-1]
+	}
 	if len(timeWithSnapSuffix) >= 2 {
 		if "."+timeWithSnapSuffix[1] != brtypes.FinalSuffix {
 			s.CompressionSuffix = "." + timeWithSnapSuffix[1]
