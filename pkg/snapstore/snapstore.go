@@ -23,8 +23,8 @@ const (
 	backupVersionV2 = "v2"
 	// EnvAzureEmulatorEnabled is the environment variable which indicates whether the Azurite emulator is enabled
 	EnvAzureEmulatorEnabled = "AZURE_EMULATOR_ENABLED"
-	// EnvGcsEmulatorEnabled is the environment variable which indicates whether the GCS emulator is enabled
-	EnvGcsEmulatorEnabled = "GOOGLE_EMULATOR_ENABLED"
+	// EnvGCSEmulatorEnabled is the environment variable which indicates whether the GCS emulator is enabled
+	EnvGCSEmulatorEnabled = "GOOGLE_EMULATOR_ENABLED"
 )
 
 type chunk struct {

@@ -365,3 +365,4 @@ spec:
       resources:
         requests:
           storage: {{ .Values.storageCapacity }}
+          

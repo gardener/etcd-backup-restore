@@ -111,7 +111,7 @@ func NewGCSSnapStoreFromClient(bucket, prefix, tempDir string, maxParallelChunkU
 
 // isEmulatorEnabled checks if the fake GCS emulator is enabled
 func isEmulatorEnabled() bool {
-	isFakeGCSEnabled, ok := os.LookupEnv(EnvGcsEmulatorEnabled)
+	isFakeGCSEnabled, ok := os.LookupEnv(EnvGCSEmulatorEnabled)
 	if !ok {
 		return false
 	}
