@@ -88,7 +88,8 @@ backup:
   #   region: region-where-bucket-exists
   #   secretAccessKey: secret-access-key-with-object-storage-privileges
   #   accessKeyID: access-key-id-with-route53-privileges
-  #   sseCustomerKey: aes-256-sse-customer-key
+  #   sseCustomerKey: aes-256-sse-customer-key # optional
+  #   sseCustomerAlgorithm: aes-256-sse-customer-algorithm # optional
   # gcs:
   #   serviceAccountJson: service-account-json-with-object-storage-privileges
   #   storageAPIEndpoint: endpoint-override-for-storage-api # optional

@@ -190,7 +190,6 @@ func readAWSCredentialFiles(dirname string) (session.Options, SSECredentials, er
 				InsecureSkipVerify: false,
 				MinVersion:         tls.VersionTLS13,
 			},
-			// AWS managed Server Side Encryption
 		}
 	}
 	sseCreds, err := getSSECreds(awsConfig.SSECustomerKey, awsConfig.SSECustomerAlgorithm)
