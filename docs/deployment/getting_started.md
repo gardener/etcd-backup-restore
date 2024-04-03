@@ -16,6 +16,7 @@ The procedure to provide credentials to access the cloud provider object store v
 * For `AWS S3`: 
    1. The secret file should be provided, and the file path should be made available as environment variables: `AWS_APPLICATION_CREDENTIALS` or `AWS_APPLICATION_CREDENTIALS_JSON`.
    2. For `S3-compatible providers` such as MinIO, `endpoint`, `s3ForcePathStyle`, `insecureSkipVerify` and `trustedCaCert`, can also be made available in a above file to configure the S3 client to communicate to a non-AWS provider.
+   3. To enable Server-Side Encryption for `S3-compatible providers`, use `sseCustomerKey` and `sseCustomerAlgorithm` in the credentials file above. The `sseCustomerKey` should an AES-256 key and the `sseCustomerAlgorithm` should be set to `AES256`(Currently the only supported algorithm)
 
 * For  `Google Cloud Storage`: 
    1. The service account json file should be provided in the `~/.gcp` as a `service-account-file.json` file.
