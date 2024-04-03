@@ -40,27 +40,26 @@ const (
 	s3NoOfChunk            int64 = 9999
 	awsCredentialDirectory       = "AWS_APPLICATION_CREDENTIALS"
 	awsCredentialJSONFile        = "AWS_APPLICATION_CREDENTIALS_JSON"
-	// For server-side encryption
-	sseCustomerAlgorithm = "AES256"
 )
 
 type awsCredentials struct {
-	AccessKeyID        string  `json:"accessKeyID"`
-	Region             string  `json:"region"`
-	SecretAccessKey    string  `json:"secretAccessKey"`
-	SSECustomerKey     string  `json:"sseCustomerKey,omitempty"`
-	BucketName         string  `json:"bucketName"`
-	Endpoint           *string `json:"endpoint,omitempty"`
-	S3ForcePathStyle   *bool   `json:"s3ForcePathStyle,omitempty"`
-	InsecureSkipVerify *bool   `json:"insecureSkipVerify,omitempty"`
-	TrustedCaCert      *string `json:"trustedCaCert,omitempty"`
+	AccessKeyID          string  `json:"accessKeyID"`
+	Region               string  `json:"region"`
+	SecretAccessKey      string  `json:"secretAccessKey"`
+	SSECustomerAlgorithm *string `json:"sseCustomerAlgorithm,omitempty"`
+	SSECustomerKey       *string `json:"sseCustomerKey,omitempty"`
+	BucketName           string  `json:"bucketName"`
+	Endpoint             *string `json:"endpoint,omitempty"`
+	S3ForcePathStyle     *bool   `json:"s3ForcePathStyle,omitempty"`
+	InsecureSkipVerify   *bool   `json:"insecureSkipVerify,omitempty"`
+	TrustedCaCert        *string `json:"trustedCaCert,omitempty"`
 }
 
 // SSECredentials to hold fields for server-side encryption in I/O operations
 type SSECredentials struct {
-	SSECustomerAlgorithm string
-	SSECustomerKey       string
-	SSECustomerKeyMD5    string
+	sseCustomerAlgorithm string
+	sseCustomerKey       string
+	sseCustomerKeyMD5    string
 }
 
 // S3SnapStore is snapstore with AWS S3 object store as backend
@@ -73,7 +72,7 @@ type S3SnapStore struct {
 	maxParallelChunkUploads uint
 	minChunkSize            int64
 	tempDir                 string
-	sseCreds                SSECredentials
+	SSECredentials
 }
 
 // NewS3SnapStore create new S3SnapStore from shared configuration with specified bucket
@@ -140,12 +139,15 @@ func readAWSCredentialsJSONFile(filename string) (session.Options, SSECredential
 		}
 	}
 
-	sseCreds := getSSECreds(awsConfig.SSECustomerKey)
+	sseCreds, err := getSSECreds(awsConfig.SSECustomerKey, awsConfig.SSECustomerAlgorithm)
+	if err != nil {
+		return session.Options{}, SSECredentials{}, err
+	}
 
 	return session.Options{
 		Config: aws.Config{
 			Credentials:      credentials.NewStaticCredentials(awsConfig.AccessKeyID, awsConfig.SecretAccessKey, ""),
-			Region:           pointer.StringPtr(awsConfig.Region),
+			Region:           pointer.String(awsConfig.Region),
 			Endpoint:         awsConfig.Endpoint,
 			S3ForcePathStyle: awsConfig.S3ForcePathStyle,
 			HTTPClient:       httpClient,
@@ -188,14 +190,18 @@ func readAWSCredentialFiles(dirname string) (session.Options, SSECredentials, er
 				InsecureSkipVerify: false,
 				MinVersion:         tls.VersionTLS13,
 			},
+			// AWS managed Server Side Encryption
 		}
 	}
-	sseCreds := getSSECreds(awsConfig.SSECustomerKey)
+	sseCreds, err := getSSECreds(awsConfig.SSECustomerKey, awsConfig.SSECustomerAlgorithm)
+	if err != nil {
+		return session.Options{}, SSECredentials{}, err
+	}
 
 	return session.Options{
 		Config: aws.Config{
 			Credentials:      credentials.NewStaticCredentials(awsConfig.AccessKeyID, awsConfig.SecretAccessKey, ""),
-			Region:           pointer.StringPtr(awsConfig.Region),
+			Region:           pointer.String(awsConfig.Region),
 			Endpoint:         awsConfig.Endpoint,
 			S3ForcePathStyle: awsConfig.S3ForcePathStyle,
 			HTTPClient:       httpClient,
@@ -236,7 +242,7 @@ func readAWSCredentialFromDir(dirname string) (*awsCredentials, error) {
 			if err != nil {
 				return nil, err
 			}
-			awsConfig.Endpoint = pointer.StringPtr(string(data))
+			awsConfig.Endpoint = pointer.String(string(data))
 		case "s3ForcePathStyle":
 			data, err := os.ReadFile(dirname + "/s3ForcePathStyle")
 			if err != nil {
@@ -262,13 +268,19 @@ func readAWSCredentialFromDir(dirname string) (*awsCredentials, error) {
 			if err != nil {
 				return nil, err
 			}
-			awsConfig.TrustedCaCert = pointer.StringPtr(string(data))
+			awsConfig.TrustedCaCert = pointer.String(string(data))
 		case "sseCustomerKey":
 			data, err := os.ReadFile(dirname + "/sseCustomerKey")
 			if err != nil {
 				return nil, err
 			}
-			awsConfig.SSECustomerKey = string(data)
+			awsConfig.SSECustomerKey = pointer.String(string(data))
+		case "sseCustomerAlgorithm":
+			data, err := os.ReadFile(dirname + "/sseCustomerAlgorithm")
+			if err != nil {
+				return nil, err
+			}
+			awsConfig.SSECustomerAlgorithm = pointer.String(string(data))
 		}
 	}
 
@@ -287,23 +299,35 @@ func NewS3FromClient(bucket, prefix, tempDir string, maxParallelChunkUploads uin
 		maxParallelChunkUploads: maxParallelChunkUploads,
 		minChunkSize:            minChunkSize,
 		tempDir:                 tempDir,
-		sseCreds:                sseCreds,
+		SSECredentials:          sseCreds,
 	}
 }
 
 // Fetch should open reader for the snapshot file from store
 func (s *S3SnapStore) Fetch(snap brtypes.Snapshot) (io.ReadCloser, error) {
-	resp, err := s.client.GetObject(&s3.GetObjectInput{
-		Bucket:               aws.String(s.bucket),
-		Key:                  aws.String(path.Join(snap.Prefix, snap.SnapDir, snap.SnapName)),
-		SSECustomerAlgorithm: aws.String(s.sseCreds.SSECustomerAlgorithm),
-		SSECustomerKey:       aws.String(s.sseCreds.SSECustomerKey),
-		SSECustomerKeyMD5:    aws.String(s.sseCreds.SSECustomerKeyMD5),
-	})
+	var getObjectInput *s3.GetObjectInput
+	if s.sseCustomerKey != "" {
+		// Customer managed Server Side Encryption
+		getObjectInput = &s3.GetObjectInput{
+			Bucket:               aws.String(s.bucket),
+			Key:                  aws.String(path.Join(snap.Prefix, snap.SnapDir, snap.SnapName)),
+			SSECustomerAlgorithm: aws.String(s.sseCustomerAlgorithm),
+			SSECustomerKey:       aws.String(s.sseCustomerKey),
+			SSECustomerKeyMD5:    aws.String(s.sseCustomerKeyMD5),
+		}
+	} else {
+		// AWS managed Server Side Encryption
+		getObjectInput = &s3.GetObjectInput{
+			Bucket: aws.String(s.bucket),
+			Key:    aws.String(path.Join(snap.Prefix, snap.SnapDir, snap.SnapName)),
+		}
+	}
+
+	getObjecOutput, err := s.client.GetObject(getObjectInput)
 	if err != nil {
 		return nil, fmt.Errorf("error while accessing %s: %v", path.Join(snap.Prefix, snap.SnapDir, snap.SnapName), err)
 	}
-	return resp.Body, nil
+	return getObjecOutput.Body, nil
 }
 
 // Save will write the snapshot to store
@@ -332,13 +356,25 @@ func (s *S3SnapStore) Save(snap brtypes.Snapshot, rc io.ReadCloser) error {
 	ctx, cancel := context.WithTimeout(ctx, chunkUploadTimeout)
 	defer cancel()
 	prefix := adaptPrefix(&snap, s.prefix)
-	uploadOutput, err := s.client.CreateMultipartUploadWithContext(ctx, &s3.CreateMultipartUploadInput{
-		Bucket:               aws.String(s.bucket),
-		Key:                  aws.String(path.Join(prefix, snap.SnapDir, snap.SnapName)),
-		SSECustomerAlgorithm: aws.String(s.sseCreds.SSECustomerAlgorithm),
-		SSECustomerKey:       aws.String(s.sseCreds.SSECustomerKey),
-		SSECustomerKeyMD5:    aws.String(s.sseCreds.SSECustomerKeyMD5),
-	})
+
+	var createMultipartUploadInput *s3.CreateMultipartUploadInput
+	if s.sseCustomerKey != "" {
+		// Customer managed Server Side Encryption
+		createMultipartUploadInput = &s3.CreateMultipartUploadInput{
+			Bucket:               aws.String(s.bucket),
+			Key:                  aws.String(path.Join(prefix, snap.SnapDir, snap.SnapName)),
+			SSECustomerAlgorithm: aws.String(s.sseCustomerAlgorithm),
+			SSECustomerKey:       aws.String(s.sseCustomerKey),
+			SSECustomerKeyMD5:    aws.String(s.sseCustomerKeyMD5),
+		}
+	} else {
+		// AWS managed Server Side Encryption
+		createMultipartUploadInput = &s3.CreateMultipartUploadInput{
+			Bucket: aws.String(s.bucket),
+			Key:    aws.String(path.Join(prefix, snap.SnapDir, snap.SnapName)),
+		}
+	}
+	uploadOutput, err := s.client.CreateMultipartUploadWithContext(ctx, createMultipartUploadInput)
 	if err != nil {
 		return fmt.Errorf("failed to initiate multipart upload %v", err)
 	}
@@ -427,21 +463,35 @@ func (s *S3SnapStore) uploadPart(snap *brtypes.Snapshot, file *os.File, uploadID
 	ctx, cancel := context.WithTimeout(context.TODO(), chunkUploadTimeout)
 	defer cancel()
 	partNumber := ((offset / chunkSize) + 1)
-	in := &s3.UploadPartInput{
-		Bucket:               aws.String(s.bucket),
-		Key:                  aws.String(path.Join(adaptPrefix(snap, s.prefix), snap.SnapDir, snap.SnapName)),
-		PartNumber:           &partNumber,
-		UploadId:             uploadID,
-		Body:                 sr,
-		SSECustomerAlgorithm: aws.String(s.sseCreds.SSECustomerAlgorithm),
-		SSECustomerKey:       aws.String(s.sseCreds.SSECustomerKey),
-		SSECustomerKeyMD5:    aws.String(s.sseCreds.SSECustomerKeyMD5),
+
+	var uploadPartInput *s3.UploadPartInput
+	if s.sseCustomerKey != "" {
+		// Customer managed Server Side Encryption
+		uploadPartInput = &s3.UploadPartInput{
+			Bucket:               aws.String(s.bucket),
+			Key:                  aws.String(path.Join(adaptPrefix(snap, s.prefix), snap.SnapDir, snap.SnapName)),
+			PartNumber:           &partNumber,
+			UploadId:             uploadID,
+			Body:                 sr,
+			SSECustomerAlgorithm: aws.String(s.sseCustomerAlgorithm),
+			SSECustomerKey:       aws.String(s.sseCustomerKey),
+			SSECustomerKeyMD5:    aws.String(s.sseCustomerKeyMD5),
+		}
+	} else {
+		// AWS managed Server Side Encryption
+		uploadPartInput = &s3.UploadPartInput{
+			Bucket:     aws.String(s.bucket),
+			Key:        aws.String(path.Join(adaptPrefix(snap, s.prefix), snap.SnapDir, snap.SnapName)),
+			PartNumber: &partNumber,
+			UploadId:   uploadID,
+			Body:       sr,
+		}
 	}
 
-	part, err := s.client.UploadPartWithContext(ctx, in)
+	uploadPartOutput, err := s.client.UploadPartWithContext(ctx, uploadPartInput)
 	if err == nil {
 		completedPart := &s3.CompletedPart{
-			ETag:       part.ETag,
+			ETag:       uploadPartOutput.ETag,
 			PartNumber: &partNumber,
 		}
 		completedParts[partNumber-1] = completedPart
@@ -547,16 +597,22 @@ func isAWSConfigEmpty(config *awsCredentials) error {
 	return fmt.Errorf("aws s3 credentials: region, secretAccessKey or accessKeyID is missing")
 }
 
-// Checks for SSECustomerKey env var and creates the creds necessary
-func getSSECreds(key string) SSECredentials {
-	if key != "" {
-		SSECustomerKeyMD5Bytes := md5.Sum([]byte(key))
-		SSECustomerKeyMD5 := base64.StdEncoding.EncodeToString(SSECustomerKeyMD5Bytes[:])
+// Creates SSE Credentials that are included in the S3 API calls for customer managed SSE
+// Key rotation is not handled by etcd-backup-restore, use SSE through customer managed keys at your discretion
+// See: https://github.com/gardener/etcd-backup-restore/pull/719#issuecomment-2016366462
+func getSSECreds(sseCustomerKey, sseCustomerAlgorithm *string) (SSECredentials, error) {
+	if sseCustomerKey != nil && sseCustomerAlgorithm != nil {
+		SSECustomerKeyMD5Bytes := md5.Sum([]byte(*sseCustomerKey))
+		sseCustomerKeyMD5 := base64.StdEncoding.EncodeToString(SSECustomerKeyMD5Bytes[:])
 		return SSECredentials{
-			SSECustomerKey:       key,
-			SSECustomerKeyMD5:    SSECustomerKeyMD5,
-			SSECustomerAlgorithm: sseCustomerAlgorithm,
-		}
+			sseCustomerKey:       *sseCustomerKey,
+			sseCustomerKeyMD5:    sseCustomerKeyMD5,
+			sseCustomerAlgorithm: *sseCustomerAlgorithm,
+		}, nil
 	}
-	return SSECredentials{}
+	if sseCustomerKey != nil || sseCustomerAlgorithm != nil {
+		return SSECredentials{}, fmt.Errorf("both sseCustomerKey and sseCustomerAlgorithm are to be provided if customer managed SSE keys are to be used")
+	}
+	// SSE Customer Managed keys not enabled
+	return SSECredentials{}, nil
 }
