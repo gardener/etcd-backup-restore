@@ -116,10 +116,6 @@ s3credentials
 └── secretAccessKey
 ```
 
-Each file mentioned above will consist of the credential strings only. Ensure that there are no newline/carriage return characters at the end of the files while saving these credential files. Modern text editors are typically configured to add newline characters at the end of files on format/save. The newline characters will completely change the credentials and will cause the requests with S3 to not get authenticated.
-
-For example, the `region` file would contain *only* the string `eu-west-1`, without any trailing characters.
-
 > [!TIP]  
 > Each file mentioned above will consist of the credential strings only. Ensure that there are no newline/carriage return characters at the end of the files while saving these credential files. Modern text editors are typically configured to add newline characters at the end of files on format/save. The newline characters will completely change the credentials and will cause the requests with S3 to not get authenticated. For example, the region file would contain only the string eu-west-1, without any trailing characters.
 
