@@ -86,7 +86,7 @@ You can verify the installation by running following command:
 
 Taking the example of S3 here, one has to:
 
-* Set the `AWS_APPLICATION_CREDENTIALS` environment variable if the credentials are to be stored in a directory, where each file in the directory holds a different credential
+* Set the `AWS_APPLICATION_CREDENTIALS` environment variable if the credentials are to be stored in a directory, where each file in the directory holds a different credential.
 * Set the `AWS_APPLICATION_CREDENTIALS_JSON` if the credentials are to be stored in `.json` file.
 
 Export the following environment variables according to your host OS:
@@ -100,8 +100,9 @@ Export the following environment variables according to your host OS:
 
 > For example: `export ETCD_CONF=example/01-etcd-config.yaml`, etc. on Unix based OS-es, and using the `set` command in Windows.
 
-`example/01-etcd-config.yaml` has the configuration required to set up `etcdbrctl` while running `etcd` as a process alongside `etcdbrctl`.
 `POD_NAME`, and `POD_NAMESPACE` are environment variables that `etcdbrctl` expects since it is typically run as a sidecar container alongside a [`etcd`](https://github.com/gardener/etcd-wrapper) in a pod, as an instance of the `Etcd` CR as defined in [`etcd-druid`](https://github.com/gardener/etcd-druid). These values are provided to ensure `etcdbrctl` runs.
+
+`example/01-etcd-config.yaml` has the configuration required to set up `etcdbrctl` while running `etcd` as a process alongside `etcdbrctl`. This provides information to `etcdbrctl` like the endpoint at which the `etcd` process is running, the initial cluster state of the `etcd` cluster, the directory that stores the `etcd` data and so on. In scenarios where `etcdbrctl` is used as sidecar to a `etcd` in a `Etcd` (`etcd-druid`), this information is fetched from a `ConfigMap` that is mounted to the `Etcd` pod at `/var/etcd/config/etcd.conf.yaml`.
 
 ### Credential structure
 
@@ -117,7 +118,7 @@ s3credentials
 ```
 
 > [!TIP]  
-> Each file mentioned above will consist of the credential strings only. Ensure that there are no newline/carriage return characters at the end of the files while saving these credential files. Modern text editors are typically configured to add newline characters at the end of files on format/save. The newline characters will completely change the credentials and will cause the requests with S3 to not get authenticated. For example, the region file would contain only the string eu-west-1, without any trailing characters.
+> Each file mentioned above will consist of the credential strings only. Ensure that there are no newline/carriage return characters at the end of the files while saving these credential files. Modern text editors are typically configured to add newline characters at the end of files on format/save. The newline characters will completely change the credentials and will cause the requests with S3 to not get authenticated. For example, the region file would contain only the string `eu-west-1`, without any trailing characters.
 
 #### Credentials in a JSON file
 
