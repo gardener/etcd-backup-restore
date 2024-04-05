@@ -1,10 +1,12 @@
+# Local Setup
+
 ## Prerequisites
 
-Although the following installation instructions are for Mac OS X, similar alternate commands can be found for any Linux distribution.
+Although the following installation instructions are for macOS, similar alternate commands can be found for any Linux distribution, and using `winget` or `chocolatey` for Windows.
 
 ### Installing [Golang](https://golang.org/) environment
 
-Install the latest version of Golang (at least `v1.12` is required). For Mac OS, you may use [Homebrew](https://brew.sh/):
+Install the latest version of Golang (at least `v1.20` is required). For macOS, you may use [Homebrew](https://brew.sh/):
 
 ```sh
 brew install golang
@@ -37,7 +39,7 @@ go get -u github.com/onsi/gomega
 
 We use `git` as VCS which you would need to install.
 
-On Mac OS run
+On macOS run
 
 ```sh
 brew install git
@@ -49,7 +51,7 @@ In case you have to create a new release or a new hotfix, you have to push the r
 
 ## Build
 
-Currently there are no binary builds available, but it is fairly simple to build it by following the steps mentioned below.
+Currently, there are no binary builds available, but it is fairly simple to build it by following the steps mentioned below.
 
 * First, you need to create a target folder structure before cloning and building `etcdbrctl`.
 
@@ -68,9 +70,64 @@ Currently there are no binary builds available, but it is fairly simple to build
 You can verify the installation by running following command:
 
     ```console
-    $ etcdbrctl -v
-    INFO[0000] etcd-backup-restore Version: v0.7.0-dev
-    INFO[0000] Git SHA: 38979f0
-    INFO[0000] Go Version: go1.12
-    INFO[0000] Go OS/Arch: darwin/amd64
+    ➜ etcdbrctl -v
+    INFO[0000] etcd-backup-restore Version: v0.29.0-dev     
+    INFO[0000] Git SHA: 0247d8d4                            
+    INFO[0000] Go Version: go1.22.1                         
+    INFO[0000] Go OS/Arch: darwin/arm64
     ```
+
+## Running `etcdbrctl` as a process
+
+> [!WARNING]  
+> Ensure that you do not add your `credentialDirectory` or `credential_file.json` to your version control. Easiest way to ensure this, is to avoid using `git add .`. You could add these files/directory as `.gitignore` targets, or have the credential file/directory exist in a directory which is not tracked by `git`.
+
+### Environment variables
+
+Taking the example of S3 here, one has to:
+
+* Set the `AWS_APPLICATION_CREDENTIALS` environment variable if the credentials are to be stored in a directory, where each file in the directory holds a different credential.
+* Set the `AWS_APPLICATION_CREDENTIALS_JSON` if the credentials are to be stored in `.json` file.
+
+Export the following environment variables according to your host OS:
+
+* `ETCD_CONF=example/01-etcd-config.yaml`
+* `POD_NAME=POD_0`
+* `POD_NAMESPACE=POD_NAMESPACE_0`
+* One of the following based on the authentication type:
+  * `AWS_APPLICATION_CREDENTIALS=/path/to/your/credential/file/directory/s3credentials`
+  * `AWS_APPLICATION_CREDENTIALS_JSON=/path/to/your/credential/file/credential_file.json`
+
+> For example: `export ETCD_CONF=example/01-etcd-config.yaml`, etc. on Unix based OS-es, and using the `set` command in Windows.
+
+`POD_NAME`, and `POD_NAMESPACE` are environment variables that `etcdbrctl` expects since it is typically run as a sidecar container alongside a [`etcd`](https://github.com/gardener/etcd-wrapper) in a pod, as an instance of the `Etcd` CR as defined in [`etcd-druid`](https://github.com/gardener/etcd-druid). These values are provided to ensure `etcdbrctl` runs.
+
+`example/01-etcd-config.yaml` has the configuration required to set up `etcdbrctl` while running `etcd` as a process alongside `etcdbrctl`. This provides information to `etcdbrctl` like the endpoint at which the `etcd` process is running, the initial cluster state of the `etcd` cluster, the directory that stores the `etcd` data and so on. In scenarios where `etcdbrctl` is used as sidecar to a `etcd` in a `Etcd` (`etcd-druid`), this information is fetched from a `ConfigMap` that is mounted to the `Etcd` pod at `/var/etcd/config/etcd.conf.yaml`.
+
+### Credential structure
+
+#### Credentials in a directory
+
+Taking the example of S3 again here, the following is the necessary structure for a directory which holds the S3 credential files (extra credentials correspond to extra files, which are not compulsory).
+
+```console
+s3credentials
+├── accessKeyID
+├── region
+└── secretAccessKey
+```
+
+> [!TIP]  
+> Each file mentioned above will consist of the credential strings only. Ensure that there are no newline/carriage return characters at the end of the files while saving these credential files. Modern text editors are typically configured to add newline characters at the end of files on format/save. The newline characters will completely change the credentials and will cause the requests with S3 to not get authenticated. For example, the region file would contain only the string `eu-west-1`, without any trailing characters.
+
+#### Credentials in a JSON file
+
+Sticking to the S3 example, the `.json` file which contains the credentials should look like so:
+
+```console
+{
+  "accessKeyID": "<accessKeyID>",
+  "region": "<region>",
+  "secretAccessKey": "<secretAccessKey>",
+}
+```
