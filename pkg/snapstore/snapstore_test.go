@@ -557,6 +557,71 @@ var _ = Describe("Blob Service URL construction for Azure", func() {
 	})
 })
 
+var _ = Describe("Server Side Encryption Customer Managed Key for S3", func() {
+	s3SnapstoreConfig := brtypes.SnapstoreConfig{
+		Provider:  "S3",
+		Container: "etcd-test",
+		Prefix:    "v2",
+	}
+	var credentialDirectory, credentialFilePath string
+	BeforeEach(func() {
+		credentialDirectory = GinkgoT().TempDir()
+		credentialFilePath = filepath.Join(credentialDirectory, "credentials.json")
+		GinkgoT().Setenv("AWS_APPLICATION_CREDENTIALS_JSON", credentialFilePath)
+	})
+	Context("when no SSE-C keys are provided", func() {
+		It("should return the snapstore without errors", func() {
+			// SSE-C fields not present
+			err := os.WriteFile(credentialFilePath, []byte(`{
+  "accessKeyID": "XXXXXXXXXXXXXXXXXXXX",
+  "secretAccessKey": "XXXXXXXXXXXXXXXXXXXX",
+  "region": "eu-west-1"
+}`), os.ModePerm)
+			Expect(err).ShouldNot(HaveOccurred())
+			_, err = NewS3SnapStore(&s3SnapstoreConfig)
+			Expect(err).ShouldNot(HaveOccurred())
+		})
+	})
+	Context("when SSE-C is enabled", func() {
+		It("should return an error if both fields for SSE-C are not provided", func() {
+			// both SSE-C fields are not present
+			// sseCustomerKey not present
+			err := os.WriteFile(credentialFilePath, []byte(`{
+  "accessKeyID": "XXXXXXXXXXXXXXXXXXXX",
+  "secretAccessKey": "XXXXXXXXXXXXXXXXXXXX",
+  "region": "eu-west-1",
+  "sseCustomerAlgorithm": "AES256"
+}`), os.ModePerm)
+			Expect(err).ShouldNot(HaveOccurred())
+			_, err = NewS3SnapStore(&s3SnapstoreConfig)
+			Expect(err).Should(HaveOccurred())
+			// sseCustomerAlgorithm not present
+			err = os.WriteFile(credentialFilePath, []byte(`{
+  "accessKeyID": "XXXXXXXXXXXXXXXXXXXX",
+  "secretAccessKey": "XXXXXXXXXXXXXXXXXXXX",
+  "region": "eu-west-1",
+  "sseCustomerKey": "2b7e151628aed2a6abf7158809cf4f3c6afe5028f1959c27a11253edc6cf4f3c"
+}`), os.ModePerm)
+			Expect(err).ShouldNot(HaveOccurred())
+			_, err = NewS3SnapStore(&s3SnapstoreConfig)
+			Expect(err).Should(HaveOccurred())
+		})
+		It("should return the snapstore without errors if both fields are provided", func() {
+			// both SSE-C fields are present
+			err := os.WriteFile(credentialFilePath, []byte(`{
+  "accessKeyID": "XXXXXXXXXXXXXXXXXXXX",
+  "secretAccessKey": "XXXXXXXXXXXXXXXXXXXX",
+  "region": "eu-west-1",
+  "sseCustomerAlgorithm": "AES256",
+  "sseCustomerKey": "2b7e151628aed2a6abf7158809cf4f3c6afe5028f1959c27a11253edc6cf4f3c"
+}`), os.ModePerm)
+			Expect(err).ShouldNot(HaveOccurred())
+			_, err = NewS3SnapStore(&s3SnapstoreConfig)
+			Expect(err).ShouldNot(HaveOccurred())
+		})
+	})
+})
+
 // createCredentialFilesInDirectory creates access credential files in the
 // specified directory and returns the timestamp of the last modified file.
 func createCredentialFilesInDirectory(directory string, filenames []string) (time.Time, error) {

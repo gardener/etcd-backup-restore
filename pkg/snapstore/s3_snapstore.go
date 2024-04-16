@@ -94,7 +94,7 @@ func getSessionOptions(prefixString string) (session.Options, SSECredentials, er
 	if filename, isSet := os.LookupEnv(prefixString + awsCredentialJSONFile); isSet {
 		creds, sseCreds, err := readAWSCredentialsJSONFile(filename)
 		if err != nil {
-			return session.Options{}, SSECredentials{}, fmt.Errorf("error getting credentials using %v file", filename)
+			return session.Options{}, SSECredentials{}, fmt.Errorf("error getting credentials using %v file with error %w", filename, err)
 		}
 		return creds, sseCreds, nil
 	}
@@ -102,7 +102,7 @@ func getSessionOptions(prefixString string) (session.Options, SSECredentials, er
 	if dir, isSet := os.LookupEnv(prefixString + awsCredentialDirectory); isSet {
 		creds, sseCreds, err := readAWSCredentialFiles(dir)
 		if err != nil {
-			return session.Options{}, SSECredentials{}, fmt.Errorf("error getting credentials from %v directory", dir)
+			return session.Options{}, SSECredentials{}, fmt.Errorf("error getting credentials from %v directory with error %w", dir, err)
 		}
 		return creds, sseCreds, nil
 	}
@@ -304,24 +304,16 @@ func NewS3FromClient(bucket, prefix, tempDir string, maxParallelChunkUploads uin
 
 // Fetch should open reader for the snapshot file from store
 func (s *S3SnapStore) Fetch(snap brtypes.Snapshot) (io.ReadCloser, error) {
-	var getObjectInput *s3.GetObjectInput
+	getObjectInput := &s3.GetObjectInput{
+		Bucket: aws.String(s.bucket),
+		Key:    aws.String(path.Join(snap.Prefix, snap.SnapDir, snap.SnapName)),
+	}
 	if s.sseCustomerKey != "" {
 		// Customer managed Server Side Encryption
-		getObjectInput = &s3.GetObjectInput{
-			Bucket:               aws.String(s.bucket),
-			Key:                  aws.String(path.Join(snap.Prefix, snap.SnapDir, snap.SnapName)),
-			SSECustomerAlgorithm: aws.String(s.sseCustomerAlgorithm),
-			SSECustomerKey:       aws.String(s.sseCustomerKey),
-			SSECustomerKeyMD5:    aws.String(s.sseCustomerKeyMD5),
-		}
-	} else {
-		// AWS managed Server Side Encryption
-		getObjectInput = &s3.GetObjectInput{
-			Bucket: aws.String(s.bucket),
-			Key:    aws.String(path.Join(snap.Prefix, snap.SnapDir, snap.SnapName)),
-		}
+		getObjectInput.SSECustomerAlgorithm = aws.String(s.sseCustomerAlgorithm)
+		getObjectInput.SSECustomerKey = aws.String(s.sseCustomerKey)
+		getObjectInput.SSECustomerKeyMD5 = aws.String(s.sseCustomerKeyMD5)
 	}
-
 	getObjecOutput, err := s.client.GetObject(getObjectInput)
 	if err != nil {
 		return nil, fmt.Errorf("error while accessing %s: %v", path.Join(snap.Prefix, snap.SnapDir, snap.SnapName), err)
@@ -356,22 +348,15 @@ func (s *S3SnapStore) Save(snap brtypes.Snapshot, rc io.ReadCloser) error {
 	defer cancel()
 	prefix := adaptPrefix(&snap, s.prefix)
 
-	var createMultipartUploadInput *s3.CreateMultipartUploadInput
+	createMultipartUploadInput := &s3.CreateMultipartUploadInput{
+		Bucket: aws.String(s.bucket),
+		Key:    aws.String(path.Join(prefix, snap.SnapDir, snap.SnapName)),
+	}
 	if s.sseCustomerKey != "" {
 		// Customer managed Server Side Encryption
-		createMultipartUploadInput = &s3.CreateMultipartUploadInput{
-			Bucket:               aws.String(s.bucket),
-			Key:                  aws.String(path.Join(prefix, snap.SnapDir, snap.SnapName)),
-			SSECustomerAlgorithm: aws.String(s.sseCustomerAlgorithm),
-			SSECustomerKey:       aws.String(s.sseCustomerKey),
-			SSECustomerKeyMD5:    aws.String(s.sseCustomerKeyMD5),
-		}
-	} else {
-		// AWS managed Server Side Encryption
-		createMultipartUploadInput = &s3.CreateMultipartUploadInput{
-			Bucket: aws.String(s.bucket),
-			Key:    aws.String(path.Join(prefix, snap.SnapDir, snap.SnapName)),
-		}
+		createMultipartUploadInput.SSECustomerAlgorithm = aws.String(s.sseCustomerAlgorithm)
+		createMultipartUploadInput.SSECustomerKey = aws.String(s.sseCustomerKey)
+		createMultipartUploadInput.SSECustomerKeyMD5 = aws.String(s.sseCustomerKeyMD5)
 	}
 	uploadOutput, err := s.client.CreateMultipartUploadWithContext(ctx, createMultipartUploadInput)
 	if err != nil {
@@ -463,28 +448,19 @@ func (s *S3SnapStore) uploadPart(snap *brtypes.Snapshot, file *os.File, uploadID
 	defer cancel()
 	partNumber := ((offset / chunkSize) + 1)
 
-	var uploadPartInput *s3.UploadPartInput
+	uploadPartInput := &s3.UploadPartInput{
+		Bucket:     aws.String(s.bucket),
+		Key:        aws.String(path.Join(adaptPrefix(snap, s.prefix), snap.SnapDir, snap.SnapName)),
+		PartNumber: &partNumber,
+		UploadId:   uploadID,
+		Body:       sr,
+	}
+
 	if s.sseCustomerKey != "" {
 		// Customer managed Server Side Encryption
-		uploadPartInput = &s3.UploadPartInput{
-			Bucket:               aws.String(s.bucket),
-			Key:                  aws.String(path.Join(adaptPrefix(snap, s.prefix), snap.SnapDir, snap.SnapName)),
-			PartNumber:           &partNumber,
-			UploadId:             uploadID,
-			Body:                 sr,
-			SSECustomerAlgorithm: aws.String(s.sseCustomerAlgorithm),
-			SSECustomerKey:       aws.String(s.sseCustomerKey),
-			SSECustomerKeyMD5:    aws.String(s.sseCustomerKeyMD5),
-		}
-	} else {
-		// AWS managed Server Side Encryption
-		uploadPartInput = &s3.UploadPartInput{
-			Bucket:     aws.String(s.bucket),
-			Key:        aws.String(path.Join(adaptPrefix(snap, s.prefix), snap.SnapDir, snap.SnapName)),
-			PartNumber: &partNumber,
-			UploadId:   uploadID,
-			Body:       sr,
-		}
+		uploadPartInput.SSECustomerAlgorithm = aws.String(s.sseCustomerAlgorithm)
+		uploadPartInput.SSECustomerKey = aws.String(s.sseCustomerAlgorithm)
+		uploadPartInput.SSECustomerKeyMD5 = aws.String(s.sseCustomerAlgorithm)
 	}
 
 	uploadPartOutput, err := s.client.UploadPartWithContext(ctx, uploadPartInput)
@@ -600,18 +576,20 @@ func isAWSConfigEmpty(config *awsCredentials) error {
 // Key rotation is not handled by etcd-backup-restore, use SSE through customer managed keys at your discretion
 // See: https://github.com/gardener/etcd-backup-restore/pull/719#issuecomment-2016366462
 func getSSECreds(sseCustomerKey, sseCustomerAlgorithm *string) (SSECredentials, error) {
-	if sseCustomerKey != nil && sseCustomerAlgorithm != nil {
-		SSECustomerKeyMD5Bytes := md5.Sum([]byte(*sseCustomerKey))
-		sseCustomerKeyMD5 := base64.StdEncoding.EncodeToString(SSECustomerKeyMD5Bytes[:])
-		return SSECredentials{
-			sseCustomerKey:       *sseCustomerKey,
-			sseCustomerKeyMD5:    sseCustomerKeyMD5,
-			sseCustomerAlgorithm: *sseCustomerAlgorithm,
-		}, nil
+	// SSE-C not utilized
+	if sseCustomerKey == nil && sseCustomerAlgorithm == nil {
+		return SSECredentials{}, nil
 	}
-	if sseCustomerKey != nil || sseCustomerAlgorithm != nil {
+
+	if sseCustomerKey == nil || sseCustomerAlgorithm == nil {
 		return SSECredentials{}, fmt.Errorf("both sseCustomerKey and sseCustomerAlgorithm are to be provided if customer managed SSE keys are to be used")
 	}
-	// SSE Customer Managed keys not enabled
-	return SSECredentials{}, nil
+
+	SSECustomerKeyMD5Bytes := md5.Sum([]byte(*sseCustomerKey))
+	sseCustomerKeyMD5 := base64.StdEncoding.EncodeToString(SSECustomerKeyMD5Bytes[:])
+	return SSECredentials{
+		sseCustomerKey:       *sseCustomerKey,
+		sseCustomerKeyMD5:    sseCustomerKeyMD5,
+		sseCustomerAlgorithm: *sseCustomerAlgorithm,
+	}, nil
 }
