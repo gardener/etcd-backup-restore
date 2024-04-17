@@ -459,8 +459,8 @@ func (s *S3SnapStore) uploadPart(snap *brtypes.Snapshot, file *os.File, uploadID
 	if s.sseCustomerKey != "" {
 		// Customer managed Server Side Encryption
 		uploadPartInput.SSECustomerAlgorithm = aws.String(s.sseCustomerAlgorithm)
-		uploadPartInput.SSECustomerKey = aws.String(s.sseCustomerAlgorithm)
-		uploadPartInput.SSECustomerKeyMD5 = aws.String(s.sseCustomerAlgorithm)
+		uploadPartInput.SSECustomerKey = aws.String(s.sseCustomerKey)
+		uploadPartInput.SSECustomerKeyMD5 = aws.String(s.sseCustomerKeyMD5)
 	}
 
 	uploadPartOutput, err := s.client.UploadPartWithContext(ctx, uploadPartInput)
