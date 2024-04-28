@@ -298,7 +298,7 @@ func (b *BackupRestoreServer) runServer(ctx context.Context, restoreOpts *brtype
 				m := member.NewMemberControl(b.config.EtcdConnectionConfig)
 				if err := m.PromoteMember(ctx); err == nil {
 					logger.Info("Successfully promoted the learner to a voting member...")
-				} else if err != nil {
+				} else {
 					logger.Errorf("unable to promote the learner to a voting member: %v", err)
 				}
 			}
@@ -513,7 +513,7 @@ func handleAckState(handler *HTTPHandler, ackCh chan struct{}) {
 }
 
 // handleSsrStopRequest responds to handlers request and stop interrupt.
-func handleSsrStopRequest(ctx context.Context, handler *HTTPHandler, ssr *snapshotter.Snapshotter, ackCh chan<- struct{}, ssrStopCh chan<- struct{}, logger *logrus.Entry) {
+func handleSsrStopRequest(ctx context.Context, handler *HTTPHandler, _ *snapshotter.Snapshotter, ackCh chan<- struct{}, ssrStopCh chan<- struct{}, logger *logrus.Entry) {
 	logger.Info("Starting the handleSsrStopRequest handler...")
 	for {
 		var ok bool

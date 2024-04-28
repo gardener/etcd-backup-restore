@@ -258,19 +258,35 @@ func (s *OSSSnapStore) Delete(snap brtypes.Snapshot) error {
 }
 
 func getAuthOptions(prefix string) (*authOptions, error) {
-
 	if filename, isSet := os.LookupEnv(prefix + aliCredentialJSONFile); isSet {
 		ao, err := readALICredentialsJSON(filename)
 		if err != nil {
-			return nil, fmt.Errorf("error getting credentials using %v file", filename)
+			return nil, fmt.Errorf("error getting credentials using %v file with error: %w", filename, err)
 		}
 		return ao, nil
+	}
+
+	// TODO: @renormalize Remove this extra handling in v0.31.0
+	// Check if a JSON file is present in the directory, if it is present -> the JSON file must be used for credentials.
+	if dir, isSet := os.LookupEnv(prefix + aliCredentialDirectory); isSet {
+		jsonCredentialFile, err := findFileWithExtensionInDir(dir, ".json")
+		if err != nil {
+			return nil, fmt.Errorf("error while finding a JSON credential file in %v directory with error: %w", dir, err)
+		}
+		if jsonCredentialFile != "" {
+			ao, err := readALICredentialsJSON(jsonCredentialFile)
+			if err != nil {
+				return nil, fmt.Errorf("error getting credentials using %v JSON file in a directory with error: %w", jsonCredentialFile, err)
+			}
+			return ao, nil
+		}
+		// Non JSON credential files might exist in the credential directory, do not return
 	}
 
 	if dir, isSet := os.LookupEnv(prefix + aliCredentialDirectory); isSet {
 		ao, err := readALICredentialFiles(dir)
 		if err != nil {
-			return nil, fmt.Errorf("error getting credentials from %v directory", dir)
+			return nil, fmt.Errorf("error getting credentials from %v directory with error: %w", dir, err)
 		}
 		return ao, nil
 	}
@@ -335,6 +351,19 @@ func readALICredentialFiles(dirname string) (*authOptions, error) {
 
 // GetOSSCredentialsLastModifiedTime returns the latest modification timestamp of the OSS credential file(s)
 func GetOSSCredentialsLastModifiedTime() (time.Time, error) {
+	// TODO: @renormalize Remove this extra handling in v0.31.0
+	// Check if a JSON file is present in the directory, if it is present -> the JSON file must be used for credentials.
+	if dir, isSet := os.LookupEnv(aliCredentialDirectory); isSet {
+		modificationTimeStamp, err := getJSONCredentialModifiedTime(dir, "OSS")
+		if err != nil {
+			return time.Time{}, err
+		}
+		if !modificationTimeStamp.IsZero() {
+			return modificationTimeStamp, nil
+		}
+		// Non JSON credential files might exist in the credential directory, do not return
+	}
+
 	if dir, isSet := os.LookupEnv(aliCredentialDirectory); isSet {
 		// credential files which are essential for creating the OSS snapstore
 		credentialFiles := []string{"accessKeyID", "accessKeySecret", "storageEndpoint"}

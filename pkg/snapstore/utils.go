@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -210,4 +211,41 @@ func getLatestCredentialsModifiedTime(credentialFiles []string) (time.Time, erro
 		}
 	}
 	return latestModifiedTime, nil
+}
+
+// findFileWithExtensionInDir checks if there is any file in directory dir which has the file extension extension.
+func findFileWithExtensionInDir(dir, extension string) (string, error) {
+	dirEntries, err := os.ReadDir(dir)
+	if err != nil {
+		return "", fmt.Errorf("error while listing files to fetch credentials in %v directory with error: %w", dir, err)
+	}
+	var credentialFile string
+	for _, dirEntry := range dirEntries {
+		if filepath.Ext(dirEntry.Name()) == extension {
+			credentialFile = filepath.Join(dir, dirEntry.Name())
+			break
+		}
+	}
+	// return the first file found with the extension
+	return credentialFile, nil
+}
+
+// getJSONCredentialModifiedTime returns the modification time of a JSON file if it is present in the directory dir.
+// This function is introduced only to support JSON files being present in the directory which is passed through the
+// PROVIDER_APPLICATION_CREDENTIAL environment variable. Will be removed by v0.31.0.
+func getJSONCredentialModifiedTime(dir, providerErrorString string) (time.Time, error) {
+	jsonCredentialFile, err := findFileWithExtensionInDir(dir, ".json")
+	if err != nil {
+		return time.Time{}, fmt.Errorf("failed to fetch file information of the "+providerErrorString+" JSON credential file %v in the directory %v with error: %w", jsonCredentialFile, dir, err)
+	}
+	if jsonCredentialFile != "" {
+		credentialFiles := []string{jsonCredentialFile}
+		timestamp, err := getLatestCredentialsModifiedTime(credentialFiles)
+		if err != nil {
+			return time.Time{}, fmt.Errorf("failed to fetch file modification information of the "+providerErrorString+" JSON credential file %v in the directory %v with error: %w", jsonCredentialFile, dir, err)
+		}
+		return timestamp, nil
+	}
+	// No JSON credential file was found in the directory dir
+	return time.Time{}, nil
 }

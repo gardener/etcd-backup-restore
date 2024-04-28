@@ -1,24 +1,26 @@
 # Getting started
 
-Currently we don't publish the binary build with the release, but it is pretty straight forward to build it by following the steps mentioned [here](../development/local_setup.md#build). But we do publish the docker image with each release, please check the [release page](https://github.com/gardener/etcd-backup-restore/releases) for the same. Currently, release docker images are pushed to `europe-docker.pkg.dev/gardener-project/public/gardener/etcdbrctl` to container registry.
+The binary builds are not published with each release, but it is pretty straight forward to build it by following the steps mentioned [here](../development/local_setup.md#build). But we do publish the docker image with each release, please check the [release page](https://github.com/gardener/etcd-backup-restore/releases) for the same. Currently, release docker images are pushed to `europe-docker.pkg.dev/gardener-project/public/gardener/etcdbrctl` to container registry.
 
 ## Usage
 
-You can follow the `help` flag on `etcdbrctl` command and its sub-commands to know the usage details. Some of the common use cases are mentioned below. Although examples below use `AWS S3` as storage provider, etcd-backup-restore supports AWS, GCS, Azure, Openstack swift and Alicloud OSS object store. It also supports local disk as storage provider for development purposes, but it is not recommended to use this in a production environment.
+You can follow the `help` flag on `etcdbrctl` command and its sub-commands to know the usage details. Some common use cases are mentioned below. Although examples below use `AWS S3` as storage provider, etcd-backup-restore supports AWS, GCS, Azure, OpenStack Swift, and AliCloud OSS object store. It also supports local disk as storage provider for development purposes, but it is not recommended to use this in a production environment.
 
 ### Cloud Provider Credentials
 
-The procedure to provide credentials to access the cloud provider object store varies for different providers, there are various ways to pass credentials([described below](#various-ways-to-pass-credentials)), you can choose either ways but we recommend you to pass credentials through a file.
+The procedure to provide credentials to access the cloud provider object store varies for different providers, there are various ways to pass credentials([described below](#various-ways-to-pass-credentials)), however, it is *highly* recommended passing each credential as an individual file in a directory.
 
+### Various ways to pass Credentials
 
-### Various ways to pass Credentials:
+> [!WARNING]
+> It is recommended to pass credentials as files in a directory. Please avoid passing credentials as a JSON file, since this feature is planned to be deprecated soon (in *v0.31.0*).
 
-* For `AWS S3`: 
+* For `AWS S3`:
    1. The secret file should be provided, and the file path should be made available as environment variables: `AWS_APPLICATION_CREDENTIALS` or `AWS_APPLICATION_CREDENTIALS_JSON`.
    2. For `S3-compatible providers` such as MinIO, `endpoint`, `s3ForcePathStyle`, `insecureSkipVerify` and `trustedCaCert`, can also be made available in a above file to configure the S3 client to communicate to a non-AWS provider.
    3. To enable Server-Side Encryption using Customer Managed Keys for `S3-compatible providers`, use `sseCustomerKey` and `sseCustomerAlgorithm` in the credentials file above. For example, `sseCustomerAlgorithm` could be set to `AES256`, and correspondingly the `sseCustomerKey` is set to a valid AES-256 key.
 
-* For  `Google Cloud Storage`: 
+* For `Google Cloud Storage`:
    1. The service account json file should be provided in the `~/.gcp` as a `service-account-file.json` file.
    2. The service account json file should be provided, and the file path should be made available as environment variable `GOOGLE_APPLICATION_CREDENTIALS`.
    3. If using a storage API [endpoint override](https://pkg.go.dev/cloud.google.com/go#hdr-Endpoint_Override), such as a [regional endpoint](https://cloud.google.com/storage/docs/regional-endpoints) or a local GCS emulator endpoint, then the endpoint must be made available via environment variable `GOOGLE_STORAGE_API_ENDPOINT`, in the format `http[s]://host[:port]/storage/v1/`.
@@ -39,12 +41,11 @@ The procedure to provide credentials to access the cloud provider object store v
   1. The secret file should be provided, and the file path should be made available as environment variables: `OPENSHIFT_APPLICATION_CREDENTIALS` or `OPENSHIFT_APPLICATION_CREDENTIALS_JSON`.
   For development purposes, the environment variables `OCS_DISABLE_SSL` and `OCS_INSECURE_SKIP_VERIFY` can also be set to "true" or "false".
 
-
 Check the [example of storage provider secrets](https://github.com/gardener/etcd-backup-restore/tree/master/example/storage-provider-secrets)
 
 ### Taking scheduled snapshot
 
-Sub-command `snapshot` takes scheduled backups, or `snapshots` of a running `etcd` cluster, which are pushed to one of the storage providers specified above (please note that `etcd` should already be running). One can apply standard cron format scheduling for regular backup of etcd. The cron schedule is used to take full backups. The delta snapshots are taken at regular intervals in the period in between full snapshots as indicated by the `delta-snapshot-period` flag. The default for the same is 20 seconds.
+Sub-command `snapshot` takes scheduled backups, or `snapshots` of a running `etcd` cluster, which are pushed to one of the storage providers specified above (please note that `etcd` should already be running). One can apply standard Cron format scheduling for regular backup of etcd. The Cron schedule is used to take full backups. The delta snapshots are taken at regular intervals in the period in between full snapshots as indicated by the `delta-snapshot-period` flag. The default for the same is 20 seconds.
 
 etcd-backup-restore has two garbage collection policies to clean up existing backups from the cloud bucket. The flag `garbage-collection-policy` is used to indicate the desired garbage collection policy.
 

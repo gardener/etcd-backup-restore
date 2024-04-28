@@ -107,13 +107,29 @@ func ConstructBlobServiceURL(credentials *azblob.SharedKeyCredential) (*url.URL,
 }
 
 func getCredentials(prefixString string) (string, string, error) {
-
 	if filename, isSet := os.LookupEnv(prefixString + absCredentialJSONFile); isSet {
 		credentials, err := readABSCredentialsJSON(filename)
 		if err != nil {
 			return "", "", fmt.Errorf("error getting credentials using %v file", filename)
 		}
 		return credentials.StorageAccount, credentials.SecretKey, nil
+	}
+
+	// TODO: @renormalize Remove this extra handling in v0.31.0
+	// Check if a JSON file is present in the directory, if it is present -> the JSON file must be used for credentials.
+	if dir, isSet := os.LookupEnv(prefixString + absCredentialDirectory); isSet {
+		jsonCredentialFile, err := findFileWithExtensionInDir(dir, ".json")
+		if err != nil {
+			return "", "", fmt.Errorf("error while finding a JSON credential file in %v directory with error: %w", dir, err)
+		}
+		if jsonCredentialFile != "" {
+			credentials, err := readABSCredentialsJSON(jsonCredentialFile)
+			if err != nil {
+				return "", "", fmt.Errorf("error getting credentials using %v JSON file in a directory with error: %w", jsonCredentialFile, err)
+			}
+			return credentials.StorageAccount, credentials.SecretKey, nil
+		}
+		// Non JSON credential files might exist in the credential directory, do not return
 	}
 
 	if dir, isSet := os.LookupEnv(prefixString + absCredentialDirectory); isSet {
@@ -375,6 +391,19 @@ func (a *ABSSnapStore) Delete(snap brtypes.Snapshot) error {
 
 // GetABSCredentialsLastModifiedTime returns the latest modification timestamp of the ABS credential file(s)
 func GetABSCredentialsLastModifiedTime() (time.Time, error) {
+	// TODO: @renormalize Remove this extra handling in v0.31.0
+	// Check if a JSON file is present in the directory, if it is present -> the JSON file must be used for credentials.
+	if dir, isSet := os.LookupEnv(absCredentialDirectory); isSet {
+		modificationTimeStamp, err := getJSONCredentialModifiedTime(dir, "ABS")
+		if err != nil {
+			return time.Time{}, err
+		}
+		if !modificationTimeStamp.IsZero() {
+			return modificationTimeStamp, nil
+		}
+		// Non JSON credential files might exist in the credential directory, do not return
+	}
+
 	if dir, isSet := os.LookupEnv(absCredentialDirectory); isSet {
 		// credential files which are essential for creating the snapstore
 		credentialFiles := []string{"storageKey", "storageAccount"}
@@ -383,7 +412,7 @@ func GetABSCredentialsLastModifiedTime() (time.Time, error) {
 		}
 		absTimeStamp, err := getLatestCredentialsModifiedTime(credentialFiles)
 		if err != nil {
-			return time.Time{}, fmt.Errorf("failed to get ABS credential timestamp from the directory %v with error: %v", dir, err)
+			return time.Time{}, fmt.Errorf("failed to get ABS credential timestamp from the directory %v with error: %w", dir, err)
 		}
 		return absTimeStamp, nil
 	}
@@ -392,7 +421,7 @@ func GetABSCredentialsLastModifiedTime() (time.Time, error) {
 		credentialFiles := []string{filename}
 		absTimeStamp, err := getLatestCredentialsModifiedTime(credentialFiles)
 		if err != nil {
-			return time.Time{}, fmt.Errorf("failed to fetch file information of the ABS JSON credential file %v with error: %v", filename, err)
+			return time.Time{}, fmt.Errorf("failed to fetch file information of the ABS JSON credential file %v with error: %w", filename, err)
 		}
 		return absTimeStamp, nil
 	}
