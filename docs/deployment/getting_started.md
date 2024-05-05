@@ -8,16 +8,13 @@ You can follow the `help` flag on `etcdbrctl` command and its sub-commands to kn
 
 ### Cloud Provider Credentials
 
-The procedure to provide credentials to access the cloud provider object store varies for different providers, there are various ways to pass credentials([described below](#various-ways-to-pass-credentials)), however, it is *highly* recommended passing each credential as an individual file in a directory.
+The procedure to provide credentials to access the cloud provider object store varies for different providers, the method to pass credentials for each provider is [described below](#passing-credentials).
 
-### Various ways to pass Credentials
-
-> [!WARNING]
-> It is recommended to pass credentials as files in a directory. Please avoid passing credentials as a JSON file, since this feature is planned to be deprecated soon (in *v0.31.0*).
+### Passing Credentials
 
 * For `AWS S3`:
-   1. The secret file should be provided, and the file path should be made available as environment variables: `AWS_APPLICATION_CREDENTIALS` or `AWS_APPLICATION_CREDENTIALS_JSON`.
-   2. For `S3-compatible providers` such as MinIO, `endpoint`, `s3ForcePathStyle`, `insecureSkipVerify` and `trustedCaCert`, can also be made available in a above file to configure the S3 client to communicate to a non-AWS provider.
+   1. The secret file should be provided, and the file path should be made available as an environment variable: `AWS_APPLICATION_CREDENTIALS`.
+   2. For `S3-compatible providers` such as MinIO, `endpoint`, `s3ForcePathStyle`, `insecureSkipVerify` and `trustedCaCert`, can also be made available in an above file to configure the S3 client to communicate to a non-AWS provider.
    3. To enable Server-Side Encryption using Customer Managed Keys for `S3-compatible providers`, use `sseCustomerKey` and `sseCustomerAlgorithm` in the credentials file above. For example, `sseCustomerAlgorithm` could be set to `AES256`, and correspondingly the `sseCustomerKey` is set to a valid AES-256 key.
 
 * For `Google Cloud Storage`:
@@ -26,19 +23,19 @@ The procedure to provide credentials to access the cloud provider object store v
    3. If using a storage API [endpoint override](https://pkg.go.dev/cloud.google.com/go#hdr-Endpoint_Override), such as a [regional endpoint](https://cloud.google.com/storage/docs/regional-endpoints) or a local GCS emulator endpoint, then the endpoint must be made available via environment variable `GOOGLE_STORAGE_API_ENDPOINT`, in the format `http[s]://host[:port]/storage/v1/`.
 
 * For `Azure Blob storage`:
-   1. The secret file should be provided, and the file path should be made available as environment variables: `AZURE_APPLICATION_CREDENTIALS` or `AZURE_APPLICATION_CREDENTIALS_JSON`.
+   1. The secret file should be provided, and the file path should be made available as an environment variable: `AZURE_APPLICATION_CREDENTIALS`.
 
 * For `Openstack Swift`:
-  1. The secret file should be provided, and the file path should be made available as environment variables: `OPENSTACK_APPLICATION_CREDENTIALS` or `OPENSTACK_APPLICATION_CREDENTIALS_JSON`.
+  1. The secret file should be provided, and the file path should be made available as an environment variable: `OPENSTACK_APPLICATION_CREDENTIALS`.
 
 * For `Alicloud OSS`:
-  1. The secret file should be provided, and the file path should be made available as environment variables: `ALICLOUD_APPLICATION_CREDENTIALS` or `ALICLOUD_APPLICATION_CREDENTIALS_JSON`.
+  1. The secret file should be provided, and the file path should be made available as an environment variable: `ALICLOUD_APPLICATION_CREDENTIALS`.
 
 * For `Dell EMC ECS`:
   1. `ECS_ENDPOINT`, `ECS_ACCESS_KEY_ID`, `ECS_SECRET_ACCESS_KEY` should be made available as environment variables. For development purposes, the environment variables `ECS_DISABLE_SSL` and `ECS_INSECURE_SKIP_VERIFY` can also be set to "true" or "false".
 
 * For `Openshift Container Storage (OCS)`:
-  1. The secret file should be provided, and the file path should be made available as environment variables: `OPENSHIFT_APPLICATION_CREDENTIALS` or `OPENSHIFT_APPLICATION_CREDENTIALS_JSON`.
+  1. The secret file should be provided, and the file path should be made available as an environment variable: `OPENSHIFT_APPLICATION_CREDENTIALS`.
   For development purposes, the environment variables `OCS_DISABLE_SSL` and `OCS_INSECURE_SKIP_VERIFY` can also be set to "true" or "false".
 
 Check the [example of storage provider secrets](https://github.com/gardener/etcd-backup-restore/tree/master/example/storage-provider-secrets)
