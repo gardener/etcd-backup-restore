@@ -191,9 +191,9 @@ func GetOCSCredentialsLastModifiedTime() (time.Time, error) {
 	// TODO: @renormalize Remove this extra handling in v0.31.0
 	// Check if a JSON file is present in the directory, if it is present -> the JSON file must be used for credentials.
 	if dir, isSet := os.LookupEnv(ocsCredentialDirectory); isSet {
-		modificationTimeStamp, err := getJSONCredentialModifiedTime(dir, "OCS")
+		modificationTimeStamp, err := getJSONCredentialModifiedTime(dir)
 		if err != nil {
-			return time.Time{}, err
+			return time.Time{}, fmt.Errorf("failed to fetch credential modification time for OCS with error: %w", err)
 		}
 		if !modificationTimeStamp.IsZero() {
 			return modificationTimeStamp, nil

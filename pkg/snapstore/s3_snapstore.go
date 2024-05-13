@@ -559,9 +559,9 @@ func GetS3CredentialsLastModifiedTime() (time.Time, error) {
 	// TODO: @renormalize Remove this extra handling in v0.31.0
 	// Check if a JSON file is present in the directory, if it is present -> the JSON file must be used for credentials.
 	if dir, isSet := os.LookupEnv(awsCredentialDirectory); isSet {
-		modificationTimeStamp, err := getJSONCredentialModifiedTime(dir, "AWS")
+		modificationTimeStamp, err := getJSONCredentialModifiedTime(dir)
 		if err != nil {
-			return time.Time{}, err
+			return time.Time{}, fmt.Errorf("failed to fetch credential modification time for AWS with error: %w", err)
 		}
 		if !modificationTimeStamp.IsZero() {
 			return modificationTimeStamp, nil

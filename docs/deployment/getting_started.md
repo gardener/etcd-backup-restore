@@ -4,7 +4,7 @@ The binary builds are not published with each release, but it is pretty straight
 
 ## Usage
 
-You can follow the `help` flag on `etcdbrctl` command and its sub-commands to know the usage details. Some common use cases are mentioned below. Although examples below use `AWS S3` as storage provider, etcd-backup-restore supports AWS, GCS, Azure, OpenStack Swift, and AliCloud OSS object store. It also supports local disk as storage provider for development purposes, but it is not recommended to use this in a production environment.
+You can follow the `help` flag on `etcdbrctl` command and its sub-commands to know the usage details. Some common use cases are mentioned below. Although examples below use `AWS S3` as storage provider, etcd-backup-restore supports AWS S3, GCS, Azure Blob Storage, OpenStack Swift, and AliCloud OSS object store. It also supports local disk as storage provider for development purposes, but it is not recommended to use this in a production environment.
 
 ### Cloud Provider Credentials
 
