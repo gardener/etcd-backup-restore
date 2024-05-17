@@ -90,13 +90,29 @@ func NewS3SnapStore(config *brtypes.SnapstoreConfig) (*S3SnapStore, error) {
 }
 
 func getSessionOptions(prefixString string) (session.Options, SSECredentials, error) {
-
 	if filename, isSet := os.LookupEnv(prefixString + awsCredentialJSONFile); isSet {
 		creds, sseCreds, err := readAWSCredentialsJSONFile(filename)
 		if err != nil {
 			return session.Options{}, SSECredentials{}, fmt.Errorf("error getting credentials using %v file with error %w", filename, err)
 		}
 		return creds, sseCreds, nil
+	}
+
+	// TODO: @renormalize Remove this extra handling in v0.31.0
+	// Check if a JSON file is present in the directory, if it is present -> the JSON file must be used for credentials.
+	if dir, isSet := os.LookupEnv(prefixString + awsCredentialDirectory); isSet {
+		jsonCredentialFile, err := findFileWithExtensionInDir(dir, ".json")
+		if err != nil {
+			return session.Options{}, SSECredentials{}, fmt.Errorf("error while finding a JSON credential file in %v directory with error: %w", dir, err)
+		}
+		if jsonCredentialFile != "" {
+			creds, sseCreds, err := readAWSCredentialsJSONFile(jsonCredentialFile)
+			if err != nil {
+				return session.Options{}, SSECredentials{}, fmt.Errorf("error getting credentials using %v JSON file in a directory with error: %w", jsonCredentialFile, err)
+			}
+			return creds, sseCreds, nil
+		}
+		// Non JSON credential files might exist in the credential directory, do not return
 	}
 
 	if dir, isSet := os.LookupEnv(prefixString + awsCredentialDirectory); isSet {
@@ -540,6 +556,19 @@ func (s *S3SnapStore) Delete(snap brtypes.Snapshot) error {
 
 // GetS3CredentialsLastModifiedTime returns the latest modification timestamp of the AWS credential file(s)
 func GetS3CredentialsLastModifiedTime() (time.Time, error) {
+	// TODO: @renormalize Remove this extra handling in v0.31.0
+	// Check if a JSON file is present in the directory, if it is present -> the JSON file must be used for credentials.
+	if dir, isSet := os.LookupEnv(awsCredentialDirectory); isSet {
+		modificationTimeStamp, err := getJSONCredentialModifiedTime(dir)
+		if err != nil {
+			return time.Time{}, fmt.Errorf("failed to fetch credential modification time for AWS with error: %w", err)
+		}
+		if !modificationTimeStamp.IsZero() {
+			return modificationTimeStamp, nil
+		}
+		// Non JSON credential files might exist in the credential directory, do not return
+	}
+
 	if dir, isSet := os.LookupEnv(awsCredentialDirectory); isSet {
 		// credential files which are essential for creating the S3 snapstore
 		credentialFiles := []string{"accessKeyID", "region", "secretAccessKey"}
@@ -548,7 +577,7 @@ func GetS3CredentialsLastModifiedTime() (time.Time, error) {
 		}
 		awsTimeStamp, err := getLatestCredentialsModifiedTime(credentialFiles)
 		if err != nil {
-			return time.Time{}, fmt.Errorf("failed to get AWS credential timestamp from the directory %v with error: %v", dir, err)
+			return time.Time{}, fmt.Errorf("failed to get AWS credential timestamp from the directory %v with error: %w", dir, err)
 		}
 		return awsTimeStamp, nil
 	}
@@ -557,7 +586,7 @@ func GetS3CredentialsLastModifiedTime() (time.Time, error) {
 		credentialFiles := []string{filename}
 		awsTimeStamp, err := getLatestCredentialsModifiedTime(credentialFiles)
 		if err != nil {
-			return time.Time{}, fmt.Errorf("failed to fetch file information of the AWS JSON credential file %v with error: %v", filename, err)
+			return time.Time{}, fmt.Errorf("failed to fetch file information of the AWS JSON credential file %v with error: %w", filename, err)
 		}
 		return awsTimeStamp, nil
 	}

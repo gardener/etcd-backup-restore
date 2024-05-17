@@ -112,15 +112,32 @@ func getClientOpts(isSource bool) (*clientconfig.ClientOpts, error) {
 	if filename, isSet := os.LookupEnv(prefix + swiftCredentialJSONFile); isSet {
 		clientOpts, err := readSwiftCredentialsJSON(filename)
 		if err != nil {
-			return &clientconfig.ClientOpts{}, fmt.Errorf("error getting credentials using %v file", filename)
+			return &clientconfig.ClientOpts{}, fmt.Errorf("error getting credentials using %v file with error: %w", filename, err)
 		}
 		return clientOpts, nil
+	}
+
+	// TODO: @renormalize Remove this extra handling in v0.31.0
+	// Check if a JSON file is present in the directory, if it is present -> the JSON file must be used for credentials.
+	if dir, isSet := os.LookupEnv(prefix + swiftCredentialDirectory); isSet {
+		jsonCredentialFile, err := findFileWithExtensionInDir(dir, ".json")
+		if err != nil {
+			return &clientconfig.ClientOpts{}, fmt.Errorf("error getting credentials using %v JSON file in a directory with error: %w", jsonCredentialFile, err)
+		}
+		if jsonCredentialFile != "" {
+			clientOpts, err := readSwiftCredentialsJSON(jsonCredentialFile)
+			if err != nil {
+				return &clientconfig.ClientOpts{}, fmt.Errorf("error getting credentials using %v JSON file in a directory with error: %w", jsonCredentialFile, err)
+			}
+			return clientOpts, nil
+		}
+		// Non JSON credential files might exist in the credential directory, do not return
 	}
 
 	if dir, isSet := os.LookupEnv(prefix + swiftCredentialDirectory); isSet {
 		clientOpts, err := readSwiftCredentialFiles(dir)
 		if err != nil {
-			return &clientconfig.ClientOpts{}, fmt.Errorf("error getting credentials from %v directory", dir)
+			return &clientconfig.ClientOpts{}, fmt.Errorf("error getting credentials from %v directory with error: %w", dir, err)
 		}
 		return clientOpts, nil
 	}
@@ -548,6 +565,19 @@ func (s *SwiftSnapStore) Delete(snap brtypes.Snapshot) error {
 
 // GetSwiftCredentialsLastModifiedTime returns the latest modification timestamp of the Swift credential file(s)
 func GetSwiftCredentialsLastModifiedTime() (time.Time, error) {
+	// TODO: @renormalize Remove this extra handling in v0.31.0
+	// Check if a JSON file is present in the directory, if it is present -> the JSON file must be used for credentials.
+	if dir, isSet := os.LookupEnv(swiftCredentialDirectory); isSet {
+		modificationTimeStamp, err := getJSONCredentialModifiedTime(dir)
+		if err != nil {
+			return time.Time{}, fmt.Errorf("failed to fetch credential modification time for Swift with error: %w", err)
+		}
+		if !modificationTimeStamp.IsZero() {
+			return modificationTimeStamp, nil
+		}
+		// Non JSON credential files might exist in the credential directory, do not return
+	}
+
 	if dir, isSet := os.LookupEnv(swiftCredentialDirectory); isSet {
 		// credential files which are essential for creating the snapstore
 		var credentialFiles []string
@@ -572,7 +602,7 @@ func GetSwiftCredentialsLastModifiedTime() (time.Time, error) {
 
 		swiftTimeStamp, err := getLatestCredentialsModifiedTime(credentialFiles)
 		if err != nil {
-			return time.Time{}, fmt.Errorf("failed to get Swift credential timestamp from the directory %v with error: %v", dir, err)
+			return time.Time{}, fmt.Errorf("failed to get Swift credential timestamp from the directory %v with error: %w", dir, err)
 		}
 		return swiftTimeStamp, nil
 	}
@@ -581,7 +611,7 @@ func GetSwiftCredentialsLastModifiedTime() (time.Time, error) {
 		credentialFiles := []string{filename}
 		swiftTimeStamp, err := getLatestCredentialsModifiedTime(credentialFiles)
 		if err != nil {
-			return time.Time{}, fmt.Errorf("failed to fetch file information of the Swift JSON credential file %v with error: %v", filename, err)
+			return time.Time{}, fmt.Errorf("failed to fetch file information of the Swift JSON credential file %v with error: %w", filename, err)
 		}
 		return swiftTimeStamp, nil
 	}

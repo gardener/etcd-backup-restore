@@ -43,15 +43,32 @@ func getOCSAuthOptions(prefix string) (*ocsAuthOptions, error) {
 	if filename, isSet := os.LookupEnv(prefix + ocsCredentialJSONFile); isSet {
 		ao, err := readOCSCredentialsJSON(filename)
 		if err != nil {
-			return nil, fmt.Errorf("error getting credentials using %v file", filename)
+			return nil, fmt.Errorf("error getting credentials using %v file with error: %w", filename, err)
 		}
 		return ao, nil
+	}
+
+	// TODO: @renormalize Remove this extra handling in v0.31.0
+	// Check if a JSON file is present in the directory, if it is present -> the JSON file must be used for credentials.
+	if dir, isSet := os.LookupEnv(prefix + ocsCredentialDirectory); isSet {
+		jsonCredentialFile, err := findFileWithExtensionInDir(dir, ".json")
+		if err != nil {
+			return nil, fmt.Errorf("error while finding a JSON credential file in %v directory with error: %w", dir, err)
+		}
+		if jsonCredentialFile != "" {
+			ao, err := readOCSCredentialsJSON(jsonCredentialFile)
+			if err != nil {
+				return nil, fmt.Errorf("error getting credentials using %v JSON file in a directory with error: %w", jsonCredentialFile, err)
+			}
+			return ao, nil
+		}
+		// Non JSON credential files might exist in the credential directory, do not return
 	}
 
 	if dir, isSet := os.LookupEnv(prefix + ocsCredentialDirectory); isSet {
 		ao, err := readOCSCredentialFromDir(dir)
 		if err != nil {
-			return nil, fmt.Errorf("error getting credentials from %v directory", dir)
+			return nil, fmt.Errorf("error getting credentials from %v directory with error: %w", dir, err)
 		}
 		return ao, nil
 	}
@@ -171,6 +188,19 @@ func isOCSConfigEmpty(config ocsAuthOptions) error {
 
 // GetOCSCredentialsLastModifiedTime returns the latest modification timestamp of the OCS credential file(s)
 func GetOCSCredentialsLastModifiedTime() (time.Time, error) {
+	// TODO: @renormalize Remove this extra handling in v0.31.0
+	// Check if a JSON file is present in the directory, if it is present -> the JSON file must be used for credentials.
+	if dir, isSet := os.LookupEnv(ocsCredentialDirectory); isSet {
+		modificationTimeStamp, err := getJSONCredentialModifiedTime(dir)
+		if err != nil {
+			return time.Time{}, fmt.Errorf("failed to fetch credential modification time for OCS with error: %w", err)
+		}
+		if !modificationTimeStamp.IsZero() {
+			return modificationTimeStamp, nil
+		}
+		// Non JSON credential files might exist in the credential directory, do not return
+	}
+
 	if dir, isSet := os.LookupEnv(ocsCredentialDirectory); isSet {
 		// credential files which are essential for creating the snapstore
 		credentialFiles := []string{"accessKeyID", "region", "endpoint", "secretAccessKey"}
@@ -179,7 +209,7 @@ func GetOCSCredentialsLastModifiedTime() (time.Time, error) {
 		}
 		ocsTimeStamp, err := getLatestCredentialsModifiedTime(credentialFiles)
 		if err != nil {
-			return time.Time{}, fmt.Errorf("failed to get OCS credential timestamp from the directory %v with error: %v", dir, err)
+			return time.Time{}, fmt.Errorf("failed to get OCS credential timestamp from the directory %v with error: %w", dir, err)
 		}
 		return ocsTimeStamp, nil
 	}
@@ -188,7 +218,7 @@ func GetOCSCredentialsLastModifiedTime() (time.Time, error) {
 		credentialFiles := []string{filename}
 		ocsTimeStamp, err := getLatestCredentialsModifiedTime(credentialFiles)
 		if err != nil {
-			return time.Time{}, fmt.Errorf("failed to fetch file information of the OCS JSON credential file %v with error: %v", filename, err)
+			return time.Time{}, fmt.Errorf("failed to fetch file information of the OCS JSON credential file %v with error: %w", filename, err)
 		}
 		return ocsTimeStamp, nil
 	}
