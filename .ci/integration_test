@@ -155,6 +155,9 @@ EOF
 }
 EOF
   export AWS_APPLICATION_CREDENTIALS_JSON="${credentials_file}"
+  export AWS_ACCESS_KEY_ID=$1
+  export AWS_SECRET_ACCESS_KEY=$2
+  export AWS_DEFAULT_REGION=$3 
 }
 
 function create_aws_secret() {
@@ -171,6 +174,7 @@ function create_aws_secret() {
 
 function delete_aws_secret() {
   rm -rf ${HOME}/.aws
+  unset AWS_APPLICATION_CREDENTIALS_JSON AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_DEFAULT_REGION
 }
 
 function create_s3_bucket() {
@@ -256,7 +260,7 @@ function run_test_as_processes() {
   setup_test_cluster
 
   echo "Starting integration tests..."
-  cd test/e2e/integration
+  cd test/integration
 
   set +e
   ginkgo -r -mod=vendor
@@ -290,7 +294,7 @@ function run_test_on_cluster() {
   export ETCD_VERSION=${ETCD_VERSION:-"v3.4.13-bootstrap-1"}
   echo "Etcd version: ${ETCD_VERSION}"
 
-  export ETCDBR_VERSION=${ETCDBR_VERSION:-${ETCDBR_VER:-"v0.12.1"}}
+  export ETCDBR_VERSION=${ETCDBR_VERSION:-${ETCDBR_VER:-"v0.24.7"}}
   echo "Etcd-backup-restore version: ${ETCDBR_VERSION}"
 
   echo "Starting integration tests on k8s cluster."
@@ -298,7 +302,8 @@ function run_test_on_cluster() {
   set +e
 
   if [ -r "$INTEGRATION_TEST_KUBECONFIG" ]; then
-    KUBECONFIG=$INTEGRATION_TEST_KUBECONFIG STORAGE_CONTAINER=$TEST_ID ginkgo -v -timeout=15m -mod=vendor test/e2e/integrationcluster
+    #  Set the PROVIDER env variable to aws for the integration tests
+    KUBECONFIG=$INTEGRATION_TEST_KUBECONFIG STORAGE_CONTAINER=$TEST_ID PROVIDER=aws ginkgo -v -timeout=15m -mod=vendor test/e2e/integrationcluster
     TEST_RESULT=$?
     echo "Successfully completed all tests."
   else

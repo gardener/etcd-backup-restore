@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"path"
+	"strings"
 	"testing"
 	"time"
 
@@ -23,30 +24,30 @@ import (
 )
 
 const (
-	envSourcePath       = "SOURCE_PATH"
-	envKubeconfigPath   = "KUBECONFIG"
-	envEtcdVersion      = "ETCD_VERSION"
-	envEtcdbrVersion    = "ETCDBR_VERSION"
-	helmChartBasePath   = "chart/etcd-backup-restore"
-	releaseName         = "main"
-	releaseNamespace    = "integration-test"
-	envStorageContainer = "STORAGE_CONTAINER"
-	envAccessKeyID      = "ACCESS_KEY_ID"
-	envSecretAccessKey  = "SECRET_ACCESS_KEY"
-	envRegion           = "REGION"
-	timeoutPeriod       = time.Second * 60
-	etcdClientPort      = 2379
-	backupClientPort    = 8080
+	envSourcePath          = "SOURCE_PATH"
+	envKubeconfigPath      = "KUBECONFIG"
+	envEtcdVersion         = "ETCD_VERSION"
+	envEtcdbrVersion       = "ETCDBR_VERSION"
+	helmChartBasePath      = "chart/etcd-backup-restore"
+	releaseNamePrefix      = "main"
+	releaseNamespacePrefix = "e2e-test"
+	envStorageContainer    = "STORAGE_CONTAINER"
+	envProvider            = "PROVIDER"
+	debugContainerName     = "debug"
+	timeoutPeriod          = 5 * time.Minute
+	etcdClientPort         = 2379
+	backupClientPort       = 8080
 )
 
 var (
 	logger           = logrus.New()
-	err              error
 	kubeconfigPath   string
 	typedClient      *kubernetes.Clientset
 	storageContainer string
 	storageProvider  string
-	storePrefix      = fmt.Sprintf("%s-etcd", releaseName)
+	releaseNamespace string
+	providerName     string
+	storePrefix      = fmt.Sprintf("%s-etcd", releaseNamePrefix)
 )
 
 func TestIntegrationcluster(t *testing.T) {
@@ -56,18 +57,22 @@ func TestIntegrationcluster(t *testing.T) {
 
 var _ = BeforeSuite(func() {
 	var (
-		etcdVersion     = getEnvAndExpectNoError(envEtcdVersion)
-		etcdbrVersion   = getEnvAndExpectNoError(envEtcdbrVersion)
-		region          = getEnvAndExpectNoError(envRegion)
-		secretAccessKey = getEnvAndExpectNoError(envSecretAccessKey)
-		accessKeyID     = getEnvAndExpectNoError(envAccessKeyID)
-		chartValues     map[string]interface{}
+		etcdVersion   = getEnvAndExpectNoError(envEtcdVersion)
+		etcdbrVersion = getEnvAndExpectNoError(envEtcdbrVersion)
+		chartPath     = path.Join(getEnvOrFallback(envSourcePath, "."), helmChartBasePath)
+		chartValues   map[string]interface{}
 	)
-
-	kubeconfigPath = getEnvAndExpectNoError(envKubeconfigPath)
 	storageContainer = getEnvAndExpectNoError(envStorageContainer)
-	storageProvider = "S3" // support for only S3 buckets at the moment
+	kubeconfigPath = getEnvAndExpectNoError(envKubeconfigPath)
+	Expect(kubeconfigPath).ShouldNot(BeEmpty())
 
+	providerName = getEnvAndExpectNoError(envProvider)
+	logger.Infof("provider: %s", providerName)
+	provider, err := getProvider(providerName)
+	Expect(err).ShouldNot(HaveOccurred())
+	Expect(provider).ShouldNot(BeNil())
+
+	storageProvider = provider.Storage.Provider
 	store, err := getSnapstore(storageProvider, storageContainer, storePrefix)
 	Expect(err).ShouldNot(HaveOccurred())
 
@@ -76,10 +81,10 @@ var _ = BeforeSuite(func() {
 	Expect(err).ShouldNot(HaveOccurred())
 
 	logger.Printf("setting up k8s client using KUBECONFIG=%s", kubeconfigPath)
-	typedClient, err = getKubernetesTypedClient(logger, kubeconfigPath)
+	typedClient, err = getKubernetesTypedClient(kubeconfigPath)
 	Expect(err).NotTo(HaveOccurred())
 	namespacesClient := typedClient.CoreV1().Namespaces()
-
+	releaseNamespace = fmt.Sprintf("%s-%s", releaseNamespacePrefix, providerName)
 	logger.Infof("creating namespace %s", releaseNamespace)
 	ns, err := namespacesClient.Create(context.TODO(), &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
@@ -93,10 +98,6 @@ var _ = BeforeSuite(func() {
 
 	logger.Infof("created namespace %s", ns.Name)
 
-	chartPath := path.Join(getEnvOrFallback(envSourcePath, "."), helmChartBasePath)
-
-	logger.Infof("deploying helm chart at %s", chartPath)
-
 	chartValues = map[string]interface{}{
 		"images": map[string]interface{}{
 			"etcd": map[string]interface{}{
@@ -104,28 +105,26 @@ var _ = BeforeSuite(func() {
 			},
 			"etcdBackupRestore": map[string]interface{}{
 				"tag": etcdbrVersion,
+				// "pullPolicy": "Never",
 			},
 		},
 		"backup": map[string]interface{}{
-			"storageProvider":  storageProvider,
-			"storageContainer": storageContainer,
-			"s3": map[string]interface{}{
-				"region":          region,
-				"secretAccessKey": secretAccessKey,
-				"accessKeyID":     accessKeyID,
-			},
-			"schedule":                "*/1 * * * *",
-			"deltaSnapshotPeriod":     "10s",
-			"maxBackups":              2,
-			"garbageCollectionPolicy": "LimitBased",
-			"garbageCollectionPeriod": "30s",
-			"defragmentationSchedule": "*/1 * * * *",
+			"storageProvider":                storageProvider,
+			"storageContainer":               storageContainer,
+			strings.ToLower(storageProvider): provider.Storage.SecretData,
+			"schedule":                       "*/1 * * * *",
+			"deltaSnapshotPeriod":            "10s",
+			"maxBackups":                     2,
+			"garbageCollectionPolicy":        "LimitBased",
+			"garbageCollectionPeriod":        "30s",
+			"defragmentationSchedule":        "*/1 * * * *",
 		},
 	}
-
-	err = helmDeployChart(logger, timeoutPeriod, kubeconfigPath, chartPath, releaseName, releaseNamespace, chartValues, true)
+	err = helmDeployChart(logger, timeoutPeriod, kubeconfigPath, chartPath, fmt.Sprintf("%s-%s", releaseNamePrefix, providerName), releaseNamespace, chartValues, true)
+	if err != nil {
+		fmt.Printf("error deploying helm chart for provider %s: %v\n", providerName, err)
+	}
 	Expect(err).NotTo(HaveOccurred())
-	logger.Infof("deployed helm chart to release '%s'", releaseName)
 })
 
 var _ = AfterSuite(func() {
@@ -133,12 +132,10 @@ var _ = AfterSuite(func() {
 	Expect(err).NotTo(HaveOccurred())
 	logger.Printf("setting up k8s client using KUBECONFIG=%s", kubeconfigPath)
 
-	typedClient, err = getKubernetesTypedClient(logger, kubeconfigPath)
+	typedClient, err = getKubernetesTypedClient(kubeconfigPath)
 	Expect(err).NotTo(HaveOccurred())
-	namespacesClient := typedClient.CoreV1().Namespaces()
-
 	logger.Infof("deleting namespace %s", releaseNamespace)
-	namespacesClient = typedClient.CoreV1().Namespaces()
+	namespacesClient := typedClient.CoreV1().Namespaces()
 	err = namespacesClient.Delete(context.TODO(), releaseNamespace, metav1.DeleteOptions{})
 	if apierrors.IsNotFound(err) {
 		logger.Infof("namespace %s does not exist", releaseNamespace)

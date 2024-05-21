@@ -9,13 +9,15 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
+	"os/exec"
 	"strings"
 	"time"
 
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
-	"gopkg.in/yaml.v2"
+	"go.etcd.io/etcd/etcdserver/etcdserverpb"
 
 	"github.com/sirupsen/logrus"
 	corev1 "k8s.io/api/core/v1"
@@ -26,27 +28,7 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/tools/remotecommand"
-	"k8s.io/helm/pkg/chartutil"
-	"k8s.io/helm/pkg/helm"
 )
-
-// EndpointStatus stores result from output of etcdctl endpoint status command
-type EndpointStatus []struct {
-	Endpoint string `json:"Endpoint"`
-	Status   struct {
-		Header struct {
-			ClusterID int64 `json:"cluster_id"`
-			MemberID  int64 `json:"member_id"`
-			Revision  int64 `json:"revision"`
-			RaftTerm  int64 `json:"raft_term"`
-		} `json:"header"`
-		Version   string `json:"version"`
-		DbSize    int64  `json:"dbSize"`
-		Leader    int64  `json:"leader"`
-		RaftIndex int64  `json:"raftIndex"`
-		RaftTerm  int64  `json:"raftTerm"`
-	} `json:"Status"`
-}
 
 // SnapListResult stores the snaplist and any associated error
 type SnapListResult struct {
@@ -58,6 +40,117 @@ type SnapListResult struct {
 type LatestSnapshots struct {
 	FullSnapshot   *brtypes.Snapshot   `json:"fullSnapshot"`
 	DeltaSnapshots []*brtypes.Snapshot `json:"deltaSnapshots"`
+}
+
+const (
+	providerAWS   = "aws"
+	providerAzure = "azure"
+	providerGCP   = "gcp"
+	providerNone  = "none"
+
+	ABS = "ABS"
+	S3  = "S3"
+	GCS = "GCS"
+
+	envS3AccessKeyID         = "AWS_ACCESS_KEY_ID"
+	envS3SecretAccessKey     = "AWS_SECRET_ACCESS_KEY"
+	envS3Region              = "AWS_DEFAULT_REGION"
+	envLocalStackHost        = "LOCALSTACK_HOST"
+	envFakeGCSHost           = "GOOGLE_EMULATOR_HOST"
+	envGoogleCreds           = "GOOGLE_APPLICATION_CREDENTIALS"
+	envGoogleEmulatorEnabled = "GOOGLE_EMULATOR_ENABLED"
+	envAzureStorageAccount   = "STORAGE_ACCOUNT"
+	envAzureStorageKey       = "STORAGE_KEY"
+	envAzureEmulatorEnabled  = "AZURE_EMULATOR_ENABLED"
+	envAzuriteHost           = "AZURITE_HOST"
+)
+
+type Storage struct {
+	Provider   string
+	SecretData map[string]interface{}
+}
+
+type TestProvider struct {
+	Name    string
+	Storage *Storage
+}
+
+func getProvider(providerName string) (TestProvider, error) {
+	var provider TestProvider
+	switch providerName {
+	case providerAWS:
+		s3AccessKeyID := getEnvOrFallback(envS3AccessKeyID, "")
+		s3SecretAccessKey := getEnvOrFallback(envS3SecretAccessKey, "")
+		s3Region := getEnvOrFallback(envS3Region, "")
+		secretData := map[string]interface{}{
+			"accessKeyID":     s3AccessKeyID,
+			"secretAccessKey": s3SecretAccessKey,
+			"region":          s3Region,
+		}
+		localStackHost := getEnvOrFallback(envLocalStackHost, "")
+		if localStackHost != "" {
+			secretData["endpoint"] = fmt.Sprintf("http://%s", localStackHost)
+			secretData["s3ForcePathStyle"] = "true"
+		}
+		provider = TestProvider{
+			Name: "aws",
+			Storage: &Storage{
+				Provider:   S3,
+				SecretData: secretData,
+			},
+		}
+	case providerGCP:
+		secretData := map[string]interface{}{}
+		emulatorEnabled := getEnvOrFallback(envGoogleEmulatorEnabled, "")
+		if emulatorEnabled != "true" {
+			file, err := os.ReadFile(os.Getenv(envGoogleCreds))
+			if err != nil {
+				return TestProvider{}, err
+			}
+			jsonStr := string(file)
+			secretData["serviceAccountJson"] = jsonStr
+		} else {
+			fakeGCSHost := getEnvOrFallback(envFakeGCSHost, "")
+			if fakeGCSHost != "" {
+				secretData["emulatorEnabled"] = "true"
+				secretData["storageAPIEndpoint"] = fmt.Sprintf("http://%s/storage/v1/", fakeGCSHost)
+				secretData["serviceAccountJson"] = "dummy-service-account-json"
+			} else {
+				return TestProvider{}, fmt.Errorf("fake GCS host not found")
+			}
+		}
+		provider = TestProvider{
+			Name: "gcp",
+			Storage: &Storage{
+				Provider:   GCS,
+				SecretData: secretData,
+			},
+		}
+	case providerAzure:
+		azureStorageAccount := getEnvOrFallback(envAzureStorageAccount, "")
+		azureStorageKey := getEnvOrFallback(envAzureStorageKey, "")
+		secretData := map[string]interface{}{
+			"storageAccount": azureStorageAccount,
+			"storageKey":     azureStorageKey,
+		}
+		emulatorEnabled := getEnvOrFallback(envAzureEmulatorEnabled, "")
+		if emulatorEnabled == "true" {
+			azuriteHost := getEnvOrFallback(envAzuriteHost, "")
+			if azuriteHost == "" {
+				return TestProvider{}, fmt.Errorf("azurite host not found")
+			}
+			secretData["emulatorEnabled"] = "true"
+			secretData["storageAPIEndpoint"] = fmt.Sprintf("http://%s", azuriteHost)
+		}
+		provider = TestProvider{
+			Name: "azure",
+			Storage: &Storage{
+				Provider:   ABS,
+				SecretData: secretData,
+			},
+		}
+	}
+	return provider, nil
 }
 
 func getEnvOrError(key string) (string, error) {
@@ -80,7 +173,7 @@ func getEnvOrFallback(key, fallback string) string {
 	return fallback
 }
 
-func getKubernetesTypedClient(logger *logrus.Logger, kubeconfigPath string) (*kubernetes.Clientset, error) {
+func getKubernetesTypedClient(kubeconfigPath string) (*kubernetes.Clientset, error) {
 	config, err := getKubeconfig(kubeconfigPath)
 	if err != nil {
 		return nil, err
@@ -95,32 +188,47 @@ func getKubernetesTypedClient(logger *logrus.Logger, kubeconfigPath string) (*ku
 }
 
 func helmDeployChart(logger *logrus.Logger, timeout time.Duration, kubeconfigPath, chartPath, releaseName, releaseNamespace string, chartValues map[string]interface{}, waitForResourcesToBeReady bool) error {
-	client := helm.NewClient(helm.Host(kubeconfigPath))
-
-	chartRequested, err := chartutil.Load(chartPath)
+	// Marshal the chart values to a YAML format
+	chartValuesYAML, err := json.Marshal(chartValues)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to marshal chart values: %w", err)
 	}
 
-	valuesToRender, err := yaml.Marshal(chartValues)
+	// Create a temporary file to store the chart values
+	chartValuesFile, err := os.CreateTemp("", "chart-values-*.yaml")
 	if err != nil {
-		return fmt.Errorf("failed to marshal values: %v", err)
+		return fmt.Errorf("failed to create temporary file for chart values: %w", err)
+	}
+	defer os.Remove(chartValuesFile.Name())
+
+	// Write the chart values to the temporary file
+	if _, err = chartValuesFile.Write(chartValuesYAML); err != nil {
+		return fmt.Errorf("failed to write chart values to temporary file: %w", err)
+	}
+	if err = chartValuesFile.Close(); err != nil {
+		return fmt.Errorf("failed to close temporary file for chart values: %w", err)
 	}
 
-	// Install the chart
-	_, err = client.InstallReleaseFromChart(
-		chartRequested,
-		releaseNamespace,
-		helm.ValueOverrides(valuesToRender),
-		helm.ReleaseName(releaseName),
-		helm.InstallWait(waitForResourcesToBeReady),
-	)
+	// Construct the helm command with the --kubeconfig flag
+	cmdArgs := []string{"upgrade", releaseName, chartPath, "-f", chartValuesFile.Name(), "--install", "--namespace", releaseNamespace, "--kubeconfig", kubeconfigPath}
+	if waitForResourcesToBeReady {
+		cmdArgs = append(cmdArgs, "--wait")
+	}
+	if timeout > 0 {
+		cmdArgs = append(cmdArgs, "--timeout", timeout.String())
+	}
 
+	// Execute the helm command
+	cmd := exec.Command("helm", cmdArgs...)
+	cmdOutput, err := cmd.CombinedOutput()
+
+	// Log the helm command output
+	outputStr := string(cmdOutput)
+	logger.Infof("helm command output: %s", outputStr)
 	if err != nil {
 		logger.Infof("helm chart installation to release '%s' failed", releaseName)
 		return err
 	}
-
 	logger.Infof("successfully installed release '%s'", releaseName)
 	return nil
 }
@@ -224,64 +332,117 @@ OuterLoop:
 	return nil
 }
 
-// getRemoteCommandExecutor builds and returns a remote command Executor from the given command on the specified container
-func getRemoteCommandExecutor(kubeconfigPath, namespace, podName, containerName, command string) (remotecommand.Executor, error) {
-	config, err := clientcmd.BuildConfigFromFlags("", kubeconfigPath)
+func installEtcdctl(kubeconfigPath, namespace, podName, containerName string) error {
+	cmd := "cd /nonroot/hacks && ./install_etcdctl"
+	_, _, err := executeContainerCommand(kubeconfigPath, namespace, podName, containerName, cmd)
 	if err != nil {
-		return nil, err
+		return err
 	}
-
-	clientset, err := kubernetes.NewForConfig(config)
-	if err != nil {
-		return nil, err
-	}
-	coreClient := clientset.CoreV1()
-
-	req := coreClient.RESTClient().
-		Post().
-		Namespace(namespace).
-		Resource("pods").
-		Name(podName).
-		SubResource("exec").
-		VersionedParams(&corev1.PodExecOptions{
-			Container: containerName,
-			Command: []string{
-				"/bin/sh",
-				"-c",
-				command,
-			},
-			Stdin:  false,
-			Stdout: true,
-			Stderr: true,
-		}, scheme.ParameterCodec)
-
-	exec, err := remotecommand.NewSPDYExecutor(config, "POST", req.URL())
-	if err != nil {
-		return nil, err
-	}
-
-	return exec, nil
+	return nil
 }
 
-// executeRemoteCommand executes a remote shell command on the given pod and container
+// attachEphemeralContainer attaches the debug container to the Etcd pod targetting the etcd container to debug and/or execute commands
+func attachEphemeralContainer(kubeconfigPath, namespace, podName, debugContainerName, targetContainer string) error {
+	config, err := clientcmd.BuildConfigFromFlags("", kubeconfigPath)
+	if err != nil {
+		return err
+	}
+
+	clientSet, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		return err
+	}
+
+	pod, err := clientSet.CoreV1().Pods(namespace).Get(context.Background(), podName, metav1.GetOptions{})
+	if err != nil {
+		return err
+	}
+
+	if pod.Spec.EphemeralContainers == nil {
+		pod.Spec.EphemeralContainers = make([]corev1.EphemeralContainer, 0)
+	} else {
+		for _, container := range pod.Spec.EphemeralContainers {
+			if container.Name == debugContainerName {
+				// ephemeral container already exists
+				for _, ephContainerStatus := range pod.Status.EphemeralContainerStatuses {
+					if ephContainerStatus.Name == debugContainerName {
+						if ephContainerStatus.State.Running != nil {
+							return nil
+						}
+					}
+				}
+				return fmt.Errorf("ephemeral container %s already exists, but not running", debugContainerName)
+			}
+		}
+	}
+
+	log.Printf("Creating ephemeral container %s\n", debugContainerName)
+	pod.Spec.EphemeralContainers = append(pod.Spec.EphemeralContainers, corev1.EphemeralContainer{
+		TargetContainerName: targetContainer,
+		EphemeralContainerCommon: corev1.EphemeralContainerCommon{
+			Image:           "europe-docker.pkg.dev/sap-se-gcp-k8s-delivery/releases-public/eu_gcr_io/gardener-project/gardener/ops-toolbelt:0.25.0-mod1",
+			Name:            debugContainerName,
+			ImagePullPolicy: "IfNotPresent",
+			Command:         []string{"/bin/bash", "-c", "--"},
+			Args:            []string{"trap : TERM INT; sleep 9999999999d & wait"},
+		},
+	})
+	_, err = clientSet.CoreV1().Pods(namespace).UpdateEphemeralContainers(context.Background(), podName, pod, metav1.UpdateOptions{})
+	if err != nil {
+		return fmt.Errorf("unable to create ephemeral container: %v", err)
+	}
+	time.Sleep(1 * time.Minute)
+	for _, ephContainerStatus := range pod.Status.EphemeralContainerStatuses {
+		if ephContainerStatus.Name == debugContainerName {
+			if ephContainerStatus.State.Running == nil {
+				return fmt.Errorf("ephemeral container %s not running", debugContainerName)
+			}
+		}
+	}
+	return nil
+}
+
+// executeContainerCommand executes a remote shell command on the given pod and container
 // and returns the stdout and stderr logs
-func executeRemoteCommand(kubeconfigPath, namespace, podName, containerName, command string) (string, string, error) {
-	exec, err := getRemoteCommandExecutor(kubeconfigPath, namespace, podName, containerName, command)
+func executeContainerCommand(kubeconfigPath, podNamespace, podName, containerName, command string) (string, string, error) {
+	config, err := clientcmd.BuildConfigFromFlags("", kubeconfigPath)
 	if err != nil {
 		return "", "", err
 	}
 
-	buf := &bytes.Buffer{}
-	errBuf := &bytes.Buffer{}
-	err = exec.Stream(remotecommand.StreamOptions{
-		Stdout: buf,
-		Stderr: errBuf,
+	clientSet, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		return "", "", err
+	}
+	req := clientSet.CoreV1().RESTClient().Post().
+		Resource("pods").
+		Name(podName).
+		Namespace(podNamespace).
+		SubResource("exec").
+		Param("container", containerName).
+		VersionedParams(&corev1.PodExecOptions{
+			Command: []string{"/bin/bash", "-c", command},
+			Stdin:   false,
+			Stdout:  true,
+			Stderr:  true,
+			TTY:     false,
+		}, scheme.ParameterCodec)
+
+	exec, err := remotecommand.NewSPDYExecutor(config, "POST", req.URL())
+	if err != nil {
+		return "", "", err
+	}
+
+	var stdout, stderr bytes.Buffer
+	err = exec.StreamWithContext(context.Background(), remotecommand.StreamOptions{
+		Stdout: &stdout,
+		Stderr: &stderr,
 	})
 	if err != nil {
 		return "", "", err
 	}
 
-	return strings.TrimSpace(buf.String()), strings.TrimSpace(errBuf.String()), nil
+	return strings.TrimSpace(stdout.String()), strings.TrimSpace(stderr.String()), nil
 }
 
 func getSnapstore(storageProvider, storageContainer, storePrefix string) (brtypes.SnapStore, error) {
@@ -334,7 +495,6 @@ func runEtcdPopulatorWithoutError(logger *logrus.Logger, stopCh <-chan struct{},
 		err    error
 		i      = 1
 	)
-
 	for {
 		select {
 		case <-stopCh:
@@ -342,18 +502,18 @@ func runEtcdPopulatorWithoutError(logger *logrus.Logger, stopCh <-chan struct{},
 			close(doneCh)
 			return
 		default:
-			cmd = fmt.Sprintf("ETCDCTL_API=3 etcdctl put foo-%d bar-%d", i, i)
-			stdout, stderr, err = executeRemoteCommand(kubeconfigPath, namespace, podName, containerName, cmd)
+			cmd = fmt.Sprintf("ETCDCTL_API=3 ./nonroot/hacks/etcdctl put foo-%d bar-%d", i, i)
+			stdout, stderr, err = executeContainerCommand(kubeconfigPath, namespace, podName, containerName, cmd)
 			if err != nil || stderr != "" || stdout != "OK" {
 				logger.Infof("failed to put (foo-%d, bar-%d). Retrying", i, i)
 				continue
 			}
 			if i%10 == 0 {
 				logger.Infof("put (foo-%d, bar-%d) successful", i, i)
-				cmd = fmt.Sprintf("ETCDCTL_API=3 etcdctl del foo-%d", i)
-				stdout, stderr, err = executeRemoteCommand(kubeconfigPath, namespace, podName, containerName, cmd)
+				cmd = fmt.Sprintf("ETCDCTL_API=3 ./nonroot/hacks/etcdctl del foo-%d", i)
+				stdout, stderr, err = executeContainerCommand(kubeconfigPath, namespace, podName, containerName, cmd)
 				if err != nil || stderr != "" || stdout != "1" {
-					logger.Infof("failed to put (foo-%d, bar-%d). Retrying", i, i)
+					logger.Infof("failed to delete (foo-%d, bar-%d). Retrying", i, i)
 					continue
 				}
 			}
@@ -401,29 +561,34 @@ func snapshotInSnapList(snapshot *brtypes.Snapshot, snapList brtypes.SnapList) b
 	return false
 }
 
+type endpointStatusResult struct {
+	Endpoint string                      `json:"Endpoint"`
+	Status   etcdserverpb.StatusResponse `json:"Status"`
+}
+
 func getDbSizeAndRevision(kubeconfigPath, namespace, podName, containerName string) (int64, int64, error) {
-	var endpointStatus EndpointStatus
-	cmd := "ETCDCTL_API=3 etcdctl endpoint status -w=json"
-	stdout, stderr, err := executeRemoteCommand(kubeconfigPath, namespace, podName, "etcd", cmd)
+	cmd := "ETCDCTL_API=3 ./nonroot/hacks/etcdctl endpoint status -w=json"
+	stdout, stderr, err := executeContainerCommand(kubeconfigPath, namespace, podName, containerName, cmd)
 	if err != nil {
 		return 0, 0, err
 	}
 	if stderr != "" {
 		return 0, 0, fmt.Errorf("stderr: %s", stderr)
 	}
-	if err = json.Unmarshal([]byte(stdout), &endpointStatus); err != nil {
+	var endpointStatusResults []endpointStatusResult
+	if err = json.Unmarshal([]byte(stdout), &endpointStatusResults); err != nil {
 		return 0, 0, err
 	}
-	dbSize := endpointStatus[0].Status.DbSize
-	revision := endpointStatus[0].Status.Header.Revision
-
+	statusResponse := endpointStatusResults[0].Status
+	dbSize := statusResponse.DbSize
+	revision := statusResponse.Header.Revision
 	return dbSize, revision, nil
 }
 
 func triggerOnDemandSnapshot(kubeconfigPath, namespace, podName, containerName string, port int, snapshotKind string) (*brtypes.Snapshot, error) {
 	var snapshot *brtypes.Snapshot
 	cmd := fmt.Sprintf("curl http://localhost:%d/snapshot/%s -s", port, snapshotKind)
-	stdout, _, err := executeRemoteCommand(kubeconfigPath, namespace, podName, containerName, cmd)
+	stdout, _, err := executeContainerCommand(kubeconfigPath, namespace, podName, containerName, cmd)
 	if err != nil {
 		return nil, err
 	}
@@ -440,7 +605,7 @@ func triggerOnDemandSnapshot(kubeconfigPath, namespace, podName, containerName s
 func getLatestSnapshots(kubeconfigPath, namespace, podName, containerName string, port int) (*LatestSnapshots, error) {
 	var latestSnapshots *LatestSnapshots
 	cmd := fmt.Sprintf("curl http://localhost:%d/snapshot/latest -s", port)
-	stdout, _, err := executeRemoteCommand(kubeconfigPath, namespace, podName, containerName, cmd)
+	stdout, _, err := executeContainerCommand(kubeconfigPath, namespace, podName, containerName, cmd)
 	if err != nil {
 		return nil, err
 	}
