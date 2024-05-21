@@ -159,9 +159,9 @@ EOF
 
 function create_aws_secret() {
   echo "Fetching aws credentials from secret server..."
-  export ACCESS_KEY_ID=`/cc/utils/cli.py config $CC_CACHE_FILE_FLAG attribute --cfg-type aws --cfg-name etcd-backup-restore --key access_key_id`
-  export SECRET_ACCESS_KEY=`/cc/utils/cli.py config $CC_CACHE_FILE_FLAG attribute --cfg-type aws --cfg-name etcd-backup-restore --key secret_access_key`
-  export REGION=`/cc/utils/cli.py config $CC_CACHE_FILE_FLAG attribute --cfg-type aws --cfg-name etcd-backup-restore --key region`
+  export ACCESS_KEY_ID=`gardener-ci config $CC_CACHE_FILE_FLAG attribute --cfg-type aws --cfg-name etcd-backup-restore --key access_key_id`
+  export SECRET_ACCESS_KEY=`gardener-ci config $CC_CACHE_FILE_FLAG attribute --cfg-type aws --cfg-name etcd-backup-restore --key secret_access_key`
+  export REGION=`gardener-ci config $CC_CACHE_FILE_FLAG attribute --cfg-type aws --cfg-name etcd-backup-restore --key region`
   echo "Successfully fetched aws credentials from secret server."
 
   write_aws_secret "${ACCESS_KEY_ID}" "${SECRET_ACCESS_KEY}" "${REGION}"
