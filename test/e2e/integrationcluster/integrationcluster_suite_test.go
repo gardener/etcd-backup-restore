@@ -67,12 +67,12 @@ var _ = BeforeSuite(func() {
 	Expect(kubeconfigPath).ShouldNot(BeEmpty())
 
 	providerName = getEnvAndExpectNoError(envProvider)
-	logger.Infof("provider: %s", providerName)
 	provider, err := getProvider(providerName)
 	Expect(err).ShouldNot(HaveOccurred())
 	Expect(provider).ShouldNot(BeNil())
 
-	storageProvider = provider.Storage.Provider
+	logger.Infof("provider: %s", provider.name)
+	storageProvider = provider.storage.provider
 	store, err := getSnapstore(storageProvider, storageContainer, storePrefix)
 	Expect(err).ShouldNot(HaveOccurred())
 
@@ -111,7 +111,7 @@ var _ = BeforeSuite(func() {
 		"backup": map[string]interface{}{
 			"storageProvider":                storageProvider,
 			"storageContainer":               storageContainer,
-			strings.ToLower(storageProvider): provider.Storage.SecretData,
+			strings.ToLower(storageProvider): provider.storage.secretData,
 			"schedule":                       "*/1 * * * *",
 			"deltaSnapshotPeriod":            "10s",
 			"maxBackups":                     2,

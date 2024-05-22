@@ -48,9 +48,9 @@ const (
 	providerGCP   = "gcp"
 	providerNone  = "none"
 
-	ABS = "ABS"
-	S3  = "S3"
-	GCS = "GCS"
+	abs = "ABS"
+	s3  = "S3"
+	gcs = "GCS"
 
 	envS3AccessKeyID         = "AWS_ACCESS_KEY_ID"
 	envS3SecretAccessKey     = "AWS_SECRET_ACCESS_KEY"
@@ -65,18 +65,18 @@ const (
 	envAzuriteHost           = "AZURITE_HOST"
 )
 
-type Storage struct {
-	Provider   string
-	SecretData map[string]interface{}
+type storage struct {
+	provider   string
+	secretData map[string]interface{}
 }
 
-type TestProvider struct {
-	Name    string
-	Storage *Storage
+type testProvider struct {
+	name    string
+	storage *storage
 }
 
-func getProvider(providerName string) (TestProvider, error) {
-	var provider TestProvider
+func getProvider(providerName string) (testProvider, error) {
+	var provider testProvider
 	switch providerName {
 	case providerAWS:
 		s3AccessKeyID := getEnvOrFallback(envS3AccessKeyID, "")
@@ -92,11 +92,11 @@ func getProvider(providerName string) (TestProvider, error) {
 			secretData["endpoint"] = fmt.Sprintf("http://%s", localStackHost)
 			secretData["s3ForcePathStyle"] = "true"
 		}
-		provider = TestProvider{
-			Name: "aws",
-			Storage: &Storage{
-				Provider:   S3,
-				SecretData: secretData,
+		provider = testProvider{
+			name: "aws",
+			storage: &storage{
+				provider:   s3,
+				secretData: secretData,
 			},
 		}
 	case providerGCP:
@@ -105,7 +105,7 @@ func getProvider(providerName string) (TestProvider, error) {
 		if emulatorEnabled != "true" {
 			file, err := os.ReadFile(os.Getenv(envGoogleCreds))
 			if err != nil {
-				return TestProvider{}, err
+				return testProvider{}, err
 			}
 			jsonStr := string(file)
 			secretData["serviceAccountJson"] = jsonStr
@@ -116,14 +116,14 @@ func getProvider(providerName string) (TestProvider, error) {
 				secretData["storageAPIEndpoint"] = fmt.Sprintf("http://%s/storage/v1/", fakeGCSHost)
 				secretData["serviceAccountJson"] = "dummy-service-account-json"
 			} else {
-				return TestProvider{}, fmt.Errorf("fake GCS host not found")
+				return testProvider{}, fmt.Errorf("fake GCS host not found")
 			}
 		}
-		provider = TestProvider{
-			Name: "gcp",
-			Storage: &Storage{
-				Provider:   GCS,
-				SecretData: secretData,
+		provider = testProvider{
+			name: "gcp",
+			storage: &storage{
+				provider:   gcs,
+				secretData: secretData,
 			},
 		}
 	case providerAzure:
@@ -137,16 +137,16 @@ func getProvider(providerName string) (TestProvider, error) {
 		if emulatorEnabled == "true" {
 			azuriteHost := getEnvOrFallback(envAzuriteHost, "")
 			if azuriteHost == "" {
-				return TestProvider{}, fmt.Errorf("azurite host not found")
+				return testProvider{}, fmt.Errorf("azurite host not found")
 			}
 			secretData["emulatorEnabled"] = "true"
 			secretData["storageAPIEndpoint"] = fmt.Sprintf("http://%s", azuriteHost)
 		}
-		provider = TestProvider{
-			Name: "azure",
-			Storage: &Storage{
-				Provider:   ABS,
-				SecretData: secretData,
+		provider = testProvider{
+			name: "azure",
+			storage: &storage{
+				provider:   abs,
+				secretData: secretData,
 			},
 		}
 	}
