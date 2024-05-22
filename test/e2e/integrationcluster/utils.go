@@ -201,7 +201,6 @@ func helmDeployChart(logger *logrus.Logger, timeout time.Duration, kubeconfigPat
 	}
 	defer os.Remove(chartValuesFile.Name())
 
-	// Write the chart values to the temporary file
 	if _, err = chartValuesFile.Write(chartValuesYAML); err != nil {
 		return fmt.Errorf("failed to write chart values to temporary file: %w", err)
 	}
@@ -209,7 +208,6 @@ func helmDeployChart(logger *logrus.Logger, timeout time.Duration, kubeconfigPat
 		return fmt.Errorf("failed to close temporary file for chart values: %w", err)
 	}
 
-	// Construct the helm command with the --kubeconfig flag
 	cmdArgs := []string{"upgrade", releaseName, chartPath, "-f", chartValuesFile.Name(), "--install", "--namespace", releaseNamespace, "--kubeconfig", kubeconfigPath}
 	if waitForResourcesToBeReady {
 		cmdArgs = append(cmdArgs, "--wait")
@@ -218,11 +216,9 @@ func helmDeployChart(logger *logrus.Logger, timeout time.Duration, kubeconfigPat
 		cmdArgs = append(cmdArgs, "--timeout", timeout.String())
 	}
 
-	// Execute the helm command
 	cmd := exec.Command("helm", cmdArgs...)
 	cmdOutput, err := cmd.CombinedOutput()
 
-	// Log the helm command output
 	outputStr := string(cmdOutput)
 	logger.Infof("helm command output: %s", outputStr)
 	if err != nil {

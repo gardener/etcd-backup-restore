@@ -47,9 +47,7 @@ spec:
       containers:
       - args: 
         - start-etcd
-        - --backup-restore-host-port=localhost:{{ .Values.servicePorts.backupRestore }} # {{ .Release.Name }}-etcd-local:{{ .Values.servicePorts.backupRestore }}
-        # - --etcd-server-name={{ .Release.Name }}-etcd-local
-        # - --backup-restore-tls-enabled={{ .Values.backupRestoreTLS }}
+        - --backup-restore-host-port=localhost:{{ .Values.servicePorts.backupRestore }}
         name: etcd
         image: {{ .Values.images.etcd.repository }}:{{ .Values.images.etcd.tag }}
         imagePullPolicy: {{ .Values.images.etcd.pullPolicy }}

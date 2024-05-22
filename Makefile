@@ -26,7 +26,7 @@ update-dependencies:
 	@env GO111MODULE=on go get -u
 	@make revendor
 
-kind-up kind-down ci-e2e-kind deploy-localstack test-e2e: export KUBECONFIG = $(KUBECONFIG_PATH)
+kind-up kind-down ci-e2e-kind deploy-localstack deploy-fakegcs deploy-azurite test-e2e: export KUBECONFIG = $(KUBECONFIG_PATH)
 
 .PHONY: build
 build:

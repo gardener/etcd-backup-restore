@@ -22,3 +22,4 @@ spec:
     protocol: TCP
     port: {{ .Values.servicePorts.server }}
     targetPort: {{ .Values.servicePorts.server }}
+    

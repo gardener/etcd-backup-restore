@@ -15,7 +15,6 @@ else
   READLINK_BIN="readlink"
 fi
 
-# TODO: Make this cleaner. This is a hack to get the source path.
 export SOURCE_PATH="$(${READLINK_BIN} -f "$(dirname ${0})/..")"
 
 TEST_ID_PREFIX="etcdbr-e2e-test"
