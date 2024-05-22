@@ -39,7 +39,6 @@ echo "{ \"accessKeyID\": \"ACCESSKEYAWSUSER\", \"secretAccessKey\": \"sEcreTKey\
 : ${TEST_PROVIDERS:="aws"}
 TEST_PROVIDERS=${1:-$TEST_PROVIDERS}
 
-
 make LOCALSTACK_HOST="localstack.default:4566" \
   AWS_ENDPOINT_URL_S3="http://localhost:4566" \
   AWS_ACCESS_KEY_ID="ACCESSKEYAWSUSER" \

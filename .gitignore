@@ -28,6 +28,9 @@ compctedsnap.bkp*
 .vscode
 .idea/
 
+# kubeconfig
+hack/e2e-test/infrastructure/kind/kubeconfig
+
 # developers workspace
 tmp
 dev
