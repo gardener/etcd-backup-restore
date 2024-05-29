@@ -87,7 +87,7 @@ kind-up: $(KIND)
 
 .PHONY: kind-down
 kind-down: $(KIND)
-	$(KIND) delete cluster --name etcdbr-e2e
+	kind delete cluster --name etcdbr-e2e
 
 .PHONY: deploy-localstack
 deploy-localstack: $(KUBECTL)
@@ -103,7 +103,7 @@ deploy-azurite: $(KUBECTL)
 
 .PHONY: ci-e2e-kind
 ci-e2e-kind:
-	./hack/ci-e2e-kind.sh
+	./hack/ci-e2e-kind.sh $(PROVIDERS)
 
 .PHONY: pr-test-e2e
 pr-test-e2e:

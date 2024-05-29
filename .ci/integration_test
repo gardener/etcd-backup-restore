@@ -125,8 +125,11 @@ function create_etcd_data_directory() {
   mkdir -p ${ETCD_DATA_DIR}
 }
 
-function get_aws_existing_region() {
+function get_aws_existing_credentials() {
   export REGION=`cat ${HOME}/.aws/config | grep -e "^.*region.*$" | sed "s/^.*region[ ]*=[ ]*//"`
+  export AWS_DEFAULT_REGION=${REGION}
+  export AWS_ACCESS_KEY_ID=`cat ${HOME}/.aws/credentials | grep -e "^.*aws_access_key_id.*$" | sed "s/^.*aws_access_key_id[ ]*=[ ]*//"`
+  export AWS_SECRET_ACCESS_KEY=`cat ${HOME}/.aws/credentials | grep -e "^.*aws_secret_access_key.*$" | sed "s/^.*aws_secret_access_key[ ]*=[ ]*//"`
 }
 
 #############################
@@ -174,7 +177,6 @@ function create_aws_secret() {
 
 function delete_aws_secret() {
   rm -rf ${HOME}/.aws
-  unset AWS_APPLICATION_CREDENTIALS_JSON AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_DEFAULT_REGION
 }
 
 function create_s3_bucket() {
@@ -196,7 +198,7 @@ function setup-aws-infrastructure() {
   if [[ "${USE_EXISTING_AWS_SECRET}" == "1" ]]; then
     create_aws_secret
   else
-    get_aws_existing_region
+    get_aws_existing_credentials
   fi
   create_s3_bucket
   echo "AWS infrastructure setup completed."
@@ -291,10 +293,10 @@ function run_test_on_cluster() {
     setup-aws-infrastructure
   fi
 
-  export ETCD_VERSION=${ETCD_VERSION:-"v3.4.13-bootstrap-1"}
+  export ETCD_VERSION=${ETCD_VERSION:-"v0.1.1"}
   echo "Etcd version: ${ETCD_VERSION}"
 
-  export ETCDBR_VERSION=${ETCDBR_VERSION:-${ETCDBR_VER:-"v0.24.7"}}
+  export ETCDBR_VERSION=${ETCDBR_VERSION:-${ETCDBR_VER:-"v0.28.0"}}
   echo "Etcd-backup-restore version: ${ETCDBR_VERSION}"
 
   echo "Starting integration tests on k8s cluster."

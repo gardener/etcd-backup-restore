@@ -14,10 +14,27 @@ trap "
 " EXIT
 
 kubectl wait --for=condition=ready node --all
-export ETCD_VERSION="v0.1.1" #v3.4.13-bootstrap-1
-export ETCDBR_VERSION="v3.6" #v0.29.0-dev (for anveshreddy18 dockerhub)
+export ETCD_VERSION="v0.1.1"
+export ETCDBR_VERSION="v0.29.0-dev"
 
+# AWS S3 #
+LOCALSTACK_HOST="localstack.default:4566"
+AWS_ENDPOINT_URL_S3="http://localhost:4566"
+AWS_ACCESS_KEY_ID="ACCESSKEYAWSUSER"
+AWS_SECRET_ACCESS_KEY="sEcreTKey"
+AWS_DEFAULT_REGION=us-east-2
 
+export AWS_APPLICATION_CREDENTIALS_JSON="/tmp/aws.json"
+echo "{ \"accessKeyID\": \"${AWS_ACCESS_KEY_ID}\", \"secretAccessKey\": \"${AWS_SECRET_ACCESS_KEY}\", \"region\": \"${AWS_DEFAULT_REGION}\", \"endpoint\": \"${AWS_ENDPOINT_URL_S3}\" , \"s3ForcePathStyle\": true }" > "${AWS_APPLICATION_CREDENTIALS_JSON}"
+
+# Google Cloud Storage #
+GOOGLE_EMULATOR_HOST="fake-gcs.default:8000"
+GOOGLE_STORAGE_API_ENDPOINT="http://localhost:8000/storage/v1/"
+
+export GOOGLE_APPLICATION_CREDENTIALS="path/to/service-account.json"
+export GCP_PROJECT_ID="your-project-id"
+
+# Azure Blob Storage #
 STORAGE_ACCOUNT="devstoreaccount1"
 STORAGE_KEY="Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw=="
 AZURE_STORAGE_API_ENDPOINT="http://localhost:10000"
@@ -29,24 +46,17 @@ mkdir -p "${AZURE_APPLICATION_CREDENTIALS}"
 echo -n "${STORAGE_ACCOUNT}" > "${AZURE_APPLICATION_CREDENTIALS}/storageAccount"
 echo -n "${STORAGE_KEY}" > "${AZURE_APPLICATION_CREDENTIALS}/storageKey"
 
-export AWS_APPLICATION_CREDENTIALS_JSON="/tmp/aws.json"
-echo "{ \"accessKeyID\": \"ACCESSKEYAWSUSER\", \"secretAccessKey\": \"sEcreTKey\", \"region\": \"us-east-2\", \"endpoint\": \"http://127.0.0.1:4566\", \"s3ForcePathStyle\": true }" >/tmp/aws.json
-
-# GOOGLE_APPLICATION_CREDENTIALS="/Users/i586337/Downloads/svc_acc.json" \
-# GCP_PROJECT_ID="sap-se-gcp-k8s-dev-team" \
-
-
 : ${TEST_PROVIDERS:="aws"}
 TEST_PROVIDERS=${1:-$TEST_PROVIDERS}
 
-make LOCALSTACK_HOST="localstack.default:4566" \
-  AWS_ENDPOINT_URL_S3="http://localhost:4566" \
-  AWS_ACCESS_KEY_ID="ACCESSKEYAWSUSER" \
-  AWS_SECRET_ACCESS_KEY="sEcreTKey" \
-  AWS_DEFAULT_REGION=us-east-2 \
+make LOCALSTACK_HOST=${LOCALSTACK_HOST} \
+  AWS_ENDPOINT_URL_S3=${AWS_ENDPOINT_URL_S3} \
+  AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} \
+  AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY} \
+  AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION} \
   GOOGLE_EMULATOR_ENABLED="true" \
-  GOOGLE_EMULATOR_HOST="fake-gcs.default:8000" \
-  GOOGLE_STORAGE_API_ENDPOINT="http://localhost:8000/storage/v1/" \
+  GOOGLE_EMULATOR_HOST=${GOOGLE_EMULATOR_HOST} \
+  GOOGLE_STORAGE_API_ENDPOINT=${GOOGLE_STORAGE_API_ENDPOINT} \
   STORAGE_ACCOUNT=${STORAGE_ACCOUNT} \
   STORAGE_KEY=${STORAGE_KEY} \
   AZURE_STORAGE_API_ENDPOINT=${AZURE_STORAGE_API_ENDPOINT} \

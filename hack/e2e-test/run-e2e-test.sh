@@ -53,7 +53,7 @@ function cleanup_aws_infrastructure() {
 }
 
 function cleanup_gcs_infrastructure() {
-  if [[ -n ${GOOGLE_APPLICATION_CREDENTIALS:-""} ]]; then
+  if [[ -z ${GOOGLE_EMULATOR_ENABLED:-""} ]]; then
     result=$(gsutil list gs://${TEST_ID} 2>&1 || true)
     if [[ $result  == *"404"* ]]; then
       echo "GCS bucket is already deleted."
@@ -144,14 +144,17 @@ Please make sure the following environment variables are set:
     AWS_ACCESS_KEY_ID       Key ID of the user.
     AWS_SECRET_ACCESS_KEY   Access key of the user.
     AWS_DEFAULT_REGION      Region in which the test bucket is created.
-    LOCALSTACK_HOST         Host of the localstack service. ( optional: required for testing with localstack)
-    AWS_ENDPOINT_URL_S3     URL of the S3 endpoint. ( optional: required for testing with localstack)
+    LOCALSTACK_HOST         Host of the localstack service. ( required only for testing with localstack)
+    AWS_ENDPOINT_URL_S3     URL of the S3 endpoint. ( required only for testing with localstack)
 EOM
     exit 0
 }
 
 function setup_aws_e2e() {    
-    ( [[ -z ${AWS_ACCESS_KEY_ID:-""} ]] || [[ -z ${AWS_SECRET_ACCESS_KEY:=""} ]]  || [[ -z ${AWS_DEFAULT_REGION:=""} ]] ) && usage_aws
+    if [[ -z ${AWS_ACCESS_KEY_ID:-""} ]] || [[ -z ${AWS_SECRET_ACCESS_KEY:=""} ]]  || [[ -z ${AWS_DEFAULT_REGION:=""} ]]; then
+        usage_aws
+        exit 1
+    fi
     if [[ -n ${LOCALSTACK_HOST:-""} ]]; then
       make deploy-localstack
     else 
@@ -170,7 +173,7 @@ function setup_gcscli() {
 function setup_gcs_infrastructure() {
   echo "Setting up GCS infrastructure..."
   echo "Creating test bucket..."
-  if [[ -n ${GOOGLE_APPLICATION_CREDENTIALS:-""} ]]; then
+  if [[ -z ${GOOGLE_EMULATOR_ENABLED:-""} ]]; then
     gsutil mb "gs://${TEST_ID}"
   else 
     gsutil -o "Credentials:gs_json_host=127.0.0.1" -o "Credentials:gs_json_port=4443" -o "Boto:https_validate_certificates=False" mb "gs://${TEST_ID}"
@@ -185,11 +188,11 @@ Usage:
 run-e2e-test.sh gcs
 
 Please make sure the following environment variables are set:
-    GOOGLE_APPLICATION_CREDENTIALS    Path to the service account key file. ( for real infra )
-    GCP_PROJECT_ID                    Project ID of the GCP project. ( for real infra )
-    GOOGLE_EMULATOR_HOST              Host of the fake GCS server. ( for fakegcs )
-    GOOGLE_EMULATOR_ENABLED           Set to "true" to Enable the fake GCS server for testing. ( for fakegcs )
-    GOOGLE_STORAGE_API_ENDPOINT       URL of the GCS storage endpoint ( for fakegcs )
+    GOOGLE_APPLICATION_CREDENTIALS    Path to the service account key file. 
+    GCP_PROJECT_ID                    Project ID of the GCP project.
+    GOOGLE_EMULATOR_HOST              Host of the fake GCS server. ( required only for fakegcs )
+    GOOGLE_EMULATOR_ENABLED           Set to "true" to Enable the fake GCS server for testing. ( required only for fakegcs )
+    GOOGLE_STORAGE_API_ENDPOINT       URL of the GCS storage endpoint ( required only for fakegcs )
 EOM
   exit 0
 }
@@ -205,11 +208,17 @@ function authorize_gcloud() {
 }
 
 function setup_gcs_e2e() {
-  if [[ -n ${GOOGLE_APPLICATION_CREDENTIALS:-""} ]]; then
-    ( [[ -z ${GCP_PROJECT_ID:-""} ]] ) && usage_gcs
+  if [[ -z ${GOOGLE_EMULATOR_ENABLED:-""} ]]; then
+    if [[ -z ${GCP_PROJECT_ID:-""} ]] || [[ -z ${GOOGLE_APPLICATION_CREDENTIALS} ]]; then
+        usage_gcs
+        exit 1
+    fi
     authorize_gcloud
   else
-    ( [[ -z ${GOOGLE_EMULATOR_ENABLED:-""} ]] || [[ -z ${GOOGLE_EMULATOR_HOST:-""} ]] || [[ -z ${GOOGLE_STORAGE_API_ENDPOINT:-""} ]] ) && usage_gcs
+    if [[ -z ${GOOGLE_EMULATOR_HOST:-""} ]] || [[ -z ${GOOGLE_STORAGE_API_ENDPOINT:-""} ]]; then
+        usage_gcs
+        exit 1
+    fi
     echo "GOOGLE_APPLICATION_CREDENTIALS is not set. Using fake GCS server for testing."
     make deploy-fakegcs
   fi
@@ -218,11 +227,6 @@ function setup_gcs_e2e() {
 }
 
 function setup_azure_infrastructure() {
-  export AZURE_APPLICATION_CREDENTIALS="/tmp/azuriteCredentials"
-  mkdir -p "${AZURE_APPLICATION_CREDENTIALS}"
-  echo -n "${STORAGE_ACCOUNT}" > "${AZURE_APPLICATION_CREDENTIALS}/storageAccount"
-  echo -n "${STORAGE_KEY}" > "${AZURE_APPLICATION_CREDENTIALS}/storageKey"
-
   echo "Setting up Azure infrastructure..."
   echo "Creating test bucket..."
   if [[ -n ${AZURE_EMULATOR_ENABLED:-""} ]]; then
@@ -254,20 +258,26 @@ Please make sure the following environment variables are set:
 
     STORAGE_ACCOUNT                   Name of the storage account.
     STORAGE_KEY                       Key of the storage account.
-    AZURE_STORAGE_API_ENDPOINT        URL of the Azure storage endpoint. ( optional: required for testing with Azurite)
-    AZURE_EMULATOR_ENABLED            Set to "true" to Enable the Azure emulator for testing. ( optional: required for testing with Azurite)
-    AZURITE_HOST                      Host of the Azurite service. ( optional: required for testing with Azurite)
-    AZURE_STORAGE_CONNECTION_STRING   Connection string for the Azure storage account. ( optional: required for testing with Azurite)
+    AZURE_STORAGE_API_ENDPOINT        URL of the Azure storage endpoint. ( required only for testing with Azurite)
+    AZURE_EMULATOR_ENABLED            Set to "true" to Enable the Azure emulator for testing. ( required only for testing with Azurite)
+    AZURITE_HOST                      Host of the Azurite service. ( required only for testing with Azurite)
+    AZURE_STORAGE_CONNECTION_STRING   Connection string for the Azure storage account. ( required only for testing with Azurite)
 EOM
   exit 0
 }
 
 function setup_azure_e2e() {
   if [[ -n ${AZURE_EMULATOR_ENABLED:-""} ]]; then
-    ( [[ -z ${STORAGE_ACCOUNT:-""} ]] || [[ -z ${STORAGE_KEY:-""} ]] || [[ -z ${AZURE_STORAGE_API_ENDPOINT:-""} ]] || [[ -z ${AZURITE_HOST:-""} ]] ) && usage_azure
+    if [[ -z ${STORAGE_ACCOUNT:-""} ]] || [[ -z ${STORAGE_KEY:-""} ]] || [[ -z ${AZURE_STORAGE_API_ENDPOINT:-""} ]] || [[ -z ${AZURITE_HOST:-""} ]] || [[ -z ${AZURE_STORAGE_CONNECTION_STRING:-""} ]]; then
+        usage_azure
+        exit 1
+    fi
     make deploy-azurite
   else
-    ( [[ -z ${STORAGE_ACCOUNT:-""} ]] || [[ -z ${STORAGE_KEY:-""} ]] ) && usage_azure
+    if [[ -z ${STORAGE_ACCOUNT:-""} ]] || [[ -z ${STORAGE_KEY:-""} ]]; then
+        usage_azure
+        exit 1
+    fi
     echo "AZURE_EMULATOR_ENABLED is not set. Using Azure services for testing."
   fi
   setup_azcli
@@ -278,12 +288,7 @@ run_cluster_tests() {
     if ! [ -x "$(command -v ginkgo)" ]; then
     setup_ginkgo
     fi
-    
     get_test_id
-    export ETCD_VERSION=${ETCD_VERSION:-"v0.1.1"}
-    echo "Etcd version: ${ETCD_VERSION}"
-    export ETCDBR_VERSION=${ETCDBR_VERSION:-${ETCDBR_VER:-"v0.28.0"}}
-    echo "Etcd-backup-restore version: ${ETCDBR_VERSION}"
 
     # Setup the infrastructure for the providers in parallel to reduce the setup time.
     for p in ${1//,/ }; do

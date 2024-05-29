@@ -104,8 +104,9 @@ var _ = BeforeSuite(func() {
 				"tag": etcdVersion,
 			},
 			"etcdBackupRestore": map[string]interface{}{
-				"tag": etcdbrVersion,
-				// "pullPolicy": "Never",
+				"repository": "europe-docker.pkg.dev/gardener-project/snapshots/gardener/etcdbrctl",
+				"tag":        etcdbrVersion,
+				"pullPolicy": "Never",
 			},
 		},
 		"backup": map[string]interface{}{
