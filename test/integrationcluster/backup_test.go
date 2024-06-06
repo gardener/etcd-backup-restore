@@ -47,8 +47,6 @@ var _ = Describe("Backup", func() {
 		Expect(err).ShouldNot(HaveOccurred())
 		logger.Infof("Ephemeral container %s attached to pod %s/%s\n", debugContainerName, releaseNamespace, podName)
 		logger.Infof("Installing etcdctl on ephemeral container %s\n", debugContainerName)
-		// TODO: Remove this as we already wait 1 minute inside attachEphemeralContainer
-		time.Sleep(30 * time.Second)
 		err = installEtcdctl(kubeconfigPath, releaseNamespace, podName, debugContainerName)
 		Expect(err).ShouldNot(HaveOccurred())
 		logger.Infof("etcdctl installed on ephemeral container %s\n", debugContainerName)
@@ -112,33 +110,26 @@ var _ = Describe("Backup", func() {
 
 	Describe("Defragmentor", func() {
 		It("should defragment the data", func() {
-			cmd := "ETCDCTL_API=3 ./nonroot/hacks/etcdctl put defrag-1 val-1"
-			stdout, stderr, err := executeContainerCommand(kubeconfigPath, releaseNamespace, podName, debugContainerName, cmd)
-			Expect(err).ShouldNot(HaveOccurred())
-			Expect(stderr).Should(BeEmpty())
-			Expect(stdout).Should(Equal("OK"))
-			for i := 0; i < 500; i++ {
-				cmd = fmt.Sprintf("ETCDCTL_API=3 ./nonroot/hacks/etcdctl put defrag-1 val-%d", i)
-				stdout, stderr, err = executeContainerCommand(kubeconfigPath, releaseNamespace, podName, debugContainerName, cmd)
+			for i := 0; i < 1000; i++ {
+				cmd := fmt.Sprintf("ETCDCTL_API=3 ./nonroot/hacks/etcdctl put defrag-1 val-%d", i)
+				stdout, stderr, err := executeContainerCommand(kubeconfigPath, releaseNamespace, podName, debugContainerName, cmd)
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(stderr).Should(BeEmpty())
 				Expect(stdout).Should(Equal("OK"))
 			}
-			fmt.Printf("Anvesh:: sleeping for 3 minutes\n")
-			time.Sleep(3 * time.Minute)
 
 			oldDbSize, oldRevision, err := getDbSizeAndRevision(kubeconfigPath, releaseNamespace, podName, debugContainerName)
 			Expect(err).ShouldNot(HaveOccurred())
 			fmt.Printf("Old db size is %d, old revision is %d\n", oldDbSize, oldRevision)
 
-			logger.Infof("waiting for defragmentation to occur atleast once")
-			time.Sleep(70 * time.Second)
+			cmd := "ETCDCTL_API=3 ./nonroot/hacks/etcdctl defrag"
+			_, stderr, err := executeContainerCommand(kubeconfigPath, releaseNamespace, podName, debugContainerName, cmd)
+			Expect(err).ShouldNot(HaveOccurred())
+			Expect(stderr).Should(BeEmpty())
 
 			newDbSize, newRevision, err := getDbSizeAndRevision(kubeconfigPath, releaseNamespace, podName, debugContainerName)
 			Expect(err).ShouldNot(HaveOccurred())
 			fmt.Printf("New db size is %d, new revision is %d\n", newDbSize, newRevision)
-			fmt.Printf("Sleeping for 3 minutes\n")
-			time.Sleep(2 * time.Minute)
 
 			Expect(newRevision).Should(BeNumerically("==", oldRevision))
 			Expect(newDbSize).Should(BeNumerically("<", oldDbSize))

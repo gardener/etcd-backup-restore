@@ -13,6 +13,8 @@ spec:
   clusterIP: None
   clusterIPs:
     - None
+  internalTrafficPolicy: Cluster
+  imFamilyPolicy: SingleStack
   sessionAffinity: None
   selector:
     app.kubernetes.io/name: etcd

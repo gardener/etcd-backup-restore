@@ -8,13 +8,24 @@ set -o errexit
 set -o nounset
 set -o pipefail
 
-# SOURCE_PATH - path to component repository root directory.
+function containsElement () {
+  array=(${1//,/ })
+  for i in "${!array[@]}"
+  do
+      if [[ "${array[i]}" == "$2" ]]; then
+        return 0
+      fi
+  done
+  return 1
+}
+
 if [[ $(uname) == 'Darwin' ]]; then
   READLINK_BIN="greadlink"
 else
   READLINK_BIN="readlink"
 fi
 
+# SOURCE_PATH - path to component repository root directory.
 export SOURCE_PATH="$(${READLINK_BIN} -f "$(dirname ${0})/..")"
 
 TEST_ID_PREFIX="etcdbr-e2e-test"
@@ -31,28 +42,36 @@ function setup_ginkgo() {
     echo "Successfully installed Ginkgo."
 }
 
+function teardown_trap() {
+  delete_containers $INFRA_PROVIDERS
+  if [[ ${cleanup_done:="false"} != "true" ]]; then
+    cleanup_required="true"
+    cleanup
+  fi
+}
+
 function get_test_id() {
   git_commit=`git show -s --format="%H"`
   export TEST_ID=${TEST_ID_PREFIX}-${git_commit}
   echo "Test id: ${TEST_ID}"
 }
 
-function cleanup_aws_infrastructure() {
+function cleanup_aws_container() {
     echo "Cleaning up AWS infrastructure..."
     echo "Deleting test bucket..."
     result=$(aws s3api get-bucket-location --bucket ${TEST_ID} 2>&1 || true)
     if [[ $result == *NoSuchBucket* ]]; then
-      echo "Bucket is already gone."
+      echo "Bucket doesn't exit. Might have been deleted already."
       return
     fi
     aws s3 rb s3://${TEST_ID} --force
     echo "Successfully deleted test bucket."
     
-    unset AWS_ENDPOINT_URL_S3 AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_DEFAULT_REGION LOCALSTACK_HOST
+    unset LOCALSTACK_HOST AWS_ENDPOINT_URL_S3 AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_DEFAULT_REGION
     echo "Cleaning up AWS infrastructure completed."
 }
 
-function cleanup_gcs_infrastructure() {
+function cleanup_gcp_container() {
   if [[ -z ${GOOGLE_EMULATOR_ENABLED:-""} ]]; then
     result=$(gsutil list gs://${TEST_ID} 2>&1 || true)
     if [[ $result  == *"404"* ]]; then
@@ -73,11 +92,11 @@ function cleanup_gcs_infrastructure() {
     echo "Successfully deleted GCS bucket ${TEST_ID} ."
   fi
 
-  unset GOOGLE_EMULATOR_HOST GOOGLE_EMULATOR_ENABLED GOOGLE_STORAGE_API_ENDPOINT
+  unset GOOGLE_EMULATOR_HOST GOOGLE_EMULATOR_ENABLED GOOGLE_STORAGE_API_ENDPOINT GOOGLE_APPLICATION_CREDENTIALS GCP_PROJECT_ID
   echo "Cleaning up GCS infrastructure completed."
 }
 
-function cleanup_azure_infrastructure() {
+function cleanup_azure_container() {
   echo "Cleaning up Azure infrastructure..."
   echo "Deleting test container..."
   if [[ -n ${AZURE_EMULATOR_ENABLED:-""} ]]; then
@@ -91,28 +110,17 @@ function cleanup_azure_infrastructure() {
   echo "Cleaning up Azure infrastructure completed."
 }
 
-function cleanup() {
-    echo "Cleaning up..."
-    for p in ${1//,/ }; do
-      case $p in
-        aws) cleanup_aws_infrastructure & ;;
-        gcp) cleanup_gcs_infrastructure & ;;
-        azure) cleanup_azure_infrastructure & ;;
-        *) echo "Provider: $p is not supported" ;;
-        esac
-    done
-    wait
-    kind delete cluster --name etcdbr-e2e
-    echo "Cleaning up completed."
-}
-
 function setup_awscli() {
-    echo "Installing awscli..."
-    pip3 install --break-system-packages awscli
-    echo "Successfully installed awscli."
+    if ! $(which aws > /dev/null); then
+      echo "Installing awscli..."
+      pip3 install --break-system-packages awscli
+      echo "Successfully installed awscli."
+    else
+      echo "awscli is already installed."
+    fi
 }
 
-function setup_aws_infrastructure() {
+function create_aws_container() {
     echo "Setting up AWS infrastructure..."
     echo "Creating test bucket..."
     result=$(aws s3api get-bucket-location --bucket ${TEST_ID} 2>&1 || true)
@@ -138,7 +146,6 @@ function setup_aws_infrastructure() {
 function usage_aws {
     cat <<EOM
 Usage:
-run-e2e-test.sh aws
 
 Please make sure the following environment variables are set:
     AWS_ACCESS_KEY_ID       Key ID of the user.
@@ -147,30 +154,32 @@ Please make sure the following environment variables are set:
     LOCALSTACK_HOST         Host of the localstack service. ( required only for testing with localstack)
     AWS_ENDPOINT_URL_S3     URL of the S3 endpoint. ( required only for testing with localstack)
 EOM
-    exit 0
+    exit 1
 }
 
 function setup_aws_e2e() {    
     if [[ -z ${AWS_ACCESS_KEY_ID:-""} ]] || [[ -z ${AWS_SECRET_ACCESS_KEY:=""} ]]  || [[ -z ${AWS_DEFAULT_REGION:=""} ]]; then
         usage_aws
-        exit 1
     fi
     if [[ -n ${LOCALSTACK_HOST:-""} ]]; then
       make deploy-localstack
     else 
-      echo "LOCALSTACK_HOST is not set. Using AWS services for testing."
+      echo "LOCALSTACK_HOST is not set. Using real AWS infra for testing."
     fi
     setup_awscli
-    setup_aws_infrastructure
 }
 
-function setup_gcscli() {
-  echo "Installing gsutil..."
-  pip3 install gsutil
-  echo "Successfully installed gsutil."
+function setup_gsutil() {
+  if ! $(which gsutil > /dev/null); then
+    echo "Installing gsutil..."
+    pip3 install gsutil
+    echo "Successfully installed gsutil."
+  else
+    echo "gsutil is already installed."
+  fi
 }
 
-function setup_gcs_infrastructure() {
+function create_gcp_container() {
   echo "Setting up GCS infrastructure..."
   echo "Creating test bucket..."
   if [[ -z ${GOOGLE_EMULATOR_ENABLED:-""} ]]; then
@@ -182,10 +191,9 @@ function setup_gcs_infrastructure() {
   echo "Setting up GCS infrastructure completed."
 }
 
-function usage_gcs() {
+function usage_gcp() {
   cat <<EOM
 Usage:
-run-e2e-test.sh gcs
 
 Please make sure the following environment variables are set:
     GOOGLE_APPLICATION_CREDENTIALS    Path to the service account key file. 
@@ -194,7 +202,7 @@ Please make sure the following environment variables are set:
     GOOGLE_EMULATOR_ENABLED           Set to "true" to Enable the fake GCS server for testing. ( required only for fakegcs )
     GOOGLE_STORAGE_API_ENDPOINT       URL of the GCS storage endpoint ( required only for fakegcs )
 EOM
-  exit 0
+  exit 1
 }
 
 function authorize_gcloud() {
@@ -207,26 +215,23 @@ function authorize_gcloud() {
   echo "Successfully authorized Gcloud."
 }
 
-function setup_gcs_e2e() {
-  if [[ -z ${GOOGLE_EMULATOR_ENABLED:-""} ]]; then
-    if [[ -z ${GCP_PROJECT_ID:-""} ]] || [[ -z ${GOOGLE_APPLICATION_CREDENTIALS} ]]; then
-        usage_gcs
-        exit 1
-    fi
-    authorize_gcloud
-  else
+function setup_gcp_e2e() {
+  if [[ -n ${GOOGLE_EMULATOR_ENABLED:-""} ]]; then
     if [[ -z ${GOOGLE_EMULATOR_HOST:-""} ]] || [[ -z ${GOOGLE_STORAGE_API_ENDPOINT:-""} ]]; then
-        usage_gcs
-        exit 1
+        usage_gcp
     fi
-    echo "GOOGLE_APPLICATION_CREDENTIALS is not set. Using fake GCS server for testing."
     make deploy-fakegcs
+  else
+    if [[ -z ${GCP_PROJECT_ID:-""} ]] || [[ -z ${GOOGLE_APPLICATION_CREDENTIALS} ]]; then
+        usage_gcp
+    fi
+    echo "GOOGLE_EMULATOR_ENABLED is not set. Using real GCS infra for testing."
+    authorize_gcloud
   fi
-  setup_gcscli
-  setup_gcs_infrastructure
+  setup_gsutil
 }
 
-function setup_azure_infrastructure() {
+function create_azure_container() {
   echo "Setting up Azure infrastructure..."
   echo "Creating test bucket..."
   if [[ -n ${AZURE_EMULATOR_ENABLED:-""} ]]; then
@@ -239,20 +244,20 @@ function setup_azure_infrastructure() {
 }
 
 function setup_azcli() {
-  if $(which az > /dev/null); then
-    return
+  if ! $(which az > /dev/null); then
+    echo "Installing azure-cli"
+    apt update
+    apt install -y curl
+    curl -sL https://aka.ms/InstallAzureCLIDeb | bash
+    echo "Successfully installed azure-cli."
+  else
+    echo "azure-cli is already installed."
   fi
-  echo "Installing azure-cli"
-  apt update
-  apt install -y curl
-  curl -sL https://aka.ms/InstallAzureCLIDeb | bash
-  echo "Successfully installed azure-cli."
 }
 
 function usage_azure() {
   cat <<EOM
 Usage:
-run-e2e-test.sh azure
 
 Please make sure the following environment variables are set:
 
@@ -263,75 +268,164 @@ Please make sure the following environment variables are set:
     AZURITE_HOST                      Host of the Azurite service. ( required only for testing with Azurite)
     AZURE_STORAGE_CONNECTION_STRING   Connection string for the Azure storage account. ( required only for testing with Azurite)
 EOM
-  exit 0
+  exit 1
 }
 
 function setup_azure_e2e() {
+  if [[ -z ${STORAGE_ACCOUNT:-""} ]] || [[ -z ${STORAGE_KEY:-""} ]]; then
+      usage_azure
+  fi
   if [[ -n ${AZURE_EMULATOR_ENABLED:-""} ]]; then
-    if [[ -z ${STORAGE_ACCOUNT:-""} ]] || [[ -z ${STORAGE_KEY:-""} ]] || [[ -z ${AZURE_STORAGE_API_ENDPOINT:-""} ]] || [[ -z ${AZURITE_HOST:-""} ]] || [[ -z ${AZURE_STORAGE_CONNECTION_STRING:-""} ]]; then
+    if [[ -z ${AZURE_STORAGE_API_ENDPOINT:-""} ]] || [[ -z ${AZURITE_HOST:-""} ]] || [[ -z ${AZURE_STORAGE_CONNECTION_STRING:-""} ]]; then
         usage_azure
-        exit 1
     fi
     make deploy-azurite
   else
-    if [[ -z ${STORAGE_ACCOUNT:-""} ]] || [[ -z ${STORAGE_KEY:-""} ]]; then
-        usage_azure
-        exit 1
-    fi
-    echo "AZURE_EMULATOR_ENABLED is not set. Using Azure services for testing."
+    echo "AZURE_EMULATOR_ENABLED is not set. Using real Azure infra for testing."
   fi
   setup_azcli
-  setup_azure_infrastructure
 }
 
-run_cluster_tests() {
-    if ! [ -x "$(command -v ginkgo)" ]; then
-    setup_ginkgo
+build_and_load() {
+    echo "Building the image and loading it into the kind cluster..."
+    if ! docker image ls | grep -q "${ETCDBR_IMAGE}:${ETCDBR_VERSION}"; then
+      docker build -t ${ETCDBR_IMAGE}:${ETCDBR_VERSION} -f build/Dockerfile .
     fi
-    get_test_id
+    kind load docker-image ${ETCDBR_IMAGE}:${ETCDBR_VERSION} --name etcdbr-e2e
+    echo "Successfully loaded the image into the kind cluster."
+}
 
-    # Setup the infrastructure for the providers in parallel to reduce the setup time.
-    for p in ${1//,/ }; do
-      case $p in
-        aws) setup_aws_e2e & ;;
-        gcp) setup_gcs_e2e & ;;
-        azure) setup_azure_e2e & ;;
-        *) echo "Provider: $p is not supported" ;;
-        esac
-    done
-    wait
+function create_containers() {
+  for p in ${1//,/ }; do
+    case $p in
+      aws) create_aws_container;;
+      gcp) create_gcp_container;;
+      azure) create_azure_container;;
+      *) echo "Provider: $p is not supported" ;;
+      esac
+  done
+}
+
+function delete_containers() {
+  for p in ${1//,/ }; do
+    case $p in
+      aws) cleanup_aws_container;;
+      gcp) cleanup_gcp_container;;
+      azure) cleanup_azure_container;;
+      *) echo "Provider: $p is not supported" ;;
+      esac
+  done
+}
+
+function cleanup() {
+  if containsElement $STEPS "cleanup" || [ $cleanup_required = true ]; then
+    kind delete cluster --name etcdbr-e2e
+    echo "Cleaning up completed."
+    cleanup_done="true"
+    cleanup_required="false"
+  fi
+}
+
+function test() {
+  if containsElement $STEPS "test"; then
+    trap teardown_trap INT TERM
+    get_test_id
+    echo "Creating the containers for the providers..."
+    create_containers $INFRA_PROVIDERS
 
     echo "Starting e2e tests on k8s cluster"
 
     set +e
-
     failed_providers=""
-    if [ -r "$KUBECONFIG" ]; then
-      for p in ${1//,/ }; do
-        STORAGE_CONTAINER=$TEST_ID PROVIDER=$p ginkgo -v -timeout=30m -mod=vendor test/e2e/integrationcluster
-        TEST_RESULT=$?
-        echo "Tests have run for provider $p with result $TEST_RESULT"
-        if [ $TEST_RESULT -ne 0 ]; then
-          echo "Tests failed for provider $p"
-          failed_providers="$failed_providers,$p"
-        fi
-      done
-      if [ -n "$failed_providers" ]; then
-        echo "Tests failed for providers: $failed_providers"
-      else 
-        echo "Tests passed for all providers"
+    for p in ${INFRA_PROVIDERS//,/ }; do
+      STORAGE_CONTAINER=$TEST_ID PROVIDER=$p ginkgo -v -timeout=30m -mod=vendor test/integrationcluster
+      TEST_RESULT=$?
+      echo "Tests have run for provider $p with result $TEST_RESULT"
+      if [ $TEST_RESULT -ne 0 ]; then
+        echo "Tests failed for provider $p"
+        failed_providers="$failed_providers,$p"
       fi
-    else
-      echo "Invalid kubeconfig for e2e test $KUBECONFIG"
-      TEST_RESULT=255
-    fi
-
+    done
     set -e
 
-    cleanup $1
+    # Remove the containers after the tests
+    delete_containers $INFRA_PROVIDERS
+
+    if [ -n "$failed_providers" ]; then
+      echo "Tests failed for providers: $failed_providers"
+      exit 1
+    else 
+      echo "Tests passed for all providers"
+    fi
+  fi
 }
 
-: ${INFRA_PROVIDERS:=""}
-export INFRA_PROVIDERS=${1}
+function setup() {
+  if containsElement $STEPS "setup"; then
+    trap teardown_trap INT TERM
+    build_and_load
+    if ! [ -x "$(command -v ginkgo)" ]; then
+    setup_ginkgo
+    fi
+    # Setup the infrastructure for the providers in parallel
+    pids=()
+    providers=()
+    index=0
+    for p in ${INFRA_PROVIDERS//,/ }; do
+      providers[index]=$p
+      case $p in
+        aws) setup_aws_e2e & pids[index]=$! ;;
+        gcp) setup_gcp_e2e & pids[index]=$! ;;
+        azure) setup_azure_e2e & pids[index]=$! ;;
+        *) echo "Provider: $p is not supported" ;;
+        esac
+        index=$((index+1))
+    done
+    # Wait for all the provider setups to complete
+    for i in ${!pids[@]}; do
+      set +e
+      wait ${pids[$i]}
+      provider_status=$?
+      set -e
+      if [ $provider_status -ne 0 ]; then
+        echo "Setup failed for provider ${providers[$i]}"
+        cleanup_required="true"
+        cleanup
+        exit 1
+      fi
+    done
+    echo "Setup completed for all providers."
+  fi
+}
 
-run_cluster_tests ${INFRA_PROVIDERS}
+function create_or_target_cluster() {
+  if containsElement $STEPS "setup"; then
+    # Create a kind cluster for the e2e tests
+    make kind-up || exit 1
+    kubectl wait --for=condition=ready node --all
+    if [ ! -r "$KUBECONFIG" ]; then
+      echo "KUBECONFIG is not set or unreadable, please set the KUBECONFIG environment variable to a valid kubeconfig file."
+      exit 1
+    fi
+  else
+    # Target the existing kind cluster
+    if containsElement $STEPS "test" || containsElement $STEPS "cleanup"; then
+      # Fetch the kubeconfig file for the kind cluster
+      export KUBECONFIG=$(pwd)/hack/e2e-test/infrastructure/kind/kubeconfig
+      if [ ! -r "$KUBECONFIG" ]; then
+        echo "KUBECONFIG is unreadable, please set the KUBECONFIG environment variable to a valid kubeconfig file."
+        exit 1
+      fi
+    fi
+  fi 
+}
+
+: ${INFRA_PROVIDERS:=${1}}
+: ${STEPS:="setup,test,cleanup"}
+: ${cleanup_done:="false"}
+: ${cleanup_required:="false"}
+
+create_or_target_cluster
+setup
+test
+cleanup

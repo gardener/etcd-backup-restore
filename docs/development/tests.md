@@ -48,7 +48,7 @@ These tests help check any regression in performance in terms of memory consumpt
 
 ### End-to-end tests
 
-The e2e tests for etcd-backup-restore are the integrationcluster tests in the `test/e2e/integrationcluster` package. These tests are run on a Kubernetes cluster and test the full functionality of etcd-backup-restore. The tests create a provider namespace on the cluster and deploy the [etcd-backup-restore helm chart](../../chart/etcd-backup-restore) which in turn deploys the required secrets, configmap, services and finally the statefulset which deploys the pod that runs etcd and backup-restore as a sidecar.
+The e2e tests for etcd-backup-restore are the integrationcluster tests in the `test/integrationcluster` package. These tests are run on a Kubernetes cluster and test the full functionality of etcd-backup-restore. The tests create a provider namespace on the cluster and deploy the [etcd-backup-restore helm chart](../../chart/etcd-backup-restore) which in turn deploys the required secrets, configmap, services and finally the statefulset which deploys the pod that runs etcd and backup-restore as a sidecar.
 
 These tests are setup to be run with both emulators and real cloud providers. The emulators can be used for local development and testing as well as prow job to test code changes when a PR is raised. The real cloud providers can be used for testing in a real cloud environment to ensure that the changes work as expected in a real environment. 
 

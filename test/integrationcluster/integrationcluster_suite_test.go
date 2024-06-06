@@ -28,6 +28,7 @@ const (
 	envKubeconfigPath      = "KUBECONFIG"
 	envEtcdVersion         = "ETCD_VERSION"
 	envEtcdbrVersion       = "ETCDBR_VERSION"
+	envEtcdbrImage         = "ETCDBR_IMAGE"
 	helmChartBasePath      = "chart/etcd-backup-restore"
 	releaseNamePrefix      = "main"
 	releaseNamespacePrefix = "e2e-test"
@@ -59,6 +60,7 @@ var _ = BeforeSuite(func() {
 	var (
 		etcdVersion   = getEnvAndExpectNoError(envEtcdVersion)
 		etcdbrVersion = getEnvAndExpectNoError(envEtcdbrVersion)
+		etcdbrImage   = getEnvAndExpectNoError(envEtcdbrImage)
 		chartPath     = path.Join(getEnvOrFallback(envSourcePath, "."), helmChartBasePath)
 		chartValues   map[string]interface{}
 	)
@@ -70,6 +72,8 @@ var _ = BeforeSuite(func() {
 	provider, err := getProvider(providerName)
 	Expect(err).ShouldNot(HaveOccurred())
 	Expect(provider).ShouldNot(BeNil())
+
+	fmt.Printf("Provider struct: %v\n", provider)
 
 	logger.Infof("provider: %s", provider.name)
 	storageProvider = provider.storage.provider
@@ -104,7 +108,7 @@ var _ = BeforeSuite(func() {
 				"tag": etcdVersion,
 			},
 			"etcdBackupRestore": map[string]interface{}{
-				"repository": "europe-docker.pkg.dev/gardener-project/snapshots/gardener/etcdbrctl",
+				"repository": etcdbrImage,
 				"tag":        etcdbrVersion,
 				"pullPolicy": "Never",
 			},
@@ -118,7 +122,6 @@ var _ = BeforeSuite(func() {
 			"maxBackups":                     2,
 			"garbageCollectionPolicy":        "LimitBased",
 			"garbageCollectionPeriod":        "30s",
-			"defragmentationSchedule":        "*/1 * * * *",
 		},
 	}
 	err = helmDeployChart(logger, timeoutPeriod, kubeconfigPath, chartPath, fmt.Sprintf("%s-%s", releaseNamePrefix, providerName), releaseNamespace, chartValues, true)

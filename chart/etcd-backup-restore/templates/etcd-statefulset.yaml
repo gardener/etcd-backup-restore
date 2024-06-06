@@ -10,7 +10,7 @@ metadata:
 spec:
   updateStrategy:
     type: RollingUpdate
-  serviceName: {{ .Release.Name }}-etcd-client
+  serviceName: {{ .Release.Name }}-etcd-peer
   replicas: 1
   selector:
     matchLabels:
