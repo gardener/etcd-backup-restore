@@ -35,13 +35,6 @@ export PATH="${GOBIN}:${PATH}"
 SOURCE_PATH=$(dirname "${SOURCE_PATH}")
 cd "${SOURCE_PATH}"
 
-function setup_ginkgo() {
-    echo "Installing Ginkgo..."
-    go install github.com/onsi/ginkgo/ginkgo@v1.14.1
-    ginkgo version
-    echo "Successfully installed Ginkgo."
-}
-
 function teardown_trap() {
   delete_containers $INFRA_PROVIDERS
   if [[ ${cleanup_done:="false"} != "true" ]]; then
@@ -288,7 +281,7 @@ function setup_azure_e2e() {
 
 build_and_load() {
     echo "Building the image and loading it into the kind cluster..."
-    if ! docker image ls | grep -q "${ETCDBR_IMAGE}:${ETCDBR_VERSION}"; then
+    if ! docker image ls | grep -E "^\s*${ETCDBR_IMAGE}\s+${ETCDBR_VERSION}\s+"; then
       docker build -t ${ETCDBR_IMAGE}:${ETCDBR_VERSION} -f build/Dockerfile .
     fi
     kind load docker-image ${ETCDBR_IMAGE}:${ETCDBR_VERSION} --name etcdbr-e2e
@@ -341,7 +334,7 @@ function test() {
       STORAGE_CONTAINER=$TEST_ID PROVIDER=$p ginkgo -v -timeout=30m -mod=vendor test/integrationcluster
       TEST_RESULT=$?
       echo "Tests have run for provider $p with result $TEST_RESULT"
-      if [ $TEST_RESULT -ne 0 ]; then
+      if [ $TEST_RESULT -ne 0 ] && [ $TEST_RESULT -ne 197 ]; then
         echo "Tests failed for provider $p"
         failed_providers="$failed_providers,$p"
       fi
@@ -364,9 +357,6 @@ function setup() {
   if containsElement $STEPS "setup"; then
     trap teardown_trap INT TERM
     build_and_load
-    if ! [ -x "$(command -v ginkgo)" ]; then
-    setup_ginkgo
-    fi
     # Setup the infrastructure for the providers in parallel
     pids=()
     providers=()

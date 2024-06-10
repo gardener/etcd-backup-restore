@@ -16,6 +16,9 @@ IMG ?= ${IMAGE_REPOSITORY}:${IMAGE_TAG}
 
 .DEFAULT_GOAL := build-local
 
+TOOLS_DIR := hack/tools
+include $(REPO_ROOT)/hack/tools.mk
+
 .PHONY: revendor
 revendor:
 	@env GO111MODULE=on go mod tidy -v
@@ -69,7 +72,7 @@ integration-test:
 	@.ci/integration_test
 
 .PHONY: integration-test-cluster
-integration-test-cluster:
+integration-test-cluster: $(KIND) $(HELM) $(GINKGO) $(KUBECTL)
 	@.ci/integration_test cluster
 
 .PHONY: show-coverage
@@ -78,7 +81,7 @@ show-coverage:
 	@go tool cover -html $(COVERPROFILE)
 
 .PHONY: test-e2e
-test-e2e: $(KUBECTL) $(HELM) $(SKAFFOLD)
+test-e2e: $(KIND) $(HELM) $(GINKGO) $(KUBECTL)
 	@"$(REPO_ROOT)/hack/e2e-test/run-e2e-test.sh" $(PROVIDERS)
 
 .PHONY: kind-up

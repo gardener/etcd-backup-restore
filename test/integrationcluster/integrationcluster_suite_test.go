@@ -122,6 +122,7 @@ var _ = BeforeSuite(func() {
 			"maxBackups":                     2,
 			"garbageCollectionPolicy":        "LimitBased",
 			"garbageCollectionPeriod":        "30s",
+			"defragmentationSchedule":        "*/1 * * * *",
 		},
 	}
 	err = helmDeployChart(logger, timeoutPeriod, kubeconfigPath, chartPath, fmt.Sprintf("%s-%s", releaseNamePrefix, providerName), releaseNamespace, chartValues, true)
