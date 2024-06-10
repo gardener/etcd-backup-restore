@@ -17,7 +17,8 @@
 .glide/
 
 # Build Binaries
-bin
+/bin
+/hack/tools/bin
 test/output
 test/e2e_test_data
 default.bkp*
