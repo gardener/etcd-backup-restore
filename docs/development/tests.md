@@ -70,25 +70,27 @@ make ci-e2e-kind PROVIDERS="aws,gcp"
 ```
 
 
-To run the tests with real cloud providers, a few changes need to be made to the `hack/ci-e2e-kind.sh` script. The script needs to be updated with the correct credentials for the cloud providers and remove the variables for the emulators.
+To run the tests with real cloud providers, a few changes need to be made to the configuration file located at `hack/config/<provider>_config.sh` script. The script needs to be updated with the correct credentials for the cloud providers and remove the variables for the emulators.
 
 #### AWS
 
-For AWS, first get the AWS credentials and update the `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` and `AWS_DEFAULT_REGION` variables of the `hack/ci-e2e-kind.sh` script with the correct values along with removing the variables for the Localstack provider, which are `AWS_ENDPOINT_URL_S3` and `LOCALSTACK_HOST` from the make command of the `hack/ci-e2e-kind.sh` script. Then should also update the creation of `/tmp/aws.json` file with the correct values. It should look like below snippet after removing the `endpoint` and `s3ForcePathStyle` fields: 
+For AWS, first get the AWS credentials and update the `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` and `AWS_DEFAULT_REGION` variables of the `hack/config/aws_config.sh` file with the correct values and also update the creation of `/tmp/aws.json` file with the correct values. It should look like below snippet after removing the `endpoint` and `s3ForcePathStyle` fields: 
   
   ```sh
   export AWS_APPLICATION_CREDENTIALS_JSON="/tmp/aws.json"
-echo "{ \"accessKeyID\": \"${AWS_ACCESS_KEY_ID}\", \"secretAccessKey\": \"${AWS_SECRET_ACCESS_KEY}\", \"region\": \"${AWS_DEFAULT_REGION}\" }" > "${AWS_APPLICATION_CREDENTIALS_JSON}"
-  ```
+  echo "{ \"accessKeyID\": \"${AWS_ACCESS_KEY_ID}\", \"secretAccessKey\": \"${AWS_SECRET_ACCESS_KEY}\", \"region\": \"${AWS_DEFAULT_REGION}\" }" > "${AWS_APPLICATION_CREDENTIALS_JSON}"
+  ``` 
+
+Apart from providing the required credentials for real provider, one should also remove the variables that signify the usage of an emulator, which are `AWS_ENDPOINT_URL_S3` and `LOCALSTACK_HOST` for Localstack. Remove them from the make command of the `hack/ci-e2e-kind.sh` script before running the tests.
 
 With these changes made, the tests can be run in the same way as with the emulators.
 
 #### GCP
 
-For GCP, first get the GCP credential service account json file and replace the `GOOGLE_APPLICATION_CREDENTIALS` with the path to this service account file. And also update the `GCP_PROJECT_ID` variable and set it to your project ID. We also need to remove the required environment variables for the fakegcs provider from the make command of the `hack/ci-e2e-kind.sh` file, for that one should remove the variables `GOOGLE_EMULATOR_ENABLED`, `GCS_EMULATOR_HOST` and `GOOGLE_STORAGE_API_ENDPOINT` and run the tests in the same way as with the emulators.
+For GCP, first get the GCP credential service account json file and your project ID and replace the variables `GOOGLE_APPLICATION_CREDENTIALS` and `GCP_PROJECT_ID` in configuration file located at `hack/config/gcp_config.sh` with the path to this service account file and your project ID respectively. We also need to remove the environment variables for the fakegcs provider from the make command of the `hack/ci-e2e-kind.sh` file, for that one should remove the variables `GOOGLE_EMULATOR_ENABLED`, `GCS_EMULATOR_HOST` and `GOOGLE_STORAGE_API_ENDPOINT` and run the tests in the same way as with the emulators.
 
 #### Azure
 
-For Azure, first get the Azure credentials and update the `STORAGE_ACCOUNT` and `STORAGE_KEY` env variables in the `hack/ci-e2e-kind.sh` script with the correct values. Also, remove the variables for the azurite, which are `AZURE_STORAGE_API_ENDPOINT`, `AZURE_EMULATOR_ENABLED`, `AZURITE_HOST` and `AZURE_STORAGE_CONNECTION_STRING` from the make command of the `hack/ci-e2e-kind.sh` script. With these changes made, the tests can be run in the same way as with the emulators.
+For Azure, first get the Azure credentials and update the `STORAGE_ACCOUNT` and `STORAGE_KEY` env variables in the configuration file located at `hack/config/azure_config.sh` with the correct values. Also, remove the variables for the azurite, which are `AZURE_STORAGE_API_ENDPOINT`, `AZURE_EMULATOR_ENABLED`, `AZURITE_HOST` and `AZURE_STORAGE_CONNECTION_STRING` from the make command of the `hack/ci-e2e-kind.sh` script. With these changes made, the tests can be run in the same way as with the emulators.
 
 The e2e tests can also be run on a real cluster by setting the `KUBECONFIG` environment variable to the path of the kubeconfig file of the cluster. The tests can be run in the same way as with the emulators.

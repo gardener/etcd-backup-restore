@@ -65,6 +65,7 @@ function cleanup_aws_container() {
 }
 
 function cleanup_gcp_container() {
+  echo "Cleaning up GCS infrastructure..."
   if [[ -z ${GOOGLE_EMULATOR_ENABLED:-""} ]]; then
     result=$(gsutil list gs://${TEST_ID} 2>&1 || true)
     if [[ $result  == *"404"* ]]; then
@@ -81,7 +82,7 @@ function cleanup_gcp_container() {
       return
     fi
     echo "Deleting GCS bucket ${TEST_ID} ..."
-    gsutil -o "Credentials:gs_json_host=127.0.0.1" -o "Credentials:gs_json_port=4443" -o "Boto:https_validate_certificates=False" rm -r gs://"${TEST_ID}"/
+    gsutil -o "Credentials:gs_json_host=127.0.0.1" -o "Credentials:gs_json_port=4443" -o "Boto:https_validate_certificates=False" -m rm -r gs://"${TEST_ID}"/ > /dev/null 2>&1 || true
     echo "Successfully deleted GCS bucket ${TEST_ID} ."
   fi
 
