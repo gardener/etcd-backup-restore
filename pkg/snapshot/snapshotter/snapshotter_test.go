@@ -900,11 +900,12 @@ var _ = Describe("Snapshotter", func() {
 
 		Describe("Scenarios to update full snapshot lease", func() {
 			var (
-				ssr                     *Snapshotter
-				lease                   *v1.Lease
-				FullSnapshotLeaseStopCh chan struct{}
-				ctx                     context.Context
-				cancel                  context.CancelFunc
+				ssr                             *Snapshotter
+				lease                           *v1.Lease
+				FullSnapshotLeaseStopCh         chan struct{}
+				ctx                             context.Context
+				cancel                          context.CancelFunc
+				fullSnapshotLeaseUpdateInterval time.Duration
 			)
 			BeforeEach(func() {
 				snapstoreConfig = &brtypes.SnapstoreConfig{Container: path.Join(outputDir, "default.bkp")}
@@ -945,7 +946,7 @@ var _ = Describe("Snapshotter", func() {
 					err := ssr.K8sClientset.Create(ctx, lease)
 					Expect(err).ShouldNot(HaveOccurred())
 
-					fullSnapshotLeaseUpdateInterval := 2 * time.Second
+					fullSnapshotLeaseUpdateInterval = 2 * time.Second
 					go ssr.RenewFullSnapshotLeasePeriodically(FullSnapshotLeaseStopCh, fullSnapshotLeaseUpdateInterval)
 					time.Sleep(2 * time.Second)
 					close(FullSnapshotLeaseStopCh)
@@ -974,7 +975,7 @@ var _ = Describe("Snapshotter", func() {
 					err := ssr.K8sClientset.Create(ctx, lease)
 					Expect(err).ShouldNot(HaveOccurred())
 
-					fullSnapshotLeaseUpdateInterval := time.Second
+					fullSnapshotLeaseUpdateInterval = time.Second
 					go ssr.RenewFullSnapshotLeasePeriodically(FullSnapshotLeaseStopCh, fullSnapshotLeaseUpdateInterval)
 					time.Sleep(2 * time.Second)
 					close(FullSnapshotLeaseStopCh)
@@ -998,7 +999,7 @@ var _ = Describe("Snapshotter", func() {
 					}
 					prevFullSnap.GenerateSnapshotName()
 					ssr.PrevFullSnapshot = prevFullSnap
-					fullSnapshotLeaseUpdateInterval := 3 * time.Second
+					fullSnapshotLeaseUpdateInterval = 3 * time.Second
 					go ssr.RenewFullSnapshotLeasePeriodically(FullSnapshotLeaseStopCh, fullSnapshotLeaseUpdateInterval)
 					time.Sleep(time.Second)
 					err := ssr.K8sClientset.Create(ctx, lease)

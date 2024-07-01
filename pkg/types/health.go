@@ -15,7 +15,7 @@ import (
 const (
 	// DefaultSnapshotLeaseRenewalEnabled is a default value for enabling the snapshot lease renewal feature
 	DefaultSnapshotLeaseRenewalEnabled = false
-	// FullSnapshotLeaseUpdateInterval is a default interval for updating full snapshot lease
+	// FullSnapshotLeaseUpdateInterval is the interval for updating full snapshot lease
 	FullSnapshotLeaseUpdateInterval = 1 * time.Minute
 	// DefaultMemberLeaseRenewalEnabled is a default value for enabling the member lease renewal feature
 	DefaultMemberLeaseRenewalEnabled = false
