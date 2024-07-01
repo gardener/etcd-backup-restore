@@ -35,27 +35,25 @@ const (
 
 // HealthConfig holds the health configuration.
 type HealthConfig struct {
-	SnapshotLeaseRenewalEnabled     bool              `json:"snapshotLeaseRenewalEnabled,omitempty"`
-	FullSnapshotLeaseUpdateInterval wrappers.Duration `json:"fullSnapshotLeaseUpdateInterval,omitempty"`
-	MemberLeaseRenewalEnabled       bool              `json:"memberLeaseRenewalEnabled,omitempty"`
-	EtcdMemberGCEnabled             bool              `json:"etcdMemberGCEnabled,omitempty"`
-	HeartbeatDuration               wrappers.Duration `json:"heartbeatDuration,omitempty"`
-	MemberGCDuration                wrappers.Duration `json:"memberGCDuration,omitempty"`
-	FullSnapshotLeaseName           string            `json:"fullSnapshotLeaseName,omitempty"`
-	DeltaSnapshotLeaseName          string            `json:"deltaSnapshotLeaseName,omitempty"`
+	SnapshotLeaseRenewalEnabled bool              `json:"snapshotLeaseRenewalEnabled,omitempty"`
+	MemberLeaseRenewalEnabled   bool              `json:"memberLeaseRenewalEnabled,omitempty"`
+	EtcdMemberGCEnabled         bool              `json:"etcdMemberGCEnabled,omitempty"`
+	HeartbeatDuration           wrappers.Duration `json:"heartbeatDuration,omitempty"`
+	MemberGCDuration            wrappers.Duration `json:"memberGCDuration,omitempty"`
+	FullSnapshotLeaseName       string            `json:"fullSnapshotLeaseName,omitempty"`
+	DeltaSnapshotLeaseName      string            `json:"deltaSnapshotLeaseName,omitempty"`
 }
 
 // NewHealthConfig returns the health config.
 func NewHealthConfig() *HealthConfig {
 	return &HealthConfig{
-		SnapshotLeaseRenewalEnabled:     DefaultSnapshotLeaseRenewalEnabled,
-		FullSnapshotLeaseUpdateInterval: wrappers.Duration{Duration: FullSnapshotLeaseUpdateInterval},
-		MemberLeaseRenewalEnabled:       DefaultMemberLeaseRenewalEnabled,
-		EtcdMemberGCEnabled:             DefaultEtcdMemberGCEnabled,
-		HeartbeatDuration:               wrappers.Duration{Duration: DefaultHeartbeatDuration},
-		MemberGCDuration:                wrappers.Duration{Duration: DefaultMemberGarbageCollectionPeriod},
-		FullSnapshotLeaseName:           DefaultFullSnapshotLeaseName,
-		DeltaSnapshotLeaseName:          DefaultDeltaSnapshotLeaseName,
+		SnapshotLeaseRenewalEnabled: DefaultSnapshotLeaseRenewalEnabled,
+		MemberLeaseRenewalEnabled:   DefaultMemberLeaseRenewalEnabled,
+		EtcdMemberGCEnabled:         DefaultEtcdMemberGCEnabled,
+		HeartbeatDuration:           wrappers.Duration{Duration: DefaultHeartbeatDuration},
+		MemberGCDuration:            wrappers.Duration{Duration: DefaultMemberGarbageCollectionPeriod},
+		FullSnapshotLeaseName:       DefaultFullSnapshotLeaseName,
+		DeltaSnapshotLeaseName:      DefaultDeltaSnapshotLeaseName,
 	}
 }
 

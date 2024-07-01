@@ -188,7 +188,7 @@ func (ssr *Snapshotter) Run(stopCh <-chan struct{}, startWithFullSnapshot bool) 
 		}
 	}
 	if ssr.HealthConfig.SnapshotLeaseRenewalEnabled {
-		go ssr.RenewFullSnapshotLeasePeriodically(FullSnapshotLeaseStopCh)
+		go ssr.RenewFullSnapshotLeasePeriodically(FullSnapshotLeaseStopCh, brtypes.FullSnapshotLeaseUpdateInterval)
 	}
 	ssr.deltaSnapshotTimer = time.NewTimer(brtypes.DefaultDeltaSnapshotInterval)
 	if ssr.config.DeltaSnapshotPeriod.Duration >= brtypes.DeltaSnapshotIntervalThreshold {
