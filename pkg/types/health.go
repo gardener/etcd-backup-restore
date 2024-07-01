@@ -15,8 +15,8 @@ import (
 const (
 	// DefaultSnapshotLeaseRenewalEnabled is a default value for enabling the snapshot lease renewal feature
 	DefaultSnapshotLeaseRenewalEnabled = false
-	// DefaultFullSnapshotLeaseUpdateInterval is a default interval for updating full snapshot lease
-	DefaultFullSnapshotLeaseUpdateInterval = 3 * time.Minute
+	// FullSnapshotLeaseUpdateInterval is a default interval for updating full snapshot lease
+	FullSnapshotLeaseUpdateInterval = 1 * time.Minute
 	// DefaultMemberLeaseRenewalEnabled is a default value for enabling the member lease renewal feature
 	DefaultMemberLeaseRenewalEnabled = false
 	// DefaultEtcdMemberGCEnabled is a default value for enabling the etcd member garbage collection feature
@@ -49,7 +49,7 @@ type HealthConfig struct {
 func NewHealthConfig() *HealthConfig {
 	return &HealthConfig{
 		SnapshotLeaseRenewalEnabled:     DefaultSnapshotLeaseRenewalEnabled,
-		FullSnapshotLeaseUpdateInterval: wrappers.Duration{Duration: DefaultFullSnapshotLeaseUpdateInterval},
+		FullSnapshotLeaseUpdateInterval: wrappers.Duration{Duration: FullSnapshotLeaseUpdateInterval},
 		MemberLeaseRenewalEnabled:       DefaultMemberLeaseRenewalEnabled,
 		EtcdMemberGCEnabled:             DefaultEtcdMemberGCEnabled,
 		HeartbeatDuration:               wrappers.Duration{Duration: DefaultHeartbeatDuration},
@@ -63,7 +63,6 @@ func NewHealthConfig() *HealthConfig {
 func (c *HealthConfig) AddFlags(fs *flag.FlagSet) {
 
 	fs.BoolVar(&c.SnapshotLeaseRenewalEnabled, "enable-snapshot-lease-renewal", c.SnapshotLeaseRenewalEnabled, "Allows sidecar to renew the snapshot leases when snapshots are taken")
-	fs.DurationVar(&c.FullSnapshotLeaseUpdateInterval.Duration, "full-snapshot-lease-update-interval", c.FullSnapshotLeaseUpdateInterval.Duration, "Interval for Periodic Full Snapshot lease updates")
 	fs.BoolVar(&c.MemberLeaseRenewalEnabled, "enable-member-lease-renewal", c.MemberLeaseRenewalEnabled, "Allows sidecar to periodically renew the member leases")
 	fs.BoolVar(&c.EtcdMemberGCEnabled, "enable-etcd-member-gc", c.EtcdMemberGCEnabled, "Allows leading sidecar to remove any superfluous etcd members from the cluster")
 	fs.DurationVar(&c.HeartbeatDuration.Duration, "k8s-heartbeat-duration", c.HeartbeatDuration.Duration, "Heartbeat duration")
@@ -80,10 +79,6 @@ func (c *HealthConfig) Validate() error {
 
 	if c.MemberGCDuration.Seconds() <= 0 {
 		return fmt.Errorf("etcd member garbage collection period should be greater than zero")
-	}
-
-	if c.FullSnapshotLeaseUpdateInterval.Seconds() <= 0 {
-		return fmt.Errorf("full snapshot lease update retry interval should be greater than zero")
 	}
 
 	if c.SnapshotLeaseRenewalEnabled {
