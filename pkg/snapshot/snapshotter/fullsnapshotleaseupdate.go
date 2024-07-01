@@ -15,9 +15,8 @@ import (
 
 // RenewFullSnapshotLeasePeriodically has a timer and will periodically call FullSnapshotCaseLeaseUpdate to renew the fullsnapshot lease until it is updated or stopped.
 // The timer starts upon snapshotter initialization and is reset after every full snapshot is taken.
-func (ssr *Snapshotter) RenewFullSnapshotLeasePeriodically(FullSnapshotLeaseStopCh chan struct{}) {
+func (ssr *Snapshotter) RenewFullSnapshotLeasePeriodically(FullSnapshotLeaseStopCh chan struct{}, fullSnapshotLeaseUpdateInterval time.Duration) {
 	logger := logrus.NewEntry(logrus.New()).WithField("actor", "FullSnapLeaseUpdater")
-	fullSnapshotLeaseUpdateInterval := ssr.HealthConfig.FullSnapshotLeaseUpdateInterval.Duration
 	ssr.FullSnapshotLeaseUpdateTimer = time.NewTimer(fullSnapshotLeaseUpdateInterval)
 	fullSnapshotLeaseUpdateCtx, fullSnapshotLeaseUpdateCancel := context.WithCancel(context.TODO())
 	defer func() {

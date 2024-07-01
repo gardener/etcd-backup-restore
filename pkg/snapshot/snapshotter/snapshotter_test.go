@@ -900,11 +900,12 @@ var _ = Describe("Snapshotter", func() {
 
 		Describe("Scenarios to update full snapshot lease", func() {
 			var (
-				ssr                     *Snapshotter
-				lease                   *v1.Lease
-				FullSnapshotLeaseStopCh chan struct{}
-				ctx                     context.Context
-				cancel                  context.CancelFunc
+				ssr                             *Snapshotter
+				lease                           *v1.Lease
+				FullSnapshotLeaseStopCh         chan struct{}
+				ctx                             context.Context
+				cancel                          context.CancelFunc
+				fullSnapshotLeaseUpdateInterval time.Duration
 			)
 			BeforeEach(func() {
 				snapstoreConfig = &brtypes.SnapstoreConfig{Container: path.Join(outputDir, "default.bkp")}
@@ -945,8 +946,8 @@ var _ = Describe("Snapshotter", func() {
 					err := ssr.K8sClientset.Create(ctx, lease)
 					Expect(err).ShouldNot(HaveOccurred())
 
-					ssr.HealthConfig.FullSnapshotLeaseUpdateInterval.Duration = 2 * time.Second
-					go ssr.RenewFullSnapshotLeasePeriodically(FullSnapshotLeaseStopCh)
+					fullSnapshotLeaseUpdateInterval = 2 * time.Second
+					go ssr.RenewFullSnapshotLeasePeriodically(FullSnapshotLeaseStopCh, fullSnapshotLeaseUpdateInterval)
 					time.Sleep(2 * time.Second)
 					close(FullSnapshotLeaseStopCh)
 
@@ -974,8 +975,8 @@ var _ = Describe("Snapshotter", func() {
 					err := ssr.K8sClientset.Create(ctx, lease)
 					Expect(err).ShouldNot(HaveOccurred())
 
-					ssr.HealthConfig.FullSnapshotLeaseUpdateInterval.Duration = time.Second
-					go ssr.RenewFullSnapshotLeasePeriodically(FullSnapshotLeaseStopCh)
+					fullSnapshotLeaseUpdateInterval = time.Second
+					go ssr.RenewFullSnapshotLeasePeriodically(FullSnapshotLeaseStopCh, fullSnapshotLeaseUpdateInterval)
 					time.Sleep(2 * time.Second)
 					close(FullSnapshotLeaseStopCh)
 
@@ -998,8 +999,8 @@ var _ = Describe("Snapshotter", func() {
 					}
 					prevFullSnap.GenerateSnapshotName()
 					ssr.PrevFullSnapshot = prevFullSnap
-					ssr.HealthConfig.FullSnapshotLeaseUpdateInterval.Duration = 3 * time.Second
-					go ssr.RenewFullSnapshotLeasePeriodically(FullSnapshotLeaseStopCh)
+					fullSnapshotLeaseUpdateInterval = 3 * time.Second
+					go ssr.RenewFullSnapshotLeasePeriodically(FullSnapshotLeaseStopCh, fullSnapshotLeaseUpdateInterval)
 					time.Sleep(time.Second)
 					err := ssr.K8sClientset.Create(ctx, lease)
 					Expect(err).ShouldNot(HaveOccurred())
