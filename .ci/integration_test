@@ -125,8 +125,11 @@ function create_etcd_data_directory() {
   mkdir -p ${ETCD_DATA_DIR}
 }
 
-function get_aws_existing_region() {
+function get_aws_existing_credentials() {
   export REGION=`cat ${HOME}/.aws/config | grep -e "^.*region.*$" | sed "s/^.*region[ ]*=[ ]*//"`
+  export AWS_DEFAULT_REGION=${REGION}
+  export AWS_ACCESS_KEY_ID=`cat ${HOME}/.aws/credentials | grep -e "^.*aws_access_key_id.*$" | sed "s/^.*aws_access_key_id[ ]*=[ ]*//"`
+  export AWS_SECRET_ACCESS_KEY=`cat ${HOME}/.aws/credentials | grep -e "^.*aws_secret_access_key.*$" | sed "s/^.*aws_secret_access_key[ ]*=[ ]*//"`
 }
 
 #############################
@@ -155,6 +158,9 @@ EOF
 }
 EOF
   export AWS_APPLICATION_CREDENTIALS_JSON="${credentials_file}"
+  export AWS_ACCESS_KEY_ID=$1
+  export AWS_SECRET_ACCESS_KEY=$2
+  export AWS_DEFAULT_REGION=$3 
 }
 
 function create_aws_secret() {
@@ -192,7 +198,7 @@ function setup-aws-infrastructure() {
   if [[ "${USE_EXISTING_AWS_SECRET}" == "1" ]]; then
     create_aws_secret
   else
-    get_aws_existing_region
+    get_aws_existing_credentials
   fi
   create_s3_bucket
   echo "AWS infrastructure setup completed."
@@ -256,7 +262,7 @@ function run_test_as_processes() {
   setup_test_cluster
 
   echo "Starting integration tests..."
-  cd test/e2e/integration
+  cd test/integration
 
   set +e
   ginkgo -r -mod=vendor
@@ -287,10 +293,10 @@ function run_test_on_cluster() {
     setup-aws-infrastructure
   fi
 
-  export ETCD_VERSION=${ETCD_VERSION:-"v3.4.13-bootstrap-1"}
+  export ETCD_VERSION=${ETCD_VERSION:-"v0.1.1"}
   echo "Etcd version: ${ETCD_VERSION}"
 
-  export ETCDBR_VERSION=${ETCDBR_VERSION:-${ETCDBR_VER:-"v0.12.1"}}
+  export ETCDBR_VERSION=${ETCDBR_VERSION:-${ETCDBR_VER:-"v0.29.0-dev"}}
   echo "Etcd-backup-restore version: ${ETCDBR_VERSION}"
 
   echo "Starting integration tests on k8s cluster."
@@ -298,7 +304,7 @@ function run_test_on_cluster() {
   set +e
 
   if [ -r "$INTEGRATION_TEST_KUBECONFIG" ]; then
-    KUBECONFIG=$INTEGRATION_TEST_KUBECONFIG STORAGE_CONTAINER=$TEST_ID ginkgo -v -timeout=15m -mod=vendor test/e2e/integrationcluster
+    KUBECONFIG=$INTEGRATION_TEST_KUBECONFIG STORAGE_CONTAINER=$TEST_ID PROVIDER=aws ginkgo -v -timeout=15m -mod=vendor test/integrationcluster
     TEST_RESULT=$?
     echo "Successfully completed all tests."
   else

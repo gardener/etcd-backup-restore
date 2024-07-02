@@ -10,7 +10,7 @@ metadata:
 spec:
   updateStrategy:
     type: RollingUpdate
-  serviceName: {{ .Release.Name }}-etcd-client
+  serviceName: {{ .Release.Name }}-etcd-peer
   replicas: 1
   selector:
     matchLabels:
@@ -27,12 +27,30 @@ spec:
         app.kubernetes.io/name: etcd
         app.kubernetes.io/instance: {{ .Release.Name }}
     spec:
+      initContainers:
+      - args: 
+        - chown -R 65532:65532 /var/etcd/data
+        command:
+        - sh
+        - -c
+        - --
+        name: change-permissions
+        image: europe-docker.pkg.dev/gardener-project/public/3rd/alpine:3.18.4
+        imagePullPolicy: IfNotPresent
+        volumeMounts:
+        - name: {{ .Release.Name }}-etcd
+          mountPath: /var/etcd/data/
+        securityContext:
+          runAsGroup: 0
+          runAsNonRoot: false
+          runAsUser: 0
       containers:
-      - name: etcd
+      - args: 
+        - start-etcd
+        - --backup-restore-host-port=localhost:{{ .Values.servicePorts.backupRestore }}
+        name: etcd
         image: {{ .Values.images.etcd.repository }}:{{ .Values.images.etcd.tag }}
         imagePullPolicy: {{ .Values.images.etcd.pullPolicy }}
-        command:
-        - /var/etcd/bin/bootstrap.sh
         readinessProbe:
           httpGet:
 {{- if .Values.backupRestoreTLS }}
@@ -40,28 +58,9 @@ spec:
 {{- end }}
             path: /healthz
             port: {{ .Values.servicePorts.backupRestore }}
-          initialDelaySeconds: 5
-          periodSeconds: 5
-        livenessProbe:
-          exec:
-            command:
-            - /bin/sh
-            - -ec
-            - ETCDCTL_API=3
-            - etcdctl
-{{ if .Values.etcdTLS }}
-            - --cert=/var/etcd/ssl/tls/tls.crt
-            - --key=/var/etcd/ssl/tls/tls.key
-            - --cacert=/var/etcd/ssl/ca/ca.crt
-{{ end }}
-            - --endpoints={{ if .Values.etcdTLS }}https{{ else }}http{{ end }}://{{ .Release.Name }}-etcd-0:{{ .Values.servicePorts.client }}
-{{- if and .Values.etcdAuth.username .Values.etcdAuth.password }}
-            - --user={{ .Values.etcdAuth.username }}:{{ .Values.etcdAuth.password }}
-{{- end }}
-            - get
-            - foo
           initialDelaySeconds: 15
           periodSeconds: 5
+          failureThreshold: 5
         ports:
         - containerPort: {{ .Values.servicePorts.server }}
           name: server
@@ -94,8 +93,7 @@ spec:
           mountPath: /var/etcdbr/ssl/ca
 {{- end }}
       - name: backup-restore
-        command:
-        - etcdbrctl
+        args:
         - server
         - --schedule={{ .Values.backup.schedule }}
 {{- if eq .Values.backup.garbageCollectionPolicy "LimitBased" }}
@@ -104,6 +102,7 @@ spec:
 {{- end }}
         - --garbage-collection-period={{ .Values.backup.garbageCollectionPeriod }}
         - --data-dir=/var/etcd/data/new.etcd
+        - --restoration-temp-snapshots-dir=/var/etcd/data/restoration.tmp
         - --storage-provider={{ .Values.backup.storageProvider }}
         - --store-prefix={{ .Release.Name }}-etcd
 {{- if .Values.backup.etcdQuotaBytes }}
@@ -162,6 +161,10 @@ spec:
         resources:
 {{ toYaml .Values.resources.backup | indent 10 }}
         env:
+        - name: "POD_NAME"
+          value: {{ .Release.Name }}-etcd-0
+        - name: "POD_NAMESPACE"
+          value: {{ .Release.Namespace }}
         - name: STORAGE_CONTAINER
           value: {{ .Values.backup.storageContainer }}
 {{- if eq .Values.backup.storageProvider "S3" }}
@@ -180,6 +183,16 @@ spec:
             secretKeyRef:
               name: {{ .Release.Name }}-etcd-backup
               key: "accessKeyID"
+        - name: "AWS_APPLICATION_CREDENTIALS"
+          value: "/var/etcd-backup"
+  {{- if .Values.backup.s3.endpoint }}
+        - name: "AWS_ENDPOINT_URL_S3"
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Release.Name }}-etcd-backup
+              key: "endpoint"
+              optional: true
+  {{- end }}
 {{- else if eq .Values.backup.storageProvider "ABS" }}
         - name: "STORAGE_ACCOUNT"
           valueFrom:
@@ -191,6 +204,8 @@ spec:
             secretKeyRef:
               name: {{ .Release.Name }}-etcd-backup
               key: "storageKey"
+        - name: "AZURE_APPLICATION_CREDENTIALS"
+          value: "/var/etcd-backup"
   {{- if .Values.backup.abs.emulatorEnabled }}
         - name: "AZURE_EMULATOR_ENABLED"
           valueFrom:
@@ -209,7 +224,7 @@ spec:
   {{- end }}
 {{- else if eq .Values.backup.storageProvider "GCS" }}
         - name: "GOOGLE_APPLICATION_CREDENTIALS"
-          value: "/root/.gcp/serviceaccount.json"
+          value: "/var/.gcp/serviceaccount.json"
   {{- if .Values.backup.gcs.storageAPIEndpoint }}
         - name: "GOOGLE_STORAGE_API_ENDPOINT"
           valueFrom:
@@ -325,8 +340,16 @@ spec:
 {{- end }}
 {{- if eq .Values.backup.storageProvider "GCS" }}
         - name: etcd-backup
-          mountPath: "/root/.gcp/"
+          mountPath: "/var/.gcp/"
+{{- else if ne .Values.backup.storageProvider "Local" }}
+        - name: etcd-backup
+          mountPath: "/var/etcd-backup/"
 {{- end }}
+      securityContext:
+        runAsGroup: 65532
+        runAsNonRoot: true
+        runAsUser: 65532
+      shareProcessNamespace: true
       volumes:
       - name: etcd-config-file
         configMap:
