@@ -531,12 +531,23 @@ func ReadConfigFileAsMap(path string) (map[string]interface{}, error) {
 
 // ParsePeerURL forms a PeerURL, given podName by parsing the initial-advertise-peer-urls
 func ParsePeerURL(initialAdvertisePeerURLs, podName string) (string, error) {
-	tokens := strings.Split(initialAdvertisePeerURLs, "@")
-	if len(tokens) < 4 {
-		return "", fmt.Errorf("invalid peer URL : %s", initialAdvertisePeerURLs)
+	tokens := strings.Split(initialAdvertisePeerURLs, "://")
+	if len(tokens) < 2 {
+		return "", fmt.Errorf("invalid URL format : %s", initialAdvertisePeerURLs)
 	}
-	domaiName := fmt.Sprintf("%s.%s.%s", tokens[1], tokens[2], "svc")
-	return fmt.Sprintf("%s://%s.%s:%s", tokens[0], podName, domaiName, tokens[3]), nil
+	protocol := tokens[0]
+	tokens = strings.Split(tokens[1], ".")
+	if len(tokens) < 2 {
+		return "", fmt.Errorf("invalid URL format : %s", initialAdvertisePeerURLs)
+	}
+	svcName := tokens[0]
+	tokens = strings.Split(tokens[1], ":")
+	if len(tokens) < 2 {
+		return "", fmt.Errorf("invalid URL format : %s", initialAdvertisePeerURLs)
+	}
+	namespace, peerPort := tokens[0], tokens[1]
+	domaiName := fmt.Sprintf("%s.%s.%s", svcName, namespace, "svc")
+	return fmt.Sprintf("%s://%s.%s:%s", protocol, podName, domaiName, peerPort), nil
 }
 
 // IsPeerURLTLSEnabled checks whether the peer address is TLS enabled or not.
