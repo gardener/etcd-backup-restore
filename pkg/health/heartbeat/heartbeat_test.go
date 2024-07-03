@@ -101,17 +101,26 @@ var _ = Describe("Heartbeat", func() {
 				Expect(os.Getenv("POD_NAME")).Should(Equal("test_pod"))
 				Expect(os.Getenv("POD_NAMESPACE")).Should(Equal("test_namespace"))
 
-				snap := &brtypes.Snapshot{
+				prevFullSnap := &brtypes.Snapshot{
+					Kind:          brtypes.SnapshotKindFull,
+					CreatedOn:     time.Now(),
+					StartRevision: 0,
+					LastRevision:  980,
+				}
+				prevFullSnap.GenerateSnapshotName()
+
+				latestFullSnap := &brtypes.Snapshot{
 					Kind:          brtypes.SnapshotKindFull,
 					CreatedOn:     time.Now(),
 					StartRevision: 0,
 					LastRevision:  989,
 				}
-				snap.GenerateSnapshotName()
+				latestFullSnap.GenerateSnapshotName()
 				err := k8sClientset.Create(context.TODO(), lease)
 				Expect(err).ShouldNot(HaveOccurred())
 
-				err = heartbeat.UpdateFullSnapshotLease(context.TODO(), logger, snap, k8sClientset, brtypes.DefaultFullSnapshotLeaseName)
+				// Update full snapshot lease with the first full snapshot
+				err = heartbeat.UpdateFullSnapshotLease(context.TODO(), logger, prevFullSnap, k8sClientset, brtypes.DefaultFullSnapshotLeaseName)
 				Expect(err).ShouldNot(HaveOccurred())
 
 				l := &v1.Lease{}
@@ -119,9 +128,18 @@ var _ = Describe("Heartbeat", func() {
 					Namespace: lease.Namespace,
 					Name:      lease.Name,
 				}, l)).To(Succeed())
+				Expect(l.Spec.HolderIdentity).To(PointTo(Equal("980")))
 
-				Expect(l.Spec.HolderIdentity).To(PointTo(Equal("989")))
+				// Trigger full snapshot lease update with latest full snapshot which is not the first full snapshot
+				err = heartbeat.UpdateFullSnapshotLease(context.TODO(), logger, latestFullSnap, k8sClientset, brtypes.DefaultFullSnapshotLeaseName)
 				Expect(err).ShouldNot(HaveOccurred())
+
+				l = &v1.Lease{}
+				Expect(k8sClientset.Get(context.TODO(), client.ObjectKey{
+					Namespace: lease.Namespace,
+					Name:      lease.Name,
+				}, l)).To(Succeed())
+				Expect(l.Spec.HolderIdentity).To(PointTo(Equal("989")))
 
 				err = k8sClientset.Delete(context.TODO(), l)
 				Expect(err).ShouldNot(HaveOccurred())
@@ -132,7 +150,7 @@ var _ = Describe("Heartbeat", func() {
 
 				Expect(k8sClientset.Create(context.TODO(), lease)).To(Succeed())
 
-				err = heartbeat.UpdateFullSnapshotLease(context.TODO(), logger, nil, k8sClientset, brtypes.DefaultFullSnapshotLeaseName)
+				err := heartbeat.UpdateFullSnapshotLease(context.TODO(), logger, nil, k8sClientset, brtypes.DefaultFullSnapshotLeaseName)
 				Expect(err).Should(HaveOccurred())
 
 				err = k8sClientset.Delete(context.TODO(), lease)
