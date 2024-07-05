@@ -25,11 +25,13 @@ import (
 const (
 	// DefaultSnapshotLeaseRenewalEnabled is a default value for enabling the snapshot lease renewal feature
 	DefaultSnapshotLeaseRenewalEnabled = false
+	// FullSnapshotLeaseUpdateInterval is the interval for updating full snapshot lease
+	FullSnapshotLeaseUpdateInterval = 1 * time.Minute
 	// DefaultMemberLeaseRenewalEnabled is a default value for enabling the member lease renewal feature
 	DefaultMemberLeaseRenewalEnabled = false
 	// DefaultEtcdMemberGCEnabled is a default value for enabling the etcd member garbage collection feature
 	DefaultEtcdMemberGCEnabled = false
-	// DefaultFullSnapshotLeaseName is the name for the delta snapshot lease.
+	// DefaultFullSnapshotLeaseName is the name for the full snapshot lease.
 	DefaultFullSnapshotLeaseName = "full-snapshot-revisions"
 	// DefaultDeltaSnapshotLeaseName is the name for the delta snapshot lease.
 	DefaultDeltaSnapshotLeaseName = "delta-snapshot-revisions"
@@ -81,12 +83,10 @@ func (c *HealthConfig) AddFlags(fs *flag.FlagSet) {
 func (c *HealthConfig) Validate() error {
 	if c.HeartbeatDuration.Seconds() <= 0 {
 		return fmt.Errorf("heartbeat period should be greater than zero")
-
 	}
 
 	if c.MemberGCDuration.Seconds() <= 0 {
 		return fmt.Errorf("etcd member garbage collection period should be greater than zero")
-
 	}
 
 	if c.SnapshotLeaseRenewalEnabled {
