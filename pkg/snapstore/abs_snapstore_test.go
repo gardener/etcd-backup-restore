@@ -11,32 +11,29 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/Azure/azure-pipeline-go/pipeline"
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
+	azcontainer "github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/container"
 	"github.com/Azure/azure-storage-blob-go/azblob"
-	. "github.com/onsi/gomega"
-
 	. "github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 )
 
 func newFakeABSSnapstore() brtypes.SnapStore {
-	f := []pipeline.Factory{
-		pipeline.MethodFactoryMarker(),
-		newFakePolicyFactory(bucket, prefixV2, objectMap),
-	}
-	p := pipeline.NewPipeline(f, pipeline.Options{HTTPSender: newFakePolicyFactory(bucket, prefixV2, objectMap)})
-	u, err := url.Parse(fmt.Sprintf("https://%s.%s", "dummyaccount", brtypes.AzureBlobStorageHostName))
-	Expect(err).ShouldNot(HaveOccurred())
-	serviceURL := azblob.NewServiceURL(*u, p)
-	containerURL := serviceURL.NewContainerURL(bucket)
-	a, err := GetABSSnapstoreFromClient(bucket, prefixV2, "/tmp", 5, brtypes.MinChunkSize, &containerURL)
-	Expect(err).ShouldNot(HaveOccurred())
+	// TODO: @renormalize new stuff
+	accountName, accountKey := "dummyaccount", "dummykey"
+	sharedKeyCredential, _ := azcontainer.NewSharedKeyCredential(accountName, accountKey)
+	blobEndpoint, _ := ConstructABSURI(sharedKeyCredential.AccountName())
+	newClient, _ := azcontainer.NewClientWithSharedKeyCredential(blobEndpoint, sharedKeyCredential, &azcontainer.ClientOptions{ClientOptions: azcore.ClientOptions{Retry: policy.RetryOptions{TryTimeout: time.Hour}}})
+
+	a := NewABSSnapStoreFromClient(bucket, prefixV2, "/tmp", 5, brtypes.MinChunkSize, newClient)
 	return a
 }
 
