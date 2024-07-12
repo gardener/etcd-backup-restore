@@ -7,283 +7,126 @@ package snapstore_test
 import (
 	"bytes"
 	"context"
-	"encoding/xml"
 	"fmt"
 	"io"
-	"net/http"
-	"sort"
-	"strconv"
 	"strings"
 	"sync"
-	"time"
 
-	"github.com/Azure/azure-pipeline-go/pipeline"
-	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
-	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
+	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blob"
+	azblob "github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blob"
+	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blockblob"
+	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/container"
 	azcontainer "github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/container"
-	"github.com/Azure/azure-storage-blob-go/azblob"
-	. "github.com/gardener/etcd-backup-restore/pkg/snapstore"
-	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
+	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 )
 
-func newFakeABSSnapstore() brtypes.SnapStore {
-	// TODO: @renormalize new stuff
-	accountName, accountKey := "dummyaccount", "dummykey"
-	sharedKeyCredential, _ := azcontainer.NewSharedKeyCredential(accountName, accountKey)
-	blobEndpoint, _ := ConstructABSURI(sharedKeyCredential.AccountName())
-	newClient, _ := azcontainer.NewClientWithSharedKeyCredential(blobEndpoint, sharedKeyCredential, &azcontainer.ClientOptions{ClientOptions: azcore.ClientOptions{Retry: policy.RetryOptions{TryTimeout: time.Hour}}})
-
-	a := NewABSSnapStoreFromClient(bucket, prefixV2, "/tmp", 5, brtypes.MinChunkSize, newClient)
-	return a
+type fakeABSContainerClient struct {
+	objects map[string]*[]byte
+	prefix  string
+	// a map of blobClients so new clients created to a particular blob refer to the same blob
+	blobClients map[string]*fakeBlockBlobClient
 }
 
-// Please follow the link https://github.com/Azure/azure-pipeline-go/blob/master/pipeline/policies_test.go
-// for details about details of azure policy, policy factory and pipeline
-
-// newFakePolicyFactory creates a 'Fake' policy factory.
-func newFakePolicyFactory(bucket, prefix string, objectMap map[string]*[]byte) pipeline.Factory {
-	return &fakePolicyFactory{bucket, prefix, objectMap}
-}
-
-type fakePolicyFactory struct {
-	bucket    string
-	prefix    string
-	objectMap map[string]*[]byte
-}
-
-// New initializes a Fake policy object.
-func (f *fakePolicyFactory) New(next pipeline.Policy, po *pipeline.PolicyOptions) pipeline.Policy {
-	return &fakePolicy{
-		next:             next,
-		po:               po,
-		bucket:           f.bucket,
-		prefix:           f.prefix,
-		objectMap:        f.objectMap,
-		multiPartUploads: make(map[string]map[string][]byte, 0),
-	}
-}
-
-type fakePolicy struct {
-	next                  pipeline.Policy
-	po                    *pipeline.PolicyOptions
-	bucket                string
-	prefix                string
-	objectMap             map[string]*[]byte
-	multiPartUploads      map[string]map[string][]byte
-	multiPartUploadsMutex sync.Mutex
-}
-
-// Do method is called on pipeline to process the request. This will internally call the `Do` method
-// on next policies in pipeline and return the response from it.
-func (p *fakePolicy) Do(ctx context.Context, request pipeline.Request) (response pipeline.Response, err error) {
-	httpReq, err := http.NewRequest(request.Method, request.URL.String(), request.Body)
-	if err != nil {
-		return nil, err
-	}
-	httpReq.ContentLength = request.ContentLength
-
-	httpResp := &http.Response{
-		Request: httpReq,
-	}
-	switch request.Method {
-	case "GET":
-		object := parseObjectNamefromURL(request.URL)
-		if len(object) == 0 {
-			if err := p.handleContainerGetOperation(httpResp); err != nil {
-				return nil, err
-			}
-		} else {
-			p.handleBlobGetOperation(httpResp)
-		}
-	case "PUT":
-		p.handleBlobPutOperation(httpResp)
-	case "DELETE":
-		p.handleDeleteObject(httpResp)
-	default:
-		return nil, err
-	}
-
-	return pipeline.NewHTTPResponse(httpResp), nil
-}
-
-// handleContainerGetOperation prepares response for Get operation on container.
-func (p *fakePolicy) handleContainerGetOperation(w *http.Response) error {
-	query := w.Request.URL.Query()
-	comp := query.Get("comp")
-	switch comp {
-	case "":
-		w.StatusCode = http.StatusOK
-		w.Body = http.NoBody
-		return nil
-	case "list":
-		return p.handleListObjects(w)
-	default:
-		return nil
-	}
-}
-
-// handleListObjectNames responds with a blob `List` response.
-func (p *fakePolicy) handleListObjects(w *http.Response) error {
-	var (
-		keys          []string
-		blobs         []blobItem
-		query         = w.Request.URL.Query()
-		prefix        = query.Get("prefix")
-		marker        = query.Get("marker")
-		maxResultsStr = query.Get("maxresults")
-		limit         = 1 //Actually for azure its 5000
-		nextMaker     string
-	)
-	if len(maxResultsStr) != 0 {
-		maxResult, err := strconv.Atoi(maxResultsStr)
-		if err != nil {
-			return err
-		}
-		limit = maxResult
-	}
-
-	for k := range p.objectMap {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	for _, key := range keys {
-		if strings.Compare(key, marker) > 0 {
-			blob := blobItem{
-				Name: key,
-			}
-			blobs = append(blobs, blob)
-			if len(blobs) == limit {
-				nextMaker = key
-				break
-			}
+// NewListBlobsFlatPager will directly return a usable instance of *runtime.Pager[azcontainer.ListBlobsFlatResponse]. Returns one page per snapshot.
+func (c *fakeABSContainerClient) NewListBlobsFlatPager(o *azcontainer.ListBlobsFlatOptions) *runtime.Pager[azcontainer.ListBlobsFlatResponse] {
+	names := []string{}
+	// Prefix has to be respected in the mock
+	for name := range c.objects {
+		if strings.HasPrefix(name, *o.Prefix) {
+			names = append(names, name)
 		}
 	}
 
-	listBlobsFlatSegmentResponse := listBlobsFlatSegmentResponse{
-		ServiceEndpoint: fmt.Sprintf("%s://%s", w.Request.URL.Scheme, w.Request.URL.Host),
-		ContainerName:   w.Request.URL.EscapedPath(),
-		Prefix:          prefix,
-		Marker:          marker,
-		Segment: blobFlatListSegment{
-			BlobItems: blobs,
+	// keeps count of which page was last returned
+	index, count := 0, len(names)
+
+	return runtime.NewPager(runtime.PagingHandler[azcontainer.ListBlobsFlatResponse]{
+		More: func(_ container.ListBlobsFlatResponse) bool {
+			if index < count {
+				return true
+			}
+			return false
 		},
-		MaxResults: int32(limit),
-		NextMarker: nextMaker,
+		// Return one page for each blob
+		Fetcher: func(_ context.Context, page *container.ListBlobsFlatResponse) (container.ListBlobsFlatResponse, error) {
+			blobItems := []*container.BlobItem{{Name: &names[index]}}
+			index++
+			return container.ListBlobsFlatResponse{
+				ListBlobsFlatSegmentResponse: container.ListBlobsFlatSegmentResponse{
+					Segment: &container.BlobFlatListSegment{
+						BlobItems: blobItems,
+					},
+				},
+			}, nil
+		},
+	})
+}
+
+// NewBlockBlobClient will return a mocked instance of block blob client
+func (c *fakeABSContainerClient) NewBlockBlobClient(blobName string) snapstore.AzureBlockBlobClienter {
+	// The source of truth is the object map, an (older) instance of a client might exist for an object that has been deleted
+	if _, ok := c.objects[blobName]; ok {
+		// Check if a client was made previously (it might have contents staged)
+		if _, ok := c.blobClients[blobName]; ok {
+			return c.blobClients[blobName]
+		}
 	}
 
-	rawXML, err := xml.MarshalIndent(listBlobsFlatSegmentResponse, "", "")
+	// New client if a client was not made before, or if it the snapshot does not exist
+	c.blobClients[blobName] = &fakeBlockBlobClient{name: blobName, objects: c.objects}
+	return c.blobClients[blobName]
+}
+
+type fakeBlockBlobClient struct {
+	name    string
+	objects map[string]*[]byte
+	staging []byte
+	mutex   sync.Mutex
+}
+
+// DownloadStream returns the only field that is accessed from the response, which is the io.ReaderCloser to the data
+func (c *fakeBlockBlobClient) DownloadStream(ctx context.Context, o *azblob.DownloadStreamOptions) (azblob.DownloadStreamResponse, error) {
+	if _, ok := c.objects[c.name]; !ok {
+		return azblob.DownloadStreamResponse{}, fmt.Errorf("the blob does not exist")
+	}
+
+	return azblob.DownloadStreamResponse{
+		DownloadResponse: blob.DownloadResponse{
+			Body: io.NopCloser(bytes.NewReader(*c.objects[c.name])),
+		},
+	}, nil
+}
+
+// Delete deletes the blobs from the objectMap
+func (c *fakeBlockBlobClient) Delete(ctx context.Context, o *azblob.DeleteOptions) (azblob.DeleteResponse, error) {
+	if _, ok := c.objects[c.name]; ok {
+		delete(c.objects, c.name)
+	} else {
+		return azblob.DeleteResponse{}, fmt.Errorf("object with name %s not found", c.name)
+	}
+
+	return azblob.DeleteResponse{}, nil
+}
+
+// CommitBlockList "commits" the blocks in the "staging" area
+func (c *fakeBlockBlobClient) CommitBlockList(ctx context.Context, base64BlockIDs []string, options *blockblob.CommitBlockListOptions) (blockblob.CommitBlockListResponse, error) {
+	c.objects[c.name] = &c.staging
+	c.staging = []byte{}
+	return blockblob.CommitBlockListResponse{}, nil
+}
+
+// StageBlock "uploads" to the "staging" area for the blobs
+func (c *fakeBlockBlobClient) StageBlock(ctx context.Context, base64BlockID string, body io.ReadSeekCloser, options *blockblob.StageBlockOptions) (blockblob.StageBlockResponse, error) {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+	contents := bytes.NewBuffer([]byte{})
+	_, err := io.Copy(contents, body)
 	if err != nil {
-		return err
+		return blockblob.StageBlockResponse{}, fmt.Errorf("error while staging the block: %w", err)
 	}
-
-	w.Body = io.NopCloser(strings.NewReader(xml.Header + string(rawXML)))
-	w.StatusCode = http.StatusOK
-	return nil
-}
-
-// handleBlobCreateOperation responds with a blob `Put` response.
-func (p *fakePolicy) handleBlobPutOperation(w *http.Response) {
-	var (
-		query   = w.Request.URL.Query()
-		comp    = query.Get("comp")
-		blockid = query.Get("blockid")
-		key     = parseObjectNamefromURL(w.Request.URL)
-	)
-
-	switch comp {
-	case "block":
-		content := make([]byte, w.Request.ContentLength)
-		if _, err := w.Request.Body.Read(content); err != nil {
-			w.StatusCode = http.StatusBadRequest
-			w.Body = io.NopCloser(strings.NewReader(fmt.Sprintf("failed to read content %v", err)))
-			return
-		}
-
-		p.multiPartUploadsMutex.Lock()
-		blockList, ok := p.multiPartUploads[key]
-		if !ok {
-			blockList = make(map[string][]byte, 0)
-		}
-		blockList[blockid] = content
-		p.multiPartUploads[key] = blockList
-		p.multiPartUploadsMutex.Unlock()
-		w.StatusCode = http.StatusCreated
-
-	case "blocklist":
-		content := make([]byte, w.Request.ContentLength)
-		if _, err := w.Request.Body.Read(content); err != nil {
-			w.StatusCode = http.StatusBadRequest
-			w.Body = io.NopCloser(strings.NewReader(fmt.Sprintf("failed to read content %v", err)))
-			return
-		}
-		blockLookupXML := strings.TrimPrefix(string(content), xml.Header)
-		var blockLookupList azblob.BlockLookupList
-		if err := xml.Unmarshal([]byte(blockLookupXML), &blockLookupList); err != nil {
-			w.StatusCode = http.StatusBadRequest
-			w.Body = io.NopCloser(strings.NewReader(fmt.Sprintf("failed to parse body %v", err)))
-			return
-		}
-		blockContentMap := p.multiPartUploads[key]
-		content = make([]byte, 0)
-		for _, blockID := range blockLookupList.Latest {
-			content = append(content, blockContentMap[blockID]...)
-		}
-		p.objectMap[key] = &content
-		w.StatusCode = http.StatusCreated
-	}
-	w.Body = http.NoBody
-}
-
-// handleBlobGetOperation on GET request `/testContainer/testObject` responds with a `Get` response.
-func (p *fakePolicy) handleBlobGetOperation(w *http.Response) {
-	key := parseObjectNamefromURL(w.Request.URL)
-	if _, ok := p.objectMap[key]; ok {
-		w.StatusCode = http.StatusOK
-		w.Body = io.NopCloser(bytes.NewReader(*p.objectMap[key]))
-	} else {
-		w.StatusCode = http.StatusNotFound
-		w.Body = http.NoBody
-	}
-}
-
-// handleDeleteObject on delete request `/testContainer/testObject` responds with a `Delete` response.
-func (p *fakePolicy) handleDeleteObject(w *http.Response) {
-	key := parseObjectNamefromURL(w.Request.URL)
-	if _, ok := p.objectMap[key]; ok {
-		delete(p.objectMap, key)
-		w.StatusCode = http.StatusAccepted
-	} else {
-		w.StatusCode = http.StatusNotFound
-	}
-	w.Body = http.NoBody
-}
-
-/////////////////////////////////////////////
-// Truncated azblob types for XML encoding //
-/////////////////////////////////////////////
-
-type blobItem struct {
-	// XMLName is used for marshalling and is subject to removal in a future release.
-	XMLName    xml.Name              `xml:"Blob"`
-	Name       string                `xml:"Name"`
-	Properties azblob.BlobProperties `xml:"Properties"`
-}
-
-// listBlobsFlatSegmentResponse - An enumeration of blobs
-type listBlobsFlatSegmentResponse struct {
-	XMLName         xml.Name            `xml:"EnumerationResults"`
-	ServiceEndpoint string              `xml:"ServiceEndpoint,attr"`
-	ContainerName   string              `xml:"ContainerName,attr"`
-	Prefix          string              `xml:"Prefix"`
-	Marker          string              `xml:"Marker"`
-	MaxResults      int32               `xml:"MaxResults"`
-	Segment         blobFlatListSegment `xml:"Blobs"`
-	NextMarker      string              `xml:"NextMarker"`
-}
-
-// blobFlatListSegment ...
-type blobFlatListSegment struct {
-	// XMLName is used for marshalling and is subject to removal in a future release.
-	XMLName   xml.Name   `xml:"Blobs"`
-	BlobItems []blobItem `xml:"Blob"`
+	defer body.Close()
+	// TODO: @renormalize the blockID should be used to sort the order of the bytes
+	c.staging = append(c.staging, contents.Bytes()...)
+	return blockblob.StageBlockResponse{}, nil
 }

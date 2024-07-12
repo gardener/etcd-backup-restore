@@ -10,7 +10,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"net/url"
 	"os"
 	"path"
 	"path/filepath"
@@ -22,9 +21,11 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
+	azblob "github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blob"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/bloberror"
+	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blockblob"
 	azcontainer "github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/container"
-	azblobold "github.com/Azure/azure-storage-blob-go/azblob"
 	"github.com/sirupsen/logrus"
 
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
@@ -37,11 +38,32 @@ const (
 	AzuriteEndpoint = "AZURE_STORAGE_API_ENDPOINT"
 )
 
+type AzureBlockBlobClienter interface {
+	DownloadStream(ctx context.Context, o *azblob.DownloadStreamOptions) (azblob.DownloadStreamResponse, error)
+	Delete(ctx context.Context, o *azblob.DeleteOptions) (azblob.DeleteResponse, error)
+	CommitBlockList(ctx context.Context, base64BlockIDs []string, options *blockblob.CommitBlockListOptions) (blockblob.CommitBlockListResponse, error)
+	StageBlock(ctx context.Context, base64BlockID string, body io.ReadSeekCloser, options *blockblob.StageBlockOptions) (blockblob.StageBlockResponse, error)
+}
+
+// azureContainerClienter defines the methods required for container operations and enables using fakes
+type azureContainerClienter interface {
+	NewListBlobsFlatPager(o *azcontainer.ListBlobsFlatOptions) *runtime.Pager[azcontainer.ListBlobsFlatResponse]
+	NewBlockBlobClient(blobName string) AzureBlockBlobClienter
+}
+
+type AzureContainerClient struct {
+	*azcontainer.Client
+}
+
+func (a *AzureContainerClient) NewBlockBlobClient(blobName string) AzureBlockBlobClienter {
+	return a.Client.NewBlockBlobClient(blobName)
+}
+
 // ABSSnapStore is an ABS backed snapstore.
 type ABSSnapStore struct {
-	// TODO: @renormalize replace the client struct with an interface so it can be mocked
-	client *azcontainer.Client
-	prefix string
+	container string
+	client    azureContainerClienter
+	prefix    string
 	// maxParallelChunkUploads hold the maximum number of parallel chunk uploads allowed.
 	maxParallelChunkUploads uint
 	minChunkSize            int64
@@ -94,7 +116,7 @@ func NewABSSnapStore(config *brtypes.SnapstoreConfig) (*ABSSnapStore, error) {
 		return nil, fmt.Errorf("failed to get properties of the container %v with error: %w", config.Container, err)
 	}
 
-	return NewABSSnapStoreFromClient(config.Container, config.Prefix, config.TempDir, config.MaxParallelChunkUploads, config.MinChunkSize, client), nil
+	return NewABSSnapStoreFromClient(config.Container, config.Prefix, config.TempDir, config.MaxParallelChunkUploads, config.MinChunkSize, &AzureContainerClient{client}), nil
 }
 
 // ConstructBlobServiceURL constructs the Blob Service URL based on the activation status of the Azurite Emulator.
@@ -102,30 +124,6 @@ func NewABSSnapStore(config *brtypes.SnapstoreConfig) (*ABSSnapStore, error) {
 // The function expects two environment variables:
 // - AZURE_EMULATOR_ENABLED: Indicates whether the Azurite Emulator is enabled (expects "true" or "false").
 // - AZURE_STORAGE_API_ENDPOINT: Specifies the Azurite Emulator endpoint when the emulator is enabled.
-func ConstructBlobServiceURL(credentials *azblobold.SharedKeyCredential) (*url.URL, error) {
-	defaultURL, err := url.Parse(fmt.Sprintf("https://%s.%s", credentials.AccountName(), brtypes.AzureBlobStorageHostName))
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse default service URL: %w", err)
-	}
-	emulatorEnabled, ok := os.LookupEnv(EnvAzureEmulatorEnabled)
-	if !ok {
-		return defaultURL, nil
-	}
-	isEmulator, err := strconv.ParseBool(emulatorEnabled)
-	if err != nil {
-		return nil, fmt.Errorf("invalid value for %s: %s, error: %w", EnvAzureEmulatorEnabled, emulatorEnabled, err)
-	}
-	if !isEmulator {
-		return defaultURL, nil
-	}
-	endpoint, ok := os.LookupEnv(AzuriteEndpoint)
-	if !ok {
-		return nil, fmt.Errorf("%s environment variable not set while %s is true", AzuriteEndpoint, EnvAzureEmulatorEnabled)
-	}
-	// Application protocol (http or https) is determined by the user of the Azurite, not by this function.
-	return url.Parse(fmt.Sprintf("%s/%s", endpoint, credentials.AccountName()))
-}
-
 func ConstructABSURI(accountName string) (string, error) {
 	defaultURL := fmt.Sprintf("https://%s.%s", accountName, brtypes.AzureBlobStorageHostName)
 
@@ -238,8 +236,9 @@ func readABSCredentialFiles(dirname string) (*absCredentials, error) {
 }
 
 // NewABSSnapStoreFromClient returns a new ABS object for a given container using the supplied storageClient
-func NewABSSnapStoreFromClient(container, prefix, tempDir string, maxParallelChunkUploads uint, minChunkSize int64, client *azcontainer.Client) *ABSSnapStore {
+func NewABSSnapStoreFromClient(container, prefix, tempDir string, maxParallelChunkUploads uint, minChunkSize int64, client azureContainerClienter) *ABSSnapStore {
 	return &ABSSnapStore{
+		container,
 		client,
 		prefix,
 		maxParallelChunkUploads,
@@ -252,7 +251,7 @@ func NewABSSnapStoreFromClient(container, prefix, tempDir string, maxParallelChu
 func (a *ABSSnapStore) Fetch(snap brtypes.Snapshot) (io.ReadCloser, error) {
 	blobName := path.Join(snap.Prefix, snap.SnapDir, snap.SnapName)
 
-	blobClient := a.client.NewBlobClient(blobName)
+	blobClient := a.client.NewBlockBlobClient(blobName)
 
 	streamResp, err := blobClient.DownloadStream(context.Background(), nil)
 	if err != nil {
@@ -420,7 +419,7 @@ func (a *ABSSnapStore) blockUploader(wg *sync.WaitGroup, stopCh <-chan struct{},
 // Delete should delete the snapshot file from store
 func (a *ABSSnapStore) Delete(snap brtypes.Snapshot) error {
 	blobName := path.Join(snap.Prefix, snap.SnapDir, snap.SnapName)
-	blobClient := a.client.NewBlobClient(blobName)
+	blobClient := a.client.NewBlockBlobClient(blobName)
 	// Delete options can be mentioned once support for immutability is added
 	if _, err := blobClient.Delete(context.Background(), nil); err != nil {
 		return fmt.Errorf("failed to delete blob %s with error: %w", blobName, err)
