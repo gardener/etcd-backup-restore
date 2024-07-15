@@ -340,7 +340,7 @@ func (b *BackupRestoreServer) runServer(ctx context.Context, restoreOpts *brtype
 
 // runEtcdProbeLoopWithSnapshotter runs the etcd probe loop
 // for the case when backup-restore becomes leading sidecar.
-func (b *BackupRestoreServer) runEtcdProbeLoopWithSnapshotter(ctx context.Context, handler *HTTPHandler, ssr *snapshotter.Snapshotter, ss brtypes.SnapStore, ssrStopCh chan struct{}, ackCh chan struct{}) {
+func (b *BackupRestoreServer) runEtcdProbeLoopWithSnapshotter(ctx context.Context, handler *HTTPHandler, ssr *snapshotter.Snapshotter, ss brtypes.SnapStore, ssrStopCh <-chan struct{}, ackCh chan<- struct{}) {
 	var (
 		err                       error
 		initialDeltaSnapshotTaken bool
@@ -523,7 +523,7 @@ func handleAckState(handler *HTTPHandler, ackCh chan struct{}) {
 }
 
 // handleSsrStopRequest responds to handlers request and stop interrupt.
-func handleSsrStopRequest(ctx context.Context, handler *HTTPHandler, ssr *snapshotter.Snapshotter, ackCh, ssrStopCh chan struct{}, logger *logrus.Entry) {
+func handleSsrStopRequest(ctx context.Context, handler *HTTPHandler, ssr *snapshotter.Snapshotter, ackCh chan<- struct{}, ssrStopCh chan<- struct{}, logger *logrus.Entry) {
 	logger.Info("Starting the handleSsrStopRequest handler...")
 	for {
 		var ok bool
@@ -533,15 +533,9 @@ func handleSsrStopRequest(ctx context.Context, handler *HTTPHandler, ssr *snapsh
 			logger.Infof("handleSsrStopRequest: %v", ctx.Err())
 		}
 
-		ssr.SsrStateMutex.Lock()
-		if ssr.SsrState == brtypes.SnapshotterActive {
-			ssr.SsrStateMutex.Unlock()
-			ssrStopCh <- emptyStruct
-		} else {
-			ssr.SsrState = brtypes.SnapshotterInactive
-			ssr.SsrStateMutex.Unlock()
-			ackCh <- emptyStruct
-		}
+		ackCh <- emptyStruct
+		close(ssrStopCh)
+
 		if !ok {
 			logger.Info("Stopping handleSsrStopRequest handler...")
 			return
