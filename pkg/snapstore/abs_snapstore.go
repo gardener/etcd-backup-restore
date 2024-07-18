@@ -38,31 +38,34 @@ const (
 	AzuriteEndpoint = "AZURE_STORAGE_API_ENDPOINT"
 )
 
-type AzureBlockBlobClienter interface {
+// AzureBlockBlobClientI defines the methods that are invoked from the Azure Block Blob API.
+type AzureBlockBlobClientI interface {
 	DownloadStream(ctx context.Context, o *azblob.DownloadStreamOptions) (azblob.DownloadStreamResponse, error)
 	Delete(ctx context.Context, o *azblob.DeleteOptions) (azblob.DeleteResponse, error)
 	CommitBlockList(ctx context.Context, base64BlockIDs []string, options *blockblob.CommitBlockListOptions) (blockblob.CommitBlockListResponse, error)
 	StageBlock(ctx context.Context, base64BlockID string, body io.ReadSeekCloser, options *blockblob.StageBlockOptions) (blockblob.StageBlockResponse, error)
 }
 
-// azureContainerClienter defines the methods required for container operations and enables using fakes
-type azureContainerClienter interface {
+// azureContainerClientI defines the methods required for container operations.
+type azureContainerClientI interface {
 	NewListBlobsFlatPager(o *azcontainer.ListBlobsFlatOptions) *runtime.Pager[azcontainer.ListBlobsFlatResponse]
-	NewBlockBlobClient(blobName string) AzureBlockBlobClienter
+	NewBlockBlobClient(blobName string) AzureBlockBlobClientI
 }
 
+// AzureContainerClient embedes a *azcontainer.Client (its methods are overridden in tests).
 type AzureContainerClient struct {
 	*azcontainer.Client
 }
 
-func (a *AzureContainerClient) NewBlockBlobClient(blobName string) AzureBlockBlobClienter {
+// NewBlockBlobClient simply returns the BlockBlobClient that the embeded *azcontainer.Client returns.
+func (a *AzureContainerClient) NewBlockBlobClient(blobName string) AzureBlockBlobClientI {
 	return a.Client.NewBlockBlobClient(blobName)
 }
 
 // ABSSnapStore is an ABS backed snapstore.
 type ABSSnapStore struct {
 	container string
-	client    azureContainerClienter
+	client    azureContainerClientI
 	prefix    string
 	// maxParallelChunkUploads hold the maximum number of parallel chunk uploads allowed.
 	maxParallelChunkUploads uint
@@ -119,7 +122,7 @@ func NewABSSnapStore(config *brtypes.SnapstoreConfig) (*ABSSnapStore, error) {
 	return NewABSSnapStoreFromClient(config.Container, config.Prefix, config.TempDir, config.MaxParallelChunkUploads, config.MinChunkSize, &AzureContainerClient{client}), nil
 }
 
-// ConstructBlobServiceURL constructs the Blob Service URL based on the activation status of the Azurite Emulator.
+// ConstructABSURI constructs the Blob Service URL based on the activation status of the Azurite Emulator.
 // It checks the environment variables for emulator configuration and constructs the URL accordingly.
 // The function expects two environment variables:
 // - AZURE_EMULATOR_ENABLED: Indicates whether the Azurite Emulator is enabled (expects "true" or "false").
@@ -236,7 +239,7 @@ func readABSCredentialFiles(dirname string) (*absCredentials, error) {
 }
 
 // NewABSSnapStoreFromClient returns a new ABS object for a given container using the supplied storageClient
-func NewABSSnapStoreFromClient(container, prefix, tempDir string, maxParallelChunkUploads uint, minChunkSize int64, client azureContainerClienter) *ABSSnapStore {
+func NewABSSnapStoreFromClient(container, prefix, tempDir string, maxParallelChunkUploads uint, minChunkSize int64, client azureContainerClientI) *ABSSnapStore {
 	return &ABSSnapStore{
 		container,
 		client,
@@ -479,10 +482,12 @@ type nopCloser struct {
 	io.ReadSeeker
 }
 
+// Close is a no-op for the nopCloser
 func (n nopCloser) Close() error {
 	return nil
 }
 
+// NopCloser returns a io.ReadSeekCloser from a io.ReadSeeker where the Close() is a no-op.
 func NopCloser(rs io.ReadSeeker) io.ReadSeekCloser {
 	return nopCloser{rs}
 }
