@@ -5,9 +5,6 @@ go 1.20
 require (
 	cloud.google.com/go v0.97.0
 	cloud.google.com/go/storage v1.10.0
-	github.com/Azure/azure-pipeline-go v0.2.2
-	github.com/Azure/azure-storage-blob-go v0.8.0
-	github.com/Azure/go-autorest/autorest v0.10.1 // indirect
 	github.com/aliyun/aliyun-oss-go-sdk v2.1.8+incompatible
 	github.com/aws/aws-sdk-go v1.32.6
 	github.com/baiyubin/aliyun-sts-go-sdk v0.0.0-20180326062324-cfa1a18b161f // indirect
@@ -21,7 +18,6 @@ require (
 	github.com/grpc-ecosystem/go-grpc-middleware v1.3.0 // indirect
 	github.com/grpc-ecosystem/grpc-gateway v1.16.0 // indirect
 	github.com/huandu/xstrings v1.3.2 // indirect
-	github.com/mattn/go-ieproxy v0.0.0-20190805055040-f9202b1cfdeb // indirect
 	github.com/mitchellh/reflectwalk v1.0.1 // indirect
 	github.com/onsi/ginkgo/v2 v2.11.0
 	github.com/onsi/gomega v1.27.8
@@ -46,10 +42,12 @@ require (
 )
 
 require (
-	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.11.1 // indirect
+	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.11.1
+	github.com/Azure/azure-sdk-for-go/sdk/storage/azblob v1.3.2
+)
+
+require (
 	github.com/Azure/azure-sdk-for-go/sdk/internal v1.5.2 // indirect
-	github.com/Azure/azure-sdk-for-go/sdk/storage/azblob v1.3.2 // indirect
-	github.com/Azure/go-autorest/autorest/adal v0.8.2 // indirect
 	github.com/BurntSushi/toml v0.3.1 // indirect
 	github.com/Masterminds/goutils v1.1.0 // indirect
 	github.com/Masterminds/semver v1.5.0 // indirect
@@ -102,7 +100,6 @@ require (
 	github.com/prometheus/procfs v0.8.0 // indirect
 	github.com/satori/go.uuid v1.2.0 // indirect
 	github.com/soheilhy/cmux v0.1.5 // indirect
-	github.com/stretchr/testify v1.8.4 // indirect
 	github.com/tmc/grpc-websocket-proxy v0.0.0-20201229170055-e5319fda7802 // indirect
 	github.com/xiang90/probing v0.0.0-20190116061207-43a291ad63a2 // indirect
 	go.opencensus.io v0.23.0 // indirect
