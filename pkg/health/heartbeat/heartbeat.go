@@ -204,7 +204,8 @@ func UpdateFullSnapshotLease(ctx context.Context, logger *logrus.Entry, fullSnap
 			return err
 		}
 
-		logger.Info(logString, " at time ", renewedTime)
+		logger.Info(logString, " at time ", time.Now())
+		logger.Info("Full snapshot lease's spec.renewTime is updated to the full snapshot taken time i.e ", fullSnapshotTime)
 		return nil
 	}); err != nil {
 		return &errors.EtcdError{
