@@ -15,9 +15,10 @@ import (
 
 // RenewFullSnapshotLeasePeriodically has a timer and will periodically call FullSnapshotCaseLeaseUpdate to renew the fullsnapshot lease until it is updated or stopped.
 // The timer starts upon snapshotter initialization and is reset after every full snapshot is taken.
-func (ssr *Snapshotter) RenewFullSnapshotLeasePeriodically(FullSnapshotLeaseStopCh chan struct{}, fullSnapshotLeaseUpdateInterval time.Duration) {
+func (ssr *Snapshotter) RenewFullSnapshotLeasePeriodically(FullSnapshotLeaseStopCh chan struct{}, fullSnapshotLeaseUpdateInterval time.Duration, FullSnapshotTriggeredTimeCh chan time.Time) {
 	logger := logrus.NewEntry(logrus.New()).WithField("actor", "FullSnapLeaseUpdater")
 	ssr.FullSnapshotLeaseUpdateTimer = time.NewTimer(fullSnapshotLeaseUpdateInterval)
+	var fullSnapshotTriggeredTime time.Time
 	fullSnapshotLeaseUpdateCtx, fullSnapshotLeaseUpdateCancel := context.WithCancel(context.TODO())
 	defer func() {
 		fullSnapshotLeaseUpdateCancel()
@@ -30,11 +31,19 @@ func (ssr *Snapshotter) RenewFullSnapshotLeasePeriodically(FullSnapshotLeaseStop
 	for {
 		select {
 		case <-ssr.FullSnapshotLeaseUpdateTimer.C:
+			select {
+			case time := <-FullSnapshotTriggeredTimeCh:
+				fullSnapshotTriggeredTime = time
+			case <-time.After(2 * time.Second):
+				if fullSnapshotTriggeredTime.IsZero() {
+					fullSnapshotTriggeredTime = time.Now()
+				}
+			}
 			if ssr.PrevFullSnapshot != nil {
 				if err := func() error {
 					ctx, cancel := context.WithTimeout(fullSnapshotLeaseUpdateCtx, brtypes.LeaseUpdateTimeoutDuration)
 					defer cancel()
-					return heartbeat.FullSnapshotCaseLeaseUpdate(ctx, logger, ssr.PrevFullSnapshot, ssr.K8sClientset, ssr.HealthConfig.FullSnapshotLeaseName)
+					return heartbeat.FullSnapshotCaseLeaseUpdate(ctx, logger, ssr.PrevFullSnapshot, ssr.K8sClientset, ssr.HealthConfig.FullSnapshotLeaseName, fullSnapshotTriggeredTime)
 				}(); err != nil {
 					//FullSnapshot lease update failed. Retry after interval
 					logger.Warnf("FullSnapshot lease update failed with error: %v", err)

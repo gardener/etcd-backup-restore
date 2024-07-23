@@ -166,6 +166,7 @@ func NewSnapshotter(logger *logrus.Entry, config *brtypes.SnapshotterConfig, sto
 // taking the first full snapshot.
 func (ssr *Snapshotter) Run(stopCh <-chan struct{}, startWithFullSnapshot bool) error {
 	FullSnapshotLeaseStopCh := make(chan struct{})
+	FullSnapshotTriggeredTimeCh := make(chan time.Time, 1)
 	defer ssr.stop(FullSnapshotLeaseStopCh)
 	if startWithFullSnapshot {
 		ssr.fullSnapshotTimer = time.NewTimer(0)
@@ -188,7 +189,7 @@ func (ssr *Snapshotter) Run(stopCh <-chan struct{}, startWithFullSnapshot bool) 
 		}
 	}
 	if ssr.HealthConfig.SnapshotLeaseRenewalEnabled {
-		go ssr.RenewFullSnapshotLeasePeriodically(FullSnapshotLeaseStopCh, brtypes.FullSnapshotLeaseUpdateInterval)
+		go ssr.RenewFullSnapshotLeasePeriodically(FullSnapshotLeaseStopCh, brtypes.FullSnapshotLeaseUpdateInterval, FullSnapshotTriggeredTimeCh)
 	}
 	ssr.deltaSnapshotTimer = time.NewTimer(brtypes.DefaultDeltaSnapshotInterval)
 	if ssr.config.DeltaSnapshotPeriod.Duration >= brtypes.DeltaSnapshotIntervalThreshold {
@@ -196,7 +197,7 @@ func (ssr *Snapshotter) Run(stopCh <-chan struct{}, startWithFullSnapshot bool) 
 		ssr.deltaSnapshotTimer.Reset(ssr.config.DeltaSnapshotPeriod.Duration)
 	}
 
-	return ssr.snapshotEventHandler(stopCh)
+	return ssr.snapshotEventHandler(stopCh, FullSnapshotTriggeredTimeCh)
 }
 
 // TriggerFullSnapshot sends the events to take full snapshot. This is to
@@ -624,7 +625,7 @@ func newEvent(e *clientv3.Event) *event {
 	}
 }
 
-func (ssr *Snapshotter) snapshotEventHandler(stopCh <-chan struct{}) error {
+func (ssr *Snapshotter) snapshotEventHandler(stopCh <-chan struct{}, FullSnapshotTriggeredTimeCh chan time.Time) error {
 	leaseUpdateCtx, leaseUpdateCancel := context.WithCancel(context.TODO())
 	defer leaseUpdateCancel()
 	ssr.logger.Info("Starting the Snapshot EventHandler.")
@@ -643,6 +644,7 @@ func (ssr *Snapshotter) snapshotEventHandler(stopCh <-chan struct{}) error {
 			if ssr.HealthConfig.SnapshotLeaseRenewalEnabled {
 				ssr.FullSnapshotLeaseUpdateTimer.Stop()
 				ssr.FullSnapshotLeaseUpdateTimer.Reset(time.Nanosecond)
+				FullSnapshotTriggeredTimeCh <- time.Now()
 			}
 
 		case <-ssr.deltaSnapshotReqCh:
@@ -670,6 +672,7 @@ func (ssr *Snapshotter) snapshotEventHandler(stopCh <-chan struct{}) error {
 			if ssr.HealthConfig.SnapshotLeaseRenewalEnabled {
 				ssr.FullSnapshotLeaseUpdateTimer.Stop()
 				ssr.FullSnapshotLeaseUpdateTimer.Reset(time.Nanosecond)
+				FullSnapshotTriggeredTimeCh <- time.Now()
 			}
 
 		case <-ssr.deltaSnapshotTimer.C:

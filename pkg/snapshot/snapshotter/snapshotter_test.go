@@ -903,6 +903,7 @@ var _ = Describe("Snapshotter", func() {
 				ssr                             *Snapshotter
 				lease                           *v1.Lease
 				FullSnapshotLeaseStopCh         chan struct{}
+				FullSnapshotTriggeredTimeCh     chan time.Time
 				ctx                             context.Context
 				cancel                          context.CancelFunc
 				fullSnapshotLeaseUpdateInterval time.Duration
@@ -933,6 +934,7 @@ var _ = Describe("Snapshotter", func() {
 				ssr.K8sClientset = fake.NewClientBuilder().Build()
 				ssr.HealthConfig.SnapshotLeaseRenewalEnabled = true
 				FullSnapshotLeaseStopCh = make(chan struct{})
+				FullSnapshotTriggeredTimeCh = make(chan time.Time, 1)
 			})
 			AfterEach(func() {
 				Expect(os.Unsetenv("POD_NAME")).To(Succeed())
@@ -947,7 +949,8 @@ var _ = Describe("Snapshotter", func() {
 					Expect(err).ShouldNot(HaveOccurred())
 
 					fullSnapshotLeaseUpdateInterval = 2 * time.Second
-					go ssr.RenewFullSnapshotLeasePeriodically(FullSnapshotLeaseStopCh, fullSnapshotLeaseUpdateInterval)
+					FullSnapshotTriggeredTimeCh <- time.Now()
+					go ssr.RenewFullSnapshotLeasePeriodically(FullSnapshotLeaseStopCh, fullSnapshotLeaseUpdateInterval, FullSnapshotTriggeredTimeCh)
 					time.Sleep(2 * time.Second)
 					close(FullSnapshotLeaseStopCh)
 
@@ -976,7 +979,8 @@ var _ = Describe("Snapshotter", func() {
 					Expect(err).ShouldNot(HaveOccurred())
 
 					fullSnapshotLeaseUpdateInterval = time.Second
-					go ssr.RenewFullSnapshotLeasePeriodically(FullSnapshotLeaseStopCh, fullSnapshotLeaseUpdateInterval)
+					FullSnapshotTriggeredTimeCh <- time.Now()
+					go ssr.RenewFullSnapshotLeasePeriodically(FullSnapshotLeaseStopCh, fullSnapshotLeaseUpdateInterval, FullSnapshotTriggeredTimeCh)
 					time.Sleep(2 * time.Second)
 					close(FullSnapshotLeaseStopCh)
 
@@ -1000,7 +1004,8 @@ var _ = Describe("Snapshotter", func() {
 					prevFullSnap.GenerateSnapshotName()
 					ssr.PrevFullSnapshot = prevFullSnap
 					fullSnapshotLeaseUpdateInterval = 3 * time.Second
-					go ssr.RenewFullSnapshotLeasePeriodically(FullSnapshotLeaseStopCh, fullSnapshotLeaseUpdateInterval)
+					FullSnapshotTriggeredTimeCh <- time.Now()
+					go ssr.RenewFullSnapshotLeasePeriodically(FullSnapshotLeaseStopCh, fullSnapshotLeaseUpdateInterval, FullSnapshotTriggeredTimeCh)
 					time.Sleep(time.Second)
 					err := ssr.K8sClientset.Create(ctx, lease)
 					Expect(err).ShouldNot(HaveOccurred())
