@@ -92,7 +92,7 @@ function setup_etcd(){
 
 function setup_etcdbrctl(){
     echo "Installing etcdbrctl..."
-    GO111MODULE=on go build \
+    go build \
     -v \
     -o ${GOBIN}/etcdbrctl \
     -ldflags "-w -X ${REPOSITORY}/pkg/version.Version=${VERSION}" \

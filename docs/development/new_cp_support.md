@@ -7,9 +7,9 @@
     - :warning: Please use environment variable(s) to pass the object store credentials.
     - Provide the factory method to create provider implementation object by loading required access credentials from environment variable(s).
     - Avoid introducing new command line flags for provider.
-1. Import the required SDK and any other libraries for provider using `GO111MODULE=on go get <provider-sdk>`. This will update the dependency in [go.mod](../../go.mod) and [go.sum](../../go.sum).
+1. Import the required SDK and any other libraries for provider using `go get <provider-sdk>`. This will update the dependency in [go.mod](../../go.mod) and [go.sum](../../go.sum).
 1. Run `make revendor` to download the dependency library to [vendor](../../vendor) directory.
-1. Update the [LICENSE.md](../../LICENSE.md) with license details of newly added dependencies.
+1. Update the [LICENSE](../../LICENSE) with license details of newly added dependencies.
 1. Update the `GetSnapstore` method in `pkg/snapstore/utils.go` to add a new case in switch block to support creation of the new provider implementation object.
 1. Add the fake implementation of provider SDK calls under `pkg/snapstore/provider_snapstore_test.go` for unit testing the provider implementation.
 1. Register the provider implementation object for testing at the appropriate place under `pkg/snapstore/snapstore_test.go`. This will run generic test against provider implementation.

@@ -25,7 +25,7 @@ REPOSITORY=${VCS}/${ORGANIZATION}/${PROJECT}
 cd "${SOURCE_PATH}"
 
 # Install Golint (linting tool).
-GO111MODULE=off go get -u golang.org/x/lint/golint
+go install golang.org/x/lint/golint@latest
 
 # Install Helm from binary.
 curl -fsSL -o get_helm.sh https://raw.githubusercontent.com/helm/helm/master/scripts/get-helm-3
@@ -38,12 +38,12 @@ rm get_helm.sh
 
 ###############################################################################
 
-PACKAGES="$(GO111MODULE=on go list -mod=vendor -e ./...)"
+PACKAGES="$(go list -mod=vendor -e ./...)"
 LINT_FOLDERS="$(echo ${PACKAGES} | sed "s|github.com/gardener/etcd-backup-restore|.|g")"
 HELM_CHART_PATH="${SOURCE_PATH}/chart/etcd-backup-restore"
 
 # Execute static code checks.
-GO111MODULE=on go vet -mod vendor ${PACKAGES}
+go vet -mod vendor ${PACKAGES}
 
 # Execute automatic code formatting directive.
 go fmt ${PACKAGES}
