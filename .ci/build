@@ -30,7 +30,6 @@ VCS="github.com"
 ORGANIZATION="gardener"
 PROJECT="etcd-backup-restore"
 REPOSITORY=${VCS}/${ORGANIZATION}/${PROJECT}
-export GO111MODULE=on
 cd "${SOURCE_PATH}"
 
 
