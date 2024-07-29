@@ -144,7 +144,7 @@ func (hb *Heartbeat) RenewMemberLease(ctx context.Context) error {
 }
 
 // UpdateFullSnapshotLease renews the full snapshot lease and updates the holderIdentity field with the last revision in the latest full snapshot.
-func UpdateFullSnapshotLease(ctx context.Context, logger *logrus.Entry, fullSnapshot *brtypes.Snapshot, k8sClientset client.Client, fullSnapshotLeaseName string) error {
+func UpdateFullSnapshotLease(ctx context.Context, logger *logrus.Entry, fullSnapshot *brtypes.Snapshot, k8sClientset client.Client, fullSnapshotLeaseName string, fullSnapshotTime time.Time) error {
 	if k8sClientset == nil {
 		return &errors.EtcdError{
 			Message: "nil clientset passed",
@@ -191,7 +191,7 @@ func UpdateFullSnapshotLease(ctx context.Context, logger *logrus.Entry, fullSnap
 		}
 
 		renewedLease := fullSnapLease.DeepCopy()
-		renewedTime := time.Now()
+		renewedTime := fullSnapshotTime
 		renewedLease.Spec.RenewTime = &metav1.MicroTime{Time: renewedTime}
 		// Update revisions in fullSnapLease.Spec.HolderIdentity only when its value is less than latest fullSnap.LastRevision
 		if fullSnapLease.Spec.HolderIdentity == nil || rev < fullSnapshot.LastRevision {
@@ -204,7 +204,8 @@ func UpdateFullSnapshotLease(ctx context.Context, logger *logrus.Entry, fullSnap
 			return err
 		}
 
-		logger.Info(logString, " at time ", renewedTime)
+		logger.Info(logString, " at time ", time.Now())
+		logger.Info("Full snapshot lease's spec.renewTime is updated to the full snapshot taken time i.e ", fullSnapshotTime)
 		return nil
 	}); err != nil {
 		return &errors.EtcdError{
@@ -278,8 +279,8 @@ func UpdateDeltaSnapshotLease(ctx context.Context, logger *logrus.Entry, prevDel
 }
 
 // FullSnapshotCaseLeaseUpdate Updates the fullsnapshot lease as needed when a full snapshot is taken
-func FullSnapshotCaseLeaseUpdate(ctx context.Context, logger *logrus.Entry, fullSnapshot *brtypes.Snapshot, k8sClientset client.Client, fullSnapshotLeaseName string) error {
-	if err := UpdateFullSnapshotLease(ctx, logger, fullSnapshot, k8sClientset, fullSnapshotLeaseName); err != nil {
+func FullSnapshotCaseLeaseUpdate(ctx context.Context, logger *logrus.Entry, fullSnapshot *brtypes.Snapshot, k8sClientset client.Client, fullSnapshotLeaseName string, fullSnapshotTime time.Time) error {
+	if err := UpdateFullSnapshotLease(ctx, logger, fullSnapshot, k8sClientset, fullSnapshotLeaseName, fullSnapshotTime); err != nil {
 		return &errors.EtcdError{
 			Message: fmt.Sprintf("Failed to update full snapshot lease: %v", err),
 		}
