@@ -22,14 +22,14 @@ var _ = Describe("Backup", func() {
 	var (
 		err                error
 		store              brtypes.SnapStore
-		podName            = fmt.Sprintf("%s-etcd-0", releaseName)
-		etcdEndpointName   = fmt.Sprintf("%s-etcd-client", releaseName)
-		backupEndpointName = fmt.Sprintf("%s-backup-client", releaseName)
+		providerName       = getEnvAndExpectNoError(envProvider)
+		podName            = fmt.Sprintf("%s-%s-etcd-0", releaseNamePrefix, providerName)
+		etcdEndpointName   = fmt.Sprintf("%s-%s-etcd-client", releaseNamePrefix, providerName)
+		backupEndpointName = fmt.Sprintf("%s-%s-backup-client", releaseNamePrefix, providerName)
 	)
 	BeforeEach(func() {
 		store, err = getSnapstore(storageProvider, storageContainer, storePrefix)
 		Expect(err).ShouldNot(HaveOccurred())
-
 		logger.Infof("waiting for %s pod to be running", podName)
 		err = waitForPodToBeRunning(typedClient, podName, releaseNamespace)
 		Expect(err).ShouldNot(HaveOccurred())
@@ -41,6 +41,15 @@ var _ = Describe("Backup", func() {
 		Expect(err).ShouldNot(HaveOccurred())
 
 		logger.Infof("pod %s and endpoints %s, %s ready", podName, etcdEndpointName, backupEndpointName)
+
+		logger.Infof("Attaching ephemeral container %s to pod %s/%s\n", debugContainerName, releaseNamespace, podName)
+		err = attachEphemeralContainer(kubeconfigPath, releaseNamespace, podName, debugContainerName, "etcd")
+		Expect(err).ShouldNot(HaveOccurred())
+		logger.Infof("Ephemeral container %s attached to pod %s/%s\n", debugContainerName, releaseNamespace, podName)
+		logger.Infof("Installing etcdctl on ephemeral container %s\n", debugContainerName)
+		err = installEtcdctl(kubeconfigPath, releaseNamespace, podName, debugContainerName)
+		Expect(err).ShouldNot(HaveOccurred())
+		logger.Infof("etcdctl installed on ephemeral container %s\n", debugContainerName)
 	})
 
 	Describe("Snapshotter", func() {
@@ -55,7 +64,7 @@ var _ = Describe("Backup", func() {
 			populatorDoneCh := make(chan struct{})
 			recorderStopCh := make(chan struct{})
 			recorderResultCh := make(chan SnapListResult)
-			go runEtcdPopulatorWithoutError(logger, populatorStopCh, populatorDoneCh, kubeconfigPath, releaseNamespace, podName, "etcd")
+			go runEtcdPopulatorWithoutError(logger, populatorStopCh, populatorDoneCh, kubeconfigPath, releaseNamespace, podName, debugContainerName)
 			go recordCumulativeSnapList(logger, recorderStopCh, recorderResultCh, store)
 			time.Sleep(70 * time.Second)
 			close(populatorStopCh)
@@ -77,7 +86,8 @@ var _ = Describe("Backup", func() {
 			populatorDoneCh := make(chan struct{})
 			recorderStopCh := make(chan struct{})
 			recorderResultCh := make(chan SnapListResult)
-			go runEtcdPopulatorWithoutError(logger, populatorStopCh, populatorDoneCh, kubeconfigPath, releaseNamespace, podName, "etcd")
+			Expect(kubeconfigPath).ShouldNot(BeEmpty())
+			go runEtcdPopulatorWithoutError(logger, populatorStopCh, populatorDoneCh, kubeconfigPath, releaseNamespace, podName, debugContainerName)
 			go recordCumulativeSnapList(logger, recorderStopCh, recorderResultCh, store)
 			time.Sleep(190 * time.Second)
 			close(populatorStopCh)
@@ -100,25 +110,26 @@ var _ = Describe("Backup", func() {
 
 	Describe("Defragmentor", func() {
 		It("should defragment the data", func() {
-			cmd := "ETCDCTL_API=3 etcdctl put defrag-1 val-1"
-			stdout, stderr, err := executeRemoteCommand(kubeconfigPath, releaseNamespace, podName, "etcd", cmd)
+			for i := 0; i < 1000; i++ {
+				cmd := fmt.Sprintf("ETCDCTL_API=3 ./nonroot/hacks/etcdctl put defrag-1 val-%d", i)
+				stdout, stderr, err := executeContainerCommand(kubeconfigPath, releaseNamespace, podName, debugContainerName, cmd)
+				Expect(err).ShouldNot(HaveOccurred())
+				Expect(stderr).Should(BeEmpty())
+				Expect(stdout).Should(Equal("OK"))
+			}
+
+			oldDbSize, oldRevision, err := getDbSizeAndRevision(kubeconfigPath, releaseNamespace, podName, debugContainerName)
+			Expect(err).ShouldNot(HaveOccurred())
+			fmt.Printf("Old db size is %d, old revision is %d\n", oldDbSize, oldRevision)
+
+			cmd := "ETCDCTL_API=3 ./nonroot/hacks/etcdctl defrag"
+			_, stderr, err := executeContainerCommand(kubeconfigPath, releaseNamespace, podName, debugContainerName, cmd)
 			Expect(err).ShouldNot(HaveOccurred())
 			Expect(stderr).Should(BeEmpty())
-			Expect(stdout).Should(Equal("OK"))
 
-			cmd = "ETCDCTL_API=3 etcdctl del defrag-1"
-			stdout, stderr, err = executeRemoteCommand(kubeconfigPath, releaseNamespace, podName, "etcd", cmd)
+			newDbSize, newRevision, err := getDbSizeAndRevision(kubeconfigPath, releaseNamespace, podName, debugContainerName)
 			Expect(err).ShouldNot(HaveOccurred())
-			Expect(stderr).Should(BeEmpty())
-
-			oldDbSize, oldRevision, err := getDbSizeAndRevision(kubeconfigPath, releaseNamespace, podName, "etcd")
-			Expect(err).ShouldNot(HaveOccurred())
-
-			logger.Infof("waiting for defragmentation to occur atleast once")
-			time.Sleep(70 * time.Second)
-
-			newDbSize, newRevision, err := getDbSizeAndRevision(kubeconfigPath, releaseNamespace, podName, "etcd")
-			Expect(err).ShouldNot(HaveOccurred())
+			fmt.Printf("New db size is %d, new revision is %d\n", newDbSize, newRevision)
 
 			Expect(newRevision).Should(BeNumerically("==", oldRevision))
 			Expect(newDbSize).Should(BeNumerically("<", oldDbSize))
@@ -131,13 +142,13 @@ var _ = Describe("Backup", func() {
 			Expect(err).ShouldNot(HaveOccurred())
 			oldFullSnapTimestamp := fullSnap.CreatedOn.Unix()
 
-			cmd := "ETCDCTL_API=3 etcdctl put full-1 val-1"
-			stdout, stderr, err := executeRemoteCommand(kubeconfigPath, releaseNamespace, podName, "etcd", cmd)
+			cmd := "ETCDCTL_API=3 ./nonroot/hacks/etcdctl put full-1 val-1"
+			stdout, stderr, err := executeContainerCommand(kubeconfigPath, releaseNamespace, podName, debugContainerName, cmd)
 			Expect(err).ShouldNot(HaveOccurred())
 			Expect(stderr).Should(BeEmpty())
 			Expect(stdout).Should(Equal("OK"))
 
-			snap, err := triggerOnDemandSnapshot(kubeconfigPath, releaseNamespace, podName, "backup-restore", backupClientPort, "full")
+			snap, err := triggerOnDemandSnapshot(kubeconfigPath, releaseNamespace, podName, debugContainerName, backupClientPort, "full")
 			Expect(err).ShouldNot(HaveOccurred())
 			Expect(snap).ShouldNot(BeNil())
 			Expect(snap.Kind).Should(Equal(brtypes.SnapshotKindFull))
@@ -157,13 +168,13 @@ var _ = Describe("Backup", func() {
 				oldDeltaSnapTimestamp = deltaSnapList[len(deltaSnapList)-1].CreatedOn.Unix()
 			}
 
-			cmd := "ETCDCTL_API=3 etcdctl put delta-1 val-1"
-			stdout, stderr, err := executeRemoteCommand(kubeconfigPath, releaseNamespace, podName, "etcd", cmd)
+			cmd := "ETCDCTL_API=3 ./nonroot/hacks/etcdctl put delta-1 val-1"
+			stdout, stderr, err := executeContainerCommand(kubeconfigPath, releaseNamespace, podName, debugContainerName, cmd)
 			Expect(err).ShouldNot(HaveOccurred())
 			Expect(stderr).Should(BeEmpty())
 			Expect(stdout).Should(Equal("OK"))
 
-			snap, err := triggerOnDemandSnapshot(kubeconfigPath, releaseNamespace, podName, "backup-restore", backupClientPort, "delta")
+			snap, err := triggerOnDemandSnapshot(kubeconfigPath, releaseNamespace, podName, debugContainerName, backupClientPort, "delta")
 			Expect(err).ShouldNot(HaveOccurred())
 			Expect(snap).ShouldNot(BeNil())
 			Expect(snap.Kind).Should(Equal(brtypes.SnapshotKindDelta))
@@ -182,7 +193,7 @@ var _ = Describe("Backup", func() {
 			fullSnap, deltaSnapList, err := miscellaneous.GetLatestFullSnapshotAndDeltaSnapList(store)
 			Expect(err).ShouldNot(HaveOccurred())
 
-			latestSnapshots, err := getLatestSnapshots(kubeconfigPath, releaseNamespace, podName, "backup-restore", backupClientPort)
+			latestSnapshots, err := getLatestSnapshots(kubeconfigPath, releaseNamespace, podName, debugContainerName, backupClientPort)
 			Expect(err).ShouldNot(HaveOccurred())
 
 			// since there is a chance of taking a scheduled full snapshot
@@ -227,18 +238,18 @@ var _ = Describe("Backup", func() {
 		var i int
 		JustBeforeEach(func() {
 			i++
-			cmd := fmt.Sprintf("ETCDCTL_API=3 etcdctl put init-%d val-%d", i, i)
-			stdout, stderr, err := executeRemoteCommand(kubeconfigPath, releaseNamespace, podName, "etcd", cmd)
+			cmd := fmt.Sprintf("ETCDCTL_API=3 ./nonroot/hacks/etcdctl put init-%d val-%d", i, i)
+			stdout, stderr, err := executeContainerCommand(kubeconfigPath, releaseNamespace, podName, debugContainerName, cmd)
 			Expect(err).ShouldNot(HaveOccurred())
 			Expect(stderr).Should(BeEmpty())
 			Expect(stdout).Should(Equal("OK"))
 
-			_, err = triggerOnDemandSnapshot(kubeconfigPath, releaseNamespace, podName, "backup-restore", backupClientPort, "delta")
+			_, err = triggerOnDemandSnapshot(kubeconfigPath, releaseNamespace, podName, debugContainerName, backupClientPort, "delta")
 			Expect(err).ShouldNot(HaveOccurred())
 
 			i++
-			cmd = fmt.Sprintf("ETCDCTL_API=3 etcdctl put init-%d val-%d", i, i)
-			stdout, stderr, err = executeRemoteCommand(kubeconfigPath, releaseNamespace, podName, "etcd", cmd)
+			cmd = fmt.Sprintf("ETCDCTL_API=3 ./nonroot/hacks/etcdctl put init-%d val-%d", i, i)
+			stdout, stderr, err = executeContainerCommand(kubeconfigPath, releaseNamespace, podName, debugContainerName, cmd)
 			Expect(err).ShouldNot(HaveOccurred())
 			Expect(stderr).Should(BeEmpty())
 			Expect(stdout).Should(Equal("OK"))
@@ -260,13 +271,22 @@ var _ = Describe("Backup", func() {
 			Expect(err).ShouldNot(HaveOccurred())
 			logger.Infof("pod %s and endpoints %s, %s ready", podName, etcdEndpointName, backupEndpointName)
 
+			logger.Infof("Attaching ephemeral container %s to pod %s/%s\n", debugContainerName, releaseNamespace, podName)
+			err = attachEphemeralContainer(kubeconfigPath, releaseNamespace, podName, debugContainerName, "etcd")
+			Expect(err).ShouldNot(HaveOccurred())
+			logger.Infof("Ephemeral container %s attached to pod %s/%s\n", debugContainerName, releaseNamespace, podName)
+			logger.Infof("Installing etcdctl on ephemeral container %s\n", debugContainerName)
+			err = installEtcdctl(kubeconfigPath, releaseNamespace, podName, debugContainerName)
+			Expect(err).ShouldNot(HaveOccurred())
+			logger.Infof("etcdctl installed on ephemeral container %s\n", debugContainerName)
+
 			cmd := fmt.Sprintf("curl http://localhost:%d/initialization/status -s", backupClientPort)
-			stdout, stderr, err := executeRemoteCommand(kubeconfigPath, releaseNamespace, podName, "backup-restore", cmd)
+			stdout, stderr, err := executeContainerCommand(kubeconfigPath, releaseNamespace, podName, debugContainerName, cmd)
 			Expect(err).ShouldNot(HaveOccurred())
 			Expect(stdout).Should(Equal("New"))
 
-			cmd = "ETCDCTL_API=3 etcdctl get init-1"
-			stdout, stderr, err = executeRemoteCommand(kubeconfigPath, releaseNamespace, podName, "etcd", cmd)
+			cmd = "ETCDCTL_API=3 ./nonroot/hacks/etcdctl get init-1"
+			stdout, stderr, err = executeContainerCommand(kubeconfigPath, releaseNamespace, podName, debugContainerName, cmd)
 			Expect(err).ShouldNot(HaveOccurred())
 			Expect(stderr).Should(BeEmpty())
 			lines := strings.Split(stdout, "\n")
@@ -274,8 +294,8 @@ var _ = Describe("Backup", func() {
 			Expect(lines[0]).Should(Equal("init-1"))
 			Expect(lines[1]).Should(Equal("val-1"))
 
-			cmd = "ETCDCTL_API=3 etcdctl get init-2"
-			stdout, stderr, err = executeRemoteCommand(kubeconfigPath, releaseNamespace, podName, "etcd", cmd)
+			cmd = "ETCDCTL_API=3 ./nonroot/hacks/etcdctl get init-2"
+			stdout, stderr, err = executeContainerCommand(kubeconfigPath, releaseNamespace, podName, debugContainerName, cmd)
 			Expect(err).ShouldNot(HaveOccurred())
 			Expect(stderr).Should(BeEmpty())
 			lines = strings.Split(stdout, "\n")
@@ -287,8 +307,8 @@ var _ = Describe("Backup", func() {
 		Context("when data is corrupt", func() {
 			It("should restore data from latest snapshot", func() {
 				testDataCorruptionRestoration := func() {
-					cmd := "rm -rf /var/etcd/data/new.etcd/member"
-					stdout, stderr, err := executeRemoteCommand(kubeconfigPath, releaseNamespace, podName, "backup-restore", cmd)
+					cmd := "export ETCD_PID=$(pgrep etcd-wrapper) && rm -r proc/${ETCD_PID}/root/var/etcd/data/new.etcd/member"
+					stdout, stderr, err := executeContainerCommand(kubeconfigPath, releaseNamespace, podName, debugContainerName, cmd)
 					Expect(err).ShouldNot(HaveOccurred())
 					Expect(stderr).Should(BeEmpty())
 					Expect(stdout).Should(BeEmpty())
@@ -309,13 +329,23 @@ var _ = Describe("Backup", func() {
 					Expect(err).ShouldNot(HaveOccurred())
 					logger.Infof("pod %s and endpoints %s, %s ready", podName, etcdEndpointName, backupEndpointName)
 
-					cmd = fmt.Sprintf("curl http://localhost:%d/initialization/status -s", backupClientPort)
-					stdout, stderr, err = executeRemoteCommand(kubeconfigPath, releaseNamespace, podName, "backup-restore", cmd)
+					logger.Infof("Attaching ephemeral container %s to pod %s/%s\n", debugContainerName, releaseNamespace, podName)
+					err = attachEphemeralContainer(kubeconfigPath, releaseNamespace, podName, debugContainerName, "etcd")
 					Expect(err).ShouldNot(HaveOccurred())
+					logger.Infof("Ephemeral container %s attached to pod %s/%s\n", debugContainerName, releaseNamespace, podName)
+					logger.Infof("Installing etcdctl on ephemeral container %s\n", debugContainerName)
+					err = installEtcdctl(kubeconfigPath, releaseNamespace, podName, debugContainerName)
+					Expect(err).ShouldNot(HaveOccurred())
+					logger.Infof("etcdctl installed on ephemeral container %s\n", debugContainerName)
+
+					cmd = fmt.Sprintf("curl http://localhost:%d/initialization/status -s", backupClientPort)
+					stdout, stderr, err = executeContainerCommand(kubeconfigPath, releaseNamespace, podName, debugContainerName, cmd)
+					Expect(err).ShouldNot(HaveOccurred())
+					Expect(stderr).Should(BeEmpty())
 					Expect(stdout).Should(Equal("New"))
 
-					cmd = "ETCDCTL_API=3 etcdctl get init-3"
-					stdout, stderr, err = executeRemoteCommand(kubeconfigPath, releaseNamespace, podName, "etcd", cmd)
+					cmd = "ETCDCTL_API=3 ./nonroot/hacks/etcdctl get init-3"
+					stdout, stderr, err = executeContainerCommand(kubeconfigPath, releaseNamespace, podName, debugContainerName, cmd)
 					Expect(err).ShouldNot(HaveOccurred())
 					Expect(stderr).Should(BeEmpty())
 					lines := strings.Split(stdout, "\n")
@@ -323,8 +353,8 @@ var _ = Describe("Backup", func() {
 					Expect(lines[0]).Should(Equal("init-3"))
 					Expect(lines[1]).Should(Equal("val-3"))
 
-					cmd = "ETCDCTL_API=3 etcdctl get init-4"
-					stdout, stderr, err = executeRemoteCommand(kubeconfigPath, releaseNamespace, podName, "etcd", cmd)
+					cmd = "ETCDCTL_API=3 ./nonroot/hacks/etcdctl get init-4"
+					stdout, stderr, err = executeContainerCommand(kubeconfigPath, releaseNamespace, podName, debugContainerName, cmd)
 					Expect(err).ShouldNot(HaveOccurred())
 					Expect(stderr).Should(BeEmpty())
 					Expect(stdout).Should(BeEmpty())

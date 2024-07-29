@@ -22,6 +22,8 @@ data:
     # Number of committed transactions to trigger a snapshot to disk.
     snapshot-count: 75000
 
+    enable-v2: false
+
     # Raise alarms when backend size exceeds the given quota. 0 means use the
     # default quota.
     {{- if .Values.backup.etcdQuotaBytes }}
@@ -31,12 +33,24 @@ data:
     # List of comma separated URLs to listen on for client traffic.
     listen-client-urls: {{ if .Values.etcdTLS }}https{{ else }}http{{ end }}://0.0.0.0:{{ .Values.servicePorts.client }}
 
+    # List of comma separated URLs to listen on for peer traffic.
+    listen-peer-urls: {{ if .Values.etcdTLS }}https{{ else }}http{{ end }}://0.0.0.0:{{ .Values.servicePorts.server }}
+
     # List of this member's client URLs to advertise to the public.
     # The URLs needed to be a comma-separated list.
-    advertise-client-urls: {{ if .Values.etcdTLS }}https{{ else }}http{{ end }}://0.0.0.0:{{ .Values.servicePorts.client }}
+    advertise-client-urls: {{ if .Values.etcdTLS }}https{{ else }}http{{ end }}@{{ .Release.Name }}-etcd-peer@{{ .Release.Namespace }}@{{ .Values.servicePorts.client }}
+    # advertise-client-urls: {{ if .Values.etcdTLS }}https{{ else }}http{{ end }}://0.0.0.0:{{ .Values.servicePorts.client }}
+
+
+    # List of this member's peer URLs to advertise to the public.
+    # The URLs needed to be a comma-separated list.
+    initial-advertise-peer-urls: {{ if .Values.etcdTLS }}https{{ else }}http{{ end }}@{{ .Release.Name }}-etcd-peer@{{ .Release.Namespace }}@{{ .Values.servicePorts.server }}
+
+    # List of server endpoints with which this cluster should be started
+    initial-cluster: {{ .Release.Name }}-etcd-0={{ if .Values.etcdTLS }}https{{ else }}http{{ end }}://{{ .Release.Name }}-etcd-0.{{ .Release.Name }}-etcd-peer.{{ .Release.Namespace }}.svc:{{ .Values.servicePorts.server }}
 
     # Initial cluster token for the etcd cluster during bootstrap.
-    initial-cluster-token: 'new'
+    initial-cluster-token: 'etcd-cluster'
 
     # Initial cluster state ('new' or 'existing').
     initial-cluster-state: 'new'

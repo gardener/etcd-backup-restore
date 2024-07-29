@@ -1,23 +1,23 @@
 images:
   # etcd image to use
   etcd:
-    repository: europe-docker.pkg.dev/gardener-project/public/gardener/etcd
-    tag: v3.4.13-bootstrap-1
+    repository: europe-docker.pkg.dev/gardener-project/releases/gardener/etcd-wrapper
+    tag: v0.1.1
     pullPolicy: IfNotPresent
   # etcd-backup-restore image to use
   etcdBackupRestore:
     repository: europe-docker.pkg.dev/gardener-project/public/gardener/etcdbrctl
-    tag: v0.12.1
+    tag: v0.28.0
     pullPolicy: IfNotPresent
 
 resources:
   etcd:
     limits:
-      cpu: 100m
+      cpu: 500m
       memory: 1Gi
     requests:
       cpu: 100m
-      memory: 128Mi
+      memory: 200Mi
   backup:
     limits:
       cpu: 100m
@@ -88,6 +88,7 @@ backup:
   #   region: region-where-bucket-exists
   #   secretAccessKey: secret-access-key-with-object-storage-privileges
   #   accessKeyID: access-key-id-with-route53-privileges
+  #   endpoint: endpoint-override-for-s3 # optional
   #   sseCustomerKey: aes-256-sse-customer-key # optional
   #   sseCustomerAlgorithm: aes-256-sse-customer-algorithm # optional
   # gcs:
