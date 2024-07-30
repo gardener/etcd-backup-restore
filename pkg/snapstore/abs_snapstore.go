@@ -31,6 +31,7 @@ import (
 
 	"github.com/Azure/azure-storage-blob-go/azblob"
 	"github.com/sirupsen/logrus"
+	"k8s.io/utils/pointer"
 
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 )
@@ -51,14 +52,15 @@ type ABSSnapStore struct {
 }
 
 type absCredentials struct {
-	BucketName     string `json:"bucketName"`
-	SecretKey      string `json:"storageKey"`
-	StorageAccount string `json:"storageAccount"`
+	BucketName     string  `json:"bucketName"`
+	SecretKey      string  `json:"storageKey"`
+	StorageAccount string  `json:"storageAccount"`
+	URI            *string `json:"uri,omitempty"`
 }
 
 // NewABSSnapStore create new ABSSnapStore from shared configuration with specified bucket
 func NewABSSnapStore(config *brtypes.SnapstoreConfig) (*ABSSnapStore, error) {
-	storageAccount, storageKey, err := getCredentials(getEnvPrefixString(config.IsSource))
+	storageAccount, storageKey, overrideURI, err := getCredentials(getEnvPrefixString(config.IsSource))
 	if err != nil {
 		return nil, err
 	}
@@ -72,35 +74,41 @@ func NewABSSnapStore(config *brtypes.SnapstoreConfig) (*ABSSnapStore, error) {
 		Retry: azblob.RetryOptions{
 			TryTimeout: downloadTimeout,
 		}})
-	u, err := url.Parse(fmt.Sprintf("https://%s.%s", storageAccount, brtypes.AzureBlobStorageHostName))
+
+	absURI := brtypes.AzureBlobStorageGlobalURI
+	// configuration provides an override for Azure's URI
+	if overrideURI != nil {
+		absURI = *overrideURI
+	}
+	u, err := url.Parse(fmt.Sprintf("https://%s.%s", storageAccount, absURI))
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse service url: %v", err)
 	}
+
 	serviceURL := azblob.NewServiceURL(*u, p)
 	containerURL := serviceURL.NewContainerURL(config.Container)
 
 	return GetABSSnapstoreFromClient(config.Container, config.Prefix, config.TempDir, config.MaxParallelChunkUploads, config.MinChunkSize, &containerURL)
 }
 
-func getCredentials(prefixString string) (string, string, error) {
-
+func getCredentials(prefixString string) (string, string, *string, error) {
 	if filename, isSet := os.LookupEnv(prefixString + absCredentialJSONFile); isSet {
 		credentials, err := readABSCredentialsJSON(filename)
 		if err != nil {
-			return "", "", fmt.Errorf("error getting credentials using %v file", filename)
+			return "", "", nil, fmt.Errorf("error getting credentials using %v file with error: %w", filename, err)
 		}
-		return credentials.StorageAccount, credentials.SecretKey, nil
+		return credentials.StorageAccount, credentials.SecretKey, credentials.URI, nil
 	}
 
 	if dir, isSet := os.LookupEnv(prefixString + absCredentialDirectory); isSet {
 		credentials, err := readABSCredentialFiles(dir)
 		if err != nil {
-			return "", "", fmt.Errorf("error getting credentials from %v dir", dir)
+			return "", "", nil, fmt.Errorf("error getting credentials from %v dir with error: %w", dir, err)
 		}
-		return credentials.StorageAccount, credentials.SecretKey, nil
+		return credentials.StorageAccount, credentials.SecretKey, credentials.URI, nil
 	}
 
-	return "", "", fmt.Errorf("unable to get credentials")
+	return "", "", nil, fmt.Errorf("unable to get credentials")
 }
 
 func readABSCredentialsJSON(filename string) (*absCredentials, error) {
@@ -132,17 +140,23 @@ func readABSCredentialFiles(dirname string) (*absCredentials, error) {
 
 	for _, file := range files {
 		if file.Name() == "storageAccount" {
-			data, err := os.ReadFile(dirname + "/storageAccount")
+			data, err := os.ReadFile(filepath.Join(dirname, "storageAccount"))
 			if err != nil {
 				return nil, err
 			}
 			absConfig.StorageAccount = string(data)
 		} else if file.Name() == "storageKey" {
-			data, err := os.ReadFile(dirname + "/storageKey")
+			data, err := os.ReadFile(filepath.Join(dirname, "storageKey"))
 			if err != nil {
 				return nil, err
 			}
 			absConfig.SecretKey = string(data)
+		} else if file.Name() == "uri" {
+			data, err := os.ReadFile(filepath.Join(dirname, "uri"))
+			if err != nil {
+				return nil, err
+			}
+			absConfig.URI = pointer.String(string(data))
 		}
 	}
 

@@ -52,8 +52,8 @@ const (
 	// SnapshotKindChunk is constant for chunk snapshot kind.
 	SnapshotKindChunk = "Chunk"
 
-	// AzureBlobStorageHostName is the host name for azure blob storage service.
-	AzureBlobStorageHostName = "blob.core.windows.net"
+	// AzureBlobStorageGlobalURI is the default global URI for azure blob storage.
+	AzureBlobStorageGlobalURI = "blob.core.windows.net"
 
 	// FinalSuffix is the suffix appended to the names of final snapshots.
 	FinalSuffix = ".final"
