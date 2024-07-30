@@ -41,7 +41,7 @@ func newFakeABSSnapstore() brtypes.SnapStore {
 		newFakePolicyFactory(bucket, prefixV2, objectMap),
 	}
 	p := pipeline.NewPipeline(f, pipeline.Options{HTTPSender: newFakePolicyFactory(bucket, prefixV2, objectMap)})
-	u, err := url.Parse(fmt.Sprintf("https://%s.%s", "dummyaccount", brtypes.AzureBlobStorageGlobalURI))
+	u, err := url.Parse(fmt.Sprintf("https://%s.%s", "dummyaccount", brtypes.AzureBlobStorageHostName))
 	Expect(err).ShouldNot(HaveOccurred())
 	serviceURL := azblob.NewServiceURL(*u, p)
 	containerURL := serviceURL.NewContainerURL(bucket)
