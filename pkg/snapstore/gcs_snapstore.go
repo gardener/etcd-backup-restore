@@ -283,14 +283,15 @@ func (s *GCSSnapStore) componentUploader(wg *sync.WaitGroup, stopCh <-chan struc
 	}
 }
 
-// List will return sorted list with all snapshot files on store.
-func (s *GCSSnapStore) List() (brtypes.SnapList, error) {
+// List will return a sorted list with all snapshot files on store, excluding those marked with x-etcd-snapshot-exclude.
+func (s *GCSSnapStore) List(includeTagged bool) (brtypes.SnapList, error) {
 	prefixTokens := strings.Split(s.prefix, "/")
-	// Last element of the tokens is backup version
-	// Consider the parent of the backup version level (Required for Backward Compatibility)
+	// Consider the parent of the last element for backward compatibility.
 	prefix := path.Join(strings.Join(prefixTokens[:len(prefixTokens)-1], "/"))
 
-	it := s.client.Bucket(s.bucket).Objects(context.TODO(), &storage.Query{Prefix: prefix})
+	it := s.client.Bucket(s.bucket).Objects(context.TODO(), &storage.Query{
+		Prefix: prefix,
+	})
 
 	var attrs []*storage.ObjectAttrs
 	for {
@@ -301,6 +302,12 @@ func (s *GCSSnapStore) List() (brtypes.SnapList, error) {
 		if err != nil {
 			return nil, err
 		}
+
+		// Check if the snapshot should be ignored.
+		if attr.Metadata[brtypes.ExcludeSnapshotMetadataKey] == "true" {
+			logrus.Infof("Ignoring snapshot due to exclude metadata: %s", attr.Name)
+			continue
+		}
 		attrs = append(attrs, attr)
 	}
 
@@ -309,10 +316,10 @@ func (s *GCSSnapStore) List() (brtypes.SnapList, error) {
 		if strings.Contains(v.Name, backupVersionV1) || strings.Contains(v.Name, backupVersionV2) {
 			snap, err := ParseSnapshot(v.Name)
 			if err != nil {
-				// Warning
 				logrus.Warnf("Invalid snapshot %s found, ignoring it: %v", v.Name, err)
 				continue
 			}
+			snap.RetentionExpiry = v.RetentionExpirationTime
 			snapList = append(snapList, snap)
 		}
 	}

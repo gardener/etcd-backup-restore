@@ -140,6 +140,10 @@ func (ssr *Snapshotter) RunGarbageCollector(stopCh <-chan struct{}) {
 					}
 
 					if deleteSnap {
+						if nextSnap.IsImmutable() {
+							ssr.logger.Infof("GC: Skipping : %s, since it is immutable", nextSnap.SnapName)
+							continue
+						}
 						ssr.logger.Infof("GC: Deleting old full snapshot: %s %v", nextSnap.CreatedOn.UTC(), deleteSnap)
 						if err := ssr.store.Delete(*nextSnap); err != nil {
 							ssr.logger.Warnf("GC: Failed to delete snapshot %s: %v", path.Join(nextSnap.SnapDir, nextSnap.SnapName), err)
@@ -246,9 +250,13 @@ func (ssr *Snapshotter) GarbageCollectDeltaSnapshots(snapStream brtypes.SnapList
 	cutoffTime := time.Now().UTC().Add(-ssr.config.DeltaSnapshotRetentionPeriod.Duration)
 	for i := len(snapStream) - 1; i >= 0; i-- {
 		if (*snapStream[i]).Kind == brtypes.SnapshotKindDelta && snapStream[i].CreatedOn.Before(cutoffTime) {
+
 			snapPath := path.Join(snapStream[i].SnapDir, snapStream[i].SnapName)
 			ssr.logger.Infof("GC: Deleting old delta snapshot: %s", snapPath)
-
+			if snapStream[i].IsImmutable() {
+				ssr.logger.Infof("GC: Skipping : %s, since it is immutable", snapPath)
+				continue
+			}
 			if err := ssr.store.Delete(*snapStream[i]); err != nil {
 				ssr.logger.Warnf("GC: Failed to delete snapshot %s: %v", snapPath, err)
 				metrics.SnapshotterOperationFailure.With(prometheus.Labels{metrics.LabelError: err.Error()}).Inc()
