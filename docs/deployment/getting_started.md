@@ -24,6 +24,7 @@ The procedure to provide credentials to access the cloud provider object store v
 
 * For `Azure Blob storage`:
    1. The secret file should be provided, and the file path should be made available as environment variables: `AZURE_APPLICATION_CREDENTIALS` or `AZURE_APPLICATION_CREDENTIALS_JSON`.
+   2. The Azure Blob Storage domain can be overridden by providing the optional field `domain` in the secret file, as can be seen in the [example](../../example/storage-provider-secrets/00-azure-blob-storage-secret.yaml) file.
 
 * For `Openstack Swift`:
   1. The secret file should be provided, and the file path should be made available as environment variables: `OPENSTACK_APPLICATION_CREDENTIALS` or `OPENSTACK_APPLICATION_CREDENTIALS_JSON`.
