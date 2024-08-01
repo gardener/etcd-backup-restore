@@ -52,10 +52,10 @@ type ABSSnapStore struct {
 }
 
 type absCredentials struct {
-	BucketName         string  `json:"bucketName"`
-	AccountKey         string  `json:"storageKey"`
-	AccountName        string  `json:"storageAccount"`
-	StorageAPIEndpoint *string `json:"storageAPIEndpoint,omitempty"`
+	BucketName     string  `json:"bucketName"`
+	StorageKey     string  `json:"storageKey"`
+	StorageAccount string  `json:"storageAccount"`
+	Domain         *string `json:"domain,omitempty"`
 }
 
 // NewABSSnapStore create new ABSSnapStore from shared configuration with specified bucket
@@ -65,7 +65,7 @@ func NewABSSnapStore(config *brtypes.SnapstoreConfig) (*ABSSnapStore, error) {
 		return nil, err
 	}
 
-	sharedKeyCredential, err := azblob.NewSharedKeyCredential(absCreds.AccountName, absCreds.AccountKey)
+	sharedKeyCredential, err := azblob.NewSharedKeyCredential(absCreds.StorageAccount, absCreds.StorageKey)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create shared key credentials: %v", err)
 	}
@@ -75,13 +75,12 @@ func NewABSSnapStore(config *brtypes.SnapstoreConfig) (*ABSSnapStore, error) {
 			TryTimeout: downloadTimeout,
 		}})
 
-	storageEndpoint := fmt.Sprintf("https://%s.%s", absCreds.AccountName, brtypes.AzureBlobStorageHostName)
-	// Consumer provided endpoint overrides the default endpoint for Azure Blob Storage
-	if absCreds.StorageAPIEndpoint != nil {
-		storageEndpoint = *absCreds.StorageAPIEndpoint
+	domain := brtypes.AzureBlobStorageGlobalDomain
+	if absCreds.Domain != nil {
+		domain = *absCreds.Domain
 	}
 
-	u, err := url.Parse(storageEndpoint)
+	u, err := url.Parse(fmt.Sprintf("https://%s.%s", absCreds.StorageAccount, domain))
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse service url: %v", err)
 	}
@@ -145,19 +144,19 @@ func readABSCredentialFiles(dirname string) (*absCredentials, error) {
 			if err != nil {
 				return nil, err
 			}
-			absConfig.AccountName = string(data)
+			absConfig.StorageAccount = string(data)
 		} else if file.Name() == "storageKey" {
 			data, err := os.ReadFile(filepath.Join(dirname, "storageKey"))
 			if err != nil {
 				return nil, err
 			}
-			absConfig.AccountKey = string(data)
-		} else if file.Name() == "storageAPIEndpoint" {
-			data, err := os.ReadFile(filepath.Join(dirname, "storageAPIEndpoint"))
+			absConfig.StorageKey = string(data)
+		} else if file.Name() == "domain" {
+			data, err := os.ReadFile(filepath.Join(dirname, "domain"))
 			if err != nil {
 				return nil, err
 			}
-			absConfig.StorageAPIEndpoint = pointer.String(string(data))
+			absConfig.Domain = pointer.String(string(data))
 		}
 	}
 
@@ -392,7 +391,7 @@ func GetABSCredentialsLastModifiedTime() (time.Time, error) {
 }
 
 func isABSConfigEmpty(config *absCredentials) error {
-	if len(config.AccountKey) != 0 && len(config.AccountName) != 0 {
+	if len(config.StorageKey) != 0 && len(config.StorageAccount) != 0 {
 		return nil
 	}
 	return fmt.Errorf("azure object storage credentials: storageKey or storageAccount is missing")
