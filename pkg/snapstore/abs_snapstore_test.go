@@ -16,10 +16,8 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blob"
-	azblob "github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blob"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blockblob"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/container"
-	azcontainer "github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/container"
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 )
 
@@ -32,7 +30,7 @@ type fakeABSContainerClient struct {
 }
 
 // NewListBlobsFlatPager will directly return a usable instance of *runtime.Pager[azcontainer.ListBlobsFlatResponse]. Returns one page per snapshot.
-func (c *fakeABSContainerClient) NewListBlobsFlatPager(o *azcontainer.ListBlobsFlatOptions) *runtime.Pager[azcontainer.ListBlobsFlatResponse] {
+func (c *fakeABSContainerClient) NewListBlobsFlatPager(o *container.ListBlobsFlatOptions) *runtime.Pager[container.ListBlobsFlatResponse] {
 	names := []string{}
 	// Prefix has to be respected in the mock
 	for name := range c.objects {
@@ -44,12 +42,9 @@ func (c *fakeABSContainerClient) NewListBlobsFlatPager(o *azcontainer.ListBlobsF
 	// keeps count of which page was last returned
 	index, count := 0, len(names)
 
-	return runtime.NewPager(runtime.PagingHandler[azcontainer.ListBlobsFlatResponse]{
+	return runtime.NewPager(runtime.PagingHandler[container.ListBlobsFlatResponse]{
 		More: func(_ container.ListBlobsFlatResponse) bool {
-			if index < count {
-				return true
-			}
-			return false
+			return index < count
 		},
 		// Return one page for each blob
 		Fetcher: func(_ context.Context, page *container.ListBlobsFlatResponse) (container.ListBlobsFlatResponse, error) {
@@ -83,7 +78,7 @@ func (c *fakeABSContainerClient) NewBlockBlobClient(blobName string) snapstore.A
 		return c.blobClients[blobName]
 	}
 
-	// New client if a client was not made before, or if it the snapshot does not exist
+	// New client if a client was not made before, or if the snapshot does not exist
 	c.blobClients[blobName] = &fakeBlockBlobClient{name: blobName,
 		deleteFn: func() {
 			delete(c.objects, blobName)
@@ -114,12 +109,12 @@ type fakeBlockBlobClient struct {
 }
 
 // DownloadStream returns the only field that is accessed from the response, which is the io.ReaderCloser to the data
-func (c *fakeBlockBlobClient) DownloadStream(ctx context.Context, o *azblob.DownloadStreamOptions) (azblob.DownloadStreamResponse, error) {
+func (c *fakeBlockBlobClient) DownloadStream(ctx context.Context, o *blob.DownloadStreamOptions) (blob.DownloadStreamResponse, error) {
 	if ok := c.checkExistenceFn(); !ok {
-		return azblob.DownloadStreamResponse{}, fmt.Errorf("the blob does not exist")
+		return blob.DownloadStreamResponse{}, fmt.Errorf("the blob does not exist")
 	}
 
-	return azblob.DownloadStreamResponse{
+	return blob.DownloadStreamResponse{
 		DownloadResponse: blob.DownloadResponse{
 			Body: io.NopCloser(bytes.NewReader(*c.getContentFn())),
 		},
@@ -127,14 +122,14 @@ func (c *fakeBlockBlobClient) DownloadStream(ctx context.Context, o *azblob.Down
 }
 
 // Delete deletes the blobs from the objectMap
-func (c *fakeBlockBlobClient) Delete(ctx context.Context, o *azblob.DeleteOptions) (azblob.DeleteResponse, error) {
+func (c *fakeBlockBlobClient) Delete(ctx context.Context, o *blob.DeleteOptions) (blob.DeleteResponse, error) {
 	if ok := c.checkExistenceFn(); ok {
 		c.deleteFn()
 	} else {
-		return azblob.DeleteResponse{}, fmt.Errorf("object with name %s not found", c.name)
+		return blob.DeleteResponse{}, fmt.Errorf("object with name %s not found", c.name)
 	}
 
-	return azblob.DeleteResponse{}, nil
+	return blob.DeleteResponse{}, nil
 }
 
 // CommitBlockList "commits" the blocks in the "staging" area

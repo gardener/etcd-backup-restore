@@ -22,10 +22,10 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
-	azblob "github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blob"
+	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blob"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/bloberror"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blockblob"
-	azcontainer "github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/container"
+	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/container"
 	"github.com/sirupsen/logrus"
 
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
@@ -40,21 +40,21 @@ const (
 
 // AzureBlockBlobClientI defines the methods that are invoked from the Azure Block Blob API.
 type AzureBlockBlobClientI interface {
-	DownloadStream(ctx context.Context, o *azblob.DownloadStreamOptions) (azblob.DownloadStreamResponse, error)
-	Delete(ctx context.Context, o *azblob.DeleteOptions) (azblob.DeleteResponse, error)
+	DownloadStream(ctx context.Context, o *blob.DownloadStreamOptions) (blob.DownloadStreamResponse, error)
+	Delete(ctx context.Context, o *blob.DeleteOptions) (blob.DeleteResponse, error)
 	CommitBlockList(ctx context.Context, base64BlockIDs []string, options *blockblob.CommitBlockListOptions) (blockblob.CommitBlockListResponse, error)
 	StageBlock(ctx context.Context, base64BlockID string, body io.ReadSeekCloser, options *blockblob.StageBlockOptions) (blockblob.StageBlockResponse, error)
 }
 
 // azureContainerClientI defines the methods required for container operations.
 type azureContainerClientI interface {
-	NewListBlobsFlatPager(o *azcontainer.ListBlobsFlatOptions) *runtime.Pager[azcontainer.ListBlobsFlatResponse]
+	NewListBlobsFlatPager(o *container.ListBlobsFlatOptions) *runtime.Pager[container.ListBlobsFlatResponse]
 	NewBlockBlobClient(blobName string) AzureBlockBlobClientI
 }
 
 // AzureContainerClient embedes a *azcontainer.Client (its methods are overridden in tests).
 type AzureContainerClient struct {
-	*azcontainer.Client
+	*container.Client
 }
 
 // NewBlockBlobClient simply returns the BlockBlobClient that the embeded *azcontainer.Client returns.
@@ -92,12 +92,12 @@ func NewABSSnapStore(config *brtypes.SnapstoreConfig) (*ABSSnapStore, error) {
 	}
 	containerEndpoint := fmt.Sprintf("%s/%s", absURI, config.Container)
 
-	sharedKeyCredential, err := azcontainer.NewSharedKeyCredential(accountName, accountKey)
+	sharedKeyCredential, err := container.NewSharedKeyCredential(accountName, accountKey)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create shared key credentials: %w", err)
+		return nil, fmt.Errorf("failed to create shared key credential: %w", err)
 	}
 
-	client, err := azcontainer.NewClientWithSharedKeyCredential(containerEndpoint, sharedKeyCredential, &azcontainer.ClientOptions{
+	client, err := container.NewClientWithSharedKeyCredential(containerEndpoint, sharedKeyCredential, &container.ClientOptions{
 		ClientOptions: azcore.ClientOptions{
 			Retry: policy.RetryOptions{
 				TryTimeout: downloadTimeout,
@@ -273,21 +273,21 @@ func (a *ABSSnapStore) List() (brtypes.SnapList, error) {
 	var snapList brtypes.SnapList
 
 	// Prefix is compulsory here, since the container could potentially be used by other instances of etcd-backup-restore
-	pager := a.client.NewListBlobsFlatPager(&azcontainer.ListBlobsFlatOptions{Prefix: &prefix})
+	pager := a.client.NewListBlobsFlatPager(&container.ListBlobsFlatOptions{Prefix: &prefix})
 	for pager.More() {
 		resp, err := pager.NextPage(context.Background())
 		if err != nil {
 			return nil, fmt.Errorf("failed to list the blobs, error: %w", err)
 		}
 
-		for _, blob := range resp.Segment.BlobItems {
+		for _, blobItem := range resp.Segment.BlobItems {
 			// process the blobs returned in the result segment
-			if strings.Contains(*blob.Name, backupVersionV1) || strings.Contains(*blob.Name, backupVersionV2) {
+			if strings.Contains(*blobItem.Name, backupVersionV1) || strings.Contains(*blobItem.Name, backupVersionV2) {
 				//the blob may contain the full path in its name including the prefix
-				blobName := strings.TrimPrefix(*blob.Name, prefix)
+				blobName := strings.TrimPrefix(*blobItem.Name, prefix)
 				s, err := ParseSnapshot(path.Join(prefix, blobName))
 				if err != nil {
-					logrus.Warnf("Invalid snapshot found. Ignoring it:%s\n", *blob.Name)
+					logrus.Warnf("Invalid snapshot found. Ignoring it:%s\n", *blobItem.Name)
 				} else {
 					snapList = append(snapList, s)
 				}
