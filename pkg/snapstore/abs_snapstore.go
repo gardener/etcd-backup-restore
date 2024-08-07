@@ -308,6 +308,7 @@ func (a *ABSSnapStore) List() (brtypes.SnapList, error) {
 				if err != nil {
 					logrus.Warnf("Invalid snapshot found. Ignoring it:%s\n", *blobItem.Name)
 				} else {
+					// a := blob.BlobTags.BlobTagSet[0].Key
 					snapList = append(snapList, s)
 				}
 			}

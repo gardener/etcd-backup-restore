@@ -140,7 +140,7 @@ func (ssr *Snapshotter) RunGarbageCollector(stopCh <-chan struct{}) {
 					}
 
 					if deleteSnap {
-						if nextSnap.IsImmutable() {
+						if !nextSnap.IsDeletable() {
 							ssr.logger.Infof("GC: Skipping : %s, since it is immutable", nextSnap.SnapName)
 							continue
 						}
@@ -253,7 +253,7 @@ func (ssr *Snapshotter) GarbageCollectDeltaSnapshots(snapStream brtypes.SnapList
 
 			snapPath := path.Join(snapStream[i].SnapDir, snapStream[i].SnapName)
 			ssr.logger.Infof("GC: Deleting old delta snapshot: %s", snapPath)
-			if snapStream[i].IsImmutable() {
+			if !snapStream[i].IsDeletable() {
 				ssr.logger.Infof("GC: Skipping : %s, since it is immutable", snapPath)
 				continue
 			}
