@@ -220,7 +220,6 @@ func absCredentialsFromJSON(jsonData []byte) (*absCredentials, error) {
 
 	return absConfig, nil
 }
-
 func readABSCredentialFiles(dirname string) (*absCredentials, error) {
 	absConfig := &absCredentials{}
 
@@ -292,23 +291,46 @@ func (a *ABSSnapStore) List(_ bool) (brtypes.SnapList, error) {
 	var snapList brtypes.SnapList
 
 	// Prefix is compulsory here, since the container could potentially be used by other instances of etcd-backup-restore
-	pager := a.client.NewListBlobsFlatPager(&container.ListBlobsFlatOptions{Prefix: &prefix})
+	pager := a.client.NewListBlobsFlatPager(&container.ListBlobsFlatOptions{Prefix: &prefix,
+		Include: container.ListBlobsInclude{
+			Metadata:           true,
+			Tags:               true,
+			Versions:           true,
+			ImmutabilityPolicy: true,
+		},
+	})
 	for pager.More() {
 		resp, err := pager.NextPage(context.Background())
 		if err != nil {
 			return nil, fmt.Errorf("failed to list the blobs, error: %w", err)
 		}
 
+	Blob:
 		for _, blobItem := range resp.Segment.BlobItems {
 			// process the blobs returned in the result segment
 			if strings.Contains(*blobItem.Name, backupVersionV1) || strings.Contains(*blobItem.Name, backupVersionV2) {
 				//the blob may contain the full path in its name including the prefix
 				blobName := strings.TrimPrefix(*blobItem.Name, prefix)
-				s, err := ParseSnapshot(path.Join(prefix, blobName))
+				snapshot, err := ParseSnapshot(path.Join(prefix, blobName))
 				if err != nil {
-					logrus.Warnf("Invalid snapshot found. Ignoring it:%s\n", *blobItem.Name)
+					logrus.Warnf("Invalid snapshot found. Ignoring: %s", *blobItem.Name)
 				} else {
-					snapList = append(snapList, s)
+					snapList = append(snapList, snapshot)
+					// Tagged snapshots are not listed
+					if blobItem.BlobTags != nil {
+						for _, tag := range blobItem.BlobTags.BlobTagSet {
+							if *tag.Key == brtypes.ExcludeSnapshotMetadataKey && *tag.Value == "true" {
+								// skip this blob
+								logrus.Infof("Found a tag with key %s and value %s on snapshot %s. Skipping.", *tag.Key, *tag.Value, snapshot.SnapName)
+								continue Blob
+							}
+						}
+					}
+					// nil check only necessary for Azurite
+					if blobItem.Properties.ImmutabilityPolicyExpiresOn != nil {
+						snapshot.ImmutabilityExpiryTime = *blobItem.Properties.ImmutabilityPolicyExpiresOn
+					}
+					snapList = append(snapList, snapshot)
 				}
 			}
 		}
