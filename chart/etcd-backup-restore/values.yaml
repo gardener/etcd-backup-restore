@@ -97,8 +97,8 @@ backup:
   # abs:
   #   storageAccount: storage-account-with-object-storage-privileges
   #   storageKey: storage-key-with-object-storage-privileges
+  #   domain: non-default-domain-for-object-storage-service
   #   emulatorEnabled: boolean-float-to-enable-e2e-tests-to-use-azure-emulator # optional
-  #   storageAPIEndpoint: endpoint-override-for-storage-api # if emulatorEnabled is true
   # swift:
   #   authURL: identity-server-url
   #   domainName: domain-name

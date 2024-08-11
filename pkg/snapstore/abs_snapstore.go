@@ -22,6 +22,7 @@ import (
 
 	"github.com/Azure/azure-storage-blob-go/azblob"
 	"github.com/sirupsen/logrus"
+	"k8s.io/utils/pointer"
 
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 )
@@ -29,8 +30,6 @@ import (
 const (
 	absCredentialDirectory = "AZURE_APPLICATION_CREDENTIALS"
 	absCredentialJSONFile  = "AZURE_APPLICATION_CREDENTIALS_JSON"
-	// AzuriteEndpoint is the environment variable which indicates the endpoint at which the Azurite emulator is hosted
-	AzuriteEndpoint = "AZURE_STORAGE_API_ENDPOINT"
 )
 
 // ABSSnapStore is an ABS backed snapstore.
@@ -44,29 +43,35 @@ type ABSSnapStore struct {
 }
 
 type absCredentials struct {
-	BucketName     string `json:"bucketName"`
-	SecretKey      string `json:"storageKey"`
-	StorageAccount string `json:"storageAccount"`
+	BucketName     string  `json:"bucketName"`
+	StorageAccount string  `json:"storageAccount"`
+	StorageKey     string  `json:"storageKey"`
+	Domain         *string `json:"domain,omitempty"`
 }
 
 // NewABSSnapStore creates a new ABSSnapStore using a shared configuration and a specified bucket
 func NewABSSnapStore(config *brtypes.SnapstoreConfig) (*ABSSnapStore, error) {
-	storageAccount, storageKey, err := getCredentials(getEnvPrefixString(config.IsSource))
+	absCreds, err := getCredentials(getEnvPrefixString(config.IsSource))
 	if err != nil {
-		return nil, fmt.Errorf("failed to get credentials: %v", err)
+		return nil, fmt.Errorf("failed to get sharedKeyCredential: %v", err)
 	}
 
-	credentials, err := azblob.NewSharedKeyCredential(storageAccount, storageKey)
+	sharedKeyCredential, err := azblob.NewSharedKeyCredential(absCreds.StorageAccount, absCreds.StorageKey)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create shared key credentials: %v", err)
+		return nil, fmt.Errorf("failed to create shared key sharedKeyCredential: %v", err)
 	}
 
-	pipeline := azblob.NewPipeline(credentials, azblob.PipelineOptions{
+	pipeline := azblob.NewPipeline(sharedKeyCredential, azblob.PipelineOptions{
 		Retry: azblob.RetryOptions{
 			TryTimeout: downloadTimeout,
 		}})
 
-	blobURL, err := ConstructBlobServiceURL(credentials)
+	domain := brtypes.AzureBlobStorageGlobalDomain
+	if absCreds.Domain != nil {
+		domain = *absCreds.Domain
+	}
+
+	blobURL, err := ConstructBlobServiceURL(absCreds.StorageAccount, domain)
 	if err != nil {
 		return nil, err
 	}
@@ -78,41 +83,34 @@ func NewABSSnapStore(config *brtypes.SnapstoreConfig) (*ABSSnapStore, error) {
 }
 
 // ConstructBlobServiceURL constructs the Blob Service URL based on the activation status of the Azurite Emulator.
-// It checks the environment variables for emulator configuration and constructs the URL accordingly.
-// The function expects two environment variables:
+// It checks the environment variable for emulator configuration and constructs the URL accordingly.
+// The function expects the following environment variable:
 // - AZURE_EMULATOR_ENABLED: Indicates whether the Azurite Emulator is enabled (expects "true" or "false").
-// - AZURE_STORAGE_API_ENDPOINT: Specifies the Azurite Emulator endpoint when the emulator is enabled.
-func ConstructBlobServiceURL(credentials *azblob.SharedKeyCredential) (*url.URL, error) {
-	defaultURL, err := url.Parse(fmt.Sprintf("https://%s.%s", credentials.AccountName(), brtypes.AzureBlobStorageHostName))
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse default service URL: %w", err)
-	}
+func ConstructBlobServiceURL(storageAccount, domain string) (*url.URL, error) {
+	scheme := "https"
+
 	emulatorEnabled, ok := os.LookupEnv(EnvAzureEmulatorEnabled)
-	if !ok {
-		return defaultURL, nil
+	if ok {
+		isEmulator, err := strconv.ParseBool(emulatorEnabled)
+		if err != nil {
+			return nil, fmt.Errorf("invalid value for %s: %s, error: %w", EnvAzureEmulatorEnabled, emulatorEnabled, err)
+		}
+		if isEmulator {
+			// TODO: going forward, use Azurite with HTTPS (TLS) communication
+			scheme = "http"
+		}
 	}
-	isEmulator, err := strconv.ParseBool(emulatorEnabled)
-	if err != nil {
-		return nil, fmt.Errorf("invalid value for %s: %s, error: %w", EnvAzureEmulatorEnabled, emulatorEnabled, err)
-	}
-	if !isEmulator {
-		return defaultURL, nil
-	}
-	endpoint, ok := os.LookupEnv(AzuriteEndpoint)
-	if !ok {
-		return nil, fmt.Errorf("%s environment variable not set while %s is true", AzuriteEndpoint, EnvAzureEmulatorEnabled)
-	}
-	// Application protocol (http or https) is determined by the user of the Azurite, not by this function.
-	return url.Parse(fmt.Sprintf("%s/%s", endpoint, credentials.AccountName()))
+
+	return url.Parse(fmt.Sprintf("%s://%s.%s", scheme, storageAccount, domain))
 }
 
-func getCredentials(prefixString string) (string, string, error) {
+func getCredentials(prefixString string) (*absCredentials, error) {
 	if filename, isSet := os.LookupEnv(prefixString + absCredentialJSONFile); isSet {
 		credentials, err := readABSCredentialsJSON(filename)
 		if err != nil {
-			return "", "", fmt.Errorf("error getting credentials using %v file", filename)
+			return nil, fmt.Errorf("error getting credentials using %v file with error %w", filename, err)
 		}
-		return credentials.StorageAccount, credentials.SecretKey, nil
+		return credentials, nil
 	}
 
 	// TODO: @renormalize Remove this extra handling in v0.31.0
@@ -120,14 +118,14 @@ func getCredentials(prefixString string) (string, string, error) {
 	if dir, isSet := os.LookupEnv(prefixString + absCredentialDirectory); isSet {
 		jsonCredentialFile, err := findFileWithExtensionInDir(dir, ".json")
 		if err != nil {
-			return "", "", fmt.Errorf("error while finding a JSON credential file in %v directory with error: %w", dir, err)
+			return nil, fmt.Errorf("error while finding a JSON credential file in %v directory with error: %w", dir, err)
 		}
 		if jsonCredentialFile != "" {
 			credentials, err := readABSCredentialsJSON(jsonCredentialFile)
 			if err != nil {
-				return "", "", fmt.Errorf("error getting credentials using %v JSON file in a directory with error: %w", jsonCredentialFile, err)
+				return nil, fmt.Errorf("error getting credentials using %v JSON file in a directory with error: %w", jsonCredentialFile, err)
 			}
-			return credentials.StorageAccount, credentials.SecretKey, nil
+			return credentials, nil
 		}
 		// Non JSON credential files might exist in the credential directory, do not return
 	}
@@ -135,12 +133,12 @@ func getCredentials(prefixString string) (string, string, error) {
 	if dir, isSet := os.LookupEnv(prefixString + absCredentialDirectory); isSet {
 		credentials, err := readABSCredentialFiles(dir)
 		if err != nil {
-			return "", "", fmt.Errorf("error getting credentials from %v dir", dir)
+			return nil, fmt.Errorf("error getting credentials from %v directory with error %w", dir, err)
 		}
-		return credentials.StorageAccount, credentials.SecretKey, nil
+		return credentials, nil
 	}
 
-	return "", "", fmt.Errorf("unable to get credentials")
+	return nil, fmt.Errorf("unable to get credentials")
 }
 
 func readABSCredentialsJSON(filename string) (*absCredentials, error) {
@@ -172,17 +170,23 @@ func readABSCredentialFiles(dirname string) (*absCredentials, error) {
 
 	for _, file := range files {
 		if file.Name() == "storageAccount" {
-			data, err := os.ReadFile(dirname + "/storageAccount")
+			data, err := os.ReadFile(path.Join(dirname, file.Name()))
 			if err != nil {
 				return nil, err
 			}
 			absConfig.StorageAccount = string(data)
 		} else if file.Name() == "storageKey" {
-			data, err := os.ReadFile(dirname + "/storageKey")
+			data, err := os.ReadFile(path.Join(dirname, file.Name()))
 			if err != nil {
 				return nil, err
 			}
-			absConfig.SecretKey = string(data)
+			absConfig.StorageKey = string(data)
+		} else if file.Name() == "domain" {
+			data, err := os.ReadFile(path.Join(dirname, file.Name()))
+			if err != nil {
+				return nil, err
+			}
+			absConfig.Domain = pointer.String(string(data))
 		}
 	}
 
@@ -430,7 +434,7 @@ func GetABSCredentialsLastModifiedTime() (time.Time, error) {
 }
 
 func isABSConfigEmpty(config *absCredentials) error {
-	if len(config.SecretKey) != 0 && len(config.StorageAccount) != 0 {
+	if len(config.StorageKey) != 0 && len(config.StorageAccount) != 0 {
 		return nil
 	}
 	return fmt.Errorf("azure object storage credentials: storageKey or storageAccount is missing")
