@@ -30,6 +30,8 @@ const (
 	envStoreCredentials       = "GOOGLE_APPLICATION_CREDENTIALS"
 	envStorageAPIEndpoint     = "GOOGLE_STORAGE_API_ENDPOINT"
 	envSourceStoreCredentials = "SOURCE_GOOGLE_APPLICATION_CREDENTIALS"
+
+	storageAPIEndpointFileName = "storageAPIEndpoint"
 )
 
 // GCSSnapStore is snapstore with GCS object store as backend.
@@ -62,8 +64,12 @@ func NewGCSSnapStore(config *brtypes.SnapstoreConfig) (*GCSSnapStore, error) {
 	emulatorConfig.enabled = isEmulatorEnabled()
 	var opts []option.ClientOption // no need to explicitly set store credentials here since the Google SDK picks it up from the standard environment variable
 
-	if _, ok := os.LookupEnv(envSourceStoreCredentials); !ok || emulatorConfig.enabled { // do not set endpoint override when copying backups between buckets, since the buckets may reside on different regions
-		endpoint := strings.TrimSpace(os.Getenv(envStorageAPIEndpoint))
+	if gcsApplicationCredentialsPath, isSet := os.LookupEnv(getEnvPrefixString(config.IsSource) + envStoreCredentials); isSet {
+		endpointFilePath := path.Join(path.Dir(gcsApplicationCredentialsPath), storageAPIEndpointFileName)
+		endpoint, err := getGCSStorageAPIEndpoint(endpointFilePath)
+		if err != nil {
+			return nil, fmt.Errorf("error getting storage API endpoint from %v", endpointFilePath)
+		}
 		if endpoint != "" {
 			opts = append(opts, option.WithEndpoint(endpoint))
 			if emulatorConfig.enabled {
@@ -71,6 +77,7 @@ func NewGCSSnapStore(config *brtypes.SnapstoreConfig) (*GCSSnapStore, error) {
 			}
 		}
 	}
+
 	var chunkDirSuffix string
 	if emulatorConfig.enabled {
 		err := emulatorConfig.configureClient(opts)
@@ -94,6 +101,21 @@ func NewGCSSnapStore(config *brtypes.SnapstoreConfig) (*GCSSnapStore, error) {
 	gcsClient := stiface.AdaptClient(cli)
 
 	return NewGCSSnapStoreFromClient(config.Container, config.Prefix, config.TempDir, config.MaxParallelChunkUploads, config.MinChunkSize, chunkDirSuffix, gcsClient), nil
+}
+
+func getGCSStorageAPIEndpoint(path string) (string, error) {
+	if _, err := os.Stat(path); err == nil {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return "", err
+		}
+		if len(data) != 0 {
+			return strings.TrimSpace(string(data)), nil
+		}
+	}
+
+	// support falling back to environment variable `GOOGLE_STORAGE_API_ENDPOINT`
+	return strings.TrimSpace(os.Getenv(envStorageAPIEndpoint)), nil
 }
 
 // NewGCSSnapStoreFromClient create new GCSSnapStore from shared configuration with specified bucket.
@@ -306,11 +328,12 @@ func (s *GCSSnapStore) Delete(snap brtypes.Snapshot) error {
 
 // GetGCSCredentialsLastModifiedTime returns the latest modification timestamp of the GCS credential file
 func GetGCSCredentialsLastModifiedTime() (time.Time, error) {
-	if filename, isSet := os.LookupEnv(envStoreCredentials); isSet {
-		credentialFiles := []string{filename}
+	if credentialsFilePath, isSet := os.LookupEnv(envStoreCredentials); isSet {
+		endpointFilePath := path.Join(path.Dir(credentialsFilePath), storageAPIEndpointFileName)
+		credentialFiles := []string{credentialsFilePath, endpointFilePath}
 		gcsTimeStamp, err := getLatestCredentialsModifiedTime(credentialFiles)
 		if err != nil {
-			return time.Time{}, fmt.Errorf("failed to fetch file information of the GCS JSON credential file %v with error: %v", filename, err)
+			return time.Time{}, fmt.Errorf("failed to fetch file information of the GCS JSON credential dir %v with error: %v", path.Dir(credentialsFilePath), err)
 		}
 		return gcsTimeStamp, nil
 	}
