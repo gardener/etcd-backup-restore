@@ -20,7 +20,7 @@ The procedure to provide credentials to access the cloud provider object store v
 * For `Google Cloud Storage`:
    1. The service account json file should be provided in the `~/.gcp` as a `service-account-file.json` file.
    2. The service account json file should be provided, and the file path should be made available as environment variable `GOOGLE_APPLICATION_CREDENTIALS`.
-   3. If using a storage API [endpoint override](https://pkg.go.dev/cloud.google.com/go#hdr-Endpoint_Override), such as a [regional endpoint](https://cloud.google.com/storage/docs/regional-endpoints) or a local GCS emulator endpoint, then the endpoint must be made available via environment variable `GOOGLE_STORAGE_API_ENDPOINT`, in the format `http[s]://host[:port]/storage/v1/`.
+   3. If using a storage API [endpoint override](https://pkg.go.dev/cloud.google.com/go#hdr-Endpoint_Override), such as a [regional endpoint](https://cloud.google.com/storage/docs/regional-endpoints) or a local GCS emulator endpoint, then the endpoint must be made available via a file named `storageAPIEndpoint` residing in the `~/.gcp` directory.
 
 * For `Azure Blob storage`:
    1. The secret file should be provided, and the file path should be made available as an environment variable: `AZURE_APPLICATION_CREDENTIALS`.
