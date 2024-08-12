@@ -109,9 +109,10 @@ func getGCSStorageAPIEndpoint(path string) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		if len(data) != 0 {
-			return strings.TrimSpace(string(data)), nil
+		if len(data) == 0 {
+			return "", fmt.Errorf("file %s is empty", path)
 		}
+		return strings.TrimSpace(string(data)), nil
 	}
 
 	// support falling back to environment variable `GOOGLE_STORAGE_API_ENDPOINT`
