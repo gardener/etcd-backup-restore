@@ -65,10 +65,10 @@ func NewGCSSnapStore(config *brtypes.SnapstoreConfig) (*GCSSnapStore, error) {
 	var opts []option.ClientOption // no need to explicitly set store credentials here since the Google SDK picks it up from the standard environment variable
 
 	if gcsApplicationCredentialsPath, isSet := os.LookupEnv(getEnvPrefixString(config.IsSource) + envStoreCredentials); isSet {
-		endpointFilePath := path.Join(path.Dir(gcsApplicationCredentialsPath), storageAPIEndpointFileName)
-		endpoint, err := getGCSStorageAPIEndpoint(endpointFilePath)
+		storageAPIEndpointFilePath := path.Join(path.Dir(gcsApplicationCredentialsPath), storageAPIEndpointFileName)
+		endpoint, err := getGCSStorageAPIEndpoint(storageAPIEndpointFilePath)
 		if err != nil {
-			return nil, fmt.Errorf("error getting storage API endpoint from %v", endpointFilePath)
+			return nil, fmt.Errorf("error getting storage API endpoint from %v", storageAPIEndpointFilePath)
 		}
 		if endpoint != "" {
 			opts = append(opts, option.WithEndpoint(endpoint))
@@ -329,8 +329,7 @@ func (s *GCSSnapStore) Delete(snap brtypes.Snapshot) error {
 // GetGCSCredentialsLastModifiedTime returns the latest modification timestamp of the GCS credential file
 func GetGCSCredentialsLastModifiedTime() (time.Time, error) {
 	if credentialsFilePath, isSet := os.LookupEnv(envStoreCredentials); isSet {
-		endpointFilePath := path.Join(path.Dir(credentialsFilePath), storageAPIEndpointFileName)
-		credentialFiles := []string{credentialsFilePath, endpointFilePath}
+		credentialFiles := []string{credentialsFilePath}
 		gcsTimeStamp, err := getLatestCredentialsModifiedTime(credentialFiles)
 		if err != nil {
 			return time.Time{}, fmt.Errorf("failed to fetch file information of the GCS JSON credential dir %v with error: %v", path.Dir(credentialsFilePath), err)
