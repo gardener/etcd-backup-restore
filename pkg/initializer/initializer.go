@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/gardener/etcd-backup-restore/pkg/errors"
@@ -48,15 +47,12 @@ func (e *EtcdInitializer) Initialize(mode validator.Mode, failBelowRevision int6
 	ctx := context.Background()
 	var err error
 
-	podName, err := miscellaneous.GetEnvVarOrError("POD_NAME")
 	if err != nil {
 		logger.Fatalf("Error reading POD_NAME env var : %v", err)
 	}
 
 	// Etcd cluster scale-up case
-	// Note: first member of etcd cluster can never be part of scale-up case.
-	// TODO: consider removing this special check for first cluster member when backup-restore can check presence of any member in cluster.
-	if miscellaneous.IsMultiNode(logger) && !strings.HasSuffix(podName, "0") {
+	if miscellaneous.IsMultiNode(logger) {
 		clientSet, err := miscellaneous.GetKubernetesClientSetOrError()
 		if err != nil {
 			logger.Fatalf("failed to create clientset, %v", err)
