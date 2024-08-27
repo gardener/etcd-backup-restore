@@ -99,6 +99,7 @@ type Snapshotter struct {
 	K8sClientset                 client.Client
 	snapstoreConfig              *brtypes.SnapstoreConfig
 	lastSecretModifiedTime       time.Time
+	PrevFullSnapshotSucceed      bool
 }
 
 // NewSnapshotter returns the snapshotter object.
@@ -139,25 +140,26 @@ func NewSnapshotter(logger *logrus.Entry, config *brtypes.SnapshotterConfig, sto
 	}
 
 	return &Snapshotter{
-		logger:               logger.WithField("actor", "snapshotter"),
-		store:                store,
-		config:               config,
-		etcdConnectionConfig: etcdConnectionConfig,
-		compressionConfig:    compressionConfig,
-		HealthConfig:         healthConfig,
-		schedule:             sdl,
-		PrevSnapshot:         prevSnapshot,
-		PrevFullSnapshot:     fullSnap,
-		PrevDeltaSnapshots:   deltaSnapList,
-		SsrState:             brtypes.SnapshotterInactive,
-		SsrStateMutex:        &sync.Mutex{},
-		fullSnapshotReqCh:    make(chan bool),
-		deltaSnapshotReqCh:   make(chan struct{}),
-		fullSnapshotAckCh:    make(chan result),
-		deltaSnapshotAckCh:   make(chan result),
-		cancelWatch:          func() {},
-		K8sClientset:         clientSet,
-		snapstoreConfig:      storeConfig,
+		logger:                  logger.WithField("actor", "snapshotter"),
+		store:                   store,
+		config:                  config,
+		etcdConnectionConfig:    etcdConnectionConfig,
+		compressionConfig:       compressionConfig,
+		HealthConfig:            healthConfig,
+		schedule:                sdl,
+		PrevSnapshot:            prevSnapshot,
+		PrevFullSnapshot:        fullSnap,
+		PrevDeltaSnapshots:      deltaSnapList,
+		SsrState:                brtypes.SnapshotterInactive,
+		SsrStateMutex:           &sync.Mutex{},
+		fullSnapshotReqCh:       make(chan bool),
+		deltaSnapshotReqCh:      make(chan struct{}),
+		fullSnapshotAckCh:       make(chan result),
+		deltaSnapshotAckCh:      make(chan result),
+		cancelWatch:             func() {},
+		K8sClientset:            clientSet,
+		snapstoreConfig:         storeConfig,
+		PrevFullSnapshotSucceed: false,
 	}, nil
 }
 
@@ -638,8 +640,10 @@ func (ssr *Snapshotter) snapshotEventHandler(stopCh <-chan struct{}) error {
 			}
 			ssr.fullSnapshotAckCh <- res
 			if err != nil {
+				ssr.PrevFullSnapshotSucceed = false
 				return err
 			}
+			ssr.PrevFullSnapshotSucceed = true
 			if ssr.HealthConfig.SnapshotLeaseRenewalEnabled {
 				ssr.FullSnapshotLeaseUpdateTimer.Stop()
 				ssr.FullSnapshotLeaseUpdateTimer.Reset(time.Nanosecond)
@@ -665,8 +669,10 @@ func (ssr *Snapshotter) snapshotEventHandler(stopCh <-chan struct{}) error {
 
 		case <-ssr.fullSnapshotTimer.C:
 			if _, err := ssr.TakeFullSnapshotAndResetTimer(false); err != nil {
+				ssr.PrevFullSnapshotSucceed = false
 				return err
 			}
+			ssr.PrevFullSnapshotSucceed = true
 			if ssr.HealthConfig.SnapshotLeaseRenewalEnabled {
 				ssr.FullSnapshotLeaseUpdateTimer.Stop()
 				ssr.FullSnapshotLeaseUpdateTimer.Reset(time.Nanosecond)

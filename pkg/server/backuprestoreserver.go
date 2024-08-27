@@ -409,7 +409,7 @@ func (b *BackupRestoreServer) runEtcdProbeLoopWithSnapshotter(ctx context.Contex
 				}
 			}
 
-			if !initialDeltaSnapshotTaken {
+			if !initialDeltaSnapshotTaken || !ssr.PrevFullSnapshotSucceed {
 				// need to take a full snapshot here
 				// if initial deltaSnapshot is not taken
 				var snapshot *brtypes.Snapshot
@@ -417,9 +417,11 @@ func (b *BackupRestoreServer) runEtcdProbeLoopWithSnapshotter(ctx context.Contex
 				metrics.SnapshotRequired.With(prometheus.Labels{metrics.LabelKind: brtypes.SnapshotKindFull}).Set(1)
 				if snapshot, err = ssr.TakeFullSnapshotAndResetTimer(false); err != nil {
 					metrics.SnapshotterOperationFailure.With(prometheus.Labels{metrics.LabelError: err.Error()}).Inc()
+					ssr.PrevFullSnapshotSucceed = false
 					b.logger.Errorf("Failed to take substitute first full snapshot: %v", err)
 					continue
 				}
+				ssr.PrevFullSnapshotSucceed = true
 				if b.config.HealthConfig.SnapshotLeaseRenewalEnabled {
 					leaseUpdatectx, cancel := context.WithTimeout(ctx, brtypes.LeaseUpdateTimeoutDuration)
 					defer cancel()
