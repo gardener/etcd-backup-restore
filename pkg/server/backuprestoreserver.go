@@ -401,7 +401,7 @@ func (b *BackupRestoreServer) runEtcdProbeLoopWithSnapshotter(ctx context.Contex
 							b.logger.Warnf("Snapshot lease update failed : %v", err)
 						}
 					}
-					if b.backoffConfig.Start && ssr.PrevFullSnapshotSucceed {
+					if b.backoffConfig.Start {
 						b.backoffConfig.ResetExponentialBackoff()
 					}
 				} else {
@@ -409,7 +409,7 @@ func (b *BackupRestoreServer) runEtcdProbeLoopWithSnapshotter(ctx context.Contex
 				}
 			}
 
-			if !initialDeltaSnapshotTaken || !ssr.PrevFullSnapshotSucceed {
+			if !initialDeltaSnapshotTaken {
 				// need to take a full snapshot here
 				// if initial deltaSnapshot is not taken
 				// or previous full snapshot wasn't successful
