@@ -418,11 +418,11 @@ func (b *BackupRestoreServer) runEtcdProbeLoopWithSnapshotter(ctx context.Contex
 				metrics.SnapshotRequired.With(prometheus.Labels{metrics.LabelKind: brtypes.SnapshotKindFull}).Set(1)
 				if snapshot, err = ssr.TakeFullSnapshotAndResetTimer(false); err != nil {
 					metrics.SnapshotterOperationFailure.With(prometheus.Labels{metrics.LabelError: err.Error()}).Inc()
-					ssr.PrevFullSnapshotSucceed = false
+					ssr.PrevFullSnapshotSucceeded = false
 					b.logger.Errorf("Failed to take substitute full snapshot: %v", err)
 					continue
 				}
-				ssr.PrevFullSnapshotSucceed = true
+				ssr.PrevFullSnapshotSucceeded = true
 				if b.config.HealthConfig.SnapshotLeaseRenewalEnabled {
 					leaseUpdatectx, cancel := context.WithTimeout(ctx, brtypes.LeaseUpdateTimeoutDuration)
 					defer cancel()
