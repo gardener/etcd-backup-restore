@@ -62,6 +62,7 @@ func (ssr *Snapshotter) RunGarbageCollector(stopCh <-chan struct{}) {
 			} else {
 				// chunksDeleted stores the no of chunks deleted in the current iteration of GC.
 				var chunksDeleted int
+				// GarbageCollectChunks returns a filtered SnapList which does not contain chunks
 				chunksDeleted, snapList = ssr.GarbageCollectChunks(snapList)
 				ssr.logger.Infof("GC: Total number garbage collected chunks: %d", chunksDeleted)
 			}
@@ -203,8 +204,8 @@ func getSnapStreamIndexList(snapList brtypes.SnapList) []int {
 }
 
 // GarbageCollectChunks removes obsolete chunks based on the latest recorded snapshot.
-// It eliminates chunks associated with snapshots that have already been uploaded.
-// Additionally, it avoids deleting chunks linked to snapshots currently being uploaded to prevent the garbage collector from removing chunks before the composite is formed.
+// It eliminates chunks associated with snapshots that have already been uploaded, and returns a SnapList which does not include chunks.
+// Additionally, it avoids deleting chunks linked to snapshots currently being uploaded to prevent the garbage collector from removing chunks before the composite is formed. This chunk garbage collection is required only for GCS.
 func (ssr *Snapshotter) GarbageCollectChunks(snapList brtypes.SnapList) (int, brtypes.SnapList) {
 	var nonChunkSnapList brtypes.SnapList
 	chunksDeleted := 0
@@ -220,6 +221,10 @@ func (ssr *Snapshotter) GarbageCollectChunks(snapList brtypes.SnapList) (int, br
 		}
 		// delete the chunk object
 		snapPath := path.Join(snap.SnapDir, snap.SnapName)
+		if !snap.IsDeletable() {
+			ssr.logger.Infof("GC: Skipping : %s, since it is immutable", snap.SnapName)
+			continue
+		}
 		ssr.logger.Infof("GC: Deleting chunk for old snapshot: %s", snapPath)
 		if err := ssr.store.Delete(*snap); err != nil {
 			ssr.logger.Warnf("GC: Failed to delete chunk %s: %v", snapPath, err)
