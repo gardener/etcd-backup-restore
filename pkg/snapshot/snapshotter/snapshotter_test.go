@@ -780,6 +780,22 @@ var _ = Describe("Snapshotter", func() {
 				})
 			})
 
+			Context("Previous full snapshot was not successful", func() {
+				It("should return true", func() {
+					snapshotterConfig := &brtypes.SnapshotterConfig{
+						FullSnapshotSchedule: fmt.Sprintf("%d %d * * *", (currentMin+1)%60, (currentHour+2)%24),
+					}
+
+					ssr, err = NewSnapshotter(logger, snapshotterConfig, store, etcdConnectionConfig, compressionConfig, healthConfig, snapstoreConfig)
+					Expect(err).ShouldNot(HaveOccurred())
+
+					// previous full snapshot wasn't successful
+					ssr.PrevFullSnapshotSucceeded = false
+					isFullSnapMissed := ssr.IsFullSnapshotRequiredAtStartup(fullSnapshotTimeWindow)
+					Expect(isFullSnapMissed).Should(BeTrue())
+				})
+			})
+
 			Context("Previous full snapshot was taken exactly at scheduled snapshot time, no FullSnapshot was missed", func() {
 				It("should return false", func() {
 					snapshotterConfig := &brtypes.SnapshotterConfig{
@@ -793,6 +809,7 @@ var _ = Describe("Snapshotter", func() {
 					ssr.PrevFullSnapshot = &brtypes.Snapshot{
 						CreatedOn: time.Date(time.Now().Year(), time.Now().Month(), time.Now().Day()-1, (currentHour+2)%24, (currentMin+1)%60, 0, 0, time.Local),
 					}
+					ssr.PrevFullSnapshotSucceeded = true
 
 					isFullSnapMissed := ssr.IsFullSnapshotRequiredAtStartup(fullSnapshotTimeWindow)
 					Expect(isFullSnapMissed).Should(BeFalse())
@@ -813,6 +830,7 @@ var _ = Describe("Snapshotter", func() {
 					ssr.PrevFullSnapshot = &brtypes.Snapshot{
 						CreatedOn: time.Date(time.Now().Year(), time.Now().Month(), time.Now().Day(), (currentHour-4)%24, (currentMin-10)%60, 0, 0, time.Local),
 					}
+					ssr.PrevFullSnapshotSucceeded = true
 					isFullSnapCanBeMissed := ssr.IsFullSnapshotRequiredAtStartup(fullSnapshotTimeWindow)
 					Expect(isFullSnapCanBeMissed).Should(BeFalse())
 				})
@@ -832,6 +850,7 @@ var _ = Describe("Snapshotter", func() {
 					ssr.PrevFullSnapshot = &brtypes.Snapshot{
 						CreatedOn: time.Date(time.Now().Year(), time.Now().Month(), time.Now().Day(), (currentHour-18)%24, (currentMin)%60, 0, 0, time.Local),
 					}
+					ssr.PrevFullSnapshotSucceeded = true
 					isFullSnapCanBeMissed := ssr.IsFullSnapshotRequiredAtStartup(fullSnapshotTimeWindow)
 					Expect(isFullSnapCanBeMissed).Should(BeTrue())
 				})
