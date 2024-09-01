@@ -1,7 +1,6 @@
 package containers
 
 import (
-	"net/url"
 	"strings"
 
 	"github.com/gophercloud/gophercloud"
@@ -81,6 +80,7 @@ type CreateOpts struct {
 	TempURLKey        string `h:"X-Container-Meta-Temp-URL-Key"`
 	TempURLKey2       string `h:"X-Container-Meta-Temp-URL-Key-2"`
 	StoragePolicy     string `h:"X-Storage-Policy"`
+	VersionsEnabled   bool   `h:"X-Versions-Enabled"`
 }
 
 // ToContainerCreateMap formats a CreateOpts into a map of headers.
@@ -97,6 +97,11 @@ func (opts CreateOpts) ToContainerCreateMap() (map[string]string, error) {
 
 // Create is a function that creates a new container.
 func Create(c *gophercloud.ServiceClient, containerName string, opts CreateOptsBuilder) (r CreateResult) {
+	url, err := createURL(c, containerName)
+	if err != nil {
+		r.Err = err
+		return
+	}
 	h := make(map[string]string)
 	if opts != nil {
 		headers, err := opts.ToContainerCreateMap()
@@ -108,7 +113,7 @@ func Create(c *gophercloud.ServiceClient, containerName string, opts CreateOptsB
 			h[k] = v
 		}
 	}
-	resp, err := c.Request("PUT", createURL(c, url.QueryEscape(containerName)), &gophercloud.RequestOpts{
+	resp, err := c.Request("PUT", url, &gophercloud.RequestOpts{
 		MoreHeaders: h,
 		OkCodes:     []int{201, 202, 204},
 	})
@@ -123,7 +128,7 @@ func BulkDelete(c *gophercloud.ServiceClient, containers []string) (r BulkDelete
 	// https://github.com/openstack/swift/blob/stable/train/swift/common/swob.py#L302
 	encodedContainers := make([]string, len(containers))
 	for i, v := range containers {
-		encodedContainers[i] = url.QueryEscape(v)
+		encodedContainers[i] = v
 	}
 	b := strings.NewReader(strings.Join(encodedContainers, "\n") + "\n")
 	resp, err := c.Post(bulkDeleteURL(c), b, &r.Body, &gophercloud.RequestOpts{
@@ -139,7 +144,12 @@ func BulkDelete(c *gophercloud.ServiceClient, containers []string) (r BulkDelete
 
 // Delete is a function that deletes a container.
 func Delete(c *gophercloud.ServiceClient, containerName string) (r DeleteResult) {
-	resp, err := c.Delete(deleteURL(c, url.QueryEscape(containerName)), nil)
+	url, err := deleteURL(c, containerName)
+	if err != nil {
+		r.Err = err
+		return
+	}
+	resp, err := c.Delete(url, nil)
 	_, r.Header, r.Err = gophercloud.ParseResponse(resp, err)
 	return
 }
@@ -155,18 +165,19 @@ type UpdateOptsBuilder interface {
 type UpdateOpts struct {
 	Metadata               map[string]string
 	RemoveMetadata         []string
-	ContainerRead          string `h:"X-Container-Read"`
-	ContainerSyncTo        string `h:"X-Container-Sync-To"`
-	ContainerSyncKey       string `h:"X-Container-Sync-Key"`
-	ContainerWrite         string `h:"X-Container-Write"`
-	ContentType            string `h:"Content-Type"`
-	DetectContentType      bool   `h:"X-Detect-Content-Type"`
-	RemoveVersionsLocation string `h:"X-Remove-Versions-Location"`
-	VersionsLocation       string `h:"X-Versions-Location"`
-	RemoveHistoryLocation  string `h:"X-Remove-History-Location"`
-	HistoryLocation        string `h:"X-History-Location"`
-	TempURLKey             string `h:"X-Container-Meta-Temp-URL-Key"`
-	TempURLKey2            string `h:"X-Container-Meta-Temp-URL-Key-2"`
+	ContainerRead          *string `h:"X-Container-Read"`
+	ContainerSyncTo        *string `h:"X-Container-Sync-To"`
+	ContainerSyncKey       *string `h:"X-Container-Sync-Key"`
+	ContainerWrite         *string `h:"X-Container-Write"`
+	ContentType            *string `h:"Content-Type"`
+	DetectContentType      *bool   `h:"X-Detect-Content-Type"`
+	RemoveVersionsLocation string  `h:"X-Remove-Versions-Location"`
+	VersionsLocation       string  `h:"X-Versions-Location"`
+	RemoveHistoryLocation  string  `h:"X-Remove-History-Location"`
+	HistoryLocation        string  `h:"X-History-Location"`
+	TempURLKey             string  `h:"X-Container-Meta-Temp-URL-Key"`
+	TempURLKey2            string  `h:"X-Container-Meta-Temp-URL-Key-2"`
+	VersionsEnabled        *bool   `h:"X-Versions-Enabled"`
 }
 
 // ToContainerUpdateMap formats a UpdateOpts into a map of headers.
@@ -190,6 +201,11 @@ func (opts UpdateOpts) ToContainerUpdateMap() (map[string]string, error) {
 // Update is a function that creates, updates, or deletes a container's
 // metadata.
 func Update(c *gophercloud.ServiceClient, containerName string, opts UpdateOptsBuilder) (r UpdateResult) {
+	url, err := updateURL(c, containerName)
+	if err != nil {
+		r.Err = err
+		return
+	}
 	h := make(map[string]string)
 	if opts != nil {
 		headers, err := opts.ToContainerUpdateMap()
@@ -202,7 +218,7 @@ func Update(c *gophercloud.ServiceClient, containerName string, opts UpdateOptsB
 			h[k] = v
 		}
 	}
-	resp, err := c.Request("POST", updateURL(c, url.QueryEscape(containerName)), &gophercloud.RequestOpts{
+	resp, err := c.Request("POST", url, &gophercloud.RequestOpts{
 		MoreHeaders: h,
 		OkCodes:     []int{201, 202, 204},
 	})
@@ -230,6 +246,11 @@ func (opts GetOpts) ToContainerGetMap() (map[string]string, error) {
 // the custom metadata, pass the GetResult response to the ExtractMetadata
 // function.
 func Get(c *gophercloud.ServiceClient, containerName string, opts GetOptsBuilder) (r GetResult) {
+	url, err := getURL(c, containerName)
+	if err != nil {
+		r.Err = err
+		return
+	}
 	h := make(map[string]string)
 	if opts != nil {
 		headers, err := opts.ToContainerGetMap()
@@ -242,7 +263,7 @@ func Get(c *gophercloud.ServiceClient, containerName string, opts GetOptsBuilder
 			h[k] = v
 		}
 	}
-	resp, err := c.Head(getURL(c, url.QueryEscape(containerName)), &gophercloud.RequestOpts{
+	resp, err := c.Head(url, &gophercloud.RequestOpts{
 		MoreHeaders: h,
 		OkCodes:     []int{200, 204},
 	})
