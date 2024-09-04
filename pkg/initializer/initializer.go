@@ -45,11 +45,6 @@ func (e *EtcdInitializer) Initialize(mode validator.Mode, failBelowRevision int6
 	start := time.Now()
 	memberHeartbeatPresent := false
 	ctx := context.Background()
-	var err error
-
-	if err != nil {
-		logger.Fatalf("Error reading POD_NAME env var : %v", err)
-	}
 
 	// Etcd cluster scale-up case
 	if miscellaneous.IsMultiNode(logger) {
