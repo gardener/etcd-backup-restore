@@ -62,7 +62,7 @@ func GetLatestFullSnapshotAndDeltaSnapList(store brtypes.SnapStore) (*brtypes.Sn
 		fullSnapshot  *brtypes.Snapshot
 		deltaSnapList brtypes.SnapList
 	)
-	snapList, err := store.List()
+	snapList, err := store.List(false)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -97,7 +97,7 @@ type backup struct {
 // GetFilteredBackups returns sorted by date (new -> old) SnapList. It will also filter the snapshots that should be included or not using the filter function.
 // If the filter is nil it will return all snapshots. Also, maxBackups can be used to target only the last N snapshots (-1 = all).
 func GetFilteredBackups(store brtypes.SnapStore, maxBackups int, filter func(snaps brtypes.Snapshot) bool) (brtypes.SnapList, error) {
-	snapList, err := store.List()
+	snapList, err := store.List(false)
 	if err != nil {
 		return nil, err
 	}

@@ -57,6 +57,7 @@ const (
 	// MinChunkSize is set to 5Mib since it is lower chunk size limit for AWS.
 	MinChunkSize int64 = 5 * (1 << 20) //5 MiB
 
+	// ExcludeSnapshotMetadataKey is the tag that is to be added on snapshots in the object store if they are not to be included in restoration
 	ExcludeSnapshotMetadataKey = "x-etcd-snapshot-exclude"
 )
 
@@ -67,8 +68,8 @@ const (
 type SnapStore interface {
 	// Fetch should open reader for the snapshot file from store.
 	Fetch(Snapshot) (io.ReadCloser, error)
-	// List will return sorted list with all snapshot files on store.
-	List() (SnapList, error)
+	// List will return sorted list with all snapshot files on store. Snapshots tagged with ExcludeSnapshotMetadataKey can be included in the List call by passing true.
+	List(bool) (SnapList, error)
 	// Save will write the snapshot to store.
 	Save(Snapshot, io.ReadCloser) error
 	// Delete should delete the snapshot file from store.

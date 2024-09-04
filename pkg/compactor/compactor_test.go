@@ -129,7 +129,7 @@ var _ = Describe("Running Compactor", func() {
 				Expect(err).ShouldNot(HaveOccurred())
 
 				// Check if the compacted full snapshot is really present
-				snapList, err := store.List()
+				snapList, err := store.List(false)
 				Expect(err).ShouldNot(HaveOccurred())
 
 				compactedSnapshot = snapList[len(snapList)-1]
@@ -210,7 +210,7 @@ var _ = Describe("Running Compactor", func() {
 				Expect(err).ShouldNot(HaveOccurred())
 
 				// Check if the compacted full snapshot is really present
-				snapList, err := store.List()
+				snapList, err := store.List(false)
 				Expect(err).ShouldNot(HaveOccurred())
 
 				compactedSnapshot = snapList[len(snapList)-1]

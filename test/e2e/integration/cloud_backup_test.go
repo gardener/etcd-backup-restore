@@ -155,7 +155,7 @@ auto-compaction-retention: 30m`
 			store, err = snapstore.GetSnapstore(snapstoreConfig)
 			Expect(err).ShouldNot(HaveOccurred())
 
-			snapList, err := store.List()
+			snapList, err := store.List(false)
 			Expect(err).ShouldNot(HaveOccurred())
 			for _, snap := range snapList {
 				Expect(store.Delete(*snap)).To(Succeed())
@@ -176,13 +176,13 @@ auto-compaction-retention: 30m`
 
 		Context("taken at 1 minute interval", func() {
 			It("should take periodic backups.", func() {
-				snaplist, err := store.List()
+				snaplist, err := store.List(false)
 				Expect(snaplist).Should(BeEmpty())
 				Expect(err).ShouldNot(HaveOccurred())
 
 				time.Sleep(70 * time.Second)
 
-				snaplist, err = store.List()
+				snaplist, err = store.List(false)
 				Expect(snaplist).ShouldNot(BeEmpty())
 				Expect(err).ShouldNot(HaveOccurred())
 			})
@@ -190,13 +190,13 @@ auto-compaction-retention: 30m`
 
 		Context("taken at 1 minute interval", func() {
 			It("should take periodic backups and limit based garbage collect backups over maxBackups configured", func() {
-				snaplist, err := store.List()
+				snaplist, err := store.List(false)
 				Expect(snaplist).Should(BeEmpty())
 				Expect(err).ShouldNot(HaveOccurred())
 
 				time.Sleep(190 * time.Second)
 
-				snaplist, err = store.List()
+				snaplist, err = store.List(false)
 				Expect(err).ShouldNot(HaveOccurred())
 				count := 0
 				for _, snap := range snaplist {

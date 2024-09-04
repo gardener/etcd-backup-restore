@@ -123,7 +123,7 @@ func (c *Copier) copyBackups() error {
 
 	// Get destination snapshots and build a map keyed by name
 	c.logger.Info("Getting destination snapshots...")
-	destSnapshots, err := c.destSnapStore.List()
+	destSnapshots, err := c.destSnapStore.List(false)
 	if err != nil {
 		return fmt.Errorf("could not get destination snapshots: %v", err)
 	}

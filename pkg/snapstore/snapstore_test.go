@@ -176,7 +176,7 @@ var _ = Describe("Save, List, Fetch, Delete from mock snapstore", func() {
 				logrus.Infof("Running mock tests for %s when only v1 is present", provider)
 
 				// List snap1 and snap2
-				snapList, err := snapStore.List()
+				snapList, err := snapStore.List(false)
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(snapList.Len()).To(Equal(numberSnapshotsInObjectMap * snapStore.objectCountPerSnapshot))
 				Expect(snapList[0].SnapName).To(Equal(snap2.SnapName))
@@ -196,7 +196,7 @@ var _ = Describe("Save, List, Fetch, Delete from mock snapstore", func() {
 				prevLen := len(objectMap)
 				err = snapStore.Delete(*snapList[secondSnapshotIndex])
 				Expect(err).ShouldNot(HaveOccurred())
-				snapList, err = snapStore.List()
+				snapList, err = snapStore.List(false)
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(snapList.Len()).To(Equal(prevLen - 1*snapStore.objectCountPerSnapshot))
 
@@ -228,7 +228,7 @@ var _ = Describe("Save, List, Fetch, Delete from mock snapstore", func() {
 				logrus.Infof("Running mock tests for %s when both v1 and v2 are present", provider)
 
 				// List snap1, snap4, snap5
-				snapList, err := snapStore.List()
+				snapList, err := snapStore.List(false)
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(snapList.Len()).To(Equal(numberSnapshotsInObjectMap * snapStore.objectCountPerSnapshot))
 				Expect(snapList[0].SnapName).To(Equal(snap1.SnapName))
@@ -297,7 +297,7 @@ var _ = Describe("Save, List, Fetch, Delete from mock snapstore", func() {
 				logrus.Infof("Running mock tests for %s when only v2 is present", provider)
 
 				// List snap4 and snap5
-				snapList, err := snapStore.List()
+				snapList, err := snapStore.List(false)
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(snapList.Len()).To(Equal(numberSnapshotsInObjectMap * snapStore.objectCountPerSnapshot))
 				Expect(snapList[0].SnapName).To(Equal(snap4.SnapName))
@@ -317,7 +317,7 @@ var _ = Describe("Save, List, Fetch, Delete from mock snapstore", func() {
 				prevLen := len(objectMap)
 				err = snapStore.Delete(*snapList[0])
 				Expect(err).ShouldNot(HaveOccurred())
-				snapList, err = snapStore.List()
+				snapList, err = snapStore.List(false)
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(snapList.Len()).To(Equal(prevLen - snapStore.objectCountPerSnapshot))
 

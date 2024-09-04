@@ -45,7 +45,7 @@ var _ = Describe("Backup", func() {
 
 	Describe("Snapshotter", func() {
 		It("should take full and delta snapshot", func() {
-			snapList, err := store.List()
+			snapList, err := store.List(false)
 			Expect(err).ShouldNot(HaveOccurred())
 			numFulls, numDeltas := getTotalFullAndDeltaSnapshotCounts(snapList)
 			Expect(numFulls).Should(Equal(1))
@@ -89,7 +89,7 @@ var _ = Describe("Backup", func() {
 
 			cumulativeNumFulls, cumulativeNumDeltas := getTotalFullAndDeltaSnapshotCounts(cumulativeSnapList)
 
-			snapList, err := store.List()
+			snapList, err := store.List(false)
 			Expect(err).ShouldNot(HaveOccurred())
 			numFulls, numDeltas := getTotalFullAndDeltaSnapshotCounts(snapList)
 

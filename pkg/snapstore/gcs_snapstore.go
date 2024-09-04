@@ -303,8 +303,8 @@ func (s *GCSSnapStore) List(includeTagged bool) (brtypes.SnapList, error) {
 			return nil, err
 		}
 
-		// Check if the snapshot should be ignored.
-		if attr.Metadata[brtypes.ExcludeSnapshotMetadataKey] == "true" {
+		// Check if the snapshot should be ignored
+		if !includeTagged && attr.Metadata[brtypes.ExcludeSnapshotMetadataKey] == "true" {
 			logrus.Infof("Ignoring snapshot due to exclude metadata: %s", attr.Name)
 			continue
 		}

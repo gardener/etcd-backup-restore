@@ -41,7 +41,8 @@ func (ssr *Snapshotter) RunGarbageCollector(stopCh <-chan struct{}) {
 
 			total := 0
 			ssr.logger.Info("GC: Executing garbage collection...")
-			snapList, err := ssr.store.List()
+			// List the tagged snapshots to garbage collect them
+			snapList, err := ssr.store.List(true)
 			if err != nil {
 				metrics.SnapshotterOperationFailure.With(prometheus.Labels{metrics.LabelError: err.Error()}).Inc()
 				ssr.logger.Warnf("GC: Failed to list snapshots: %v", err)
