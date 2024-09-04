@@ -42,19 +42,33 @@ const (
 
 // AzureBlockBlobClientI defines the methods that are invoked from the Azure Block Blob API.
 type AzureBlockBlobClientI interface {
+	// DownloadStream reads a range of bytes from a blob. The response also includes the blob's properties and metadata.
 	DownloadStream(context.Context, *blob.DownloadStreamOptions) (blob.DownloadStreamResponse, error)
+	// Delete marks the specified blob or snapshot for deletion. The blob is later deleted during garbage collection.
+	// Note that deleting a blob also deletes all its snapshots.
 	Delete(context.Context, *blob.DeleteOptions) (blob.DeleteResponse, error)
+	// CommitBlockList writes a blob by specifying the list of block IDs that make up the blob.
+	// In order to be written as part of a blob, a block must have been successfully written
+	// to the server in a prior PutBlock operation. You can call PutBlockList to update a blob
+	// by uploading only those blocks that have changed, then committing the new and existing
+	// blocks together. Any blocks not specified in the block list and permanently deleted.
 	CommitBlockList(context.Context, []string, *blockblob.CommitBlockListOptions) (blockblob.CommitBlockListResponse, error)
+	// StageBlock uploads the specified block to the block blob's "staging area" to be later committed by a call to CommitBlockList.
 	StageBlock(context.Context, string, io.ReadSeekCloser, *blockblob.StageBlockOptions) (blockblob.StageBlockResponse, error)
 }
 
 // azureContainerClientI defines the methods required for container operations.
 type azureContainerClientI interface {
+	// NewListBlobsFlatPager returns a pager for blobs starting from the specified Marker. Use an empty
+	// Marker to start enumeration from the beginning. Blob names are returned in lexicographic order.
 	NewListBlobsFlatPager(*container.ListBlobsFlatOptions) *runtime.Pager[container.ListBlobsFlatResponse]
+	// NewBlockBlobClient creates a new blockblob.Client object by concatenating blobName to the end of
+	// this Client's URL. The blob name will be URL-encoded.
+	// The new blockblob.Client uses the same request policy pipeline as this Client.
 	NewBlockBlobClient(string) AzureBlockBlobClientI
 }
 
-// AzureContainerClient embeds a *azcontainer.Client (its methods are overridden in tests).
+// AzureContainerClient embeds an azure *container.Client (its methods are overridden in tests).
 type AzureContainerClient struct {
 	*container.Client
 }
@@ -116,7 +130,6 @@ func NewABSSnapStore(config *brtypes.SnapstoreConfig) (*ABSSnapStore, error) {
 		return nil, fmt.Errorf("failed to create client with shared key credential with error: %w", err)
 	}
 
-	// Check if the ABS container exists (moved over from client constructor function)
 	ctx, cancel := context.WithTimeout(context.Background(), providerConnectionTimeout)
 	defer cancel()
 
@@ -429,7 +442,6 @@ func (a *ABSSnapStore) blockUploader(wg *sync.WaitGroup, stopCh <-chan struct{},
 func (a *ABSSnapStore) Delete(snap brtypes.Snapshot) error {
 	blobName := path.Join(snap.Prefix, snap.SnapDir, snap.SnapName)
 	blobClient := a.client.NewBlockBlobClient(blobName)
-	// Delete options can be mentioned once support for immutability is added
 	if _, err := blobClient.Delete(context.Background(), nil); err != nil {
 		return fmt.Errorf("failed to delete blob %s with error: %w", blobName, err)
 	}
