@@ -44,7 +44,7 @@ const (
 type AzureBlockBlobClientI interface {
 	// DownloadStream reads a range of bytes from a blob. The response also includes the blob's properties and metadata.
 	DownloadStream(context.Context, *blob.DownloadStreamOptions) (blob.DownloadStreamResponse, error)
-	// Delete marks the specified blob or snapshot for deletion. The blob is later deleted during garbage collection.
+	// Delete marks the specified blob or snapshot for deletion. The blob is later deleted during the internal garbage collection of Azure Blob Storage.
 	// Note that deleting a blob also deletes all its snapshots.
 	Delete(context.Context, *blob.DeleteOptions) (blob.DeleteResponse, error)
 	// CommitBlockList writes a blob by specifying the list of block IDs that make up the blob.
