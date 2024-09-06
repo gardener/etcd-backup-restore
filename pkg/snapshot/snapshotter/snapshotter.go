@@ -165,8 +165,8 @@ func NewSnapshotter(logger *logrus.Entry, config *brtypes.SnapshotterConfig, sto
 // Setting startWithFullSnapshot to false will start the snapshotter without
 // taking the first full snapshot.
 func (ssr *Snapshotter) Run(stopCh <-chan struct{}, startWithFullSnapshot bool) error {
-	FullSnapshotLeaseStopCh := make(chan struct{})
-	defer ssr.stop(FullSnapshotLeaseStopCh)
+	fullSnapshotLeaseStopCh := make(chan struct{})
+	defer ssr.stop(fullSnapshotLeaseStopCh)
 	if startWithFullSnapshot {
 		ssr.fullSnapshotTimer = time.NewTimer(0)
 	} else {
@@ -188,7 +188,7 @@ func (ssr *Snapshotter) Run(stopCh <-chan struct{}, startWithFullSnapshot bool) 
 		}
 	}
 	if ssr.HealthConfig.SnapshotLeaseRenewalEnabled {
-		go ssr.RenewFullSnapshotLeasePeriodically(FullSnapshotLeaseStopCh, brtypes.FullSnapshotLeaseUpdateInterval)
+		go ssr.RenewFullSnapshotLeasePeriodically(fullSnapshotLeaseStopCh, brtypes.FullSnapshotLeaseUpdateInterval)
 	}
 	ssr.deltaSnapshotTimer = time.NewTimer(brtypes.DefaultDeltaSnapshotInterval)
 	if ssr.config.DeltaSnapshotPeriod.Duration >= brtypes.DeltaSnapshotIntervalThreshold {
@@ -234,7 +234,7 @@ func (ssr *Snapshotter) TriggerDeltaSnapshot() (*brtypes.Snapshot, error) {
 
 // stop stops the snapshotter. Once stopped any subsequent calls will
 // not have any effect.
-func (ssr *Snapshotter) stop(FullSnapshotLeaseStopCh chan struct{}) {
+func (ssr *Snapshotter) stop(fullSnapshotLeaseStopCh chan struct{}) {
 	ssr.logger.Info("Closing the Snapshotter...")
 
 	if ssr.fullSnapshotTimer != nil {
@@ -246,7 +246,7 @@ func (ssr *Snapshotter) stop(FullSnapshotLeaseStopCh chan struct{}) {
 		ssr.deltaSnapshotTimer = nil
 	}
 	if ssr.HealthConfig.SnapshotLeaseRenewalEnabled {
-		FullSnapshotLeaseStopCh <- emptyStruct
+		fullSnapshotLeaseStopCh <- emptyStruct
 	}
 	ssr.SetSnapshotterInactive()
 	ssr.closeEtcdClient()

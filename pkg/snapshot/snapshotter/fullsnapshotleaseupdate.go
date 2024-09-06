@@ -15,7 +15,7 @@ import (
 
 // RenewFullSnapshotLeasePeriodically has a timer and will periodically call FullSnapshotCaseLeaseUpdate to renew the fullsnapshot lease until it is updated or stopped.
 // The timer starts upon snapshotter initialization and is reset after every full snapshot is taken.
-func (ssr *Snapshotter) RenewFullSnapshotLeasePeriodically(FullSnapshotLeaseStopCh chan struct{}, fullSnapshotLeaseUpdateInterval time.Duration) {
+func (ssr *Snapshotter) RenewFullSnapshotLeasePeriodically(fullSnapshotLeaseStopCh chan struct{}, fullSnapshotLeaseUpdateInterval time.Duration) {
 	logger := logrus.NewEntry(logrus.New()).WithField("actor", "FullSnapLeaseUpdater")
 	ssr.FullSnapshotLeaseUpdateTimer = time.NewTimer(fullSnapshotLeaseUpdateInterval)
 	fullSnapshotLeaseUpdateCtx, fullSnapshotLeaseUpdateCancel := context.WithCancel(context.TODO())
@@ -34,7 +34,7 @@ func (ssr *Snapshotter) RenewFullSnapshotLeasePeriodically(FullSnapshotLeaseStop
 				if err := func() error {
 					ctx, cancel := context.WithTimeout(fullSnapshotLeaseUpdateCtx, brtypes.LeaseUpdateTimeoutDuration)
 					defer cancel()
-					return heartbeat.FullSnapshotCaseLeaseUpdate(ctx, logger, ssr.PrevFullSnapshot, ssr.K8sClientset, ssr.HealthConfig.FullSnapshotLeaseName)
+					return heartbeat.FullSnapshotCaseLeaseUpdate(ctx, logger, ssr.PrevFullSnapshot, ssr.K8sClientset, ssr.HealthConfig.FullSnapshotLeaseName, ssr.PrevFullSnapshot.CreatedOn)
 				}(); err != nil {
 					//FullSnapshot lease update failed. Retry after interval
 					logger.Warnf("FullSnapshot lease update failed with error: %v", err)
@@ -52,7 +52,7 @@ func (ssr *Snapshotter) RenewFullSnapshotLeasePeriodically(FullSnapshotLeaseStop
 				ssr.FullSnapshotLeaseUpdateTimer.Reset(fullSnapshotLeaseUpdateInterval)
 			}
 
-		case <-FullSnapshotLeaseStopCh:
+		case <-fullSnapshotLeaseStopCh:
 			logger.Info("Closing the full snapshot lease renewal")
 			return
 		}
