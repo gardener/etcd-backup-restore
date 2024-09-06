@@ -423,7 +423,7 @@ func (b *BackupRestoreServer) runEtcdProbeLoopWithSnapshotter(ctx context.Contex
 				if b.config.HealthConfig.SnapshotLeaseRenewalEnabled {
 					leaseUpdatectx, cancel := context.WithTimeout(ctx, brtypes.LeaseUpdateTimeoutDuration)
 					defer cancel()
-					if err = heartbeat.FullSnapshotCaseLeaseUpdate(leaseUpdatectx, b.logger, snapshot, ssr.K8sClientset, b.config.HealthConfig.FullSnapshotLeaseName, time.Now()); err != nil {
+					if err = heartbeat.FullSnapshotCaseLeaseUpdate(leaseUpdatectx, b.logger, snapshot, ssr.K8sClientset, b.config.HealthConfig.FullSnapshotLeaseName, snapshot.CreatedOn); err != nil {
 						b.logger.Warnf("Snapshot lease update failed : %v", err)
 					}
 				}
