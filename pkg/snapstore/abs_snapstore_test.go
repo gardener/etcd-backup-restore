@@ -108,7 +108,7 @@ type fakeBlockBlobClient struct {
 	getContentFn     func() *[]byte
 }
 
-// DownloadStream returns the only field that is accessed from the response, which is the io.ReaderCloser to the data
+// DownloadStream returns the only field that is accessed from the response, which is the io.ReadCloser to the data
 func (c *fakeBlockBlobClient) DownloadStream(ctx context.Context, o *blob.DownloadStreamOptions) (blob.DownloadStreamResponse, error) {
 	if ok := c.checkExistenceFn(); !ok {
 		return blob.DownloadStreamResponse{}, fmt.Errorf("the blob does not exist")
@@ -153,16 +153,20 @@ func (c *fakeBlockBlobClient) CommitBlockList(ctx context.Context, base64BlockID
 
 // StageBlock "uploads" to the "staging" area for the blobs
 func (c *fakeBlockBlobClient) StageBlock(ctx context.Context, base64BlockID string, body io.ReadSeekCloser, options *blockblob.StageBlockOptions) (blockblob.StageBlockResponse, error) {
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
-
 	contents := bytes.NewBuffer([]byte{})
 	if _, err := io.Copy(contents, body); err != nil {
 		return blockblob.StageBlockResponse{}, fmt.Errorf("error while staging the block: %w", err)
 	}
 
-	decodedBytes, _ := base64.StdEncoding.DecodeString(base64BlockID)
+	decodedBytes, err := base64.StdEncoding.DecodeString(base64BlockID)
+	if err != nil {
+		return blockblob.StageBlockResponse{}, fmt.Errorf("unable to decode string into bytes")
+	}
 	decoded := string(decodedBytes)
+
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+
 	c.staging[decoded] = contents.Bytes()
 
 	return blockblob.StageBlockResponse{}, nil
