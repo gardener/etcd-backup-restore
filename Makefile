@@ -7,10 +7,10 @@ REGISTRY            ?= europe-docker.pkg.dev/gardener-project/snapshots
 IMAGE_REPOSITORY    := $(REGISTRY)/gardener/etcdbrctl
 IMAGE_TAG           := $(VERSION)
 BUILD_DIR           := build
+PLATFORM            ?= $(shell docker info --format '{{.OSType}}/{{.Architecture}}')
 BIN_DIR             := bin
 COVERPROFILE        := test/output/coverprofile.out
-
-IMG ?= ${IMAGE_REPOSITORY}:${IMAGE_TAG}
+IMG                 ?= ${IMAGE_REPOSITORY}:${IMAGE_TAG}
 
 .DEFAULT_GOAL := build-local
 
@@ -34,7 +34,7 @@ build-local:
 
 .PHONY: docker-build
 docker-build:
-	@docker build -t ${IMG} -f $(BUILD_DIR)/Dockerfile --rm .
+	docker buildx build --platform=$(PLATFORM) --tag $(IMG) -f $(BUILD_DIR)/Dockerfile --rm .
 
 .PHONY: docker-push
 docker-push:
