@@ -182,7 +182,7 @@ func (cp *Compactor) Compact(ctx context.Context, opts *brtypes.CompactOptions) 
 	if opts.EnabledLeaseRenewal {
 		// Update revisions in holder identity of full snapshot lease.
 		ctx, cancel := context.WithTimeout(ctx, brtypes.LeaseUpdateTimeoutDuration)
-		if err := heartbeat.FullSnapshotCaseLeaseUpdate(ctx, cp.logger, snapshot, cp.k8sClientset, opts.FullSnapshotLeaseName); err != nil {
+		if err := heartbeat.FullSnapshotCaseLeaseUpdate(ctx, cp.logger, snapshot, cp.k8sClientset, opts.FullSnapshotLeaseName, snapshot.CreatedOn); err != nil {
 			cp.logger.Warnf("Snapshot lease update failed : %v", err)
 		}
 		cancel()
