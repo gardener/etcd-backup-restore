@@ -49,6 +49,7 @@ var _ = Describe("Save, List, Fetch, Delete from mock snapstore", func() {
 		snap4      brtypes.Snapshot
 		snap5      brtypes.Snapshot
 		snapstores map[string]testSnapStore
+		gcsClient  *mockGCSClient
 	)
 
 	BeforeEach(func() {
@@ -101,6 +102,12 @@ var _ = Describe("Save, List, Fetch, Delete from mock snapstore", func() {
 		snap4.GenerateSnapshotName()
 		snap5.GenerateSnapshotName()
 
+		gcsClient = &mockGCSClient{
+			objects:        objectMap,
+			prefix:         prefixV2,
+			objectMetadata: make(map[string]map[string]string),
+		}
+
 		snapstores = map[string]testSnapStore{
 			"s3": {
 				SnapStore: NewS3FromClient(bucket, prefixV2, "/tmp", 5, brtypes.MinChunkSize, &mockS3Client{
@@ -123,10 +130,7 @@ var _ = Describe("Save, List, Fetch, Delete from mock snapstore", func() {
 				objectCountPerSnapshot: 1,
 			},
 			"GCS": {
-				SnapStore: NewGCSSnapStoreFromClient(bucket, prefixV2, "/tmp", 5, brtypes.MinChunkSize, "", &mockGCSClient{
-					objects: objectMap,
-					prefix:  prefixV2,
-				}),
+				SnapStore:              NewGCSSnapStoreFromClient(bucket, prefixV2, "/tmp", 5, brtypes.MinChunkSize, "", gcsClient),
 				objectCountPerSnapshot: 1,
 			},
 			"OSS": {
@@ -302,6 +306,31 @@ var _ = Describe("Save, List, Fetch, Delete from mock snapstore", func() {
 				Expect(snapList.Len()).To(Equal(numberSnapshotsInObjectMap * snapStore.objectCountPerSnapshot))
 				Expect(snapList[0].SnapName).To(Equal(snap4.SnapName))
 				Expect(snapList[secondSnapshotIndex].SnapName).To(Equal(snap5.SnapName))
+
+				// List tests with false and true as arguments only implemented with GCS for now
+				if provider == "GCS" {
+					// the tagged snapshot should not be returned by the List() call
+					taggedSnapshot := snapList[0]
+					taggedSnapshotName := path.Join(taggedSnapshot.Prefix, taggedSnapshot.SnapDir, taggedSnapshot.SnapName)
+					gcsClient.objectMetadata[taggedSnapshotName] = map[string]string{"x-etcd-snapshot-exclude": "true"}
+					snapList, err = snapStore.List(false)
+					Expect(err).ShouldNot(HaveOccurred())
+					Expect(snapList.Len()).Should(Equal((numberSnapshotsInObjectMap - 1) * snapStore.objectCountPerSnapshot))
+					Expect(snapList[0].SnapName).ShouldNot(Equal(taggedSnapshot.SnapName))
+
+					// listing both tagged and untagged snapshots
+					snapList, err = snapStore.List(true)
+					Expect(err).ShouldNot(HaveOccurred())
+					Expect(snapList.Len()).Should(Equal(numberSnapshotsInObjectMap * snapStore.objectCountPerSnapshot))
+					Expect(snapList[0].SnapName).Should(Equal(taggedSnapshot.SnapName))
+
+					// removing the tag will make the snapshot appear in the List call with false
+					delete(gcsClient.objectMetadata, taggedSnapshotName)
+					snapList, err = snapStore.List(false)
+					Expect(err).ShouldNot(HaveOccurred())
+					Expect(snapList.Len()).Should(Equal(numberSnapshotsInObjectMap * snapStore.objectCountPerSnapshot))
+					Expect(snapList[0].SnapName).Should(Equal(taggedSnapshot.SnapName))
+				}
 
 				// Fetch snap5
 				rc, err := snapStore.Fetch(*snapList[secondSnapshotIndex])

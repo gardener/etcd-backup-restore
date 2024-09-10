@@ -20,9 +20,10 @@ import (
 // mockGCSClient is a mock client to be used in unit tests.
 type mockGCSClient struct {
 	stiface.Client
-	objects     map[string]*[]byte
-	prefix      string
-	objectMutex sync.Mutex
+	objects        map[string]*[]byte
+	prefix         string
+	objectMetadata map[string]map[string]string
+	objectMutex    sync.Mutex
 }
 
 func (m *mockGCSClient) Bucket(name string) stiface.BucketHandle {
@@ -47,7 +48,7 @@ func (m *mockBucketHandle) Objects(context.Context, *storage.Query) stiface.Obje
 		keys = append(keys, key)
 	}
 	sort.Strings(keys)
-	return &mockObjectIterator{keys: keys}
+	return &mockObjectIterator{keys: keys, metadata: m.client.objectMetadata}
 }
 
 type mockObjectHandle struct {
@@ -82,6 +83,7 @@ func (m *mockObjectHandle) Delete(context.Context) error {
 	defer m.client.objectMutex.Unlock()
 	if _, ok := m.client.objects[m.object]; ok {
 		delete(m.client.objects, m.object)
+		delete(m.client.objectMetadata, m.object)
 		return nil
 	}
 	return fmt.Errorf("object %s not found", m.object)
@@ -91,12 +93,15 @@ type mockObjectIterator struct {
 	stiface.ObjectIterator
 	currentIndex int
 	keys         []string
+	metadata     map[string]map[string]string
 }
 
 func (m *mockObjectIterator) Next() (*storage.ObjectAttrs, error) {
 	if m.currentIndex < len(m.keys) {
+		name := m.keys[m.currentIndex]
 		obj := &storage.ObjectAttrs{
-			Name: m.keys[m.currentIndex],
+			Name:     name,
+			Metadata: m.metadata[name],
 		}
 		m.currentIndex++
 		return obj, nil
