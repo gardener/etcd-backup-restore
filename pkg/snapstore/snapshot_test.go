@@ -18,7 +18,6 @@ import (
 )
 
 var _ = Describe("Snapshot", func() {
-
 	Describe("Snapshot service", func() {
 		Context("when provied with list of snapshot", func() {
 			It("sorts snapshot by last revision number", func() {
@@ -304,6 +303,51 @@ var _ = Describe("Snapshot", func() {
 				_, err := ParseSnapshot(snapPath)
 				Expect(err).Should(HaveOccurred())
 			})
+		})
+	})
+
+	Context("when provided with retention time periods", func() {
+		var (
+			snap1 brtypes.Snapshot
+			snap2 brtypes.Snapshot
+		)
+		BeforeEach(func() {
+			now := time.Now().UTC()
+			snapdir := fmt.Sprintf("Backup-%d", now.Second())
+			snap1 = brtypes.Snapshot{
+				CreatedOn:     now,
+				StartRevision: 0,
+				LastRevision:  2088,
+				Kind:          brtypes.SnapshotKindFull,
+				SnapDir:       snapdir,
+			}
+			snap2 = brtypes.Snapshot{
+				CreatedOn:     now,
+				StartRevision: 1201,
+				LastRevision:  1500,
+				Kind:          brtypes.SnapshotKindDelta,
+				SnapDir:       snapdir,
+			}
+
+		})
+		It("should be deletable when its retention period is not set", func() {
+			// do not set the retention period
+			Expect(snap1.IsDeletable()).Should(BeTrue())
+			Expect(snap2.IsDeletable()).Should(BeTrue())
+		})
+		It("should be deletable when its retention period has expired", func() {
+			// Setting expiry time to be a short time after creation
+			snap1.RetentionExpiry = snap1.CreatedOn.Add(time.Microsecond)
+			snap2.RetentionExpiry = snap2.CreatedOn.Add(time.Microsecond)
+			Expect(snap1.IsDeletable()).To(BeTrue())
+			Expect(snap2.IsDeletable()).To(BeTrue())
+		})
+		It("should not be deletable when its retention period has not expired", func() {
+			// Setting the expiry time to be a long time after the creation
+			snap1.RetentionExpiry = snap1.CreatedOn.Add(time.Hour)
+			snap2.RetentionExpiry = snap2.CreatedOn.Add(time.Hour)
+			Expect(snap1.IsDeletable()).To(BeFalse())
+			Expect(snap2.IsDeletable()).To(BeFalse())
 		})
 	})
 })
