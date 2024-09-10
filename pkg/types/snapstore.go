@@ -68,8 +68,10 @@ const (
 type SnapStore interface {
 	// Fetch should open reader for the snapshot file from store.
 	Fetch(Snapshot) (io.ReadCloser, error)
-	// List will return sorted list with all snapshot files on store. Snapshots tagged with ExcludeSnapshotMetadataKey can be included in the List call by passing true.
-	List(bool) (SnapList, error)
+	// List returns a sorted list of all snapshots in the store.
+	// includeAll specifies whether to include all snapshots while listing, including those with exclude tags.
+	// Snapshots with exclude tags are not listed unless includeAll is set to true.
+	List(includeAll bool) (SnapList, error)
 	// Save will write the snapshot to store.
 	Save(Snapshot, io.ReadCloser) error
 	// Delete should delete the snapshot file from store.
