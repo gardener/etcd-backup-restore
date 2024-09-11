@@ -48,7 +48,7 @@ func (c *fakeABSContainerClient) NewListBlobsFlatPager(o *container.ListBlobsFla
 		},
 		// Return one page for each blob
 		Fetcher: func(_ context.Context, page *container.ListBlobsFlatResponse) (container.ListBlobsFlatResponse, error) {
-			blobItems := []*container.BlobItem{{Name: &names[index]}}
+			blobItems := []*container.BlobItem{{Name: &names[index], Properties: &container.BlobProperties{}}}
 			index++
 			return container.ListBlobsFlatResponse{
 				ListBlobsFlatSegmentResponse: container.ListBlobsFlatSegmentResponse{
