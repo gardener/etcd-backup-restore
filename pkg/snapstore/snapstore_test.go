@@ -41,6 +41,14 @@ type testSnapStore struct {
 	objectCountPerSnapshot int
 }
 
+// tagI is the interface that is to be implemented by mock snapstores to set tags on snapshots
+type tagI interface {
+	// Sets all of the tags for a mocked snapshot
+	setTag(string, map[string]string)
+	// Deletes all of the tags of a mocked snapshot
+	deleteTag(string)
+}
+
 var _ = Describe("Save, List, Fetch, Delete from mock snapstore", func() {
 	var (
 		snap1      brtypes.Snapshot
@@ -103,9 +111,9 @@ var _ = Describe("Save, List, Fetch, Delete from mock snapstore", func() {
 		snap5.GenerateSnapshotName()
 
 		gcsClient = &mockGCSClient{
-			objects:        objectMap,
-			prefix:         prefixV2,
-			objectMetadata: make(map[string]map[string]string),
+			objects:    objectMap,
+			prefix:     prefixV2,
+			objectTags: make(map[string]map[string]string),
 		}
 
 		snapstores = map[string]testSnapStore{
@@ -308,11 +316,16 @@ var _ = Describe("Save, List, Fetch, Delete from mock snapstore", func() {
 				Expect(snapList[secondSnapshotIndex].SnapName).To(Equal(snap5.SnapName))
 
 				// List tests with false and true as arguments only implemented with GCS for now
+				var tag tagI
+				switch provider {
+				case "GCS":
+					tag = gcsClient
+				}
 				if provider == "GCS" {
 					// the tagged snapshot should not be returned by the List() call
 					taggedSnapshot := snapList[0]
 					taggedSnapshotName := path.Join(taggedSnapshot.Prefix, taggedSnapshot.SnapDir, taggedSnapshot.SnapName)
-					gcsClient.objectMetadata[taggedSnapshotName] = map[string]string{"x-etcd-snapshot-exclude": "true"}
+					tag.setTag(taggedSnapshotName, map[string]string{"x-etcd-snapshot-exclude": "true"})
 					snapList, err = snapStore.List(false)
 					Expect(err).ShouldNot(HaveOccurred())
 					Expect(snapList.Len()).Should(Equal((numberSnapshotsInObjectMap - 1) * snapStore.objectCountPerSnapshot))
@@ -325,7 +338,7 @@ var _ = Describe("Save, List, Fetch, Delete from mock snapstore", func() {
 					Expect(snapList[0].SnapName).Should(Equal(taggedSnapshot.SnapName))
 
 					// removing the tag will make the snapshot appear in the List call with false
-					delete(gcsClient.objectMetadata, taggedSnapshotName)
+					tag.deleteTag(taggedSnapshotName)
 					snapList, err = snapStore.List(false)
 					Expect(err).ShouldNot(HaveOccurred())
 					Expect(snapList.Len()).Should(Equal(numberSnapshotsInObjectMap * snapStore.objectCountPerSnapshot))

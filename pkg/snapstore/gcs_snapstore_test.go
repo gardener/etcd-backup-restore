@@ -20,14 +20,22 @@ import (
 // mockGCSClient is a mock client to be used in unit tests.
 type mockGCSClient struct {
 	stiface.Client
-	objects        map[string]*[]byte
-	prefix         string
-	objectMetadata map[string]map[string]string
-	objectMutex    sync.Mutex
+	objects     map[string]*[]byte
+	prefix      string
+	objectTags  map[string]map[string]string
+	objectMutex sync.Mutex
 }
 
 func (m *mockGCSClient) Bucket(name string) stiface.BucketHandle {
 	return &mockBucketHandle{bucket: name, client: m}
+}
+
+func (m *mockGCSClient) setTag(taggedSnapshotName string, tagMap map[string]string) {
+	m.objectTags[taggedSnapshotName] = map[string]string{"x-etcd-snapshot-exclude": "true"}
+}
+
+func (m *mockGCSClient) deleteTag(taggedSnapshotName string) {
+	delete(m.objectTags, taggedSnapshotName)
 }
 
 type mockBucketHandle struct {
@@ -48,7 +56,7 @@ func (m *mockBucketHandle) Objects(context.Context, *storage.Query) stiface.Obje
 		keys = append(keys, key)
 	}
 	sort.Strings(keys)
-	return &mockObjectIterator{keys: keys, metadata: m.client.objectMetadata}
+	return &mockObjectIterator{keys: keys, tags: m.client.objectTags}
 }
 
 type mockObjectHandle struct {
@@ -83,7 +91,7 @@ func (m *mockObjectHandle) Delete(context.Context) error {
 	defer m.client.objectMutex.Unlock()
 	if _, ok := m.client.objects[m.object]; ok {
 		delete(m.client.objects, m.object)
-		delete(m.client.objectMetadata, m.object)
+		delete(m.client.objectTags, m.object)
 		return nil
 	}
 	return fmt.Errorf("object %s not found", m.object)
@@ -93,7 +101,7 @@ type mockObjectIterator struct {
 	stiface.ObjectIterator
 	currentIndex int
 	keys         []string
-	metadata     map[string]map[string]string
+	tags         map[string]map[string]string
 }
 
 func (m *mockObjectIterator) Next() (*storage.ObjectAttrs, error) {
@@ -101,7 +109,7 @@ func (m *mockObjectIterator) Next() (*storage.ObjectAttrs, error) {
 		name := m.keys[m.currentIndex]
 		obj := &storage.ObjectAttrs{
 			Name:     name,
-			Metadata: m.metadata[name],
+			Metadata: m.tags[name],
 		}
 		m.currentIndex++
 		return obj, nil
