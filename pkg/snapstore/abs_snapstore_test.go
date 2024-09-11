@@ -19,12 +19,14 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blockblob"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/container"
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
+	"k8s.io/utils/ptr"
 )
 
 type fakeABSContainerClient struct {
-	objects map[string]*[]byte
-	prefix  string
-	mutex   sync.Mutex
+	objects    map[string]*[]byte
+	objectTags map[string]map[string]string
+	prefix     string
+	mutex      sync.Mutex
 	// a map of blobClients so new clients created to a particular blob refer to the same blob
 	blobClients map[string]*fakeBlockBlobClient
 }
@@ -39,6 +41,16 @@ func (c *fakeABSContainerClient) NewListBlobsFlatPager(o *container.ListBlobsFla
 		}
 	}
 
+	blobTagSetMap := make(map[string][]*container.BlobTag)
+	for blobName, blobTags := range c.objectTags {
+		for key, value := range blobTags {
+			blobTagSetMap[blobName] = append(blobTagSetMap[blobName], &container.BlobTag{
+				Key:   ptr.To(key),
+				Value: ptr.To(value),
+			})
+		}
+	}
+
 	// keeps count of which page was last returned
 	index, count := 0, len(names)
 
@@ -48,7 +60,15 @@ func (c *fakeABSContainerClient) NewListBlobsFlatPager(o *container.ListBlobsFla
 		},
 		// Return one page for each blob
 		Fetcher: func(_ context.Context, page *container.ListBlobsFlatResponse) (container.ListBlobsFlatResponse, error) {
-			blobItems := []*container.BlobItem{{Name: &names[index], Properties: &container.BlobProperties{}}}
+			blobItems := []*container.BlobItem{
+				{
+					Name:       &names[index],
+					Properties: &container.BlobProperties{},
+					BlobTags: &container.BlobTags{
+						BlobTagSet: blobTagSetMap[names[index]],
+					},
+				},
+			}
 			index++
 			return container.ListBlobsFlatResponse{
 				ListBlobsFlatSegmentResponse: container.ListBlobsFlatSegmentResponse{
@@ -82,6 +102,7 @@ func (c *fakeABSContainerClient) NewBlockBlobClient(blobName string) snapstore.A
 	c.blobClients[blobName] = &fakeBlockBlobClient{name: blobName,
 		deleteFn: func() {
 			delete(c.objects, blobName)
+			delete(c.objectTags, blobName)
 		},
 		checkExistenceFn: func() bool {
 			_, ok := c.objects[blobName]
@@ -96,6 +117,14 @@ func (c *fakeABSContainerClient) NewBlockBlobClient(blobName string) snapstore.A
 		staging: make(map[string][]byte),
 	}
 	return c.blobClients[blobName]
+}
+
+func (c *fakeABSContainerClient) setTags(taggedSnapshotName string, tagMap map[string]string) {
+	c.objectTags[taggedSnapshotName] = tagMap
+}
+
+func (c *fakeABSContainerClient) deleteTags(taggedSnapshotName string) {
+	delete(c.objectTags, taggedSnapshotName)
 }
 
 type fakeBlockBlobClient struct {
