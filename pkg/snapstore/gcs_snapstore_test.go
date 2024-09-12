@@ -30,11 +30,11 @@ func (m *mockGCSClient) Bucket(name string) stiface.BucketHandle {
 	return &mockBucketHandle{bucket: name, client: m}
 }
 
-func (m *mockGCSClient) setTag(taggedSnapshotName string, tagMap map[string]string) {
-	m.objectTags[taggedSnapshotName] = map[string]string{"x-etcd-snapshot-exclude": "true"}
+func (m *mockGCSClient) setTags(taggedSnapshotName string, tagMap map[string]string) {
+	m.objectTags[taggedSnapshotName] = tagMap
 }
 
-func (m *mockGCSClient) deleteTag(taggedSnapshotName string) {
+func (m *mockGCSClient) deleteTags(taggedSnapshotName string) {
 	delete(m.objectTags, taggedSnapshotName)
 }
 

@@ -328,7 +328,6 @@ var _ = Describe("Snapshot", func() {
 				Kind:          brtypes.SnapshotKindDelta,
 				SnapDir:       snapdir,
 			}
-
 		})
 		It("should be deletable when its retention period is not set", func() {
 			// do not set the retention period

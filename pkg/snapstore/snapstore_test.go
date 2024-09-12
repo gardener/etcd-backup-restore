@@ -41,12 +41,12 @@ type testSnapStore struct {
 	objectCountPerSnapshot int
 }
 
-// tagI is the interface that is to be implemented by mock snapstores to set tags on snapshots
-type tagI interface {
+// tagger is the interface that is to be implemented by mock snapstores to set tags on snapshots
+type tagger interface {
 	// Sets all of the tags for a mocked snapshot
-	setTag(string, map[string]string)
+	setTags(string, map[string]string)
 	// Deletes all of the tags of a mocked snapshot
-	deleteTag(string)
+	deleteTags(string)
 }
 
 var _ = Describe("Save, List, Fetch, Delete from mock snapstore", func() {
@@ -316,7 +316,7 @@ var _ = Describe("Save, List, Fetch, Delete from mock snapstore", func() {
 				Expect(snapList[secondSnapshotIndex].SnapName).To(Equal(snap5.SnapName))
 
 				// List tests with false and true as arguments only implemented with GCS for now
-				var tag tagI
+				var tag tagger
 				switch provider {
 				case "GCS":
 					tag = gcsClient
@@ -325,7 +325,7 @@ var _ = Describe("Save, List, Fetch, Delete from mock snapstore", func() {
 					// the tagged snapshot should not be returned by the List() call
 					taggedSnapshot := snapList[0]
 					taggedSnapshotName := path.Join(taggedSnapshot.Prefix, taggedSnapshot.SnapDir, taggedSnapshot.SnapName)
-					tag.setTag(taggedSnapshotName, map[string]string{"x-etcd-snapshot-exclude": "true"})
+					tag.setTags(taggedSnapshotName, map[string]string{brtypes.ExcludeSnapshotMetadataKey: "true"})
 					snapList, err = snapStore.List(false)
 					Expect(err).ShouldNot(HaveOccurred())
 					Expect(snapList.Len()).Should(Equal((numberSnapshotsInObjectMap - 1) * snapStore.objectCountPerSnapshot))
@@ -338,7 +338,7 @@ var _ = Describe("Save, List, Fetch, Delete from mock snapstore", func() {
 					Expect(snapList[0].SnapName).Should(Equal(taggedSnapshot.SnapName))
 
 					// removing the tag will make the snapshot appear in the List call with false
-					tag.deleteTag(taggedSnapshotName)
+					tag.deleteTags(taggedSnapshotName)
 					snapList, err = snapStore.List(false)
 					Expect(err).ShouldNot(HaveOccurred())
 					Expect(snapList.Len()).Should(Equal(numberSnapshotsInObjectMap * snapStore.objectCountPerSnapshot))
