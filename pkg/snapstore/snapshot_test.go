@@ -323,8 +323,8 @@ var _ = Describe("Snapshot", func() {
 			}
 			snap2 = brtypes.Snapshot{
 				CreatedOn:     now,
-				StartRevision: 1201,
-				LastRevision:  1500,
+				StartRevision: 2088,
+				LastRevision:  3088,
 				Kind:          brtypes.SnapshotKindDelta,
 				SnapDir:       snapdir,
 			}
@@ -336,8 +336,8 @@ var _ = Describe("Snapshot", func() {
 		})
 		It("should be deletable when its retention period has expired", func() {
 			// Setting expiry time to be a short time after creation
-			snap1.RetentionExpiry = snap1.CreatedOn.Add(time.Microsecond)
-			snap2.RetentionExpiry = snap2.CreatedOn.Add(time.Microsecond)
+			snap1.RetentionExpiry = snap1.CreatedOn.Add(time.Nanosecond)
+			snap2.RetentionExpiry = snap2.CreatedOn.Add(time.Nanosecond)
 			Expect(snap1.IsDeletable()).To(BeTrue())
 			Expect(snap2.IsDeletable()).To(BeTrue())
 		})

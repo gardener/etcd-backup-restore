@@ -57,7 +57,7 @@ const (
 	// MinChunkSize is set to 5Mib since it is lower chunk size limit for AWS.
 	MinChunkSize int64 = 5 * (1 << 20) //5 MiB
 
-	// ExcludeSnapshotMetadataKey is the tag that is to be added on snapshots in the object store if they are not to be included in restoration
+	// ExcludeSnapshotMetadataKey is the tag that is to be added on snapshots in the object store if they are not to be included in SnapStore's List output.
 	ExcludeSnapshotMetadataKey = "x-etcd-snapshot-exclude"
 )
 
@@ -68,7 +68,7 @@ const (
 type SnapStore interface {
 	// Fetch should open reader for the snapshot file from store.
 	Fetch(Snapshot) (io.ReadCloser, error)
-	// List returns a sorted list of all snapshots in the store.
+	// List returns a sorted list (based on the last revision, ascending) of all snapshots in the store.
 	// includeAll specifies whether to include all snapshots while listing, including those with exclude tags.
 	// Snapshots with exclude tags are not listed unless includeAll is set to true.
 	List(includeAll bool) (SnapList, error)
@@ -97,8 +97,8 @@ type Snapshot struct {
 // It checks if the retention expiry time is set and whether the current time is after the retention expiry time.
 func (s *Snapshot) IsDeletable() bool {
 	// Check if RetentionExpiry is the zero value of time.Time, which means it is not set.
+	// If RetentionExpiry is not set, assume the snapshot can be deleted.
 	if s.RetentionExpiry.IsZero() {
-		// If RetentionExpiry is not set, assume the snapshot can be deleted.
 		return true
 	}
 	// Otherwise, check if the current time is after the retention expiry time.

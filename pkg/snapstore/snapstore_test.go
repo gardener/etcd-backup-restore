@@ -117,7 +117,7 @@ var _ = Describe("Save, List, Fetch, Delete from mock snapstore", func() {
 		}
 
 		snapstores = map[string]testSnapStore{
-			"s3": {
+			brtypes.SnapstoreProviderS3: {
 				SnapStore: NewS3FromClient(bucket, prefixV2, "/tmp", 5, brtypes.MinChunkSize, &mockS3Client{
 					objects:          objectMap,
 					prefix:           prefixV2,
@@ -125,11 +125,11 @@ var _ = Describe("Save, List, Fetch, Delete from mock snapstore", func() {
 				}, SSECredentials{}),
 				objectCountPerSnapshot: 1,
 			},
-			"swift": {
+			brtypes.SnapstoreProviderSwift: {
 				SnapStore:              NewSwiftSnapstoreFromClient(bucket, prefixV2, "/tmp", 5, brtypes.MinChunkSize, fake.ServiceClient()),
 				objectCountPerSnapshot: 3,
 			},
-			"ABS": {
+			brtypes.SnapstoreProviderABS: {
 				SnapStore: NewABSSnapStoreFromClient(bucket, prefixV2, "/tmp", 5, brtypes.MinChunkSize, &fakeABSContainerClient{
 					objects:     objectMap,
 					prefix:      prefixV2,
@@ -137,11 +137,11 @@ var _ = Describe("Save, List, Fetch, Delete from mock snapstore", func() {
 				}),
 				objectCountPerSnapshot: 1,
 			},
-			"GCS": {
+			brtypes.SnapstoreProviderGCS: {
 				SnapStore:              NewGCSSnapStoreFromClient(bucket, prefixV2, "/tmp", 5, brtypes.MinChunkSize, "", gcsClient),
 				objectCountPerSnapshot: 1,
 			},
-			"OSS": {
+			brtypes.SnapstoreProviderOSS: {
 				SnapStore: NewOSSFromBucket(prefixV2, "/tmp", 5, brtypes.MinChunkSize, &mockOSSBucket{
 					objects:          objectMap,
 					prefix:           prefixV2,
@@ -150,7 +150,7 @@ var _ = Describe("Save, List, Fetch, Delete from mock snapstore", func() {
 				}),
 				objectCountPerSnapshot: 1,
 			},
-			"ECS": {
+			brtypes.SnapstoreProviderECS: {
 				SnapStore: NewS3FromClient(bucket, prefixV2, "/tmp", 5, brtypes.MinChunkSize, &mockS3Client{
 					objects:          objectMap,
 					prefix:           prefixV2,
@@ -158,7 +158,7 @@ var _ = Describe("Save, List, Fetch, Delete from mock snapstore", func() {
 				}, SSECredentials{}),
 				objectCountPerSnapshot: 1,
 			},
-			"OCS": {
+			brtypes.SnapstoreProviderOCS: {
 				SnapStore: NewS3FromClient(bucket, prefixV2, "/tmp", 5, brtypes.MinChunkSize, &mockS3Client{
 					objects:          objectMap,
 					prefix:           prefixV2,
@@ -317,16 +317,16 @@ var _ = Describe("Save, List, Fetch, Delete from mock snapstore", func() {
 
 				// The List method implemented for SnapStores which support immutable objects is tested for tagged and untagged snapshots.
 				// TODO @renormalize: ABS, S3
-				var tag tagger
+				var mockClient tagger
 				switch provider {
-				case "GCS":
-					tag = gcsClient
+				case brtypes.SnapstoreProviderGCS:
+					mockClient = gcsClient
 				}
-				if provider == "GCS" {
+				if provider == brtypes.SnapstoreProviderGCS {
 					// the tagged snapshot should not be returned by the List() call
 					taggedSnapshot := snapList[0]
 					taggedSnapshotName := path.Join(taggedSnapshot.Prefix, taggedSnapshot.SnapDir, taggedSnapshot.SnapName)
-					tag.setTags(taggedSnapshotName, map[string]string{brtypes.ExcludeSnapshotMetadataKey: "true"})
+					mockClient.setTags(taggedSnapshotName, map[string]string{brtypes.ExcludeSnapshotMetadataKey: "true"})
 					snapList, err = snapStore.List(false)
 					Expect(err).ShouldNot(HaveOccurred())
 					Expect(snapList.Len()).Should(Equal((numberSnapshotsInObjectMap - 1) * snapStore.objectCountPerSnapshot))
@@ -339,7 +339,7 @@ var _ = Describe("Save, List, Fetch, Delete from mock snapstore", func() {
 					Expect(snapList[0].SnapName).Should(Equal(taggedSnapshot.SnapName))
 
 					// removing the tag will make the snapshot appear in the List call with false
-					tag.deleteTags(taggedSnapshotName)
+					mockClient.deleteTags(taggedSnapshotName)
 					snapList, err = snapStore.List(false)
 					Expect(err).ShouldNot(HaveOccurred())
 					Expect(snapList.Len()).Should(Equal(numberSnapshotsInObjectMap * snapStore.objectCountPerSnapshot))
@@ -377,7 +377,6 @@ var _ = Describe("Save, List, Fetch, Delete from mock snapstore", func() {
 })
 
 type CredentialTestConfig struct {
-	Provider          string
 	EnvVariable       string
 	SnapstoreProvider string
 	CredentialType    string // "file" or "directory"
@@ -387,14 +386,12 @@ type CredentialTestConfig struct {
 var credentialTestConfigs = []CredentialTestConfig{
 	// AWS
 	{
-		Provider:          "AWS",
 		EnvVariable:       "AWS_APPLICATION_CREDENTIALS",
 		SnapstoreProvider: brtypes.SnapstoreProviderS3,
 		CredentialType:    "directory",
 		CredentialFiles:   []string{"accessKeyID", "region", "secretAccessKey"},
 	},
 	{
-		Provider:          "AWS",
 		EnvVariable:       "AWS_APPLICATION_CREDENTIALS_JSON",
 		SnapstoreProvider: brtypes.SnapstoreProviderS3,
 		CredentialType:    "file",
@@ -402,14 +399,12 @@ var credentialTestConfigs = []CredentialTestConfig{
 	},
 	// Azure
 	{
-		Provider:          "ABS",
 		EnvVariable:       "AZURE_APPLICATION_CREDENTIALS",
 		SnapstoreProvider: brtypes.SnapstoreProviderABS,
 		CredentialType:    "directory",
 		CredentialFiles:   []string{"storageAccount", "storageKey"},
 	},
 	{
-		Provider:          "ABS",
 		EnvVariable:       "AZURE_APPLICATION_CREDENTIALS_JSON",
 		SnapstoreProvider: brtypes.SnapstoreProviderABS,
 		CredentialType:    "file",
@@ -417,7 +412,6 @@ var credentialTestConfigs = []CredentialTestConfig{
 	},
 	// GCS
 	{
-		Provider:          "GCS",
 		EnvVariable:       "GOOGLE_APPLICATION_CREDENTIALS",
 		SnapstoreProvider: brtypes.SnapstoreProviderGCS,
 		CredentialType:    "file",
@@ -425,7 +419,6 @@ var credentialTestConfigs = []CredentialTestConfig{
 	},
 	// Swift V3ApplicationCredentials
 	{
-		Provider:          "Swift",
 		EnvVariable:       "OPENSTACK_APPLICATION_CREDENTIALS",
 		SnapstoreProvider: brtypes.SnapstoreProviderSwift,
 		CredentialType:    "directory",
@@ -433,7 +426,6 @@ var credentialTestConfigs = []CredentialTestConfig{
 	},
 	// Swift Password
 	{
-		Provider:          "Swift",
 		EnvVariable:       "OPENSTACK_APPLICATION_CREDENTIALS",
 		SnapstoreProvider: brtypes.SnapstoreProviderSwift,
 		CredentialType:    "directory",
@@ -441,7 +433,6 @@ var credentialTestConfigs = []CredentialTestConfig{
 	},
 	// Swift JSON
 	{
-		Provider:          "Swift",
 		EnvVariable:       "OPENSTACK_APPLICATION_CREDENTIALS_JSON",
 		SnapstoreProvider: brtypes.SnapstoreProviderSwift,
 		CredentialType:    "file",
@@ -449,14 +440,12 @@ var credentialTestConfigs = []CredentialTestConfig{
 	},
 	// OSS
 	{
-		Provider:          "OSS",
 		EnvVariable:       "ALICLOUD_APPLICATION_CREDENTIALS",
 		SnapstoreProvider: brtypes.SnapstoreProviderOSS,
 		CredentialType:    "directory",
 		CredentialFiles:   []string{"accessKeyID", "accessKeySecret", "storageEndpoint"},
 	},
 	{
-		Provider:          "OSS",
 		EnvVariable:       "ALICLOUD_APPLICATION_CREDENTIALS_JSON",
 		SnapstoreProvider: brtypes.SnapstoreProviderOSS,
 		CredentialType:    "file",
@@ -464,14 +453,12 @@ var credentialTestConfigs = []CredentialTestConfig{
 	},
 	// OCS
 	{
-		Provider:          "OCS",
 		EnvVariable:       "OPENSHIFT_APPLICATION_CREDENTIALS",
 		SnapstoreProvider: brtypes.SnapstoreProviderOCS,
 		CredentialType:    "directory",
 		CredentialFiles:   []string{"accessKeyID", "region", "endpoint", "secretAccessKey"},
 	},
 	{
-		Provider:          "OCS",
 		EnvVariable:       "OPENSHIFT_APPLICATION_CREDENTIALS_JSON",
 		SnapstoreProvider: brtypes.SnapstoreProviderOCS,
 		CredentialType:    "file",
@@ -482,7 +469,7 @@ var credentialTestConfigs = []CredentialTestConfig{
 var _ = Describe("Dynamic access credential rotation test for each provider", func() {
 	for _, config := range credentialTestConfigs {
 		config := config
-		Describe(fmt.Sprintf("testing secret modification for %q with %q", config.Provider, config.EnvVariable), func() {
+		Describe(fmt.Sprintf("testing secret modification for %q with %q", config.SnapstoreProvider, config.EnvVariable), func() {
 			Context("environment variable not set", func() {
 				It("should return error", func() {
 					newSecretModifiedTime, err := GetSnapstoreSecretModifiedTime(config.SnapstoreProvider)
@@ -599,7 +586,7 @@ var _ = Describe("Blob Service URL construction for Azure", func() {
 
 var _ = Describe("Server Side Encryption Customer Managed Key for S3", func() {
 	s3SnapstoreConfig := brtypes.SnapstoreConfig{
-		Provider:  "S3",
+		Provider:  brtypes.SnapstoreProviderS3,
 		Container: "etcd-test",
 		Prefix:    "v2",
 	}
@@ -700,7 +687,7 @@ func generateContentsForSnapshot(snapshot *brtypes.Snapshot) string {
 func setObjectMap(provider string, snapshots brtypes.SnapList) int {
 	var numberSnapshotsAdded int
 	for _, snapshot := range snapshots {
-		if provider == "swift" {
+		if provider == brtypes.SnapstoreProviderSwift {
 			// contents of the snapshot split into segments
 			generatedContents := generateContentsForSnapshot(snapshot)
 			segmentBytes01 := []byte(generatedContents[:len(generatedContents)/2])

@@ -143,7 +143,7 @@ func (ssr *Snapshotter) RunGarbageCollector(stopCh <-chan struct{}) {
 
 					if deleteSnap {
 						if !nextSnap.IsDeletable() {
-							ssr.logger.Infof("GC: Skipping the snapshot: %s, since its retention period hasn't expired yet", nextSnap.SnapName)
+							ssr.logger.Infof("GC: Skipping the snapshot: %s, since its immutability period hasn't expired yet", nextSnap.SnapName)
 							continue
 						}
 						ssr.logger.Infof("GC: Deleting old full snapshot: %s %v", nextSnap.CreatedOn.UTC(), deleteSnap)
@@ -223,7 +223,7 @@ func (ssr *Snapshotter) GarbageCollectChunks(snapList brtypes.SnapList) (int, br
 		// delete the chunk object
 		snapPath := path.Join(snap.SnapDir, snap.SnapName)
 		if !snap.IsDeletable() {
-			ssr.logger.Infof("GC: Skipping : %s, since it is immutable", snap.SnapName)
+			ssr.logger.Infof("GC: Skipping the snapshot: %s, since its immutability period hasn't expired yet", snap.SnapName)
 			continue
 		}
 		ssr.logger.Infof("GC: Deleting chunk for old snapshot: %s", snapPath)
@@ -260,7 +260,7 @@ func (ssr *Snapshotter) GarbageCollectDeltaSnapshots(snapStream brtypes.SnapList
 			snapPath := path.Join(snapStream[i].SnapDir, snapStream[i].SnapName)
 			ssr.logger.Infof("GC: Deleting old delta snapshot: %s", snapPath)
 			if !snapStream[i].IsDeletable() {
-				ssr.logger.Infof("GC: Skipping : %s, since it is immutable", snapPath)
+				ssr.logger.Infof("GC: Skipping the snapshot: %s, since its immutability period hasn't expired yet", snapPath)
 				continue
 			}
 			if err := ssr.store.Delete(*snapStream[i]); err != nil {
