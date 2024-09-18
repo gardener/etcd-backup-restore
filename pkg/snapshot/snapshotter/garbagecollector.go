@@ -41,7 +41,7 @@ func (ssr *Snapshotter) RunGarbageCollector(stopCh <-chan struct{}) {
 
 			total := 0
 			ssr.logger.Info("GC: Executing garbage collection...")
-			// List the tagged snapshots to garbage collect them
+			// List all (tagged and untagged) snapshots to garbage collect them according to the garbage collection policy.
 			snapList, err := ssr.store.List(true)
 			if err != nil {
 				metrics.SnapshotterOperationFailure.With(prometheus.Labels{metrics.LabelError: err.Error()}).Inc()
@@ -63,7 +63,7 @@ func (ssr *Snapshotter) RunGarbageCollector(stopCh <-chan struct{}) {
 			} else {
 				// chunksDeleted stores the no of chunks deleted in the current iteration of GC.
 				var chunksDeleted int
-				// GarbageCollectChunks returns a filtered SnapList which does not contain chunks
+				// GarbageCollectChunks returns a filtered SnapList which does not contain chunks.
 				chunksDeleted, snapList = ssr.GarbageCollectChunks(snapList)
 				ssr.logger.Infof("GC: Total number garbage collected chunks: %d", chunksDeleted)
 			}
@@ -143,7 +143,7 @@ func (ssr *Snapshotter) RunGarbageCollector(stopCh <-chan struct{}) {
 
 					if deleteSnap {
 						if !nextSnap.IsDeletable() {
-							ssr.logger.Infof("GC: Skipping : %s, since it is immutable", nextSnap.SnapName)
+							ssr.logger.Infof("GC: Skipping the snapshot: %s, since its retention period hasn't expired yet", nextSnap.SnapName)
 							continue
 						}
 						ssr.logger.Infof("GC: Deleting old full snapshot: %s %v", nextSnap.CreatedOn.UTC(), deleteSnap)

@@ -315,7 +315,8 @@ var _ = Describe("Save, List, Fetch, Delete from mock snapstore", func() {
 				Expect(snapList[0].SnapName).To(Equal(snap4.SnapName))
 				Expect(snapList[secondSnapshotIndex].SnapName).To(Equal(snap5.SnapName))
 
-				// List tests with false and true as arguments only implemented with GCS for now
+				// The List method implemented for SnapStores which support immutable objects is tested for tagged and untagged snapshots.
+				// TODO @renormalize: ABS, S3
 				var tag tagger
 				switch provider {
 				case "GCS":

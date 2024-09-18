@@ -283,7 +283,7 @@ func (s *GCSSnapStore) componentUploader(wg *sync.WaitGroup, stopCh <-chan struc
 	}
 }
 
-// List will return a sorted list with all snapshot files on store, excluding those marked with x-ignore-etcd-snapshot-exclude. Tagged snapshots can be included in the List call by passing true as the argument.
+// List returns a sorted list of all snapshot files in the object store, excluding those snapshots tagged with `x-ignore-etcd-snapshot-exclude` in their object metadata/tags. To include these tagged snapshots in the List output, pass `true` as the argument.
 func (s *GCSSnapStore) List(includeAll bool) (brtypes.SnapList, error) {
 	prefixTokens := strings.Split(s.prefix, "/")
 	// Consider the parent of the last element for backward compatibility.
