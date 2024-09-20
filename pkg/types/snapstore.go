@@ -80,29 +80,29 @@ type SnapStore interface {
 
 // Snapshot structure represents the metadata of snapshot.
 type Snapshot struct {
-	Kind              string    `json:"kind"` // incr:incremental, full:full
-	StartRevision     int64     `json:"startRevision"`
-	LastRevision      int64     `json:"lastRevision"` // latest revision on snapshot
-	CreatedOn         time.Time `json:"createdOn"`
-	SnapDir           string    `json:"snapDir"`
-	SnapName          string    `json:"snapName"`
-	IsChunk           bool      `json:"isChunk"`
-	Prefix            string    `json:"prefix"`            // Points to correct prefix of a snapshot in snapstore (Required for Backward Compatibility)
-	CompressionSuffix string    `json:"compressionSuffix"` // CompressionSuffix depends on compression policy
-	IsFinal           bool      `json:"isFinal"`
-	RetentionExpiry   time.Time `json:"retentionExpiry"`
+	Kind                   string    `json:"kind"` // incr:incremental, full:full
+	StartRevision          int64     `json:"startRevision"`
+	LastRevision           int64     `json:"lastRevision"` // latest revision on snapshot
+	CreatedOn              time.Time `json:"createdOn"`
+	SnapDir                string    `json:"snapDir"`
+	SnapName               string    `json:"snapName"`
+	IsChunk                bool      `json:"isChunk"`
+	Prefix                 string    `json:"prefix"`            // Points to correct prefix of a snapshot in snapstore (Required for Backward Compatibility)
+	CompressionSuffix      string    `json:"compressionSuffix"` // CompressionSuffix depends on compression policy
+	IsFinal                bool      `json:"isFinal"`
+	ImmutabilityExpiryTime time.Time `json:"immutabilityExpriyTime"`
 }
 
 // IsDeletable determines if the snapshot can be deleted.
-// It checks if the retention expiry time is set and whether the current time is after the retention expiry time.
+// It checks if the immutability expiry time is set and whether the current time is after the immutability expiry time.
 func (s *Snapshot) IsDeletable() bool {
-	// Check if RetentionExpiry is the zero value of time.Time, which means it is not set.
-	// If RetentionExpiry is not set, assume the snapshot can be deleted.
-	if s.RetentionExpiry.IsZero() {
+	// Check if ImmutabilityExpiryTime is the zero value of time.Time, which means it is not set.
+	// If ImmutabilityExpiryTime is not set, assume the snapshot can be deleted.
+	if s.ImmutabilityExpiryTime.IsZero() {
 		return true
 	}
-	// Otherwise, check if the current time is after the retention expiry time.
-	return time.Now().After(s.RetentionExpiry)
+	// Otherwise, check if the current time is after the immutability expiry time.
+	return time.Now().After(s.ImmutabilityExpiryTime)
 }
 
 // GenerateSnapshotName prepares the snapshot name from metadata

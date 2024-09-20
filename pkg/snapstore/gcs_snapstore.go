@@ -319,7 +319,7 @@ func (s *GCSSnapStore) List(includeAll bool) (brtypes.SnapList, error) {
 				logrus.Warnf("Invalid snapshot %s found, ignoring it: %v", v.Name, err)
 				continue
 			}
-			snap.RetentionExpiry = v.RetentionExpirationTime
+			snap.ImmutabilityExpiryTime = v.RetentionExpirationTime
 			snapList = append(snapList, snap)
 		}
 	}

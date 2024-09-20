@@ -306,7 +306,7 @@ var _ = Describe("Snapshot", func() {
 		})
 	})
 
-	Context("when provided with retention time periods", func() {
+	Context("when provided with immutability time periods", func() {
 		var (
 			snap1 brtypes.Snapshot
 			snap2 brtypes.Snapshot
@@ -329,22 +329,22 @@ var _ = Describe("Snapshot", func() {
 				SnapDir:       snapdir,
 			}
 		})
-		It("should be deletable when its retention period is not set", func() {
-			// do not set the retention period
+		It("should be deletable when its immutability period is not set", func() {
+			// do not set the immutability period
 			Expect(snap1.IsDeletable()).Should(BeTrue())
 			Expect(snap2.IsDeletable()).Should(BeTrue())
 		})
-		It("should be deletable when its retention period has expired", func() {
+		It("should be deletable when its immutability period has expired", func() {
 			// Setting expiry time to be a short time after creation
-			snap1.RetentionExpiry = snap1.CreatedOn.Add(time.Nanosecond)
-			snap2.RetentionExpiry = snap2.CreatedOn.Add(time.Nanosecond)
+			snap1.ImmutabilityExpiryTime = snap1.CreatedOn.Add(time.Nanosecond)
+			snap2.ImmutabilityExpiryTime = snap2.CreatedOn.Add(time.Nanosecond)
 			Expect(snap1.IsDeletable()).To(BeTrue())
 			Expect(snap2.IsDeletable()).To(BeTrue())
 		})
-		It("should not be deletable when its retention period has not expired", func() {
+		It("should not be deletable when its immutability period has not expired", func() {
 			// Setting the expiry time to be a long time after the creation
-			snap1.RetentionExpiry = snap1.CreatedOn.Add(time.Hour)
-			snap2.RetentionExpiry = snap2.CreatedOn.Add(time.Hour)
+			snap1.ImmutabilityExpiryTime = snap1.CreatedOn.Add(time.Hour)
+			snap2.ImmutabilityExpiryTime = snap2.CreatedOn.Add(time.Hour)
 			Expect(snap1.IsDeletable()).To(BeFalse())
 			Expect(snap2.IsDeletable()).To(BeFalse())
 		})
