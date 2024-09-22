@@ -166,7 +166,7 @@ func (cp *Compactor) Compact(ctx context.Context, opts *brtypes.CompactOptions) 
 	isFinal := compactorRestoreOptions.BaseSnapshot.IsFinal
 
 	cc := &compressor.CompressionConfig{Enabled: isCompressed, CompressionPolicy: compressionPolicy}
-	snapshot, err := etcdutil.TakeAndSaveFullSnapshot(snapshotReqCtx, clientMaintenance, cp.store, etcdRevision, cc, suffix, isFinal, cp.logger)
+	snapshot, err := etcdutil.TakeAndSaveFullSnapshot(snapshotReqCtx, clientMaintenance, cp.store, opts.Config.TempSnapshotsDir, etcdRevision, cc, suffix, isFinal, cp.logger)
 	if err != nil {
 		return nil, err
 	}
