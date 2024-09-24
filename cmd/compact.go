@@ -61,7 +61,7 @@ func NewCompactCommand(ctx context.Context) *cobra.Command {
 				CompactorConfig: opts.compactorConfig,
 			}
 
-			snapshot, err := cp.Compact(ctx, compactOptions)
+			snapshot, err := cp.Compact(ctx, compactOptions, opts.snapstoreConfig.TempDir)
 			if err != nil {
 				if strings.Contains(err.Error(), mvcc.ErrCompacted.Error()) {
 					logger.Warnf("Stopping backup compaction: %v", err)
