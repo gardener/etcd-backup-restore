@@ -59,11 +59,17 @@ var _ = Describe("Running Compactor", func() {
 		var compactorConfig *brtypes.CompactorConfig
 		var compactOptions *brtypes.CompactOptions
 		var compactedSnapshot *brtypes.Snapshot
+		var snapstoreConfig *brtypes.SnapstoreConfig
 		var tempRestoreDir string
 
 		BeforeEach(func() {
 			dir = fmt.Sprintf("%s/etcd/snapshotter.bkp", testSuiteDir)
-			store, err = snapstore.GetSnapstore(&brtypes.SnapstoreConfig{Container: dir, Provider: "Local"})
+			snapstoreConfig = &brtypes.SnapstoreConfig{
+				Container: dir,
+				Provider:  "Local",
+			}
+
+			store, err = snapstore.GetSnapstore(snapstoreConfig)
 			Expect(err).ShouldNot(HaveOccurred())
 			fmt.Println("The store where compaction will save snapshot is: ", store)
 
@@ -125,7 +131,7 @@ var _ = Describe("Running Compactor", func() {
 				restoreOpts.DeltaSnapList = deltaSnapList
 
 				// Take the compacted full snapshot with defragmentation allowed
-				_, err = cptr.Compact(testCtx, compactOptions)
+				_, err = cptr.Compact(testCtx, compactOptions, snapstoreConfig.TempDir)
 				Expect(err).ShouldNot(HaveOccurred())
 
 				// Check if the compacted full snapshot is really present
@@ -150,7 +156,7 @@ var _ = Describe("Running Compactor", func() {
 				restoreOpts.DeltaSnapList = deltaSnapList
 
 				// Take the compacted full snapshot with defragmnetation allowed
-				_, err = cptr.Compact(testCtx, compactOptions)
+				_, err = cptr.Compact(testCtx, compactOptions, snapstoreConfig.TempDir)
 				Expect(err).ShouldNot(HaveOccurred())
 
 				compactedSnapshot, deltaSnapList, err = miscellaneous.GetLatestFullSnapshotAndDeltaSnapList(store)
@@ -206,7 +212,7 @@ var _ = Describe("Running Compactor", func() {
 
 				// Take the compacted full snapshot with defragmnetation not allowed
 				compactOptions.NeedDefragmentation = false
-				_, err = cptr.Compact(testCtx, compactOptions)
+				_, err = cptr.Compact(testCtx, compactOptions, snapstoreConfig.TempDir)
 				Expect(err).ShouldNot(HaveOccurred())
 
 				// Check if the compacted full snapshot is really present
@@ -232,7 +238,7 @@ var _ = Describe("Running Compactor", func() {
 
 				// Take the compacted full snapshot with defragmnetation not allowed
 				compactOptions.NeedDefragmentation = false
-				_, err = cptr.Compact(testCtx, compactOptions)
+				_, err = cptr.Compact(testCtx, compactOptions, snapstoreConfig.TempDir)
 				Expect(err).ShouldNot(HaveOccurred())
 
 				// Check if the compacted full snapshot is really present
@@ -276,7 +282,7 @@ var _ = Describe("Running Compactor", func() {
 				restoreOpts.DeltaSnapList = deltaSnapList
 
 				// Try capturing the compacted full snapshot
-				_, err = cptr.Compact(testCtx, compactOptions)
+				_, err = cptr.Compact(testCtx, compactOptions, snapstoreConfig.TempDir)
 				Expect(err).Should(HaveOccurred())
 			})
 		})
