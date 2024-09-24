@@ -323,7 +323,7 @@ var _ = Describe("Snapshot", func() {
 			}
 			snap2 = brtypes.Snapshot{
 				CreatedOn:     now,
-				StartRevision: 2088,
+				StartRevision: 2089,
 				LastRevision:  3088,
 				Kind:          brtypes.SnapshotKindDelta,
 				SnapDir:       snapdir,
