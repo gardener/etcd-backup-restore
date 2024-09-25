@@ -29,7 +29,7 @@ import (
 )
 
 const (
-	bufferSize = 4 * 1024 * 1024 // 4 MB
+	hashBufferSize = 4 * 1024 * 1024 // 4 MB
 )
 
 // NewFactory returns a Factory that constructs new clients using the supplied ETCD client configuration.
@@ -325,11 +325,7 @@ func checkFullSnapshotIntegrity(snapshotData io.ReadCloser, snapTempDBFilePath s
 	logger.Info("checking the full snapshot integrity with the help of SHA256")
 
 	// If previous temp db file already exist then remove it.
-	if _, err := os.Stat(snapTempDBFilePath); err == nil {
-		if err := os.Remove(snapTempDBFilePath); err != nil {
-			return nil, err
-		}
-	} else if err != nil && !os.IsNotExist(err) {
+	if err := os.Remove(snapTempDBFilePath); err != nil && !os.IsNotExist(err) {
 		return nil, err
 	}
 
@@ -363,7 +359,7 @@ func checkFullSnapshotIntegrity(snapshotData io.ReadCloser, snapTempDBFilePath s
 		return nil, fmt.Errorf("failed to read SHA256 from snapshot data %v", err)
 	}
 
-	buf := make([]byte, bufferSize)
+	buf := make([]byte, hashBufferSize)
 	hash := sha256.New()
 
 	// reset the file pointer back to starting
@@ -372,7 +368,7 @@ func checkFullSnapshotIntegrity(snapshotData io.ReadCloser, snapTempDBFilePath s
 		return nil, err
 	}
 
-	for currentOffset+bufferSize < snapshotLastOffset {
+	for currentOffset+hashBufferSize < snapshotLastOffset {
 		offset, err := db.Read(buf)
 		if err != nil {
 			logger.Errorf("unable to read snapshot data into buffer to calculate SHA256: %v", err)
