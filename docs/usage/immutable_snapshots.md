@@ -6,13 +6,15 @@ Several cloud providers offer functionality to create immutable objects within t
 
 Currently, etcd-backup-restore supports the use of immutable objects on the following cloud platforms:
 
-- Google Cloud Storage  (currently supported)
+- Google Cloud Storage
+- Azure Blob Storage
 
 ## Enabling and using Immutable Snapshots with etcd-backup-restore
 
 Etcd-backup-restore supports immutable objects, typically at what cloud providers call the "bucket level." During the creation of a bucket, it is configured to render objects immutable for a specific duration from the moment of their upload. This feature can be enabled through:
 
 - **Google Cloud Storage**: [Bucket Lock](https://cloud.google.com/storage/docs/bucket-lock)
+- **Azure Blob Storage**: [Container-level WORM Policies](https://learn.microsoft.com/en-us/azure/storage/blobs/immutable-container-level-worm-policies)
 
 It is also possible to enable immutability retroactively by making appropriate API calls to your cloud provider, allowing the immutable snapshots feature to be used with existing buckets. For information on such configurations, please refer to your cloud provider's documentation.
 
