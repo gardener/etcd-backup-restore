@@ -311,7 +311,7 @@ func getTotalFullAndDeltaSnapshotCounts(snapList brtypes.SnapList) (int, int) {
 }
 
 func purgeSnapstore(store brtypes.SnapStore) error {
-	snapList, err := store.List()
+	snapList, err := store.List(false)
 	if err != nil {
 		return err
 	}
@@ -373,7 +373,7 @@ func recordCumulativeSnapList(logger *logrus.Logger, stopCh <-chan struct{}, res
 			resultCh <- snapListResult
 			return
 		default:
-			snaps, err := store.List()
+			snaps, err := store.List(false)
 			if err != nil {
 				snapListResult.Error = err
 				resultCh <- snapListResult

@@ -216,7 +216,7 @@ func (s *OSSSnapStore) uploadPart(imur oss.InitiateMultipartUploadResult, file *
 }
 
 // List will return sorted list with all snapshot files on store.
-func (s *OSSSnapStore) List() (brtypes.SnapList, error) {
+func (s *OSSSnapStore) List(_ bool) (brtypes.SnapList, error) {
 	prefixTokens := strings.Split(s.prefix, "/")
 	// Last element of the tokens is backup version
 	// Consider the parent of the backup version level (Required for Backward Compatibility)

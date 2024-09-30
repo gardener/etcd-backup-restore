@@ -32,7 +32,7 @@ func (f *FailedSnapStore) Save(snap brtypes.Snapshot, rc io.ReadCloser) error {
 }
 
 // List will list the snapshots from store
-func (f *FailedSnapStore) List() (brtypes.SnapList, error) {
+func (f *FailedSnapStore) List(_ bool) (brtypes.SnapList, error) {
 	var snapList brtypes.SnapList
 	return snapList, fmt.Errorf("failed to list the snapshots")
 }

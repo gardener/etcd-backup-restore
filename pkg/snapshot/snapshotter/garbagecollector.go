@@ -41,7 +41,8 @@ func (ssr *Snapshotter) RunGarbageCollector(stopCh <-chan struct{}) {
 
 			total := 0
 			ssr.logger.Info("GC: Executing garbage collection...")
-			snapList, err := ssr.store.List()
+			// List all (tagged and untagged) snapshots to garbage collect them according to the garbage collection policy.
+			snapList, err := ssr.store.List(true)
 			if err != nil {
 				metrics.SnapshotterOperationFailure.With(prometheus.Labels{metrics.LabelError: err.Error()}).Inc()
 				ssr.logger.Warnf("GC: Failed to list snapshots: %v", err)
@@ -62,6 +63,7 @@ func (ssr *Snapshotter) RunGarbageCollector(stopCh <-chan struct{}) {
 			} else {
 				// chunksDeleted stores the no of chunks deleted in the current iteration of GC.
 				var chunksDeleted int
+				// GarbageCollectChunks returns a filtered SnapList which does not contain chunks.
 				chunksDeleted, snapList = ssr.GarbageCollectChunks(snapList)
 				ssr.logger.Infof("GC: Total number garbage collected chunks: %d", chunksDeleted)
 			}
@@ -140,6 +142,10 @@ func (ssr *Snapshotter) RunGarbageCollector(stopCh <-chan struct{}) {
 					}
 
 					if deleteSnap {
+						if !nextSnap.IsDeletable() {
+							ssr.logger.Infof("GC: Skipping the snapshot: %s, since its immutability period hasn't expired yet", nextSnap.SnapName)
+							continue
+						}
 						ssr.logger.Infof("GC: Deleting old full snapshot: %s %v", nextSnap.CreatedOn.UTC(), deleteSnap)
 						if err := ssr.store.Delete(*nextSnap); err != nil {
 							ssr.logger.Warnf("GC: Failed to delete snapshot %s: %v", path.Join(nextSnap.SnapDir, nextSnap.SnapName), err)
@@ -199,8 +205,8 @@ func getSnapStreamIndexList(snapList brtypes.SnapList) []int {
 }
 
 // GarbageCollectChunks removes obsolete chunks based on the latest recorded snapshot.
-// It eliminates chunks associated with snapshots that have already been uploaded.
-// Additionally, it avoids deleting chunks linked to snapshots currently being uploaded to prevent the garbage collector from removing chunks before the composite is formed.
+// It eliminates chunks associated with snapshots that have already been uploaded, and returns a SnapList which does not include chunks.
+// Additionally, it avoids deleting chunks linked to snapshots currently being uploaded to prevent the garbage collector from removing chunks before the composite is formed. This chunk garbage collection is required only for GCS.
 func (ssr *Snapshotter) GarbageCollectChunks(snapList brtypes.SnapList) (int, brtypes.SnapList) {
 	var nonChunkSnapList brtypes.SnapList
 	chunksDeleted := 0
@@ -216,6 +222,10 @@ func (ssr *Snapshotter) GarbageCollectChunks(snapList brtypes.SnapList) (int, br
 		}
 		// delete the chunk object
 		snapPath := path.Join(snap.SnapDir, snap.SnapName)
+		if !snap.IsDeletable() {
+			ssr.logger.Infof("GC: Skipping the snapshot: %s, since its immutability period hasn't expired yet", snap.SnapName)
+			continue
+		}
 		ssr.logger.Infof("GC: Deleting chunk for old snapshot: %s", snapPath)
 		if err := ssr.store.Delete(*snap); err != nil {
 			ssr.logger.Warnf("GC: Failed to delete chunk %s: %v", snapPath, err)
@@ -246,9 +256,13 @@ func (ssr *Snapshotter) GarbageCollectDeltaSnapshots(snapStream brtypes.SnapList
 	cutoffTime := time.Now().UTC().Add(-ssr.config.DeltaSnapshotRetentionPeriod.Duration)
 	for i := len(snapStream) - 1; i >= 0; i-- {
 		if (*snapStream[i]).Kind == brtypes.SnapshotKindDelta && snapStream[i].CreatedOn.Before(cutoffTime) {
+
 			snapPath := path.Join(snapStream[i].SnapDir, snapStream[i].SnapName)
 			ssr.logger.Infof("GC: Deleting old delta snapshot: %s", snapPath)
-
+			if !snapStream[i].IsDeletable() {
+				ssr.logger.Infof("GC: Skipping the snapshot: %s, since its immutability period hasn't expired yet", snapPath)
+				continue
+			}
 			if err := ssr.store.Delete(*snapStream[i]); err != nil {
 				ssr.logger.Warnf("GC: Failed to delete snapshot %s: %v", snapPath, err)
 				metrics.SnapshotterOperationFailure.With(prometheus.Labels{metrics.LabelError: err.Error()}).Inc()

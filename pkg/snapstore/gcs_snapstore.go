@@ -283,14 +283,15 @@ func (s *GCSSnapStore) componentUploader(wg *sync.WaitGroup, stopCh <-chan struc
 	}
 }
 
-// List will return sorted list with all snapshot files on store.
-func (s *GCSSnapStore) List() (brtypes.SnapList, error) {
+// List returns a sorted list of all snapshot files in the object store, excluding those snapshots tagged with `x-ignore-etcd-snapshot-exclude` in their object metadata/tags. To include these tagged snapshots in the List output, pass `true` as the argument.
+func (s *GCSSnapStore) List(includeAll bool) (brtypes.SnapList, error) {
 	prefixTokens := strings.Split(s.prefix, "/")
-	// Last element of the tokens is backup version
-	// Consider the parent of the backup version level (Required for Backward Compatibility)
+	// Consider the parent of the last element for backward compatibility.
 	prefix := path.Join(strings.Join(prefixTokens[:len(prefixTokens)-1], "/"))
 
-	it := s.client.Bucket(s.bucket).Objects(context.TODO(), &storage.Query{Prefix: prefix})
+	it := s.client.Bucket(s.bucket).Objects(context.TODO(), &storage.Query{
+		Prefix: prefix,
+	})
 
 	var attrs []*storage.ObjectAttrs
 	for {
@@ -301,6 +302,12 @@ func (s *GCSSnapStore) List() (brtypes.SnapList, error) {
 		if err != nil {
 			return nil, err
 		}
+
+		// Check if the snapshot should be ignored
+		if !includeAll && attr.Metadata[brtypes.ExcludeSnapshotMetadataKey] == "true" {
+			logrus.Infof("Ignoring snapshot due to exclude tag %q present in metadata on snapshot: %s", brtypes.ExcludeSnapshotMetadataKey, attr.Name)
+			continue
+		}
 		attrs = append(attrs, attr)
 	}
 
@@ -309,10 +316,10 @@ func (s *GCSSnapStore) List() (brtypes.SnapList, error) {
 		if strings.Contains(v.Name, backupVersionV1) || strings.Contains(v.Name, backupVersionV2) {
 			snap, err := ParseSnapshot(v.Name)
 			if err != nil {
-				// Warning
 				logrus.Warnf("Invalid snapshot %s found, ignoring it: %v", v.Name, err)
 				continue
 			}
+			snap.ImmutabilityExpiryTime = v.RetentionExpirationTime
 			snapList = append(snapList, snap)
 		}
 	}

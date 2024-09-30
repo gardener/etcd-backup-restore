@@ -817,7 +817,7 @@ func NewDummyStore(snapList brtypes.SnapList) DummyStore {
 	return DummyStore{SnapList: snapList}
 }
 
-func (ds *DummyStore) List() (brtypes.SnapList, error) {
+func (ds *DummyStore) List(_ bool) (brtypes.SnapList, error) {
 	return ds.SnapList, nil
 }
 

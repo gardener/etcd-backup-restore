@@ -134,7 +134,7 @@ var _ = Describe("Snapshotter", func() {
 				defer cancel()
 				err = ssr.Run(ctx.Done(), true)
 				Expect(err).Should(HaveOccurred())
-				list, err := store.List()
+				list, err := store.List(false)
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(len(list)).Should(BeZero())
 			})
@@ -172,7 +172,7 @@ var _ = Describe("Snapshotter", func() {
 				})
 
 				It("should not take any snapshot", func() {
-					list, err := store.List()
+					list, err := store.List(false)
 					count := 0
 					for _, snap := range list {
 						if snap.Kind == brtypes.SnapshotKindFull {
@@ -225,7 +225,7 @@ var _ = Describe("Snapshotter", func() {
 						defer cancel()
 						err = ssr.Run(ctx.Done(), true)
 						Expect(err).ShouldNot(HaveOccurred())
-						list, err := store.List()
+						list, err := store.List(false)
 						Expect(err).ShouldNot(HaveOccurred())
 						Expect(len(list)).ShouldNot(BeZero())
 						for _, snapshot := range list {
@@ -286,7 +286,7 @@ var _ = Describe("Snapshotter", func() {
 							ssrCtx := utils.ContextWithWaitGroup(testCtx, wg)
 							err = ssr.Run(ssrCtx.Done(), false)
 							Expect(err).ShouldNot(HaveOccurred())
-							list, err := store.List()
+							list, err := store.List(false)
 							Expect(err).ShouldNot(HaveOccurred())
 							Expect(len(list)).ShouldNot(BeZero())
 							Expect(list[0].Kind).Should(Equal(brtypes.SnapshotKindDelta))
@@ -320,7 +320,7 @@ var _ = Describe("Snapshotter", func() {
 							err = ssr.Run(ssrCtx.Done(), true)
 
 							Expect(err).ShouldNot(HaveOccurred())
-							list, err := store.List()
+							list, err := store.List(false)
 							Expect(err).ShouldNot(HaveOccurred())
 							Expect(len(list)).ShouldNot(BeZero())
 							Expect(list[0].Kind).Should(Equal(brtypes.SnapshotKindFull))
@@ -373,7 +373,7 @@ var _ = Describe("Snapshotter", func() {
 				defer cancel()
 				ssr.RunGarbageCollector(gcCtx.Done())
 
-				list, err := store.List()
+				list, err := store.List(false)
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(len(list)).Should(Equal(len(expectedSnapList)))
 
@@ -403,7 +403,7 @@ var _ = Describe("Snapshotter", func() {
 				defer cancel()
 				ssr.RunGarbageCollector(gcCtx.Done())
 
-				list, err := store.List()
+				list, err := store.List(false)
 				Expect(err).ShouldNot(HaveOccurred())
 
 				incr := false
@@ -449,7 +449,7 @@ var _ = Describe("Snapshotter", func() {
 				Context("with all delta snapshots older than retention period", func() {
 					It("should delete all delta snapshots", func() {
 						store := prepareStoreWithDeltaSnapshots(testDir, deltaSnapshotCount)
-						list, err := store.List()
+						list, err := store.List(false)
 						Expect(err).ShouldNot(HaveOccurred())
 						Expect(len(list)).Should(Equal(deltaSnapshotCount))
 
@@ -460,7 +460,7 @@ var _ = Describe("Snapshotter", func() {
 						Expect(err).NotTo(HaveOccurred())
 						Expect(deleted).To(Equal(deltaSnapshotCount))
 
-						list, err = store.List()
+						list, err = store.List(false)
 						Expect(err).ShouldNot(HaveOccurred())
 						Expect(len(list)).Should(BeZero())
 					})
@@ -469,7 +469,7 @@ var _ = Describe("Snapshotter", func() {
 				Context("with no delta snapshots", func() {
 					It("should not delete any snapshots", func() {
 						store := prepareStoreWithDeltaSnapshots(testDir, 0)
-						list, err := store.List()
+						list, err := store.List(false)
 						Expect(err).ShouldNot(HaveOccurred())
 						Expect(len(list)).Should(BeZero())
 
@@ -481,7 +481,7 @@ var _ = Describe("Snapshotter", func() {
 						Expect(err).NotTo(HaveOccurred())
 						Expect(deleted).Should(BeZero())
 
-						list, err = store.List()
+						list, err = store.List(false)
 						Expect(err).ShouldNot(HaveOccurred())
 						Expect(len(list)).Should(BeZero())
 					})
@@ -490,7 +490,7 @@ var _ = Describe("Snapshotter", func() {
 				Context("with all delta snapshots younger than retention period", func() {
 					It("should not delete any snapshots", func() {
 						store := prepareStoreWithDeltaSnapshots(testDir, deltaSnapshotCount)
-						list, err := store.List()
+						list, err := store.List(false)
 						Expect(err).ShouldNot(HaveOccurred())
 						Expect(len(list)).Should(Equal(6))
 
@@ -502,7 +502,7 @@ var _ = Describe("Snapshotter", func() {
 						Expect(err).NotTo(HaveOccurred())
 						Expect(deleted).Should(BeZero())
 
-						list, err = store.List()
+						list, err = store.List(false)
 						Expect(err).ShouldNot(HaveOccurred())
 						Expect(len(list)).Should(Equal(deltaSnapshotCount))
 					})
@@ -511,7 +511,7 @@ var _ = Describe("Snapshotter", func() {
 				Context("with a mix of delta snapshots, some older and some younger than retention period", func() {
 					It("should delete only the delta snapshots older than the retention period", func() {
 						store := prepareStoreWithDeltaSnapshots(testDir, deltaSnapshotCount)
-						list, err := store.List()
+						list, err := store.List(false)
 						Expect(err).ShouldNot(HaveOccurred())
 						Expect(len(list)).Should(Equal(6))
 
@@ -523,7 +523,7 @@ var _ = Describe("Snapshotter", func() {
 						Expect(err).NotTo(HaveOccurred())
 						Expect(deleted).To(Equal(3))
 
-						list, err = store.List()
+						list, err = store.List(false)
 						Expect(err).ShouldNot(HaveOccurred())
 						Expect(len(list)).Should(Equal(3))
 					})
@@ -565,7 +565,7 @@ var _ = Describe("Snapshotter", func() {
 						Expect(err).NotTo(HaveOccurred())
 						Expect(chunkCount).To(BeZero())
 
-						list, err := store.List()
+						list, err := store.List(false)
 						Expect(err).NotTo(HaveOccurred())
 						Expect(len(list)).To(BeZero())
 
@@ -585,7 +585,7 @@ var _ = Describe("Snapshotter", func() {
 						Expect(err).NotTo(HaveOccurred())
 						Expect(chunkCount).To(Equal(4))
 
-						list, err := store.List()
+						list, err := store.List(false)
 						Expect(err).NotTo(HaveOccurred())
 						Expect(len(list)).To(Equal(4))
 
@@ -621,7 +621,7 @@ var _ = Describe("Snapshotter", func() {
 						Expect(err).NotTo(HaveOccurred())
 						Expect(chunkCount).To(Equal(9))
 
-						list, err := store.List()
+						list, err := store.List(false)
 						Expect(err).NotTo(HaveOccurred())
 						Expect(len(list)).To(Equal(10))
 
@@ -658,7 +658,7 @@ var _ = Describe("Snapshotter", func() {
 						Expect(err).NotTo(HaveOccurred())
 						Expect(chunkCount).To(Equal(9))
 
-						list, err := store.List()
+						list, err := store.List(false)
 						Expect(err).NotTo(HaveOccurred())
 						Expect(len(list)).To(Equal(10))
 
@@ -695,7 +695,7 @@ var _ = Describe("Snapshotter", func() {
 						Expect(err).NotTo(HaveOccurred())
 						Expect(chunkCount).To(BeZero())
 
-						list, err := store.List()
+						list, err := store.List(false)
 						Expect(err).NotTo(HaveOccurred())
 						Expect(len(list)).To(Equal(3))
 
@@ -1266,7 +1266,7 @@ func addObjectsToStore(store brtypes.SnapStore, objectType string, kind string, 
 
 // getObjectCount returns counts of chunk and composite objects in the store
 func getObjectCount(store brtypes.SnapStore) (int, int, error) {
-	list, err := store.List()
+	list, err := store.List(false)
 	if err != nil {
 		return 0, 0, err
 	}
