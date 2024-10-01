@@ -7,6 +7,8 @@ package server
 import (
 	"context"
 	"fmt"
+	"github.com/gardener/etcd-backup-restore/pkg/etcdutil/client"
+	"k8s.io/apimachinery/pkg/util/sets"
 	"net/http"
 	"sync"
 	"sync/atomic"
@@ -28,7 +30,7 @@ import (
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 
 	"github.com/prometheus/client_golang/prometheus"
-	cron "github.com/robfig/cron/v3"
+	"github.com/robfig/cron/v3"
 	"github.com/sirupsen/logrus"
 	"go.etcd.io/etcd/pkg/types"
 	"k8s.io/client-go/util/retry"
@@ -44,8 +46,8 @@ type BackupRestoreServer struct {
 
 var (
 	// runServerWithSnapshotter indicates whether to start server with or without snapshotter.
-	runServerWithSnapshotter bool = true
-	retryTimeout                  = 5 * time.Second
+	runServerWithSnapshotter = true
+	retryTimeout             = 5 * time.Second
 )
 
 // NewBackupRestoreServer return new backup restore server.
@@ -326,6 +328,53 @@ func (b *BackupRestoreServer) runServer(ctx context.Context, restoreOpts *brtype
 	}
 
 	return le.Run(ctx)
+}
+
+func (b *BackupRestoreServer) updatePeerURLIfChanged(ctx context.Context) error {
+	var err error
+	m := member.NewMemberControl(b.config.EtcdConnectionConfig)
+	// TODO: Ishan to write a function which extracts peerURLs from mounted config file.
+	cli, err := etcdutil.NewFactory(*b.config.EtcdConnectionConfig).NewCluster()
+	changed, err := hasPeerURLChanged(ctx, m, cli)
+	if err != nil {
+		return err
+	}
+	if changed {
+		if err = retry.OnError(retry.DefaultBackoff, errors.IsErrNotNil, func() error {
+			//cli, err := etcdutil.NewFactory(*b.config.EtcdConnectionConfig).NewCluster()
+			if err != nil {
+				return err
+			}
+			defer func() {
+				if err = cli.Close(); err != nil {
+					b.logger.Errorf("failed to close etcd client: %v", err)
+				}
+			}()
+			if err = m.UpdateMemberPeerURL(ctx, cli); err != nil {
+				return err
+			}
+			return nil
+		}); err != nil {
+			return err
+		}
+		// TODO: Ishan to code the function to restart the etcd-wrapper container and invoke it here.
+	} else {
+		b.logger.Info("No change in peerURLs found. Skipping update of member peer URL")
+	}
+	return nil
+}
+
+func hasPeerURLChanged(ctx context.Context, m member.Control, cli client.ClusterCloser) (bool, error) {
+	newPeerURLs := getPeerURLsFromEtcdConfig()
+	existingPeerURLs, err := m.GetPeerURLs(ctx, cli)
+	if err != nil {
+		return false, err
+	}
+	return sets.New[string](newPeerURLs...).Difference(sets.New[string](existingPeerURLs...)).Len() > 0, nil
+}
+
+func getPeerURLsFromEtcdConfig() []string {
+	panic("implement me")
 }
 
 // runEtcdProbeLoopWithSnapshotter runs the etcd probe loop

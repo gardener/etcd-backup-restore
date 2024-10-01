@@ -69,6 +69,9 @@ type Control interface {
 
 	// IsLearnerPresent checks for the learner(non-voting) member in a cluster.
 	IsLearnerPresent(context.Context) (bool, error)
+
+	// GetPeerURLs returns the current peer URL of the member.
+	GetPeerURLs(context.Context, etcdClient.ClusterCloser) ([]string, error)
 }
 
 // memberControl holds the configuration for the mechanism of adding a new member to the cluster.
@@ -350,6 +353,32 @@ func (m *memberControl) IsClusterScaledUp(ctx context.Context, clientSet client.
 		}
 	}
 	return false, nil
+}
+
+func (m *memberControl) GetPeerURLs(ctx context.Context, closer etcdClient.ClusterCloser) ([]string, error) {
+	var (
+		etcdMemberList *clientv3.MemberListResponse
+		err            error
+	)
+	backoff := miscellaneous.CreateBackoff(RetryPeriod, RetrySteps)
+	// List members in cluster
+	err = retry.OnError(backoff, func(err error) bool {
+		return err != nil
+	}, func() error {
+		memListCtx, cancel := context.WithTimeout(ctx, EtcdTimeout)
+		defer cancel()
+		etcdMemberList, err = closer.MemberList(memListCtx)
+		return err
+	})
+	if err != nil {
+		return nil, fmt.Errorf("could not list any etcd members %w", err)
+	}
+	for _, member := range etcdMemberList.Members {
+		if member.GetName() == m.podName {
+			return member.GetPeerURLs(), nil
+		}
+	}
+	return []string{}, nil
 }
 
 // WasMemberInCluster checks the whether etcd member was part of etcd cluster.
