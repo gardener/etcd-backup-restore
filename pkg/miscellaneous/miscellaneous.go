@@ -9,6 +9,7 @@ import (
 	errored "errors"
 	"fmt"
 	"net"
+	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -602,5 +603,65 @@ func RemoveDir(dir string) error {
 	} else if !os.IsNotExist(err) {
 		return err
 	}
+	return nil
+}
+
+// GetMemberPeerURL returns the peerURL from fiven configuration file provided to etcd member.
+func GetMemberPeerURL(configFile string, podName string) (string, error) {
+	config, err := ReadConfigFileAsMap(configFile)
+	if err != nil {
+		return "", err
+	}
+	initAdPeerURL := config["initial-advertise-peer-urls"]
+	if initAdPeerURL == nil {
+		return "", fmt.Errorf("initial-advertise-peer-urls must be set in etcd config")
+	}
+	peerURL, err := ParsePeerURL(initAdPeerURL.(string), podName)
+	if err != nil {
+		return "", fmt.Errorf("could not parse peer URL from the config file : %v", err)
+	}
+	return peerURL, nil
+}
+
+// RestartEtcdWrapper is to call the "/stop" endpoint of etcd-wrapper to restart the etcd-wrapper container.
+func RestartEtcdWrapper(ctx context.Context, tlsEnabled bool) error {
+	client := &http.Client{}
+
+	// podName, err := miscellaneous.GetEnvVarOrError("POD_NAME")
+	// if err != nil {
+	// 	return err
+	// }
+	etcdLocalURL := fmt.Sprintf("http://etcd-main-local:9095/stop")
+	if tlsEnabled {
+		// TODO: fixed for TLS handling
+		// caCertPool := x509.NewCertPool()
+
+		// caCert, err := os.ReadFile(rootCA)
+		// if err != nil {
+		// 	return false, err
+		// }
+		// caCertPool.AppendCertsFromPEM(caCert)
+
+		// client.Transport = &http.Transport{
+		// 	TLSClientConfig: &tls.Config{
+		// 		RootCAs: caCertPool,
+		// 	},
+		// }
+	}
+
+	httpCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(httpCtx, http.MethodPost, etcdLocalURL, nil)
+	if err != nil {
+		return err
+	}
+	response, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer response.Body.Close()
+	fmt.Printf("Response from stop endpoint: %s\n", response.Status)
+
 	return nil
 }

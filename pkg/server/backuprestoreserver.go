@@ -7,12 +7,13 @@ package server
 import (
 	"context"
 	"fmt"
-	"github.com/gardener/etcd-backup-restore/pkg/etcdutil/client"
-	"k8s.io/apimachinery/pkg/util/sets"
 	"net/http"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/gardener/etcd-backup-restore/pkg/etcdutil/client"
+	"k8s.io/apimachinery/pkg/util/sets"
 
 	"github.com/gardener/etcd-backup-restore/pkg/backoff"
 	"github.com/gardener/etcd-backup-restore/pkg/defragmentor"
@@ -219,19 +220,7 @@ func (b *BackupRestoreServer) runServer(ctx context.Context, restoreOpts *brtype
 		return err
 	}
 
-	m := member.NewMemberControl(b.config.EtcdConnectionConfig)
-	if err := retry.OnError(retry.DefaultBackoff, errors.IsErrNotNil, func() error {
-		cli, err := etcdutil.NewFactory(*b.config.EtcdConnectionConfig).NewCluster()
-		if err != nil {
-			return err
-		}
-		defer cli.Close()
-
-		if err := m.UpdateMemberPeerURL(ctx, cli); err != nil {
-			return err
-		}
-		return nil
-	}); err != nil {
+	if err := b.updatePeerURLIfChanged(ctx, handler.EnableTLS); err != nil {
 		b.logger.Errorf("failed to update member peer url: %v", err)
 	}
 
@@ -330,51 +319,40 @@ func (b *BackupRestoreServer) runServer(ctx context.Context, restoreOpts *brtype
 	return le.Run(ctx)
 }
 
-func (b *BackupRestoreServer) updatePeerURLIfChanged(ctx context.Context) error {
+func (b *BackupRestoreServer) updatePeerURLIfChanged(ctx context.Context, tlsEnabled bool) error {
 	var err error
 	m := member.NewMemberControl(b.config.EtcdConnectionConfig)
-	// TODO: Ishan to write a function which extracts peerURLs from mounted config file.
+
 	cli, err := etcdutil.NewFactory(*b.config.EtcdConnectionConfig).NewCluster()
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err = cli.Close(); err != nil {
+			b.logger.Errorf("failed to close etcd client: %v", err)
+		}
+	}()
 	changed, err := hasPeerURLChanged(ctx, m, cli)
 	if err != nil {
 		return err
 	}
 	if changed {
 		if err = retry.OnError(retry.DefaultBackoff, errors.IsErrNotNil, func() error {
-			//cli, err := etcdutil.NewFactory(*b.config.EtcdConnectionConfig).NewCluster()
-			if err != nil {
-				return err
-			}
-			defer func() {
-				if err = cli.Close(); err != nil {
-					b.logger.Errorf("failed to close etcd client: %v", err)
-				}
-			}()
 			if err = m.UpdateMemberPeerURL(ctx, cli); err != nil {
 				return err
 			}
+			b.logger.Info("Successfully updated the peerURLs for etcd member.")
 			return nil
 		}); err != nil {
 			return err
 		}
-		// TODO: Ishan to code the function to restart the etcd-wrapper container and invoke it here.
+		if err := miscellaneous.RestartEtcdWrapper(ctx, tlsEnabled); err != nil {
+			b.logger.Fatalf("failed to restart the etcd: %v", err)
+		}
 	} else {
 		b.logger.Info("No change in peerURLs found. Skipping update of member peer URL")
 	}
 	return nil
-}
-
-func hasPeerURLChanged(ctx context.Context, m member.Control, cli client.ClusterCloser) (bool, error) {
-	newPeerURLs := getPeerURLsFromEtcdConfig()
-	existingPeerURLs, err := m.GetPeerURLs(ctx, cli)
-	if err != nil {
-		return false, err
-	}
-	return sets.New[string](newPeerURLs...).Difference(sets.New[string](existingPeerURLs...)).Len() > 0, nil
-}
-
-func getPeerURLsFromEtcdConfig() []string {
-	panic("implement me")
 }
 
 // runEtcdProbeLoopWithSnapshotter runs the etcd probe loop
@@ -583,4 +561,21 @@ func handleSsrStopRequest(ctx context.Context, handler *HTTPHandler, _ *snapshot
 			return
 		}
 	}
+}
+
+func hasPeerURLChanged(ctx context.Context, m member.Control, cli client.ClusterCloser) (bool, error) {
+	podName, err := miscellaneous.GetEnvVarOrError("POD_NAME")
+	if err != nil {
+		return false, fmt.Errorf("error reading POD_NAME env var : %v", err)
+	}
+
+	peerURLsFromEtcdConfig, err := miscellaneous.GetMemberPeerURL(miscellaneous.GetConfigFilePath(), podName)
+	if err != nil {
+		return false, err
+	}
+	existingPeerURLs, err := m.GetPeerURLs(ctx, cli)
+	if err != nil {
+		return false, err
+	}
+	return sets.New[string](peerURLsFromEtcdConfig).Difference(sets.New[string](existingPeerURLs...)).Len() > 0, nil
 }
