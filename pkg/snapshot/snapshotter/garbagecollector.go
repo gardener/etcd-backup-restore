@@ -8,6 +8,7 @@ import (
 	"math"
 	"path"
 	"time"
+	"errors"
 
 	"github.com/gardener/etcd-backup-restore/pkg/metrics"
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
@@ -254,6 +255,7 @@ Returns:
 func (ssr *Snapshotter) GarbageCollectDeltaSnapshots(snapStream brtypes.SnapList) (int, error) {
 	totalDeleted := 0
 	cutoffTime := time.Now().UTC().Add(-ssr.config.DeltaSnapshotRetentionPeriod.Duration)
+	var finalError error
 	for i := len(snapStream) - 1; i >= 0; i-- {
 		if (*snapStream[i]).Kind == brtypes.SnapshotKindDelta && snapStream[i].CreatedOn.Before(cutoffTime) {
 
@@ -268,13 +270,14 @@ func (ssr *Snapshotter) GarbageCollectDeltaSnapshots(snapStream brtypes.SnapList
 				metrics.SnapshotterOperationFailure.With(prometheus.Labels{metrics.LabelError: err.Error()}).Inc()
 				metrics.GCSnapshotCounter.With(prometheus.Labels{metrics.LabelKind: brtypes.SnapshotKindDelta, metrics.LabelSucceeded: metrics.ValueSucceededFalse}).Inc()
 
-				return totalDeleted, err
+				// return totalDeleted, err
+				finalError = errors.Join(finalError, err)
+			} else { 
+				metrics.GCSnapshotCounter.With(prometheus.Labels{metrics.LabelKind: brtypes.SnapshotKindDelta, metrics.LabelSucceeded: metrics.ValueSucceededTrue}).Inc()
+				totalDeleted++
 			}
-
-			metrics.GCSnapshotCounter.With(prometheus.Labels{metrics.LabelKind: brtypes.SnapshotKindDelta, metrics.LabelSucceeded: metrics.ValueSucceededTrue}).Inc()
-			totalDeleted++
 		}
 	}
 
-	return totalDeleted, nil
+	return totalDeleted, finalError
 }
