@@ -346,7 +346,7 @@ func (b *BackupRestoreServer) updatePeerURLIfChanged(ctx context.Context, tlsEna
 		}); err != nil {
 			return err
 		}
-		if err := miscellaneous.RestartEtcdWrapper(ctx, tlsEnabled); err != nil {
+		if err := miscellaneous.RestartEtcdWrapper(ctx, tlsEnabled, b.config.EtcdConnectionConfig); err != nil {
 			b.logger.Fatalf("failed to restart the etcd: %v", err)
 		}
 	} else {

@@ -6,6 +6,8 @@ package miscellaneous
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	errored "errors"
 	"fmt"
 	"net"
@@ -55,6 +57,9 @@ const (
 	ScaledToMultiNodeAnnotationKey = "gardener.cloud/scaled-to-multi-node"
 
 	https = "https"
+
+	// etcdWrapperPortNo defines the port no. used by etcd-wrapper.
+	etcdWrapperPortNo = "9095"
 )
 
 // GetLatestFullSnapshotAndDeltaSnapList returns the latest snapshot
@@ -624,35 +629,32 @@ func GetMemberPeerURL(configFile string, podName string) (string, error) {
 }
 
 // RestartEtcdWrapper is to call the "/stop" endpoint of etcd-wrapper to restart the etcd-wrapper container.
-func RestartEtcdWrapper(ctx context.Context, tlsEnabled bool) error {
+func RestartEtcdWrapper(ctx context.Context, tlsEnabled bool, etcdConnectionConfig *brtypes.EtcdConnectionConfig) error {
 	client := &http.Client{}
 
-	// podName, err := miscellaneous.GetEnvVarOrError("POD_NAME")
-	// if err != nil {
-	// 	return err
-	// }
-	etcdLocalURL := fmt.Sprintf("http://etcd-main-local:9095/stop")
+	etcdWrapperURL, err := getEtcdWrapperEndpoint(etcdConnectionConfig.Endpoints)
+	if err != nil {
+		return err
+	}
+
 	if tlsEnabled {
-		// TODO: fixed for TLS handling
-		// caCertPool := x509.NewCertPool()
-
-		// caCert, err := os.ReadFile(rootCA)
-		// if err != nil {
-		// 	return false, err
-		// }
-		// caCertPool.AppendCertsFromPEM(caCert)
-
-		// client.Transport = &http.Transport{
-		// 	TLSClientConfig: &tls.Config{
-		// 		RootCAs: caCertPool,
-		// 	},
-		// }
+		caCertPool := x509.NewCertPool()
+		caCert, err := os.ReadFile(etcdConnectionConfig.CaFile)
+		if err != nil {
+			return err
+		}
+		caCertPool.AppendCertsFromPEM(caCert)
+		client.Transport = &http.Transport{
+			TLSClientConfig: &tls.Config{
+				RootCAs: caCertPool,
+			},
+		}
 	}
 
 	httpCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	req, err := http.NewRequestWithContext(httpCtx, http.MethodPost, etcdLocalURL, nil)
+	req, err := http.NewRequestWithContext(httpCtx, http.MethodPost, etcdWrapperURL, nil)
 	if err != nil {
 		return err
 	}
@@ -664,4 +666,17 @@ func RestartEtcdWrapper(ctx context.Context, tlsEnabled bool) error {
 	fmt.Printf("Response from stop endpoint: %s\n", response.Status)
 
 	return nil
+}
+
+func getEtcdWrapperEndpoint(etcdEndpoints []string) (string, error) {
+	if len(etcdEndpoints) == 0 {
+		return "", fmt.Errorf("etcd endpoints are not passed correctly")
+	}
+
+	etcdURL, err := url.Parse(etcdEndpoints[0])
+	if err != nil {
+		return "", err
+	}
+
+	return fmt.Sprintf("%s://%s:%s", etcdURL.Scheme, etcdURL.Hostname(), etcdWrapperPortNo), nil
 }
