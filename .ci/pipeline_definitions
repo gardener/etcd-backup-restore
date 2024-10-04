@@ -53,13 +53,13 @@ etcd-backup-restore:
                 teamname: 'gardener/etcd-druid-maintainers'
     steps:
       check:
-        image: 'golang:1.20.3'
+        image: 'golang:1.23.2'
       unit_test:
-        image: 'golang:1.20.3'
+        image: 'golang:1.23.2'
       integration_test:
         image: europe-docker.pkg.dev/gardener-project/releases/testmachinery/base-step:stable
       build:
-        image: 'golang:1.20.3'
+        image: 'golang:1.23.2'
         output_dir: 'binary'
 
   jobs:
