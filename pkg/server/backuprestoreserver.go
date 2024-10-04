@@ -157,7 +157,7 @@ func waitUntilEtcdRunning(ctx context.Context, etcdConnectionConfig *brtypes.Etc
 		case <-ticker.C:
 		}
 	}
-	logger.Info("Etcd is now running. Continuing br startup")
+	logger.Info("Etcd is now running. Continuing backup-restore startup.")
 	return nil
 }
 
@@ -220,7 +220,7 @@ func (b *BackupRestoreServer) runServer(ctx context.Context, restoreOpts *brtype
 		return err
 	}
 
-	if err := b.updatePeerURLIfChanged(ctx, handler.EnableTLS); err != nil {
+	if err := b.updatePeerURLIfChanged(ctx, handler.EnableTLS, b.logger.Logger); err != nil {
 		b.logger.Errorf("failed to update member peer url: %v", err)
 	}
 
@@ -319,8 +319,9 @@ func (b *BackupRestoreServer) runServer(ctx context.Context, restoreOpts *brtype
 	return le.Run(ctx)
 }
 
-func (b *BackupRestoreServer) updatePeerURLIfChanged(ctx context.Context, tlsEnabled bool) error {
-	var err error
+func (b *BackupRestoreServer) updatePeerURLIfChanged(ctx context.Context, tlsEnabled bool, logger *logrus.Logger) error {
+	logger.Info("Checking if peerURL has changed or not.")
+
 	m := member.NewMemberControl(b.config.EtcdConnectionConfig)
 
 	cli, err := etcdutil.NewFactory(*b.config.EtcdConnectionConfig).NewCluster()
@@ -328,15 +329,17 @@ func (b *BackupRestoreServer) updatePeerURLIfChanged(ctx context.Context, tlsEna
 		return err
 	}
 	defer func() {
-		if err = cli.Close(); err != nil {
+		if err := cli.Close(); err != nil {
 			b.logger.Errorf("failed to close etcd client: %v", err)
 		}
 	}()
+
 	changed, err := hasPeerURLChanged(ctx, m, cli)
 	if err != nil {
 		return err
 	}
 	if changed {
+		b.logger.Info("Etcd member peerURLs found to be changed.")
 		if err = retry.OnError(retry.DefaultBackoff, errors.IsErrNotNil, func() error {
 			if err = m.UpdateMemberPeerURL(ctx, cli); err != nil {
 				return err
@@ -347,10 +350,10 @@ func (b *BackupRestoreServer) updatePeerURLIfChanged(ctx context.Context, tlsEna
 			return err
 		}
 		if err := miscellaneous.RestartEtcdWrapper(ctx, tlsEnabled, b.config.EtcdConnectionConfig); err != nil {
-			b.logger.Fatalf("failed to restart the etcd: %v", err)
+			b.logger.Fatalf("failed to restart the etcd-wrapper: %v", err)
 		}
 	} else {
-		b.logger.Info("No change in peerURLs found. Skipping update of member peer URL")
+		b.logger.Info("No change in peerURLs found. Skipping update of member peer URLs.")
 	}
 	return nil
 }

@@ -654,7 +654,7 @@ func RestartEtcdWrapper(ctx context.Context, tlsEnabled bool, etcdConnectionConf
 	httpCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	req, err := http.NewRequestWithContext(httpCtx, http.MethodPost, etcdWrapperURL, nil)
+	req, err := http.NewRequestWithContext(httpCtx, http.MethodPost, fmt.Sprintf("%s/%s", etcdWrapperURL, "stop"), nil)
 	if err != nil {
 		return err
 	}
@@ -663,7 +663,6 @@ func RestartEtcdWrapper(ctx context.Context, tlsEnabled bool, etcdConnectionConf
 		return err
 	}
 	defer response.Body.Close()
-	fmt.Printf("Response from stop endpoint: %s\n", response.Status)
 
 	return nil
 }
