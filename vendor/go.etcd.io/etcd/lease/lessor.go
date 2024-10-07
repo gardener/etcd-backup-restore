@@ -19,11 +19,13 @@ import (
 	"context"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"math"
 	"sort"
 	"sync"
 	"time"
 
+	"github.com/coreos/go-semver/semver"
 	pb "go.etcd.io/etcd/etcdserver/etcdserverpb"
 	"go.etcd.io/etcd/lease/leasepb"
 	"go.etcd.io/etcd/mvcc/backend"
@@ -36,13 +38,15 @@ const NoLease = LeaseID(0)
 // MaxLeaseTTL is the maximum lease TTL value
 const MaxLeaseTTL = 9000000000
 
+var v3_6 = semver.Version{Major: 3, Minor: 6}
+
 var (
 	forever = time.Time{}
 
 	leaseBucketName = []byte("lease")
 
-	// maximum number of leases to revoke per second; configurable for tests
-	leaseRevokeRate = 1000
+	// default number of leases to revoke per second; configurable for tests
+	defaultLeaseRevokeRate = 1000
 
 	// maximum number of lease checkpoints recorded to the consensus log per second; configurable for tests
 	leaseCheckpointRate = 1000
@@ -74,7 +78,7 @@ type RangeDeleter func() TxnDelete
 
 // Checkpointer permits checkpointing of lease remaining TTLs to the consensus log. Defined here to
 // avoid circular dependency with mvcc.
-type Checkpointer func(ctx context.Context, lc *pb.LeaseCheckpointRequest)
+type Checkpointer func(ctx context.Context, lc *pb.LeaseCheckpointRequest) error
 
 type LeaseID int64
 
@@ -169,6 +173,9 @@ type lessor struct {
 	// requests for shorter TTLs are extended to the minimum TTL.
 	minLeaseTTL int64
 
+	// maximum number of leases to revoke per second
+	leaseRevokeRate int
+
 	expiredC chan []*Lease
 	// stopC is a channel whose closure indicates that the lessor should be stopped.
 	stopC chan struct{}
@@ -181,26 +188,42 @@ type lessor struct {
 	checkpointInterval time.Duration
 	// the interval to check if the expired lease is revoked
 	expiredLeaseRetryInterval time.Duration
+	// whether lessor should always persist remaining TTL (always enabled in v3.6).
+	checkpointPersist bool
+	// cluster is used to adapt lessor logic based on cluster version
+	cluster cluster
+}
+
+type cluster interface {
+	// Version is the cluster-wide minimum major.minor version.
+	Version() *semver.Version
 }
 
 type LessorConfig struct {
 	MinLeaseTTL                int64
 	CheckpointInterval         time.Duration
 	ExpiredLeasesRetryInterval time.Duration
+	CheckpointPersist          bool
+
+	leaseRevokeRate int
 }
 
-func NewLessor(lg *zap.Logger, b backend.Backend, cfg LessorConfig) Lessor {
-	return newLessor(lg, b, cfg)
+func NewLessor(lg *zap.Logger, b backend.Backend, cluster cluster, cfg LessorConfig) Lessor {
+	return newLessor(lg, b, cluster, cfg)
 }
 
-func newLessor(lg *zap.Logger, b backend.Backend, cfg LessorConfig) *lessor {
+func newLessor(lg *zap.Logger, b backend.Backend, cluster cluster, cfg LessorConfig) *lessor {
 	checkpointInterval := cfg.CheckpointInterval
 	expiredLeaseRetryInterval := cfg.ExpiredLeasesRetryInterval
+	leaseRevokeRate := cfg.leaseRevokeRate
 	if checkpointInterval == 0 {
 		checkpointInterval = defaultLeaseCheckpointInterval
 	}
 	if expiredLeaseRetryInterval == 0 {
 		expiredLeaseRetryInterval = defaultExpiredleaseRetryInterval
+	}
+	if leaseRevokeRate == 0 {
+		leaseRevokeRate = defaultLeaseRevokeRate
 	}
 	l := &lessor{
 		leaseMap:                  make(map[LeaseID]*Lease),
@@ -209,13 +232,16 @@ func newLessor(lg *zap.Logger, b backend.Backend, cfg LessorConfig) *lessor {
 		leaseCheckpointHeap:       make(LeaseQueue, 0),
 		b:                         b,
 		minLeaseTTL:               cfg.MinLeaseTTL,
+		leaseRevokeRate:           leaseRevokeRate,
 		checkpointInterval:        checkpointInterval,
 		expiredLeaseRetryInterval: expiredLeaseRetryInterval,
+		checkpointPersist:         cfg.CheckpointPersist,
 		// expiredC is a small buffered chan to avoid unnecessary blocking.
 		expiredC: make(chan []*Lease, 16),
 		stopC:    make(chan struct{}),
 		doneC:    make(chan struct{}),
 		lg:       lg,
+		cluster:  cluster,
 	}
 	l.initAndRecover()
 
@@ -266,12 +292,7 @@ func (le *lessor) Grant(id LeaseID, ttl int64) (*Lease, error) {
 
 	// TODO: when lessor is under high load, it should give out lease
 	// with longer TTL to reduce renew load.
-	l := &Lease{
-		ID:      id,
-		ttl:     ttl,
-		itemSet: make(map[LeaseItem]struct{}),
-		revokec: make(chan struct{}),
-	}
+	l := NewLease(id, ttl)
 
 	le.mu.Lock()
 	defer le.mu.Unlock()
@@ -352,12 +373,24 @@ func (le *lessor) Checkpoint(id LeaseID, remainingTTL int64) error {
 	if l, ok := le.leaseMap[id]; ok {
 		// when checkpointing, we only update the remainingTTL, Promote is responsible for applying this to lease expiry
 		l.remainingTTL = remainingTTL
+		if le.shouldPersistCheckpoints() {
+			l.persistTo(le.b)
+		}
 		if le.isPrimary() {
 			// schedule the next checkpoint as needed
 			le.scheduleCheckpointIfNeeded(l)
 		}
 	}
 	return nil
+}
+
+func (le *lessor) shouldPersistCheckpoints() bool {
+	cv := le.cluster.Version()
+	return le.checkpointPersist || (cv != nil && greaterOrEqual(*cv, v3_6))
+}
+
+func greaterOrEqual(first, second semver.Version) bool {
+	return !first.LessThan(second)
 }
 
 // Renew renews an existing lease. If the given lease does not exist or
@@ -401,7 +434,9 @@ func (le *lessor) Renew(id LeaseID) (int64, error) {
 	// By applying a RAFT entry only when the remainingTTL is already set, we limit the number
 	// of RAFT entries written per lease to a max of 2 per checkpoint interval.
 	if clearRemainingTTL {
-		le.cp(context.Background(), &pb.LeaseCheckpointRequest{Checkpoints: []*pb.LeaseCheckpoint{{ID: int64(l.ID), Remaining_TTL: 0}}})
+		if err := le.cp(context.Background(), &pb.LeaseCheckpointRequest{Checkpoints: []*pb.LeaseCheckpoint{{ID: int64(l.ID), Remaining_TTL: 0}}}); err != nil {
+			return -1, err
+		}
 	}
 
 	le.mu.Lock()
@@ -447,9 +482,10 @@ func (le *lessor) Promote(extend time.Duration) {
 		l.refresh(extend)
 		item := &LeaseWithTime{id: l.ID, time: l.expiry.UnixNano()}
 		le.leaseExpiredNotifier.RegisterOrUpdate(item)
+		le.scheduleCheckpointIfNeeded(l)
 	}
 
-	if len(le.leaseMap) < leaseRevokeRate {
+	if len(le.leaseMap) < le.leaseRevokeRate {
 		// no possibility of lease pile-up
 		return
 	}
@@ -463,7 +499,7 @@ func (le *lessor) Promote(extend time.Duration) {
 	expires := 0
 	// have fewer expires than the total revoke rate so piled up leases
 	// don't consume the entire revoke limit
-	targetExpiresPerSecond := (3 * leaseRevokeRate) / 4
+	targetExpiresPerSecond := (3 * le.leaseRevokeRate) / 4
 	for _, l := range leases {
 		remaining := l.Remaining()
 		if remaining > nextWindow {
@@ -602,7 +638,7 @@ func (le *lessor) revokeExpiredLeases() {
 	var ls []*Lease
 
 	// rate limit
-	revokeLimit := leaseRevokeRate / 2
+	revokeLimit := le.leaseRevokeRate / 2
 
 	le.mu.RLock()
 	if le.isPrimary() {
@@ -626,10 +662,9 @@ func (le *lessor) revokeExpiredLeases() {
 // checkpointScheduledLeases finds all scheduled lease checkpoints that are due and
 // submits them to the checkpointer to persist them to the consensus log.
 func (le *lessor) checkpointScheduledLeases() {
-	var cps []*pb.LeaseCheckpoint
-
 	// rate limit
 	for i := 0; i < leaseCheckpointRate/2; i++ {
+		var cps []*pb.LeaseCheckpoint
 		le.mu.Lock()
 		if le.isPrimary() {
 			cps = le.findDueScheduledCheckpoints(maxLeaseCheckpointBatchSize)
@@ -637,7 +672,9 @@ func (le *lessor) checkpointScheduledLeases() {
 		le.mu.Unlock()
 
 		if len(cps) != 0 {
-			le.cp(context.Background(), &pb.LeaseCheckpointRequest{Checkpoints: cps})
+			if err := le.cp(context.Background(), &pb.LeaseCheckpointRequest{Checkpoints: cps}); err != nil {
+				return
+			}
 		}
 		if len(cps) < maxLeaseCheckpointBatchSize {
 			return
@@ -772,15 +809,10 @@ func (le *lessor) initAndRecover() {
 	tx.Lock()
 
 	tx.UnsafeCreateBucket(leaseBucketName)
-	_, vs := tx.UnsafeRange(leaseBucketName, int64ToBytes(0), int64ToBytes(math.MaxInt64), 0)
-	// TODO: copy vs and do decoding outside tx lock if lock contention becomes an issue.
-	for i := range vs {
-		var lpb leasepb.Lease
-		err := lpb.Unmarshal(vs[i])
-		if err != nil {
-			tx.Unlock()
-			panic("failed to unmarshal lease proto item")
-		}
+	lpbs := unsafeGetAllLeases(tx)
+	tx.Unlock()
+
+	for _, lpb := range lpbs {
 		ID := LeaseID(lpb.ID)
 		if lpb.TTL < le.minLeaseTTL {
 			lpb.TTL = le.minLeaseTTL
@@ -790,14 +822,14 @@ func (le *lessor) initAndRecover() {
 			ttl: lpb.TTL,
 			// itemSet will be filled in when recover key-value pairs
 			// set expiry to forever, refresh when promoted
-			itemSet: make(map[LeaseItem]struct{}),
-			expiry:  forever,
-			revokec: make(chan struct{}),
+			itemSet:      make(map[LeaseItem]struct{}),
+			expiry:       forever,
+			revokec:      make(chan struct{}),
+			remainingTTL: lpb.RemainingTTL,
 		}
 	}
 	le.leaseExpiredNotifier.Init()
 	heap.Init(&le.leaseCheckpointHeap)
-	tx.Unlock()
 
 	le.b.ForceCommit()
 }
@@ -815,6 +847,15 @@ type Lease struct {
 	mu      sync.RWMutex
 	itemSet map[LeaseItem]struct{}
 	revokec chan struct{}
+}
+
+func NewLease(id LeaseID, ttl int64) *Lease {
+	return &Lease{
+		ID:      id,
+		ttl:     ttl,
+		itemSet: make(map[LeaseItem]struct{}),
+		revokec: make(chan struct{}),
+	}
 }
 
 func (l *Lease) expired() bool {
@@ -840,6 +881,12 @@ func (l *Lease) TTL() int64 {
 	return l.ttl
 }
 
+func (l *Lease) SetLeaseItem(item LeaseItem) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.itemSet[item] = struct{}{}
+}
+
 // RemainingTTL returns the last checkpointed remaining TTL of the lease.
 // TODO(jpbetz): do not expose this utility method
 func (l *Lease) RemainingTTL() int64 {
@@ -862,6 +909,13 @@ func (l *Lease) forever() {
 	l.expiryMu.Lock()
 	defer l.expiryMu.Unlock()
 	l.expiry = forever
+}
+
+// Demoted returns true if the lease's expiry has been reset to forever.
+func (l *Lease) Demoted() bool {
+	l.expiryMu.Lock()
+	defer l.expiryMu.Unlock()
+	return l.expiry == forever
 }
 
 // Keys returns all the keys attached to the lease.
@@ -893,6 +947,30 @@ func int64ToBytes(n int64) []byte {
 	bytes := make([]byte, 8)
 	binary.BigEndian.PutUint64(bytes, uint64(n))
 	return bytes
+}
+
+func bytesToLeaseID(bytes []byte) int64 {
+	if len(bytes) != 8 {
+		panic(fmt.Errorf("lease ID must be 8-byte"))
+	}
+	return int64(binary.BigEndian.Uint64(bytes))
+}
+
+func unsafeGetAllLeases(tx backend.ReadTx) []*leasepb.Lease {
+	ls := make([]*leasepb.Lease, 0)
+	err := tx.UnsafeForEach(leaseBucketName, func(k, v []byte) error {
+		var lpb leasepb.Lease
+		err := lpb.Unmarshal(v)
+		if err != nil {
+			return fmt.Errorf("failed to Unmarshal lease proto item; lease ID=%016x", bytesToLeaseID(k))
+		}
+		ls = append(ls, &lpb)
+		return nil
+	})
+	if err != nil {
+		panic(err)
+	}
+	return ls
 }
 
 // FakeLessor is a fake implementation of Lessor interface.

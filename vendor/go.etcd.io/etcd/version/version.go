@@ -26,11 +26,14 @@ import (
 var (
 	// MinClusterVersion is the min cluster version this etcd binary is compatible with.
 	MinClusterVersion = "3.0.0"
-	Version           = "3.4.13"
+	Version           = "3.4.34"
 	APIVersion        = "unknown"
 
 	// Git SHA Value will be set during build
 	GitSHA = "Not provided (use ./build instead of go build)"
+
+	V3_4 = semver.Version{Major: 3, Minor: 4}
+	V3_5 = semver.Version{Major: 3, Minor: 5}
 )
 
 func init() {
