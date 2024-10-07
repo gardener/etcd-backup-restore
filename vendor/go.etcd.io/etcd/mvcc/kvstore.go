@@ -30,6 +30,7 @@ import (
 	"go.etcd.io/etcd/mvcc/mvccpb"
 	"go.etcd.io/etcd/pkg/schedule"
 	"go.etcd.io/etcd/pkg/traceutil"
+	"go.etcd.io/etcd/version"
 
 	"github.com/coreos/pkg/capnslog"
 	"go.uber.org/zap"
@@ -71,7 +72,8 @@ type ConsistentIndexGetter interface {
 }
 
 type StoreConfig struct {
-	CompactionBatchLimit int
+	CompactionBatchLimit         int
+	NextClusterVersionCompatible bool
 }
 
 type store struct {
@@ -198,7 +200,7 @@ func (s *store) HashByRev(rev int64) (hash uint32, currentRev int64, compactRev 
 	compactRev, currentRev = s.compactMainRev, s.currentRev
 	s.revMu.RUnlock()
 
-	if rev > 0 && rev <= compactRev {
+	if rev > 0 && rev < compactRev {
 		s.mu.RUnlock()
 		return 0, 0, compactRev, ErrCompacted
 	} else if rev > 0 && rev > currentRev {
@@ -226,6 +228,9 @@ func (s *store) HashByRev(rev int64) (hash uint32, currentRev int64, compactRev 
 		if !upper.GreaterThan(kr) {
 			return nil
 		}
+
+		isTombstoneRev := isTombstone(k)
+
 		// skip revisions that are scheduled for deletion
 		// due to compacting; don't skip if there isn't one.
 		if lower.GreaterThan(kr) && len(keep) > 0 {
@@ -233,6 +238,17 @@ func (s *store) HashByRev(rev int64) (hash uint32, currentRev int64, compactRev 
 				return nil
 			}
 		}
+
+		// When performing compaction, if the compacted revision is a
+		// tombstone, older versions (<= 3.5.15 or <= 3.4.33) will delete
+		// the tombstone. But newer versions (> 3.5.15 or > 3.4.33) won't
+		// delete it. So we should skip the tombstone in such cases when
+		// computing the hash to ensure that both older and newer versions
+		// can always generate the same hash values.
+		if kr.main == compactRev && isTombstoneRev {
+			return nil
+		}
+
 		h.Write(k)
 		h.Write(v)
 		return nil
@@ -274,7 +290,7 @@ func (s *store) updateCompactRev(rev int64) (<-chan struct{}, error) {
 	return nil, nil
 }
 
-func (s *store) compact(trace *traceutil.Trace, rev int64) (<-chan struct{}, error) {
+func (s *store) compact(trace *traceutil.Trace, rev int64) <-chan struct{} {
 	ch := make(chan struct{})
 	var j = func(ctx context.Context) {
 		if ctx.Err() != nil {
@@ -293,7 +309,7 @@ func (s *store) compact(trace *traceutil.Trace, rev int64) (<-chan struct{}, err
 
 	s.fifoSched.Schedule(j)
 	trace.Step("schedule compaction")
-	return ch, nil
+	return ch
 }
 
 func (s *store) compactLockfree(rev int64) (<-chan struct{}, error) {
@@ -302,7 +318,7 @@ func (s *store) compactLockfree(rev int64) (<-chan struct{}, error) {
 		return ch, err
 	}
 
-	return s.compact(traceutil.TODO(), rev)
+	return s.compact(traceutil.TODO(), rev), nil
 }
 
 func (s *store) Compact(trace *traceutil.Trace, rev int64) (<-chan struct{}, error) {
@@ -316,7 +332,7 @@ func (s *store) Compact(trace *traceutil.Trace, rev int64) (<-chan struct{}, err
 	}
 	s.mu.Unlock()
 
-	return s.compact(trace, rev)
+	return s.compact(trace, rev), nil
 }
 
 // DefaultIgnores is a map of keys to ignore in hash checking.
@@ -351,8 +367,15 @@ func (s *store) Restore(b backend.Backend) error {
 	atomic.StoreUint64(&s.consistentIndex, 0)
 	s.b = b
 	s.kvindex = newTreeIndex(s.lg)
-	s.currentRev = 1
-	s.compactMainRev = -1
+
+	{
+		// During restore the metrics might report 'special' values.
+		s.revMu.Lock()
+		s.currentRev = 1
+		s.compactMainRev = -1
+		s.revMu.Unlock()
+	}
+
 	s.fifoSched = schedule.NewFIFOScheduler()
 	s.stopc = make(chan struct{})
 
@@ -372,8 +395,22 @@ func (s *store) restore() error {
 	tx := s.b.BatchTx()
 	tx.Lock()
 
+	v := UnsafeDetectSchemaVersion(s.lg, tx)
+	if !v.Equal(version.V3_4) && !v.Equal(version.V3_5) {
+		if s.lg != nil {
+			s.lg.Panic("unsupported storage version",
+				zap.String("storage-version", v.String()))
+		} else {
+			plog.Panicf("unsupported storage version: %s\n", v.String())
+		}
+	}
+	if s.cfg.NextClusterVersionCompatible && v.Equal(version.V3_5) {
+		unsafeDowngradeMetaBucket(s.lg, tx)
+	}
+
 	_, finishedCompactBytes := tx.UnsafeRange(metaBucketName, finishedCompactKeyName, nil, 0)
 	if len(finishedCompactBytes) != 0 {
+		s.revMu.Lock()
 		s.compactMainRev = bytesToRev(finishedCompactBytes[0]).main
 
 		if s.lg != nil {
@@ -386,6 +423,7 @@ func (s *store) restore() error {
 		} else {
 			plog.Printf("restore compact to %d", s.compactMainRev)
 		}
+		s.revMu.Unlock()
 	}
 	_, scheduledCompactBytes := tx.UnsafeRange(metaBucketName, scheduledCompactKeyName, nil, 0)
 	scheduledCompact := int64(0)
@@ -414,16 +452,33 @@ func (s *store) restore() error {
 		revToBytes(newMin, min)
 	}
 	close(rkvc)
-	s.currentRev = <-revc
 
-	// keys in the range [compacted revision -N, compaction] might all be deleted due to compaction.
-	// the correct revision should be set to compaction revision in the case, not the largest revision
-	// we have seen.
-	if s.currentRev < s.compactMainRev {
-		s.currentRev = s.compactMainRev
-	}
-	if scheduledCompact <= s.compactMainRev {
-		scheduledCompact = 0
+	{
+		s.revMu.Lock()
+		s.currentRev = <-revc
+
+		// keys in the range [compacted revision -N, compaction] might all be deleted due to compaction.
+		// the correct revision should be set to compaction revision in the case, not the largest revision
+		// we have seen.
+		if s.currentRev < s.compactMainRev {
+			s.currentRev = s.compactMainRev
+		}
+
+		// If the latest revision was a tombstone revision and etcd just compacted
+		// it, but crashed right before persisting the FinishedCompactRevision,
+		// then it would lead to revision decreasing in bbolt db file. In such
+		// a scenario, we should adjust the current revision using the scheduled
+		// compact revision on bootstrap when etcd gets started again.
+		//
+		// See https://github.com/etcd-io/etcd/issues/17780#issuecomment-2061900231
+		if s.currentRev < scheduledCompact {
+			s.currentRev = scheduledCompact
+		}
+
+		if scheduledCompact <= s.compactMainRev {
+			scheduledCompact = 0
+		}
+		s.revMu.Unlock()
 	}
 
 	for key, lid := range keyToLease {
@@ -447,17 +502,28 @@ func (s *store) restore() error {
 	tx.Unlock()
 
 	if scheduledCompact != 0 {
-		s.compactLockfree(scheduledCompact)
-
-		if s.lg != nil {
-			s.lg.Info(
-				"resume scheduled compaction",
-				zap.String("meta-bucket-name", string(metaBucketName)),
-				zap.String("meta-bucket-name-key", string(scheduledCompactKeyName)),
-				zap.Int64("scheduled-compact-revision", scheduledCompact),
-			)
+		if _, err := s.compactLockfree(scheduledCompact); err != nil {
+			if s.lg != nil {
+				s.lg.Warn("compaction encountered error",
+					zap.String("meta-bucket-name", string(metaBucketName)),
+					zap.String("meta-bucket-name-key", string(scheduledCompactKeyName)),
+					zap.Int64("scheduled-compact-revision", scheduledCompact),
+					zap.Error(err),
+				)
+			} else {
+				plog.Printf("compaction encountered error, scheduled-compact-revision: %d", scheduledCompact)
+			}
 		} else {
-			plog.Printf("resume scheduled compaction at %d", scheduledCompact)
+			if s.lg != nil {
+				s.lg.Info(
+					"resume scheduled compaction",
+					zap.String("meta-bucket-name", string(metaBucketName)),
+					zap.String("meta-bucket-name-key", string(scheduledCompactKeyName)),
+					zap.Int64("scheduled-compact-revision", scheduledCompact),
+				)
+			} else {
+				plog.Printf("resume scheduled compaction at %d", scheduledCompact)
+			}
 		}
 	}
 

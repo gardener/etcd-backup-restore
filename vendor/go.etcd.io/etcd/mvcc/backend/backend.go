@@ -82,6 +82,12 @@ type Snapshot interface {
 	Close() error
 }
 
+type txReadBufferCache struct {
+	mu         sync.Mutex
+	buf        *txReadBuffer
+	bufVersion uint64
+}
+
 type backend struct {
 	// size and commits are used with atomic operations so they must be
 	// 64-bit aligned, otherwise 32-bit tests will crash
@@ -95,14 +101,20 @@ type backend struct {
 	// openReadTxN is the number of currently open read transactions in the backend
 	openReadTxN int64
 
-	mu sync.RWMutex
-	db *bolt.DB
+	mu    sync.RWMutex
+	bopts *bolt.Options
+	db    *bolt.DB
 
 	batchInterval time.Duration
 	batchLimit    int
 	batchTx       *batchTxBuffered
 
 	readTx *readTx
+	// txReadBufferCache mirrors "txReadBuffer" within "readTx" -- readTx.baseReadTx.buf.
+	// When creating "concurrentReadTx":
+	// - if the cache is up-to-date, "readTx.baseReadTx.buf" copy can be skipped
+	// - if the cache is empty or outdated, "readTx.baseReadTx.buf" copy is required
+	txReadBufferCache txReadBufferCache
 
 	stopc chan struct{}
 	donec chan struct{}
@@ -167,17 +179,24 @@ func newBackend(bcfg BackendConfig) *backend {
 	// In future, may want to make buffering optional for low-concurrency systems
 	// or dynamically swap between buffered/non-buffered depending on workload.
 	b := &backend{
-		db: db,
+		bopts: bopts,
+		db:    db,
 
 		batchInterval: bcfg.BatchInterval,
 		batchLimit:    bcfg.BatchLimit,
 
 		readTx: &readTx{
 			buf: txReadBuffer{
-				txBuffer: txBuffer{make(map[string]*bucketBuffer)},
+				txBuffer:   txBuffer{make(map[string]*bucketBuffer)},
+				bufVersion: 0,
 			},
 			buckets: make(map[string]*bolt.Bucket),
 			txWg:    new(sync.WaitGroup),
+		},
+		txReadBufferCache: txReadBufferCache{
+			mu:         sync.Mutex{},
+			bufVersion: 0,
+			buf:        nil,
 		},
 
 		stopc: make(chan struct{}),
@@ -185,6 +204,7 @@ func newBackend(bcfg BackendConfig) *backend {
 
 		lg: bcfg.Logger,
 	}
+
 	b.batchTx = newBatchTxBuffered(b)
 	go b.run()
 	return b
@@ -207,9 +227,67 @@ func (b *backend) ConcurrentReadTx() ReadTx {
 	defer b.readTx.RUnlock()
 	// prevent boltdb read Tx from been rolled back until store read Tx is done. Needs to be called when holding readTx.RLock().
 	b.readTx.txWg.Add(1)
+
 	// TODO: might want to copy the read buffer lazily - create copy when A) end of a write transaction B) end of a batch interval.
+
+	// inspect/update cache recency iff there's no ongoing update to the cache
+	// this falls through if there's no cache update
+
+	// by this line, "ConcurrentReadTx" code path is already protected against concurrent "writeback" operations
+	// which requires write lock to update "readTx.baseReadTx.buf".
+	// Which means setting "buf *txReadBuffer" with "readTx.buf.unsafeCopy()" is guaranteed to be up-to-date,
+	// whereas "txReadBufferCache.buf" may be stale from concurrent "writeback" operations.
+	// We only update "txReadBufferCache.buf" if we know "buf *txReadBuffer" is up-to-date.
+	// The update to "txReadBufferCache.buf" will benefit the following "ConcurrentReadTx" creation
+	// by avoiding copying "readTx.baseReadTx.buf".
+	b.txReadBufferCache.mu.Lock()
+
+	curCache := b.txReadBufferCache.buf
+	curCacheVer := b.txReadBufferCache.bufVersion
+	curBufVer := b.readTx.buf.bufVersion
+
+	isEmptyCache := curCache == nil
+	isStaleCache := curCacheVer != curBufVer
+
+	var buf *txReadBuffer
+	switch {
+	case isEmptyCache:
+		// perform safe copy of buffer while holding "b.txReadBufferCache.mu.Lock"
+		// this is only supposed to run once so there won't be much overhead
+		curBuf := b.readTx.buf.unsafeCopy()
+		buf = &curBuf
+	case isStaleCache:
+		// to maximize the concurrency, try unsafe copy of buffer
+		// release the lock while copying buffer -- cache may become stale again and
+		// get overwritten by someone else.
+		// therefore, we need to check the readTx buffer version again
+		b.txReadBufferCache.mu.Unlock()
+		curBuf := b.readTx.buf.unsafeCopy()
+		b.txReadBufferCache.mu.Lock()
+		buf = &curBuf
+	default:
+		// neither empty nor stale cache, just use the current buffer
+		buf = curCache
+	}
+	// txReadBufferCache.bufVersion can be modified when we doing an unsafeCopy()
+	// as a result, curCacheVer could be no longer the same as
+	// txReadBufferCache.bufVersion
+	// if !isEmptyCache && curCacheVer != b.txReadBufferCache.bufVersion
+	// then the cache became stale while copying "readTx.baseReadTx.buf".
+	// It is safe to not update "txReadBufferCache.buf", because the next following
+	// "ConcurrentReadTx" creation will trigger a new "readTx.baseReadTx.buf" copy
+	// and "buf" is still used for the current "concurrentReadTx.baseReadTx.buf".
+	if isEmptyCache || curCacheVer == b.txReadBufferCache.bufVersion {
+		// continue if the cache is never set or no one has modified the cache
+		b.txReadBufferCache.buf = buf
+		b.txReadBufferCache.bufVersion = curBufVer
+	}
+
+	b.txReadBufferCache.mu.Unlock()
+
+	// concurrentReadTx is not supposed to write to its txReadBuffer
 	return &concurrentReadTx{
-		buf:     b.readTx.buf.unsafeCopy(),
+		buf:     *buf,
 		tx:      b.readTx.tx,
 		txMu:    &b.readTx.txMu,
 		buckets: b.readTx.buckets,
@@ -354,6 +432,8 @@ func (b *backend) Defrag() error {
 
 func (b *backend) defrag() error {
 	now := time.Now()
+	isDefragActive.Set(1)
+	defer isDefragActive.Set(0)
 
 	// TODO: make this non-blocking?
 	// lock batchTx to ensure nobody is using previous tx, and then
@@ -445,7 +525,7 @@ func (b *backend) defrag() error {
 		}
 	}
 
-	b.db, err = bolt.Open(dbp, 0600, boltOpenOptions)
+	b.db, err = bolt.Open(dbp, 0600, b.bopts)
 	if err != nil {
 		if b.lg != nil {
 			b.lg.Fatal("failed to open database", zap.String("path", dbp), zap.Error(err))
@@ -566,16 +646,22 @@ func (b *backend) OpenReadTxN() int64 {
 	return atomic.LoadInt64(&b.openReadTxN)
 }
 
-// NewTmpBackend creates a backend implementation for testing.
-func NewTmpBackend(batchInterval time.Duration, batchLimit int) (*backend, string) {
+// NewTmpBackendFromCfg creates a backend implementation for testing with custom BackendConfig.
+func NewTmpBackendFromCfg(bcfg BackendConfig) (*backend, string) {
 	dir, err := ioutil.TempDir(os.TempDir(), "etcd_backend_test")
 	if err != nil {
 		panic(err)
 	}
 	tmpPath := filepath.Join(dir, "database")
-	bcfg := DefaultBackendConfig()
-	bcfg.Path, bcfg.BatchInterval, bcfg.BatchLimit = tmpPath, batchInterval, batchLimit
+	bcfg.Path = tmpPath
 	return newBackend(bcfg), tmpPath
+}
+
+// NewTmpBackend creates a backend implementation for testing.
+func NewTmpBackend(batchInterval time.Duration, batchLimit int) (*backend, string) {
+	bcfg := DefaultBackendConfig()
+	bcfg.BatchInterval, bcfg.BatchLimit = batchInterval, batchLimit
+	return NewTmpBackendFromCfg(bcfg)
 }
 
 func NewDefaultTmpBackend() (*backend, string) {

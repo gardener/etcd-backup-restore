@@ -84,6 +84,14 @@ type TLSInfo struct {
 	// Note that cipher suites are prioritized in the given order.
 	CipherSuites []uint16
 
+	// MinVersion is the minimum TLS version that is acceptable.
+	// If not set, the minimum version is TLS 1.2.
+	MinVersion uint16
+
+	// MaxVersion is the maximum TLS version that is acceptable.
+	// If not set, the default used by Go is selected (see tls.Config.MaxVersion).
+	MaxVersion uint16
+
 	selfCert bool
 
 	// parseFunc exists to simplify testing. Typically, parseFunc
@@ -235,8 +243,8 @@ func SelfCert(lg *zap.Logger, dirpath string, hosts []string, additionalUsages .
 // Previously,
 // 1. Server has non-empty (*tls.Config).Certificates on client hello
 // 2. Server calls (*tls.Config).GetCertificate iff:
-//    - Server's (*tls.Config).Certificates is not empty, or
-//    - Client supplies SNI; non-empty (*tls.ClientHelloInfo).ServerName
+//   - Server's (*tls.Config).Certificates is not empty, or
+//   - Client supplies SNI; non-empty (*tls.ClientHelloInfo).ServerName
 //
 // When (*tls.Config).Certificates is always populated on initial handshake,
 // client is expected to provide a valid matching SNI to pass the TLS
@@ -263,8 +271,17 @@ func (info TLSInfo) baseConfig() (*tls.Config, error) {
 		return nil, err
 	}
 
+	var minVersion uint16
+	if info.MinVersion != 0 {
+		minVersion = info.MinVersion
+	} else {
+		// Default minimum version is TLS 1.2, previous versions are insecure and deprecated.
+		minVersion = tls.VersionTLS12
+	}
+
 	cfg := &tls.Config{
-		MinVersion: tls.VersionTLS12,
+		MinVersion: minVersion,
+		MaxVersion: info.MaxVersion,
 		ServerName: info.ServerName,
 	}
 

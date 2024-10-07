@@ -35,11 +35,11 @@ type Marshaler struct {
 	// as opposed to string values.
 	EnumsAsInts bool
 
-	// EmitDefaults specifies Whether to render fields with zero values.
+	// EmitDefaults specifies whether to render fields with zero values.
 	EmitDefaults bool
 
 	// Indent controls whether the output is compact or not.
-	// If empty, the output is compact JSON. If non-empty, every JSON object
+	// If empty, the output is compact JSON. Otherwise, every JSON object
 	// entry and JSON array value will be on its own line.
 	// Each line will be preceded by repeated copies of Indent, where the
 	// number of copies is the current indentation depth.
@@ -55,6 +55,7 @@ type Marshaler struct {
 // implement JSONPBUnmarshaler so that the custom format can be parsed.
 //
 // The JSON marshaling must follow the proto to JSON specification:
+//
 //	https://developers.google.com/protocol-buffers/docs/proto3#json
 //
 // Deprecated: Custom types should implement protobuf reflection instead.
@@ -62,7 +63,7 @@ type JSONPBMarshaler interface {
 	MarshalJSONPB(*Marshaler) ([]byte, error)
 }
 
-// Marshal marshals a protocol buffer into JSON.
+// Marshal serializes a protobuf message as JSON into w.
 func (jm *Marshaler) Marshal(w io.Writer, m proto.Message) error {
 	b, err := jm.marshal(m)
 	if len(b) > 0 {
@@ -73,7 +74,7 @@ func (jm *Marshaler) Marshal(w io.Writer, m proto.Message) error {
 	return err
 }
 
-// MarshalToString converts a protocol buffer object to JSON string.
+// MarshalToString serializes a protobuf message as JSON in string form.
 func (jm *Marshaler) MarshalToString(m proto.Message) (string, error) {
 	b, err := jm.marshal(m)
 	if err != nil {
@@ -166,20 +167,25 @@ func (w *jsonWriter) marshalMessage(m protoreflect.Message, indent, typeURL stri
 		fd := fds.ByNumber(1)
 		return w.marshalValue(fd, m.Get(fd), indent)
 	case "Duration":
+		const maxSecondsInDuration = 315576000000
 		// "Generated output always contains 0, 3, 6, or 9 fractional digits,
 		//  depending on required precision."
 		s := m.Get(fds.ByNumber(1)).Int()
 		ns := m.Get(fds.ByNumber(2)).Int()
+		if s < -maxSecondsInDuration || s > maxSecondsInDuration {
+			return fmt.Errorf("seconds out of range %v", s)
+		}
 		if ns <= -secondInNanos || ns >= secondInNanos {
 			return fmt.Errorf("ns out of range (%v, %v)", -secondInNanos, secondInNanos)
 		}
 		if (s > 0 && ns < 0) || (s < 0 && ns > 0) {
 			return errors.New("signs of seconds and nanos do not match")
 		}
-		if s < 0 {
-			ns = -ns
+		var sign string
+		if s < 0 || ns < 0 {
+			sign, s, ns = "-", -1*s, -1*ns
 		}
-		x := fmt.Sprintf("%d.%09d", s, ns)
+		x := fmt.Sprintf("%s%d.%09d", sign, s, ns)
 		x = strings.TrimSuffix(x, "000")
 		x = strings.TrimSuffix(x, "000")
 		x = strings.TrimSuffix(x, ".000")

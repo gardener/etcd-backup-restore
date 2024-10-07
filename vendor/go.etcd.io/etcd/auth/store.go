@@ -59,6 +59,7 @@ var (
 	ErrRoleAlreadyExist     = errors.New("auth: role already exists")
 	ErrRoleNotFound         = errors.New("auth: role not found")
 	ErrRoleEmpty            = errors.New("auth: role name is empty")
+	ErrPermissionNotGiven   = errors.New("auth: permission not given")
 	ErrAuthFailed           = errors.New("auth: authentication failed, invalid user ID or password")
 	ErrNoPasswordUser       = errors.New("auth: authentication failed, password was given for no password user")
 	ErrPermissionDenied     = errors.New("auth: permission denied")
@@ -215,7 +216,14 @@ type authStore struct {
 	enabled   bool
 	enabledMu sync.RWMutex
 
-	rangePermCache map[string]*unifiedRangePermissions // username -> unifiedRangePermissions
+	// rangePermCache needs to be protected by rangePermCacheMu
+	// rangePermCacheMu needs to be write locked only in initialization phase or configuration changes
+	// Hot paths like Range(), needs to acquire read lock for improving performance
+	//
+	// Note that BatchTx and ReadTx cannot be a mutex for rangePermCache because they are independent resources
+	// see also: https://github.com/etcd-io/etcd/pull/13920#discussion_r849114855
+	rangePermCache   map[string]*unifiedRangePermissions // username -> unifiedRangePermissions
+	rangePermCacheMu sync.RWMutex
 
 	tokenProvider       TokenProvider
 	syncConsistentIndex saveConsistentIndexFunc
@@ -258,7 +266,7 @@ func (as *authStore) AuthEnable() error {
 	as.enabled = true
 	as.tokenProvider.enable()
 
-	as.rangePermCache = make(map[string]*unifiedRangePermissions)
+	as.refreshRangePermCache(tx)
 
 	as.setRevision(getRevision(tx))
 
@@ -395,11 +403,15 @@ func (as *authStore) Recover(be backend.Backend) {
 	}
 
 	as.setRevision(getRevision(tx))
+	as.refreshRangePermCache(tx)
 
 	tx.Unlock()
 
 	as.enabledMu.Lock()
 	as.enabled = enabled
+	if enabled {
+		as.tokenProvider.enable()
+	}
 	as.enabledMu.Unlock()
 }
 
@@ -454,6 +466,7 @@ func (as *authStore) UserAdd(r *pb.AuthUserAddRequest) (*pb.AuthUserAddResponse,
 
 	as.commitRevision(tx)
 	as.saveConsistentIndex(tx)
+	as.refreshRangePermCache(tx)
 
 	if as.lg != nil {
 		as.lg.Info("added a user", zap.String("user-name", r.Name))
@@ -486,8 +499,8 @@ func (as *authStore) UserDelete(r *pb.AuthUserDeleteRequest) (*pb.AuthUserDelete
 
 	as.commitRevision(tx)
 	as.saveConsistentIndex(tx)
+	as.refreshRangePermCache(tx)
 
-	as.invalidateCachedPerm(r.Name)
 	as.tokenProvider.invalidateUser(r.Name)
 
 	if as.lg != nil {
@@ -539,8 +552,8 @@ func (as *authStore) UserChangePassword(r *pb.AuthUserChangePasswordRequest) (*p
 
 	as.commitRevision(tx)
 	as.saveConsistentIndex(tx)
+	as.refreshRangePermCache(tx)
 
-	as.invalidateCachedPerm(r.Name)
 	as.tokenProvider.invalidateUser(r.Name)
 
 	if as.lg != nil {
@@ -592,10 +605,9 @@ func (as *authStore) UserGrantRole(r *pb.AuthUserGrantRoleRequest) (*pb.AuthUser
 
 	putUser(as.lg, tx, user)
 
-	as.invalidateCachedPerm(r.User)
-
 	as.commitRevision(tx)
 	as.saveConsistentIndex(tx)
+	as.refreshRangePermCache(tx)
 
 	if as.lg != nil {
 		as.lg.Info(
@@ -679,10 +691,9 @@ func (as *authStore) UserRevokeRole(r *pb.AuthUserRevokeRoleRequest) (*pb.AuthUs
 
 	putUser(as.lg, tx, updatedUser)
 
-	as.invalidateCachedPerm(r.Name)
-
 	as.commitRevision(tx)
 	as.saveConsistentIndex(tx)
+	as.refreshRangePermCache(tx)
 
 	if as.lg != nil {
 		as.lg.Info(
@@ -752,12 +763,9 @@ func (as *authStore) RoleRevokePermission(r *pb.AuthRoleRevokePermissionRequest)
 
 	putRole(as.lg, tx, updatedRole)
 
-	// TODO(mitake): currently single role update invalidates every cache
-	// It should be optimized.
-	as.clearCachedPerm()
-
 	as.commitRevision(tx)
 	as.saveConsistentIndex(tx)
+	as.refreshRangePermCache(tx)
 
 	if as.lg != nil {
 		as.lg.Info(
@@ -813,11 +821,11 @@ func (as *authStore) RoleDelete(r *pb.AuthRoleDeleteRequest) (*pb.AuthRoleDelete
 
 		putUser(as.lg, tx, updatedUser)
 
-		as.invalidateCachedPerm(string(user.Name))
 	}
 
 	as.commitRevision(tx)
 	as.saveConsistentIndex(tx)
+	as.refreshRangePermCache(tx)
 
 	if as.lg != nil {
 		as.lg.Info("deleted a role", zap.String("role-name", r.Role))
@@ -877,6 +885,13 @@ func (perms permSlice) Swap(i, j int) {
 }
 
 func (as *authStore) RoleGrantPermission(r *pb.AuthRoleGrantPermissionRequest) (*pb.AuthRoleGrantPermissionResponse, error) {
+	if r.Perm == nil {
+		return nil, ErrPermissionNotGiven
+	}
+	if !isValidPermissionRange(r.Perm.Key, r.Perm.RangeEnd) {
+		return nil, ErrInvalidAuthMgmt
+	}
+
 	tx := as.be.BatchTx()
 	tx.Lock()
 	defer tx.Unlock()
@@ -907,12 +922,9 @@ func (as *authStore) RoleGrantPermission(r *pb.AuthRoleGrantPermissionRequest) (
 
 	putRole(as.lg, tx, role)
 
-	// TODO(mitake): currently single role update invalidates every cache
-	// It should be optimized.
-	as.clearCachedPerm()
-
 	as.commitRevision(tx)
 	as.saveConsistentIndex(tx)
+	as.refreshRangePermCache(tx)
 
 	if as.lg != nil {
 		as.lg.Info(
@@ -973,7 +985,7 @@ func (as *authStore) isOpPermitted(userName string, revision uint64, key, rangeE
 		return nil
 	}
 
-	if as.isRangeOpPermitted(tx, userName, key, rangeEnd, permTyp) {
+	if as.isRangeOpPermitted(userName, key, rangeEnd, permTyp) {
 		return nil
 	}
 
@@ -1039,7 +1051,15 @@ func getUser(lg *zap.Logger, tx backend.BatchTx, username string) *authpb.User {
 }
 
 func getAllUsers(lg *zap.Logger, tx backend.BatchTx) []*authpb.User {
-	_, vs := tx.UnsafeRange(authUsersBucketName, []byte{0}, []byte{0xff}, -1)
+	var vs [][]byte
+	err := tx.UnsafeForEach(authUsersBucketName, func(k []byte, v []byte) error {
+		vs = append(vs, v)
+		return nil
+	})
+	if err != nil {
+		lg.Panic("failed to get users",
+			zap.Error(err))
+	}
 	if len(vs) == 0 {
 		return nil
 	}
@@ -1192,6 +1212,8 @@ func NewAuthStore(lg *zap.Logger, be backend.Backend, tp TokenProvider, bcryptCo
 
 	as.setupMetricsReporter()
 
+	as.refreshRangePermCache(tx)
+
 	tx.Unlock()
 	be.ForceCommit()
 
@@ -1280,6 +1302,9 @@ func (as *authStore) AuthInfoFromTLS(ctx context.Context) (ai *AuthInfo) {
 }
 
 func (as *authStore) AuthInfoFromCtx(ctx context.Context) (*AuthInfo, error) {
+	if !as.IsAuthEnabled() {
+		return nil, nil
+	}
 	md, ok := metadata.FromIncomingContext(ctx)
 	if !ok {
 		return nil, nil
