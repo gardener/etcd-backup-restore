@@ -1,6 +1,6 @@
 module github.com/gardener/etcd-backup-restore
 
-go 1.20
+go 1.23.2
 
 require (
 	cloud.google.com/go v0.97.0
