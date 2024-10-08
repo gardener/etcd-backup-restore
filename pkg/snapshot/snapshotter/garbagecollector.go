@@ -17,6 +17,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
+const errorThreshold = 5
 // RunGarbageCollector basically consider the older backups as garbage and deletes it
 func (ssr *Snapshotter) RunGarbageCollector(stopCh <-chan struct{}) {
 	if ssr.config.GarbageCollectionPeriod.Duration <= time.Second {
@@ -256,7 +257,7 @@ func (ssr *Snapshotter) GarbageCollectDeltaSnapshots(snapStream brtypes.SnapList
 	totalDeleted := 0
 	cutoffTime := time.Now().UTC().Add(-ssr.config.DeltaSnapshotRetentionPeriod.Duration)
 	var finalError error
-	for i := len(snapStream) - 1; i >= 0; i-- {
+	for i , errorCount:= len(snapStream) - 1 , 0; i >= 0; i-- {
 		if (*snapStream[i]).Kind == brtypes.SnapshotKindDelta && snapStream[i].CreatedOn.Before(cutoffTime) {
 
 			snapPath := path.Join(snapStream[i].SnapDir, snapStream[i].SnapName)
@@ -266,11 +267,17 @@ func (ssr *Snapshotter) GarbageCollectDeltaSnapshots(snapStream brtypes.SnapList
 				continue
 			}
 			if err := ssr.store.Delete(*snapStream[i]); err != nil {
+				errorCount++
+				if errorCount == errorThreshold {
+					ssr.logger.Warnf("GC: Failed to delete snapshot %s: %v", snapPath, err)
+					metrics.SnapshotterOperationFailure.With(prometheus.Labels{metrics.LabelError: err.Error()}).Inc()
+					metrics.GCSnapshotCounter.With(prometheus.Labels{metrics.LabelKind: brtypes.SnapshotKindDelta, metrics.LabelSucceeded: metrics.ValueSucceededFalse}).Inc()
+					finalError = errors.Join(finalError, err)
+					return totalDeleted, finalError
+				}
 				ssr.logger.Warnf("GC: Failed to delete snapshot %s: %v", snapPath, err)
 				metrics.SnapshotterOperationFailure.With(prometheus.Labels{metrics.LabelError: err.Error()}).Inc()
 				metrics.GCSnapshotCounter.With(prometheus.Labels{metrics.LabelKind: brtypes.SnapshotKindDelta, metrics.LabelSucceeded: metrics.ValueSucceededFalse}).Inc()
-
-				// return totalDeleted, err
 				finalError = errors.Join(finalError, err)
 			} else { 
 				metrics.GCSnapshotCounter.With(prometheus.Labels{metrics.LabelKind: brtypes.SnapshotKindDelta, metrics.LabelSucceeded: metrics.ValueSucceededTrue}).Inc()
