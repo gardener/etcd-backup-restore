@@ -48,7 +48,6 @@ type BackupRestoreServer struct {
 var (
 	// runServerWithSnapshotter indicates whether to start server with or without snapshotter.
 	runServerWithSnapshotter = true
-	retryTimeout             = 5 * time.Second
 )
 
 // NewBackupRestoreServer return new backup restore server.
@@ -349,8 +348,13 @@ func (b *BackupRestoreServer) updatePeerURLIfChanged(ctx context.Context, tlsEna
 		}); err != nil {
 			return err
 		}
-		if err := miscellaneous.RestartEtcdWrapper(ctx, tlsEnabled, b.config.EtcdConnectionConfig); err != nil {
-			b.logger.Fatalf("failed to restart the etcd-wrapper: %v", err)
+		if b.config.UseEtcdWrapper {
+			if err := miscellaneous.RestartEtcdWrapper(ctx, tlsEnabled, b.config.EtcdConnectionConfig); err != nil {
+				b.logger.Fatalf("failed to restart the etcd-wrapper: %v", err)
+			}
+		} else {
+			b.logger.Info("Usage of etcd-wrapper found to be disabled")
+			b.logger.Warnf("To correcly reflect peerURLs in etcd cluster. Please restart the etcd member. More info: https://etcd.io/docs/v3.5/op-guide/runtime-configuration/#update-advertise-peer-urls")
 		}
 	} else {
 		b.logger.Info("No change in peerURLs found. Skipping update of member peer URLs.")
