@@ -11,12 +11,14 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"time"
 
 	mockfactory "github.com/gardener/etcd-backup-restore/pkg/mock/etcdutil/client"
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 	"go.uber.org/mock/gomock"
+	"sigs.k8s.io/yaml"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -586,28 +588,224 @@ var _ = Describe("Miscellaneous Tests", func() {
 		})
 	})
 
-	Describe("parse peer urls config", func() {
-		var (
-			initialAdPeerURL string
-			podName          string
+	Describe("GetAdvertisePeerURLs", func() {
+		const (
+			configFile = "/tmp/etcd-config.yaml"
+			podName    = "test-pod"
 		)
-
-		BeforeEach(func() {
-			podName = "etcd-test-pod-0"
+		Context("When POD_NAME environment variable is not set", func() {
+			It("should return an error", func() {
+				_, err := GetAdvertisePeerURLs(configFile)
+				Expect(err).NotTo(BeNil())
+			})
 		})
 
-		Context("parse peer url", func() {
-			It("parsing well-defined initial-advertise-peer-urls", func() {
-				initialAdPeerURL = "https@etcd-events-peer@shoot--dev--test@2380"
-				peerURL, err := ParsePeerURL(initialAdPeerURL, podName)
-				Expect(err).To(BeNil())
-				Expect(peerURL).To(Equal("https://etcd-test-pod-0.etcd-events-peer.shoot--dev--test.svc:2380"))
+		Context("When POD_NAME environment variable is set", func() {
+			BeforeEach(func() {
+				Expect(os.Setenv("POD_NAME", podName)).To(Succeed())
+				Expect(os.Setenv("ETCD_CONF", configFile)).To(Succeed())
+			})
+			AfterEach(func() {
+				Expect(os.Unsetenv("POD_NAME")).To(Succeed())
+				Expect(os.Unsetenv("ETCD_CONF")).To(Succeed())
 			})
 
-			It("parsing malformed initial-advertise-peer-urls", func() {
-				initialAdPeerURL = "https@etcd-events-peer@shoot--dev--test"
-				_, err := ParsePeerURL(initialAdPeerURL, podName)
-				Expect(err).ToNot(BeNil())
+			Context("When the config file cannot be read", func() {
+				It("should return an error", func() {
+					_, err := GetAdvertisePeerURLs(configFile)
+					Expect(err).NotTo(BeNil())
+				})
+			})
+
+			Context("When initial-advertise-peer-urls is not set in the config file", func() {
+				var config map[string]interface{}
+
+				BeforeEach(func() {
+					config = map[string]interface{}{
+						"name": "etcd-test",
+					}
+					writeConfigToFile(configFile, config)
+				})
+
+				AfterEach(func() {
+					Expect(os.Remove(configFile)).To(Succeed())
+				})
+
+				It("should return an error", func() {
+					_, err := GetAdvertisePeerURLs(configFile)
+					Expect(err).NotTo(BeNil())
+				})
+			})
+
+			Context("When initial-advertise-peer-urls is set in the config file", func() {
+				var config map[string]interface{}
+				podUrlsMap := make(map[string]interface{})
+
+				AfterEach(func() {
+					Expect(os.Remove(configFile)).To(Succeed())
+				})
+
+				Context("When the initial-advertise-peer-urls is not in the expected format", func() {
+					BeforeEach(func() {
+						config = map[string]interface{}{
+							"name":                        "etcd-test",
+							"initial-advertise-peer-urls": "invalid-format",
+						}
+						writeConfigToFile(configFile, config)
+					})
+
+					It("should return an error", func() {
+						_, err := GetAdvertisePeerURLs(configFile)
+						Expect(err).NotTo(BeNil())
+					})
+				})
+
+				Context("When the pod name is not present in the config file", func() {
+					BeforeEach(func() {
+						otherPodPeerURLs := []string{"http://pod1:2380", "http://pod1:2381"}
+						podUrlsMap["other-pod"] = otherPodPeerURLs
+
+						config = map[string]interface{}{
+							"name":                        "etcd-test",
+							"initial-advertise-peer-urls": podUrlsMap,
+						}
+						writeConfigToFile(configFile, config)
+					})
+
+					It("should return an error", func() {
+						_, err := GetAdvertisePeerURLs(configFile)
+						Expect(err).NotTo(BeNil())
+					})
+				})
+
+				Context("When the pod name is present in the config file", func() {
+					var podPeerURLs []string
+					BeforeEach(func() {
+						podPeerURLs = []string{"http://pod:2380", "http://pod:2381"}
+						podUrlsMap[podName] = podPeerURLs
+
+						config = map[string]interface{}{
+							"name":                        "etcd-test",
+							"initial-advertise-peer-urls": podUrlsMap,
+						}
+						writeConfigToFile(configFile, config)
+					})
+
+					It("should return the peer URLs", func() {
+						peerURLs, err := GetAdvertisePeerURLs(configFile)
+						Expect(err).NotTo(HaveOccurred())
+						Expect(peerURLs).To(Equal(strings.Join(podPeerURLs, ",")))
+					})
+				})
+			})
+		})
+
+	})
+
+	Describe("GetAdvertiseClientURL", func() {
+		const (
+			configFile = "/tmp/etcd-config.yaml"
+			podName    = "test-pod"
+		)
+
+		Context("When POD_NAME environment variable is not set", func() {
+			It("should return an error", func() {
+				url, err := GetAdvertiseClientURL(configFile)
+				Expect(err).To(HaveOccurred())
+				Expect(url).To(BeEmpty())
+			})
+		})
+
+		Context("When POD_NAME environment variable is set", func() {
+			BeforeEach(func() {
+				Expect(os.Setenv("POD_NAME", podName)).To(Succeed())
+				Expect(os.Setenv("ETCD_CONF", configFile)).To(Succeed())
+			})
+
+			AfterEach(func() {
+				Expect(os.Unsetenv("POD_NAME")).To(Succeed())
+				Expect(os.Unsetenv("ETCD_CONF")).To(Succeed())
+			})
+
+			Context("When the config file cannot be read", func() {
+				It("should return an error", func() {
+					_, err := GetAdvertiseClientURL(configFile)
+					Expect(err).To(Not(BeNil()))
+				})
+			})
+
+			Context("When advertise-client-urls is not set in the etcd config", func() {
+				BeforeEach(func() {
+					config := map[string]interface{}{
+						"name": "etcd-test",
+					}
+					writeConfigToFile(configFile, config)
+				})
+
+				AfterEach(func() {
+					Expect(os.Remove(configFile)).To(Succeed())
+				})
+
+				It("should return an error", func() {
+					url, err := GetAdvertiseClientURL(configFile)
+					Expect(err).To(HaveOccurred())
+					Expect(url).To(BeEmpty())
+				})
+			})
+
+			Context("When advertise-client-urls is set in the etcd config", func() {
+				podUrlsMap := make(map[string]interface{})
+				AfterEach(func() {
+					Expect(os.Remove(configFile)).To(Succeed())
+				})
+
+				Context("When advertise-client-urls is not in the expected format", func() {
+					BeforeEach(func() {
+						config := map[string]interface{}{
+							"name":                  "etcd-test",
+							"advertise-client-urls": "invalid-format",
+						}
+						writeConfigToFile(configFile, config)
+					})
+
+					It("should return an error", func() {
+						url, err := GetAdvertiseClientURL(configFile)
+						Expect(err).To(HaveOccurred())
+						Expect(url).To(BeEmpty())
+					})
+				})
+
+				Context("When the client URL is not found for the pod", func() {
+					BeforeEach(func() {
+						podUrlsMap["other-pod"] = "http://localhost:2379"
+						config := map[string]interface{}{
+							"advertise-client-urls": podUrlsMap,
+						}
+						writeConfigToFile(configFile, config)
+					})
+
+					It("should return an error", func() {
+						url, err := GetAdvertiseClientURL(configFile)
+						Expect(err).To(HaveOccurred())
+						Expect(url).To(BeEmpty())
+					})
+				})
+
+				Context("When the client URL is found for the pod", func() {
+					BeforeEach(func() {
+						podUrlsMap[podName] = "http://localhost:2379"
+						config := map[string]interface{}{
+							"advertise-client-urls": podUrlsMap,
+						}
+						writeConfigToFile(configFile, config)
+					})
+
+					It("should return the client URL", func() {
+						url, err := GetAdvertiseClientURL(configFile)
+						Expect(err).ToNot(HaveOccurred())
+						Expect(url).To(Equal("http://localhost:2379"))
+					})
+				})
 			})
 		})
 	})
@@ -714,7 +912,16 @@ var _ = Describe("Miscellaneous Tests", func() {
 		Context("with non-TLS enabled peer url", func() {
 			BeforeEach(func() {
 				etcdConfigYaml := `name: etcd1
-initial-advertise-peer-urls: http@etcd-main-peer@default@2380
+initial-advertise-peer-urls:
+  test_pod:
+  - http://etcd-main-peer.default:2380
+  - http://etcd-main-peer.default:2381
+  test_pod2:
+  - http://etcd-main-peer.default:2380
+  - http://etcd-main-peer.default:2381
+  test_pod3:
+  - http://etcd-main-peer.default:2380
+  - http://etcd-main-peer.default:2381
 initial-cluster: etcd1=http://0.0.0.0:2380`
 				err := os.WriteFile(outfile, []byte(etcdConfigYaml), 0755)
 				Expect(err).ShouldNot(HaveOccurred())
@@ -730,7 +937,16 @@ initial-cluster: etcd1=http://0.0.0.0:2380`
 		Context("with TLS enabled peer url", func() {
 			BeforeEach(func() {
 				etcdConfigYaml := `name: etcd1
-initial-advertise-peer-urls: https@etcd-main-peer@default@2380
+initial-advertise-peer-urls:
+  test_pod:
+  - https://etcd-main-peer.default:2380
+  - https://etcd-main-peer.default:2381
+  test_pod2:
+  - https://etcd-main-peer.default:2380
+  - https://etcd-main-peer.default:2381
+  test_pod3:
+  - https://etcd-main-peer.default:2380
+  - https://etcd-main-peer.default:2381
 initial-cluster: etcd1=https://0.0.0.0:2380`
 				err := os.WriteFile(outfile, []byte(etcdConfigYaml), 0755)
 				Expect(err).ShouldNot(HaveOccurred())
@@ -831,4 +1047,12 @@ func (ds *DummyStore) Save(snap brtypes.Snapshot, rc io.ReadCloser) error {
 
 func (ds *DummyStore) Fetch(snap brtypes.Snapshot) (io.ReadCloser, error) {
 	return nil, nil
+}
+
+func writeConfigToFile(configFile string, config map[string]interface{}) {
+	byteSlice, err := yaml.Marshal(config)
+	Expect(err).NotTo(HaveOccurred())
+
+	err = os.WriteFile(configFile, byteSlice, 0644)
+	Expect(err).NotTo(HaveOccurred())
 }
