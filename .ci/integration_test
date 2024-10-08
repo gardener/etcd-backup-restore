@@ -30,6 +30,9 @@ TM_TEST_ID_PREFIX="etcdbr-tm-test"
 
 export GOBIN="${SOURCE_PATH}/bin"
 export PATH="${GOBIN}:${PATH}"
+# AWS_PAGER set to empty string to fix "Unable to redirect output to pager" error
+# https://stackoverflow.com/questions/57953187/aws-cli-has-no-output/68361849#68361849
+export AWS_PAGER=""
 cd "${SOURCE_PATH}"
 
 if [ "$USE_CC_SERVER_CACHE" == true ] ; then
@@ -60,7 +63,7 @@ function setup_test_environment() {
 
 function setup_ginkgo() {
     echo "Installing Ginkgo..."
-    go install github.com/onsi/ginkgo/ginkgo@v1.14.1
+    go install github.com/onsi/ginkgo/ginkgo@v1.14.1 > /dev/null 2>&1
     ginkgo version
     echo "Successfully installed Ginkgo."
 }
@@ -70,7 +73,7 @@ function setup_etcd(){
   export ETCD_VER=v3.4.13
   if [[ $(uname) == 'Darwin' ]]; then
     curl -L https://storage.googleapis.com/etcd/${ETCD_VER}/etcd-${ETCD_VER}-darwin-amd64.zip -o etcd-${ETCD_VER}-darwin-amd64.zip
-    unzip etcd-${ETCD_VER}-darwin-amd64.zip
+    unzip etcd-${ETCD_VER}-darwin-amd64.zip > /dev/null
     chmod +x ./etcd-${ETCD_VER}-darwin-amd64/etcd
     chmod +x ./etcd-${ETCD_VER}-darwin-amd64/etcdctl
     mv ./etcd-${ETCD_VER}-darwin-amd64/etcdctl ${GOBIN}/etcdctl
@@ -79,7 +82,7 @@ function setup_etcd(){
     rm -rf etcd-${ETCD_VER}-darwin-amd64.zip
   else
     curl -L https://storage.googleapis.com/etcd/${ETCD_VER}/etcd-${ETCD_VER}-linux-amd64.tar.gz -o etcd-${ETCD_VER}-linux-amd64.tar.gz
-    tar xzvf etcd-${ETCD_VER}-linux-amd64.tar.gz
+    tar xzvf etcd-${ETCD_VER}-linux-amd64.tar.gz > /dev/null
     chmod +x ./etcd-${ETCD_VER}-linux-amd64/etcd
     chmod +x ./etcd-${ETCD_VER}-linux-amd64/etcdctl
     mv ./etcd-${ETCD_VER}-linux-amd64/etcdctl ${GOBIN}/etcdctl
@@ -97,23 +100,21 @@ function setup_etcdbrctl(){
     -o ${GOBIN}/etcdbrctl \
     -ldflags "-w -X ${REPOSITORY}/pkg/version.Version=${VERSION}" \
     -mod=vendor \
-    main.go
+    main.go > /dev/null 2>&1
     chmod +x ${GOBIN}/etcdbrctl
     echo "Successfully installed etcdbrctl."
 }
 
 # More information at https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html
 function setup_awscli() {
-    if $(which aws > /dev/null); then
+    if command -v aws > /dev/null; then
       return
     fi
     echo "Installing awscli..."
     # apt since the golang image that runs the integration tests is debian based
     if [[ $(uname) == 'Linux' ]]; then
-      apt update
-      apt install -y curl
-      apt install -y unzip
-      curl "https://awscli.amazonaws.com/awscli-exe-$(uname -s | tr '[:upper:]' '[:lower:]')-$(uname -m).zip" -o "awscliv2.zip"
+      apt update && apt install -y curl unzip > /dev/null
+      curl "https://awscli.amazonaws.com/awscli-exe-$(uname -s | tr '[:upper:]' '[:lower:]')-$(uname -m).zip" -o "awscliv2.zip" > /dev/null
       unzip awscliv2.zip > /dev/null
       ./aws/install -i /usr/local/aws-cli -b /usr/local/bin
       rm -rf awscliv2.zip aws
@@ -175,6 +176,8 @@ EOF
 }
 
 function create_aws_secret() {
+  apt update && apt install -y pip > /dev/null
+  pip install --break-system-packages gardener-cicd-cli > /dev/null
   echo "Fetching aws credentials from secret server..."
   export ACCESS_KEY_ID=`gardener-ci config $CC_CACHE_FILE_FLAG attribute --cfg-type aws --cfg-name etcd-backup-restore --key access_key_id`
   export SECRET_ACCESS_KEY=`gardener-ci config $CC_CACHE_FILE_FLAG attribute --cfg-type aws --cfg-name etcd-backup-restore --key secret_access_key`
