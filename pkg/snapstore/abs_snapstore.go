@@ -309,18 +309,16 @@ func (a *ABSSnapStore) List(includeAll bool) (brtypes.SnapList, error) {
 		for _, blobItem := range resp.Segment.BlobItems {
 			// process the blobs returned in the result segment
 			if strings.Contains(*blobItem.Name, backupVersionV1) || strings.Contains(*blobItem.Name, backupVersionV2) {
-				//the blob may contain the full path in its name including the prefix
-				blobName := strings.TrimPrefix(*blobItem.Name, prefix)
-				snapshot, err := ParseSnapshot(path.Join(prefix, blobName))
+				snapshot, err := ParseSnapshot(*blobItem.Name)
 				if err != nil {
 					logrus.Warnf("Invalid snapshot found. Ignoring: %s", *blobItem.Name)
 				} else {
-					// Tagged snapshots are not listed
+					// Tagged snapshots are not listed when excluded, e.g. during restoration
 					if blobItem.BlobTags != nil {
 						for _, tag := range blobItem.BlobTags.BlobTagSet {
 							// skip this blob
 							if !includeAll && (*tag.Key == brtypes.ExcludeSnapshotMetadataKey && *tag.Value == "true") {
-								logrus.Infof("Ignoring snapshot due to exclude tag %q present in metadata on snapshot: %s", *tag.Key, snapshot.SnapName)
+								logrus.Infof("Ignoring snapshot %s due to the exclude tag %q in the snapshot metadata", snapshot.SnapName, *tag.Key)
 								continue Blob
 							}
 						}
