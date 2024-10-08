@@ -31,7 +31,10 @@ listen-client-urls: https://0.0.0.0:2379
 
 # List of this member's client URLs to advertise to the public.
 # The URLs needed to be a comma-separated list.
-advertise-client-urls: https@etcd-events-peer@shoot--dev--test@2379
+advertise-client-urls:
+  etcd-events-0: https://etcd-events-0.etcd-events-peer.shoot--dev--test.svc:2379
+  etcd-events-1: https://etcd-events-1.etcd-events-peer.shoot--dev--test.svc:2379
+  etcd-events-2: https://etcd-events-2.etcd-events-peer.shoot--dev--test.svc:2379
 peer-transport-security:
     # Path to the peer server TLS cert file.
     cert-file: /var/etcd/ssl/peer/server/tls.crt
@@ -52,7 +55,13 @@ listen-peer-urls: https://0.0.0.0:2380
 
 # List of this member's peer URLs to advertise to the public.
 # The URLs needed to be a comma-separated list.
-initial-advertise-peer-urls: https@etcd-events-peer@shoot--dev--test@2380
+initial-advertise-peer-urls:
+  etcd-events-0:
+    - https://etcd-events-0.etcd-events-peer.shoot--dev--test.svc:2380
+  etcd-events-1:
+    - https://etcd-events-1.etcd-events-peer.shoot--dev--test.svc:2380
+  etcd-events-2:
+    - https://etcd-events-2.etcd-events-peer.shoot--dev--test.svc:2380
 
 # Initial cluster token for the etcd cluster during bootstrap.
 initial-cluster-token: etcd-cluster

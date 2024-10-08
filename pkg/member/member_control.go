@@ -113,7 +113,9 @@ func NewMemberControl(etcdConnConfig *brtypes.EtcdConnectionConfig) Control {
 // AddMemberAsLearner add a member as a learner to the etcd cluster
 func (m *memberControl) AddMemberAsLearner(ctx context.Context) error {
 	//Add member as learner to cluster
-	memberURL, err := getMemberPeerURL(m.configFile, m.podName)
+	// TODO: Need to handle multiple peer URLs once etcd config is updated to support it.
+	// It is required in the context of Gardener usecase to support live control plane migration.
+	memberURL, err := miscellaneous.GetAdvertisePeerURLs(m.configFile)
 	if err != nil {
 		m.logger.Fatalf("Error fetching etcd member URL : %v", err)
 	}
@@ -198,28 +200,13 @@ func (m *memberControl) IsMemberInCluster(ctx context.Context) (bool, error) {
 	return false, nil
 }
 
-func getMemberPeerURL(configFile string, podName string) (string, error) {
-	config, err := miscellaneous.ReadConfigFileAsMap(configFile)
-	if err != nil {
-		return "", err
-	}
-	initAdPeerURL := config["initial-advertise-peer-urls"]
-	if initAdPeerURL == nil {
-		return "", errors.New("initial-advertise-peer-urls must be set in etcd config")
-	}
-	peerURL, err := miscellaneous.ParsePeerURL(initAdPeerURL.(string), podName)
-	if err != nil {
-		return "", fmt.Errorf("could not parse peer URL from the config file : %v", err)
-	}
-	return peerURL, nil
-}
-
 // doUpdateMemberPeerAddress updated the peer address of a specified etcd member
 func (m *memberControl) doUpdateMemberPeerAddress(ctx context.Context, cli etcdClient.ClusterCloser, id uint64) error {
 	// Already existing clusters or cluster after restoration have `http://localhost:2380` as the peer address. This needs to explicitly updated to the correct peer address.
 	m.logger.Infof("Updating member peer URL for %s", m.podName)
-
-	memberPeerURL, err := getMemberPeerURL(m.configFile, m.podName)
+	// TODO: Need to handle multiple peer URLs once etcd config is updated to support it.
+	// It is required in the context of Gardener usecase to support live control plane migration.
+	memberPeerURL, err := miscellaneous.GetAdvertisePeerURLs(m.configFile)
 	if err != nil {
 		return fmt.Errorf("could not fetch member URL : %v", err)
 	}
