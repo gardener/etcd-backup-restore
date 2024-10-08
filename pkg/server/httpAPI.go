@@ -35,7 +35,6 @@ import (
 	"github.com/sirupsen/logrus"
 	"go.etcd.io/etcd/clientv3"
 	"k8s.io/client-go/util/retry"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 const (
@@ -419,13 +418,6 @@ func (h *HTTPHandler) serveConfig(rw http.ResponseWriter, req *http.Request) {
 	podNS := os.Getenv("POD_NAMESPACE")
 	podName := os.Getenv("POD_NAME")
 
-	clientSet, err := miscellaneous.GetKubernetesClientSetOrError()
-	if err != nil {
-		h.Logger.Warnf("Failed to create clientset: %v", err)
-		rw.WriteHeader(http.StatusInternalServerError)
-		return
-	}
-
 	config["name"] = podName
 
 	initAdPeerURL := config["initial-advertise-peer-urls"]
@@ -456,7 +448,7 @@ func (h *HTTPHandler) serveConfig(rw http.ResponseWriter, req *http.Request) {
 		rw.WriteHeader(http.StatusInternalServerError)
 		return
 	}
-	state, err := h.GetClusterState(req.Context(), clusterSize, clientSet, podName, podNS)
+	state, err := h.GetClusterState(req.Context(), clusterSize, podName, podNS)
 	if err != nil {
 		h.Logger.Warnf("failed to get cluster state %v", err)
 		rw.WriteHeader(http.StatusInternalServerError)
@@ -483,9 +475,16 @@ func (h *HTTPHandler) serveConfig(rw http.ResponseWriter, req *http.Request) {
 }
 
 // GetClusterState returns the Cluster state either `new` or `existing`.
-func (h *HTTPHandler) GetClusterState(ctx context.Context, clusterSize int, client client.Client, podName string, podNS string) (string, error) {
+func (h *HTTPHandler) GetClusterState(ctx context.Context, clusterSize int, podName string, podNS string) (string, error) {
 	if clusterSize == 1 {
 		return miscellaneous.ClusterStateNew, nil
+	}
+
+	client, err := miscellaneous.GetKubernetesClientSetOrError()
+	if err != nil {
+		h.Logger.Warnf("Failed to create clientset: %v", err)
+		//rw.WriteHeader(http.StatusInternalServerError)
+		return "", fmt.Errorf("failed to get clusterState: %w", err)
 	}
 
 	// clusterSize > 1
