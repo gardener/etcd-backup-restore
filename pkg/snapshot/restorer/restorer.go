@@ -233,8 +233,7 @@ func (r *Restorer) makeDB(snapDir string, snap *brtypes.Snapshot, commit int, sk
 	}
 	hasHash := (off % 512) == sha256.Size
 	if !hasHash && !skipHashCheck {
-		err := fmt.Errorf("snapshot missing hash but --skip-hash-check=false")
-		return err
+		return fmt.Errorf("snapshot missing hash but --skip-hash-check=false")
 	}
 
 	if hasHash {
