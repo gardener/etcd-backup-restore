@@ -47,6 +47,7 @@ restorationConfig:
   autoCompactionRetention: "30m"
 
 defragmentationSchedule: "0 0 */3 * *"
+useEtcdWrapper: false
 
 compressionConfig:
    enabled: true

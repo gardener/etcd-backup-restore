@@ -12,6 +12,8 @@ import (
 const (
 	defaultServerPort              = 8080
 	defaultDefragmentationSchedule = "0 0 */3 * *"
+	// to enable backup-restore to use etcd-wrapper related functionality.
+	usageOfEtcdWrapperEnabled = false
 )
 
 // BackupRestoreComponentConfig holds the component configuration.
@@ -26,6 +28,7 @@ type BackupRestoreComponentConfig struct {
 	HealthConfig             *brtypes.HealthConfig             `json:"healthConfig,omitempty"`
 	LeaderElectionConfig     *brtypes.Config                   `json:"leaderElectionConfig,omitempty"`
 	ExponentialBackoffConfig *brtypes.ExponentialBackoffConfig `json:"exponentialBackoffConfig,omitempty"`
+	UseEtcdWrapper           bool                              `json:"useEtcdWrapper,omitempty"`
 }
 
 // latestSnapshotMetadata holds snapshot details of latest full and delta snapshots
