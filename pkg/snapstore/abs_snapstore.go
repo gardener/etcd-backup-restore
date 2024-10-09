@@ -28,7 +28,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blockblob"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/container"
 	"github.com/sirupsen/logrus"
-	"k8s.io/utils/pointer"
+	"k8s.io/utils/ptr"
 
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 )
@@ -247,7 +247,7 @@ func readABSCredentialFiles(dirname string) (*absCredentials, error) {
 			if err != nil {
 				return nil, err
 			}
-			absConfig.Domain = pointer.String(string(data))
+			absConfig.Domain = ptr.To(string(data))
 		}
 	}
 
