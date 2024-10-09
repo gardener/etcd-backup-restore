@@ -15,7 +15,7 @@ import (
 
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
-	"gopkg.in/yaml.v2"
+	"sigs.k8s.io/yaml"
 
 	"github.com/sirupsen/logrus"
 	corev1 "k8s.io/api/core/v1"
