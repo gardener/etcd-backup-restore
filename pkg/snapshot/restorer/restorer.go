@@ -28,21 +28,9 @@ import (
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 	"github.com/sirupsen/logrus"
 	"go.etcd.io/etcd/clientv3"
+	"go.etcd.io/etcd/clientv3/snapshot"
 	"go.etcd.io/etcd/embed"
-	"go.etcd.io/etcd/etcdserver"
-	"go.etcd.io/etcd/etcdserver/api/membership"
-	"go.etcd.io/etcd/etcdserver/api/snap"
-	store "go.etcd.io/etcd/etcdserver/api/v2store"
-	"go.etcd.io/etcd/etcdserver/etcdserverpb"
-	"go.etcd.io/etcd/lease"
-	"go.etcd.io/etcd/mvcc"
-	"go.etcd.io/etcd/mvcc/backend"
 	"go.etcd.io/etcd/mvcc/mvccpb"
-	"go.etcd.io/etcd/pkg/traceutil"
-	"go.etcd.io/etcd/raft"
-	"go.etcd.io/etcd/raft/raftpb"
-	"go.etcd.io/etcd/wal"
-	"go.etcd.io/etcd/wal/walpb"
 	"go.uber.org/zap"
 )
 
@@ -88,6 +76,17 @@ func (r *Restorer) RestoreAndStopEtcd(ro brtypes.RestoreOptions, m member.Contro
 
 // Restore restores the etcd data directory as per specified restore options but returns the ETCD server that it statrted.
 func (r *Restorer) Restore(ro brtypes.RestoreOptions, m member.Control) (*embed.Etcd, error) {
+	r.logger.Infof("Creating temporary directory %s for persisting full and delta snapshots locally.", ro.Config.TempSnapshotsDir)
+	err := os.MkdirAll(ro.Config.TempSnapshotsDir, 0700)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		if err := os.RemoveAll(ro.Config.TempSnapshotsDir); err != nil {
+			r.logger.Errorf("failed to remove restoration temp directory %s: %v", ro.Config.TempSnapshotsDir, err)
+		}
+	}()
+
 	if err := r.restoreFromBaseSnapshot(ro); err != nil {
 		return nil, fmt.Errorf("failed to restore from the base snapshot: %v", err)
 	}
@@ -98,19 +97,6 @@ func (r *Restorer) Restore(ro brtypes.RestoreOptions, m member.Control) (*embed.
 	}
 
 	r.logger.Infof("Attempting to apply %d delta snapshots for restoration.", len(ro.DeltaSnapList))
-	r.logger.Infof("Creating temporary directory %s for persisting delta snapshots locally.", ro.Config.TempSnapshotsDir)
-
-	err := os.MkdirAll(ro.Config.TempSnapshotsDir, 0700)
-	if err != nil {
-		return nil, err
-	}
-
-	defer func() {
-		if err := os.RemoveAll(ro.Config.TempSnapshotsDir); err != nil {
-			r.logger.Errorf("failed to remove restoration temp directory %s: %v", ro.Config.TempSnapshotsDir, err)
-		}
-	}()
-
 	r.logger.Infof("Starting an embedded etcd server...")
 	e, err := miscellaneous.StartEmbeddedEtcd(r.logger, &ro)
 	if err != nil {
@@ -145,260 +131,76 @@ func (r *Restorer) Restore(ro brtypes.RestoreOptions, m member.Control) (*embed.
 	return e, nil
 }
 
-// restoreFromBaseSnapshot restore the etcd data directory from base snapshot.
+// restoreFromBaseSnapshot restores the etcd data directory from the base snapshot.
 func (r *Restorer) restoreFromBaseSnapshot(ro brtypes.RestoreOptions) error {
-	var err error
-	if path.Join(ro.BaseSnapshot.SnapDir, ro.BaseSnapshot.SnapName) == "" {
+	baseSnapshotPath := path.Join(ro.BaseSnapshot.SnapDir, ro.BaseSnapshot.SnapName)
+	if baseSnapshotPath == "" {
 		r.logger.Warnf("Base snapshot path not provided. Will do nothing.")
 		return nil
 	}
-	r.logger.Infof("Restoring from base snapshot: %s", path.Join(ro.BaseSnapshot.SnapDir, ro.BaseSnapshot.SnapName))
-	cfg := etcdserver.ServerConfig{
-		InitialClusterToken: ro.Config.InitialClusterToken,
-		InitialPeerURLsMap:  ro.ClusterURLs,
-		PeerURLs:            ro.PeerURLs,
-		Name:                ro.Config.Name,
-	}
-	if err := cfg.VerifyBootstrap(); err != nil {
-		return err
-	}
 
-	cl, err := membership.NewClusterFromURLsMap(r.zapLogger, ro.Config.InitialClusterToken, ro.ClusterURLs)
+	r.logger.Infof("Restoring from base snapshot: %s", baseSnapshotPath)
+	startTime := time.Now()
+
+	rc, err := r.store.Fetch(*ro.BaseSnapshot)
 	if err != nil {
-		return err
-	}
-
-	memberDir := filepath.Join(ro.Config.DataDir, "member")
-	if _, err := os.Stat(memberDir); err == nil {
-		return fmt.Errorf("member directory in data directory(%q) exists", memberDir)
-	}
-
-	walDir := filepath.Join(memberDir, "wal")
-	snapDir := filepath.Join(memberDir, "snap")
-	if err = r.makeDB(snapDir, ro.BaseSnapshot, len(cl.Members()), ro.Config.SkipHashCheck); err != nil {
-		return err
-	}
-	return makeWALAndSnap(r.zapLogger, walDir, snapDir, cl, ro.Config.Name)
-}
-
-// makeDB copies the database snapshot to the snapshot directory.
-func (r *Restorer) makeDB(snapDir string, snap *brtypes.Snapshot, commit int, skipHashCheck bool) error {
-	rc, err := r.store.Fetch(*snap)
-	if err != nil {
-		return err
+		return fmt.Errorf("failed to fetch the base snapshot from the object store with error: %w", err)
 	}
 	defer rc.Close()
 
-	startTime := time.Now()
-	isCompressed, compressionPolicy, err := compressor.IsSnapshotCompressed(snap.CompressionSuffix)
+	// Decompress the snapshot if necessary
+	isCompressed, compressionPolicy, err := compressor.IsSnapshotCompressed(ro.BaseSnapshot.CompressionSuffix)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to determine snapshot compression policy: %w", err)
 	}
 	if isCompressed {
-		// decompress the snapshot
 		rc, err = compressor.DecompressSnapshot(rc, compressionPolicy)
 		if err != nil {
-			return fmt.Errorf("unable to decompress the snapshot: %v", err)
+			return fmt.Errorf("unable to decompress the snapshot: %w", err)
 		}
 	}
 
-	if err := os.MkdirAll(snapDir, 0700); err != nil {
-		return err
-	}
-
-	dbPath := filepath.Join(snapDir, "db")
-	db, err := os.OpenFile(dbPath, os.O_RDWR|os.O_CREATE, 0600)
+	// Copy the database snapshot to a temporary file on disk which the restore API will use
+	db, err := os.CreateTemp(ro.Config.TempSnapshotsDir, "snapshot-*.db")
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to create a temporary file for snapshot: %w", err)
 	}
+	// Clean up the temporary resources required for restoration before exiting to ensure disk is not exhausted
+	defer func() {
+		if err := os.Remove(db.Name()); err != nil {
+			r.logger.Warnf("Failed to clean up temporary resources allocated for restoration of the database, err: %v", err)
+		}
+	}()
+
 	if _, err := io.Copy(db, rc); err != nil {
-		return err
+		return fmt.Errorf("failed to copy snapshot data into the temporary file on disk needed for restoration with error: %w", err)
 	}
 
-	if err := db.Sync(); err != nil {
-		return err
-	}
-
-	totalTime := time.Now().Sub(startTime).Seconds()
-
+	elapsedTime := time.Since(startTime).Seconds()
+	r.logger.Infof("Fetched the snapshot from the object store in %v seconds", elapsedTime)
 	if isCompressed {
-		r.logger.Infof("successfully fetched data of base snapshot in %v seconds [CompressionPolicy:%v]", totalTime, compressionPolicy)
+		r.logger.Infof("Successfully fetched and saved data of the base snapshot in %v seconds [CompressionPolicy:%v]", elapsedTime, compressionPolicy)
 	} else {
-		r.logger.Infof("successfully fetched data of base snapshot in %v seconds", totalTime)
+		r.logger.Infof("Successfully fetched and saved data of the base snapshot in %v seconds", elapsedTime)
 	}
 
-	off, err := db.Seek(0, io.SeekEnd)
-	if err != nil {
-		return err
+	// Restore the database
+	restoreCfg := snapshot.RestoreConfig{
+		SnapshotPath:        db.Name(),
+		Name:                ro.Config.Name,
+		PeerURLs:            ro.PeerURLs.StringSlice(),
+		InitialCluster:      ro.Config.InitialCluster,
+		InitialClusterToken: ro.Config.InitialClusterToken,
+		OutputDataDir:       ro.Config.DataDir,
+		SkipHashCheck:       ro.Config.SkipHashCheck,
 	}
-	hasHash := (off % 512) == sha256.Size
-	if !hasHash && !skipHashCheck {
-		err := fmt.Errorf("snapshot missing hash but --skip-hash-check=false")
-		return err
-	}
-
-	if hasHash {
-		// get snapshot integrity hash
-		if _, err = db.Seek(-sha256.Size, io.SeekEnd); err != nil {
-			return err
-		}
-		sha := make([]byte, sha256.Size)
-		if _, err := db.Read(sha); err != nil {
-			return fmt.Errorf("failed to read sha from db %v", err)
-		}
-
-		// truncate away integrity hash
-		if err = db.Truncate(off - sha256.Size); err != nil {
-			return err
-		}
-
-		if !skipHashCheck {
-			if _, err := db.Seek(0, io.SeekStart); err != nil {
-				return err
-			}
-			// check for match
-			h := sha256.New()
-			if _, err = io.Copy(h, db); err != nil {
-				return err
-			}
-			dbSha := h.Sum(nil)
-			if !reflect.DeepEqual(sha, dbSha) {
-				err := fmt.Errorf("expected sha256 %v, got %v", sha, dbSha)
-				return err
-			}
-		}
+	manager := snapshot.NewV3(r.zapLogger)
+	if err := manager.Restore(restoreCfg); err != nil {
+		return fmt.Errorf("failed to restore the etcd database from the base snapshot with error: %w", err)
 	}
 
-	// db hash is OK
-	if err := db.Close(); err != nil {
-		return err
-	}
-
-	// update consistentIndex so applies go through on etcdserver despite
-	// having a new raft instance
-	be := backend.NewDefaultBackend(dbPath)
-	// a lessor that never times out leases
-	lessor := lease.NewLessor(r.zapLogger, be, lease.LessorConfig{MinLeaseTTL: math.MaxInt64})
-	s := mvcc.NewStore(r.zapLogger, be, lessor, (*brtypes.InitIndex)(&commit), mvcc.StoreConfig{})
-	trace := traceutil.New("write", r.zapLogger)
-
-	txn := s.Write(trace)
-	btx := be.BatchTx()
-	del := func(k, v []byte) error {
-		txn.DeleteRange(k, nil)
-		return nil
-	}
-
-	// delete stored members from old cluster since using new members
-	if err := btx.UnsafeForEach([]byte("members"), del); err != nil {
-		return err
-	}
-
-	// todo: add back new members when we start to deprecate old snap file.
-	if err := btx.UnsafeForEach([]byte("members_removed"), del); err != nil {
-		return err
-	}
-
-	// trigger write-out of new consistent index
-	txn.End()
-	s.Commit()
-
-	if err := s.Close(); err != nil {
-		return err
-	}
-
-	if err := be.Close(); err != nil {
-		return err
-	}
-
+	r.logger.Infof("Successfully restored from base snapshot: %s", baseSnapshotPath)
 	return nil
-}
-
-func makeWALAndSnap(logger *zap.Logger, walDir, snapDir string, cl *membership.RaftCluster, restoreName string) error {
-	if err := os.MkdirAll(walDir, 0700); err != nil {
-		return err
-	}
-
-	// add members again to persist them to the store we create.
-	st := store.New(etcdserver.StoreClusterPrefix, etcdserver.StoreKeysPrefix)
-	cl.SetStore(st)
-	for _, m := range cl.Members() {
-		cl.AddMember(m)
-	}
-
-	m := cl.MemberByName(restoreName)
-	md := &etcdserverpb.Metadata{NodeID: uint64(m.ID), ClusterID: uint64(cl.ID())}
-	metadata, err := md.Marshal()
-	if err != nil {
-		return err
-	}
-
-	w, err := wal.Create(logger, walDir, metadata)
-	if err != nil {
-		return err
-	}
-	defer w.Close()
-
-	peers := make([]raft.Peer, len(cl.MemberIDs()))
-	for i, id := range cl.MemberIDs() {
-		ctx, err := json.Marshal((*cl).Member(id))
-		if err != nil {
-			return err
-		}
-		peers[i] = raft.Peer{ID: uint64(id), Context: ctx}
-	}
-
-	ents := make([]raftpb.Entry, len(peers))
-	nodeIDs := make([]uint64, len(peers))
-	for i, p := range peers {
-		nodeIDs[i] = p.ID
-		cc := raftpb.ConfChange{
-			Type:    raftpb.ConfChangeAddNode,
-			NodeID:  p.ID,
-			Context: p.Context}
-		d, err := cc.Marshal()
-		if err != nil {
-			return err
-		}
-		e := raftpb.Entry{
-			Type:  raftpb.EntryConfChange,
-			Term:  1,
-			Index: uint64(i + 1),
-			Data:  d,
-		}
-		ents[i] = e
-	}
-
-	commit, term := uint64(len(ents)), uint64(1)
-
-	if err := w.Save(raftpb.HardState{
-		Term:   term,
-		Vote:   peers[0].ID,
-		Commit: commit}, ents); err != nil {
-		return err
-	}
-
-	b, err := st.Save()
-	if err != nil {
-		return err
-	}
-
-	raftSnap := raftpb.Snapshot{
-		Data: b,
-		Metadata: raftpb.SnapshotMetadata{
-			Index: commit,
-			Term:  term,
-			ConfState: raftpb.ConfState{
-				Voters: nodeIDs,
-			},
-		},
-	}
-	snapshotter := snap.New(logger, snapDir)
-	if err := snapshotter.SaveSnap(raftSnap); err != nil {
-		return err
-	}
-
-	return w.SaveSnapshot(walpb.Snapshot{Index: commit, Term: term})
 }
 
 // applyDeltaSnapshots fetches the events from delta snapshots in parallel and applies them to the embedded etcd sequentially.
