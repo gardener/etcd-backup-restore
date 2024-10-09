@@ -207,10 +207,6 @@ github.com/golang-jwt/jwt
 # github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da
 ## explicit
 github.com/golang/groupcache/lru
-# github.com/golang/mock v1.6.0
-## explicit; go 1.11
-github.com/golang/mock/gomock
-github.com/golang/mock/mockgen/model
 # github.com/golang/protobuf v1.5.4
 ## explicit; go 1.17
 github.com/golang/protobuf/descriptor
@@ -550,6 +546,10 @@ go.opencensus.io/trace
 go.opencensus.io/trace/internal
 go.opencensus.io/trace/propagation
 go.opencensus.io/trace/tracestate
+# go.uber.org/mock v0.4.0
+## explicit; go 1.20
+go.uber.org/mock/gomock
+go.uber.org/mock/mockgen/model
 # go.uber.org/multierr v1.10.0
 ## explicit; go 1.19
 go.uber.org/multierr

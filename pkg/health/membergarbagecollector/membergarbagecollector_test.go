@@ -14,9 +14,9 @@ import (
 	"go.etcd.io/etcd/etcdserver/etcdserverpb"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	"github.com/golang/mock/gomock"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"go.uber.org/mock/gomock"
 
 	appsv1 "k8s.io/api/apps/v1"
 	coordv1 "k8s.io/api/coordination/v1"

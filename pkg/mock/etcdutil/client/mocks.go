@@ -10,7 +10,7 @@ import (
 	reflect "reflect"
 
 	client "github.com/gardener/etcd-backup-restore/pkg/etcdutil/client"
-	gomock "github.com/golang/mock/gomock"
+	"go.uber.org/mock/gomock"
 	clientv3 "go.etcd.io/etcd/clientv3"
 )
 

@@ -9,7 +9,6 @@ require (
 	github.com/Azure/azure-sdk-for-go/sdk/storage/azblob v1.3.2
 	github.com/aliyun/aliyun-oss-go-sdk v2.1.8+incompatible
 	github.com/aws/aws-sdk-go v1.54.20
-	github.com/golang/mock v1.6.0 // replace this with the uber mock fork
 	github.com/gophercloud/gophercloud v0.17.0
 	github.com/gophercloud/utils v0.0.0-20200204043447-9864b6f1f12f
 	github.com/onsi/ginkgo/v2 v2.20.2
@@ -22,6 +21,7 @@ require (
 	go.etcd.io/bbolt v1.3.11
 	// Etcd 3.4.x vendoring issue Ref: https://github.com/etcd-io/etcd/issues/11154#issuecomment-677940701
 	go.etcd.io/etcd v0.0.0-20240911181550-c123b3ea3db3 // etcd v3.4.34 pseudoversion
+	go.uber.org/mock v0.4.0
 	go.uber.org/zap v1.27.0
 	google.golang.org/api v0.126.0
 	k8s.io/api v0.26.1
