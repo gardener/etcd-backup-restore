@@ -21,10 +21,10 @@ import (
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 	"github.com/gardener/etcd-backup-restore/test/utils"
-	"github.com/golang/mock/gomock"
 	"github.com/sirupsen/logrus"
 	"go.etcd.io/etcd/clientv3"
 	"go.etcd.io/etcd/pkg/types"
+	"go.uber.org/mock/gomock"
 
 	. "github.com/gardener/etcd-backup-restore/pkg/snapshot/restorer"
 	. "github.com/onsi/ginkgo/v2"
