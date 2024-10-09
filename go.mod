@@ -28,7 +28,7 @@ require (
 	k8s.io/apimachinery v0.26.1
 	k8s.io/client-go v0.26.1
 	k8s.io/helm v2.17.0+incompatible // haven't upgraded yet
-	k8s.io/utils v0.0.0-20221128185143-99ec85e7a448
+	k8s.io/utils v0.0.0-20240921022957-49e7df575cb6
 	sigs.k8s.io/controller-runtime v0.14.4 // haven't upgraded yet
 	sigs.k8s.io/yaml v1.4.0
 )

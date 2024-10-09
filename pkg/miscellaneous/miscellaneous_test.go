@@ -26,7 +26,7 @@ import (
 	"go.etcd.io/etcd/etcdserver/etcdserverpb"
 	appsv1 "k8s.io/api/apps/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/utils/pointer"
+	"k8s.io/utils/ptr"
 )
 
 var (
@@ -466,7 +466,7 @@ var _ = Describe("Miscellaneous Tests", func() {
 		Context("In single node etcd: no scale-up", func() {
 			BeforeEach(func() {
 				sts.Spec = appsv1.StatefulSetSpec{
-					Replicas: pointer.Int32Ptr(1),
+					Replicas: ptr.To(int32(1)),
 				}
 				sts.Status = appsv1.StatefulSetStatus{
 					UpdatedReplicas: 1,
@@ -488,7 +488,7 @@ var _ = Describe("Miscellaneous Tests", func() {
 		Context("In multi-node etcd bootstrap: no scale-up", func() {
 			BeforeEach(func() {
 				sts.Spec = appsv1.StatefulSetSpec{
-					Replicas: pointer.Int32Ptr(3),
+					Replicas: ptr.To(int32(3)),
 				}
 				sts.Status = appsv1.StatefulSetStatus{
 					UpdatedReplicas: 3,
@@ -510,7 +510,7 @@ var _ = Describe("Miscellaneous Tests", func() {
 		Context("In case of Scaling up from single node to multi-node etcd with no scale-up annotation set", func() {
 			BeforeEach(func() {
 				sts.Spec = appsv1.StatefulSetSpec{
-					Replicas: pointer.Int32Ptr(3),
+					Replicas: ptr.To(int32(3)),
 				}
 				sts.Status = appsv1.StatefulSetStatus{
 					UpdatedReplicas: 1,
@@ -532,7 +532,7 @@ var _ = Describe("Miscellaneous Tests", func() {
 		Context("scaling of single node to multi-node etcd with scale-up annotation set", func() {
 			BeforeEach(func() {
 				sts.Spec = appsv1.StatefulSetSpec{
-					Replicas: pointer.Int32Ptr(3),
+					Replicas: ptr.To(int32(3)),
 				}
 				sts.Status = appsv1.StatefulSetStatus{
 					UpdatedReplicas: 3,
@@ -567,7 +567,7 @@ var _ = Describe("Miscellaneous Tests", func() {
 						Namespace: namespace,
 					},
 					Spec: appsv1.StatefulSetSpec{
-						Replicas: pointer.Int32Ptr(3),
+						Replicas: ptr.To(int32(3)),
 					},
 					Status: appsv1.StatefulSetStatus{
 						UpdatedReplicas: 1,

@@ -30,7 +30,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/aws/aws-sdk-go/service/s3/s3iface"
 	"github.com/sirupsen/logrus"
-	"k8s.io/utils/pointer"
+	"k8s.io/utils/ptr"
 
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 )
@@ -163,7 +163,7 @@ func readAWSCredentialsJSONFile(filename string) (session.Options, SSECredential
 	return session.Options{
 		Config: aws.Config{
 			Credentials:      credentials.NewStaticCredentials(awsConfig.AccessKeyID, awsConfig.SecretAccessKey, ""),
-			Region:           pointer.String(awsConfig.Region),
+			Region:           ptr.To(awsConfig.Region),
 			Endpoint:         awsConfig.Endpoint,
 			S3ForcePathStyle: awsConfig.S3ForcePathStyle,
 			HTTPClient:       httpClient,
@@ -216,7 +216,7 @@ func readAWSCredentialFiles(dirname string) (session.Options, SSECredentials, er
 	return session.Options{
 		Config: aws.Config{
 			Credentials:      credentials.NewStaticCredentials(awsConfig.AccessKeyID, awsConfig.SecretAccessKey, ""),
-			Region:           pointer.String(awsConfig.Region),
+			Region:           ptr.To(awsConfig.Region),
 			Endpoint:         awsConfig.Endpoint,
 			S3ForcePathStyle: awsConfig.S3ForcePathStyle,
 			HTTPClient:       httpClient,
@@ -257,7 +257,7 @@ func readAWSCredentialFromDir(dirname string) (*awsCredentials, error) {
 			if err != nil {
 				return nil, err
 			}
-			awsConfig.Endpoint = pointer.String(string(data))
+			awsConfig.Endpoint = ptr.To(string(data))
 		case "s3ForcePathStyle":
 			data, err := os.ReadFile(dirname + "/s3ForcePathStyle")
 			if err != nil {
@@ -283,19 +283,19 @@ func readAWSCredentialFromDir(dirname string) (*awsCredentials, error) {
 			if err != nil {
 				return nil, err
 			}
-			awsConfig.TrustedCaCert = pointer.String(string(data))
+			awsConfig.TrustedCaCert = ptr.To(string(data))
 		case "sseCustomerKey":
 			data, err := os.ReadFile(dirname + "/sseCustomerKey")
 			if err != nil {
 				return nil, err
 			}
-			awsConfig.SSECustomerKey = pointer.String(string(data))
+			awsConfig.SSECustomerKey = ptr.To(string(data))
 		case "sseCustomerAlgorithm":
 			data, err := os.ReadFile(dirname + "/sseCustomerAlgorithm")
 			if err != nil {
 				return nil, err
 			}
-			awsConfig.SSECustomerAlgorithm = pointer.String(string(data))
+			awsConfig.SSECustomerAlgorithm = ptr.To(string(data))
 		}
 	}
 
