@@ -3,6 +3,7 @@ module github.com/gardener/etcd-backup-restore
 go 1.23.2
 
 require (
+	cloud.google.com/go/iam v1.1.1
 	cloud.google.com/go/storage v1.30.1
 	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.11.1
 	github.com/Azure/azure-sdk-for-go/sdk/storage/azblob v1.3.2
@@ -32,8 +33,6 @@ require (
 	k8s.io/utils v0.0.0-20221128185143-99ec85e7a448
 	sigs.k8s.io/controller-runtime v0.14.4
 )
-
-require cloud.google.com/go/iam v1.1.1
 
 require (
 	cloud.google.com/go v0.110.4 // indirect
