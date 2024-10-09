@@ -7,7 +7,7 @@ package cmd
 import (
 	"context"
 
-	"github.com/ghodss/yaml"
+	"sigs.k8s.io/yaml"
 
 	"github.com/spf13/cobra"
 )
