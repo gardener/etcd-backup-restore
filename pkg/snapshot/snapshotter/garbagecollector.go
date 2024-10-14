@@ -5,10 +5,11 @@
 package snapshotter
 
 import (
+	"errors"
+	"fmt"
 	"math"
 	"path"
 	"time"
-	"errors"
 
 	"github.com/gardener/etcd-backup-restore/pkg/metrics"
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
@@ -70,8 +71,8 @@ func (ssr *Snapshotter) RunGarbageCollector(stopCh <-chan struct{}) {
 				ssr.logger.Infof("GC: Total number garbage collected chunks: %d", chunksDeleted)
 			}
 
-			snapStreamIndexList := getSnapStreamIndexList(snapList)
-
+			fullSnapshotIndexList := getFullSnapshotIndexList(snapList)
+			fmt.Println(fullSnapshotIndexList)
 			switch ssr.config.GarbageCollectionPolicy {
 			case brtypes.GarbageCollectionPolicyExponential:
 				// Overall policy:
@@ -89,12 +90,12 @@ func (ssr *Snapshotter) RunGarbageCollector(stopCh <-chan struct{}) {
 				)
 				// Here we start processing from second last snapstream, because we want to keep last snapstream
 				// including delta snapshots in it.
-				for snapStreamIndex := len(snapStreamIndexList) - 1; snapStreamIndex > 0; snapStreamIndex-- {
-					snap := snapList[snapStreamIndexList[snapStreamIndex]]
-					nextSnap := snapList[snapStreamIndexList[snapStreamIndex-1]]
+				for snapStreamIndex := len(fullSnapshotIndexList) - 1; snapStreamIndex > 0; snapStreamIndex-- {
+					snap := snapList[fullSnapshotIndexList[snapStreamIndex]]
+					nextSnap := snapList[fullSnapshotIndexList[snapStreamIndex-1]]
 
 					// garbage collect delta snapshots.
-					deletedSnap, err := ssr.GarbageCollectDeltaSnapshots(snapList[snapStreamIndexList[snapStreamIndex-1]:snapStreamIndexList[snapStreamIndex]])
+					deletedSnap, err := ssr.GarbageCollectDeltaSnapshots(snapList[fullSnapshotIndexList[snapStreamIndex-1]:fullSnapshotIndexList[snapStreamIndex]])
 					total += deletedSnap
 					if err != nil {
 						continue
@@ -163,14 +164,14 @@ func (ssr *Snapshotter) RunGarbageCollector(stopCh <-chan struct{}) {
 			case brtypes.GarbageCollectionPolicyLimitBased:
 				// Delete delta snapshots in all snapStream but the latest one.
 				// Delete all snapshots beyond limit set by ssr.maxBackups.
-				for snapStreamIndex := 0; snapStreamIndex < len(snapStreamIndexList)-1; snapStreamIndex++ {
-					deletedSnap, err := ssr.GarbageCollectDeltaSnapshots(snapList[snapStreamIndexList[snapStreamIndex]:snapStreamIndexList[snapStreamIndex+1]])
+				for snapStreamIndex := 0; snapStreamIndex < len(fullSnapshotIndexList)-1; snapStreamIndex++ {
+					deletedSnap, err := ssr.GarbageCollectDeltaSnapshots(snapList[fullSnapshotIndexList[snapStreamIndex]:fullSnapshotIndexList[snapStreamIndex+1]])
 					total += deletedSnap
 					if err != nil {
 						continue
 					}
-					if snapStreamIndex < len(snapStreamIndexList)-int(ssr.config.MaxBackups) {
-						snap := snapList[snapStreamIndexList[snapStreamIndex]]
+					if snapStreamIndex < len(fullSnapshotIndexList)-int(ssr.config.MaxBackups) {
+						snap := snapList[fullSnapshotIndexList[snapStreamIndex]]
 						snapPath := path.Join(snap.SnapDir, snap.SnapName)
 						ssr.logger.Infof("GC: Deleting old full snapshot: %s", snapPath)
 						if err := ssr.store.Delete(*snap); err != nil {
@@ -189,21 +190,19 @@ func (ssr *Snapshotter) RunGarbageCollector(stopCh <-chan struct{}) {
 	}
 }
 
-// getSnapStreamIndexList lists the index of snapStreams in snapList which consist of collection of snapStream.
-// snapStream indicates the list of snapshot, where first snapshot is base/full snapshot followed by
-// list of incremental snapshots based on it.
-func getSnapStreamIndexList(snapList brtypes.SnapList) []int {
+// getFullSnapshotIndexList returns the indices of Full snapshots in the snapList.
+func getFullSnapshotIndexList(snapList brtypes.SnapList) []int {
 	// At this stage, we assume the snapList is sorted in increasing order of last revision number, i.e. snapshot with lower
 	// last revision at lower index and snapshot with higher last revision at higher index in list.
 	snapLen := len(snapList)
-	var snapStreamIndexList []int
-	snapStreamIndexList = append(snapStreamIndexList, 0)
+	var fullSnapshotIndexList []int
+	fullSnapshotIndexList = append(fullSnapshotIndexList, 0)
 	for index := 1; index < snapLen; index++ {
 		if snapList[index].Kind == brtypes.SnapshotKindFull && !snapList[index].IsChunk {
-			snapStreamIndexList = append(snapStreamIndexList, index)
+			fullSnapshotIndexList = append(fullSnapshotIndexList, index)
 		}
 	}
-	return snapStreamIndexList
+	return fullSnapshotIndexList
 }
 
 // GarbageCollectChunks removes obsolete chunks based on the latest recorded snapshot.
