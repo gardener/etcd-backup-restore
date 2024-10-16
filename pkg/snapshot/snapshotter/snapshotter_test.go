@@ -528,6 +528,58 @@ var _ = Describe("Snapshotter", func() {
 						Expect(len(list)).Should(Equal(3))
 					})
 				})
+				Context("When an error occurs while deletion of delta snapshot and number of errors are lesser than the threshold(5)", func() {
+					It("should continue with the deletion while joining the errors", func() {
+						store := prepareStoreWithDeltaSnapshots(testDir, 10)
+						list, err := store.List(false)
+						Expect(err).ShouldNot(HaveOccurred())
+						Expect(len(list)).Should(Equal(10))
+
+						ssr, err := NewSnapshotter(logger, snapshotterConfig, store, etcdConnectionConfig, compressionConfig, healthConfig, snapstoreConfig)
+						Expect(err).ShouldNot(HaveOccurred())
+						
+						// delete a few snapshots in between to induce an error
+						err = os.Remove(path.Join(list[7].Prefix,list[7].SnapName))
+						Expect(err).ShouldNot(HaveOccurred())
+
+						err = os.Remove(path.Join(list[5].Prefix, list[5].SnapName))
+						Expect(err).ShouldNot(HaveOccurred())
+
+						err = os.Remove(path.Join(list[3].Prefix, list[3].SnapName))
+						Expect(err).ShouldNot(HaveOccurred())
+						
+						err = os.Remove(path.Join(list[2].Prefix, list[2].SnapName))
+						Expect(err).ShouldNot(HaveOccurred())
+
+						deleted, err := ssr.GarbageCollectDeltaSnapshots(list)
+						Expect(deleted).ToNot(BeZero())
+						Expect(deleted).Should(Equal(6))
+						Expect(err).ToNot(BeNil())
+					})
+				})
+				Context("When the number of errors while deleting are greater than the threshold", func() {
+					It("Should halt the process and return", func() {
+						store := prepareStoreWithDeltaSnapshots(testDir, 15)
+						list, err := store.List(false)
+						Expect(err).ShouldNot(HaveOccurred())
+						Expect(len(list)).Should(Equal(15))
+
+						ssr, err := NewSnapshotter(logger, snapshotterConfig, store, etcdConnectionConfig, compressionConfig, healthConfig, snapstoreConfig)
+						Expect(err).ShouldNot(HaveOccurred())
+
+
+						// Threshold is set as 5
+						for i := len(list)-3 ; i > len(list)-9 ; i-- { // first 2 are deleted and next 5 return error while deleting
+							err = os.Remove(path.Join(list[i].Prefix, list[i].SnapName))
+							Expect(err).ShouldNot(HaveOccurred())
+						}
+
+						deleted, err := ssr.GarbageCollectDeltaSnapshots(list)
+						Expect(deleted).Should(Equal(2)) 
+						Expect(err).To(HaveOccurred())
+
+					})
+				})
 			})
 			Describe("###GarbageCollectChunkSnapshots", func() {
 				const (
