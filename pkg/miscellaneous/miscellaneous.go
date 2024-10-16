@@ -58,7 +58,7 @@ const (
 
 	https = "https"
 
-	// etcdWrapperPortNo defines the port no. used by etcd-wrapper.
+	// etcdWrapperPort defines the port no. used by etcd-wrapper.
 	etcdWrapperPort = "9095"
 )
 
@@ -677,5 +677,5 @@ func getEtcdWrapperEndpoint(etcdEndpoints []string) (string, error) {
 		return "", err
 	}
 
-	return fmt.Sprintf("%s://%s:%s", etcdURL.Scheme, etcdURL.Hostname(), etcdWrapperPortNo), nil
+	return fmt.Sprintf("%s://%s:%s", etcdURL.Scheme, etcdURL.Hostname(), etcdWrapperPort), nil
 }
