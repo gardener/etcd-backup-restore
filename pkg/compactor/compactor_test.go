@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path"
+	"path/filepath"
 	"time"
 
 	"github.com/gardener/etcd-backup-restore/pkg/compactor"
@@ -60,6 +61,7 @@ var _ = Describe("Running Compactor", func() {
 		var compactOptions *brtypes.CompactOptions
 		var compactedSnapshot *brtypes.Snapshot
 		var tempRestoreDir string
+		var tempDataDir string
 
 		BeforeEach(func() {
 			dir = fmt.Sprintf("%s/etcd/snapshotter.bkp", testSuiteDir)
@@ -67,8 +69,8 @@ var _ = Describe("Running Compactor", func() {
 			Expect(err).ShouldNot(HaveOccurred())
 			fmt.Println("The store where compaction will save snapshot is: ", store)
 
-			tempDataDir, err := os.MkdirTemp(testSuiteDir, "compacted.etcd-")
-			Expect(err).ShouldNot(HaveOccurred())
+			// temporary data directory should not be created, it will be created by the Restore API
+			tempDataDir = filepath.Join(testSuiteDir, "data-directory")
 
 			tempRestorationSnapshotsDir, err := os.MkdirTemp(testSuiteDir, "temp-snapshots-")
 			Expect(err).ShouldNot(HaveOccurred())
@@ -110,6 +112,10 @@ var _ = Describe("Running Compactor", func() {
 				_, err := os.Stat(tempRestoreDir)
 				if err == nil {
 					os.RemoveAll(tempRestoreDir)
+				}
+				_, err = os.Stat(tempDataDir)
+				if err == nil {
+					os.RemoveAll(tempDataDir)
 				}
 				store.Delete(*compactedSnapshot)
 			})
@@ -162,16 +168,9 @@ var _ = Describe("Running Compactor", func() {
 				size := fi.Size()
 				Expect(size).ShouldNot(BeZero())
 
-				// Restore from the compacted snapshot
-				tempRestoreDir, err = os.MkdirTemp(testSuiteDir, "restore-test-")
+				// Remove the data directory since etcd will fail to restore if the data directory is present
+				err = os.RemoveAll(tempDataDir)
 				Expect(err).ShouldNot(HaveOccurred())
-
-				defer func() {
-					err := os.RemoveAll(tempRestoreDir)
-					Expect(err).ShouldNot(HaveOccurred())
-				}()
-
-				restoreOpts.Config.DataDir = tempRestoreDir
 
 				restoreOpts.BaseSnapshot = compactedSnapshot
 				restoreOpts.DeltaSnapList = deltaSnapList
@@ -191,6 +190,10 @@ var _ = Describe("Running Compactor", func() {
 				_, err := os.Stat(tempRestoreDir)
 				if err != nil {
 					os.RemoveAll(tempRestoreDir)
+				}
+				_, err = os.Stat(tempDataDir)
+				if err == nil {
+					os.RemoveAll(tempDataDir)
 				}
 				store.Delete(*compactedSnapshot)
 			})
@@ -244,11 +247,9 @@ var _ = Describe("Running Compactor", func() {
 				size := fi.Size()
 				Expect(size).ShouldNot(BeZero())
 
-				// Restore from the compacted snapshot
-				tempRestoreDir, err = os.MkdirTemp(testSuiteDir, "restore-test-")
+				// Remove the data directory since etcd will fail to restore if the data directory is present
+				err = os.RemoveAll(tempDataDir)
 				Expect(err).ShouldNot(HaveOccurred())
-
-				restoreOpts.Config.DataDir = tempRestoreDir
 
 				restoreOpts.BaseSnapshot = compactedSnapshot
 				restoreOpts.DeltaSnapList = deltaSnapList
