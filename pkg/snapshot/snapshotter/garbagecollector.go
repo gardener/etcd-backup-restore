@@ -6,7 +6,6 @@ package snapshotter
 
 import (
 	"errors"
-	"fmt"
 	"math"
 	"path"
 	"time"
@@ -72,7 +71,6 @@ func (ssr *Snapshotter) RunGarbageCollector(stopCh <-chan struct{}) {
 			}
 
 			fullSnapshotIndexList := getFullSnapshotIndexList(snapList)
-			fmt.Println(fullSnapshotIndexList)
 			switch ssr.config.GarbageCollectionPolicy {
 			case brtypes.GarbageCollectionPolicyExponential:
 				// Overall policy:
