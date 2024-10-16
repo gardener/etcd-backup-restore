@@ -59,7 +59,7 @@ const (
 	https = "https"
 
 	// etcdWrapperPortNo defines the port no. used by etcd-wrapper.
-	etcdWrapperPortNo = "9095"
+	etcdWrapperPort = "9095"
 )
 
 // GetLatestFullSnapshotAndDeltaSnapList returns the latest snapshot
