@@ -55,7 +55,7 @@ func NewCompactor(store brtypes.SnapStore, logger *logrus.Entry, clientSet clien
 }
 
 // Compact is mainly responsible for applying snapshots (full + delta), compacting, drefragmenting, taking the snapshot and saving it sequentially.
-func (cp *Compactor) Compact(ctx context.Context, opts *brtypes.CompactOptions, snapTempDir string) (*brtypes.Snapshot, error) {
+func (cp *Compactor) Compact(ctx context.Context, opts *brtypes.CompactOptions) (*brtypes.Snapshot, error) {
 	cp.logger.Info("Start compacting")
 
 	// Deepcopy restoration options ro to avoid any mutation of the passing object
@@ -166,7 +166,7 @@ func (cp *Compactor) Compact(ctx context.Context, opts *brtypes.CompactOptions, 
 	isFinal := compactorRestoreOptions.BaseSnapshot.IsFinal
 
 	cc := &compressor.CompressionConfig{Enabled: isCompressed, CompressionPolicy: compressionPolicy}
-	snapshot, err := etcdutil.TakeAndSaveFullSnapshot(snapshotReqCtx, clientMaintenance, cp.store, snapTempDir, etcdRevision, cc, suffix, isFinal, cp.logger)
+	snapshot, err := etcdutil.TakeAndSaveFullSnapshot(snapshotReqCtx, clientMaintenance, cp.store, opts.TempDir, etcdRevision, cc, suffix, isFinal, cp.logger)
 	if err != nil {
 		return nil, err
 	}
