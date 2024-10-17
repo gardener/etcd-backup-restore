@@ -670,23 +670,6 @@ func RemoveDir(dir string) error {
 	return nil
 }
 
-// GetMemberPeerURL returns the peerURL from fiven configuration file provided to etcd member.
-func GetMemberPeerURL(configFile string, podName string) (string, error) {
-	config, err := ReadConfigFileAsMap(configFile)
-	if err != nil {
-		return "", err
-	}
-	initAdPeerURL := config["initial-advertise-peer-urls"]
-	if initAdPeerURL == nil {
-		return "", fmt.Errorf("initial-advertise-peer-urls must be set in etcd config")
-	}
-	peerURL, err := ParsePeerURL(initAdPeerURL.(string), podName)
-	if err != nil {
-		return "", fmt.Errorf("could not parse peer URL from the config file : %v", err)
-	}
-	return peerURL, nil
-}
-
 // RestartEtcdWrapper is to call the "/stop" endpoint of etcd-wrapper to restart the etcd-wrapper container.
 func RestartEtcdWrapper(ctx context.Context, tlsEnabled bool, etcdConnectionConfig *brtypes.EtcdConnectionConfig) error {
 	client := &http.Client{}
