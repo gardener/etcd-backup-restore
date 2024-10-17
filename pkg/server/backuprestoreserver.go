@@ -571,12 +571,7 @@ func handleSsrStopRequest(ctx context.Context, handler *HTTPHandler, _ *snapshot
 }
 
 func hasPeerURLChanged(ctx context.Context, m member.Control, cli client.ClusterCloser) (bool, error) {
-	podName, err := miscellaneous.GetEnvVarOrError("POD_NAME")
-	if err != nil {
-		return false, fmt.Errorf("error reading POD_NAME env var : %v", err)
-	}
-
-	peerURLsFromEtcdConfig, err := miscellaneous.GetMemberPeerURL(miscellaneous.GetConfigFilePath(), podName)
+	peerURLsFromEtcdConfig, err := miscellaneous.GetAdvertisePeerURLs(miscellaneous.GetConfigFilePath())
 	if err != nil {
 		return false, err
 	}
