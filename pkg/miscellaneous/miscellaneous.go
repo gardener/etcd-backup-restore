@@ -6,9 +6,12 @@ package miscellaneous
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	errored "errors"
 	"fmt"
 	"net"
+	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -54,6 +57,9 @@ const (
 	ScaledToMultiNodeAnnotationKey = "gardener.cloud/scaled-to-multi-node"
 
 	https = "https"
+
+	// etcdWrapperPort defines the port no. used by etcd-wrapper.
+	etcdWrapperPort = "9095"
 )
 
 // GetLatestFullSnapshotAndDeltaSnapList returns the latest snapshot
@@ -603,4 +609,73 @@ func RemoveDir(dir string) error {
 		return err
 	}
 	return nil
+}
+
+// GetMemberPeerURL returns the peerURL from fiven configuration file provided to etcd member.
+func GetMemberPeerURL(configFile string, podName string) (string, error) {
+	config, err := ReadConfigFileAsMap(configFile)
+	if err != nil {
+		return "", err
+	}
+	initAdPeerURL := config["initial-advertise-peer-urls"]
+	if initAdPeerURL == nil {
+		return "", fmt.Errorf("initial-advertise-peer-urls must be set in etcd config")
+	}
+	peerURL, err := ParsePeerURL(initAdPeerURL.(string), podName)
+	if err != nil {
+		return "", fmt.Errorf("could not parse peer URL from the config file : %v", err)
+	}
+	return peerURL, nil
+}
+
+// RestartEtcdWrapper is to call the "/stop" endpoint of etcd-wrapper to restart the etcd-wrapper container.
+func RestartEtcdWrapper(ctx context.Context, tlsEnabled bool, etcdConnectionConfig *brtypes.EtcdConnectionConfig) error {
+	client := &http.Client{}
+
+	etcdWrapperURL, err := getEtcdWrapperEndpoint(etcdConnectionConfig.Endpoints)
+	if err != nil {
+		return err
+	}
+
+	if tlsEnabled {
+		caCertPool := x509.NewCertPool()
+		caCert, err := os.ReadFile(etcdConnectionConfig.CaFile)
+		if err != nil {
+			return err
+		}
+		caCertPool.AppendCertsFromPEM(caCert)
+		client.Transport = &http.Transport{
+			TLSClientConfig: &tls.Config{
+				RootCAs: caCertPool,
+			},
+		}
+	}
+
+	httpCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(httpCtx, http.MethodPost, fmt.Sprintf("%s/%s", etcdWrapperURL, "stop"), nil)
+	if err != nil {
+		return err
+	}
+	response, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer response.Body.Close()
+
+	return nil
+}
+
+func getEtcdWrapperEndpoint(etcdEndpoints []string) (string, error) {
+	if len(etcdEndpoints) == 0 {
+		return "", fmt.Errorf("etcd endpoints are not passed correctly")
+	}
+
+	etcdURL, err := url.Parse(etcdEndpoints[0])
+	if err != nil {
+		return "", err
+	}
+
+	return fmt.Sprintf("%s://%s:%s", etcdURL.Scheme, etcdURL.Hostname(), etcdWrapperPort), nil
 }
