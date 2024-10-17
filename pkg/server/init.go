@@ -30,6 +30,7 @@ func NewBackupRestoreComponentConfig() *BackupRestoreComponentConfig {
 		HealthConfig:             brtypes.NewHealthConfig(),
 		LeaderElectionConfig:     brtypes.NewLeaderElectionConfig(),
 		ExponentialBackoffConfig: brtypes.NewExponentialBackOffConfig(),
+		UseEtcdWrapper:           usageOfEtcdWrapperEnabled,
 	}
 }
 
@@ -47,6 +48,7 @@ func (c *BackupRestoreComponentConfig) AddFlags(fs *flag.FlagSet) {
 
 	// Miscellaneous
 	fs.StringVar(&c.DefragmentationSchedule, "defragmentation-schedule", c.DefragmentationSchedule, "schedule to defragment etcd data directory")
+	fs.BoolVar(&c.UseEtcdWrapper, "use-etcd-wrapper", c.UseEtcdWrapper, "to enable backup-restore to use etcd-wrapper related functionality. Note: enable this flag only if etcd-wrapper is deployed.")
 }
 
 // Validate validates the config.

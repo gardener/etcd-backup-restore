@@ -69,6 +69,9 @@ type Control interface {
 
 	// IsLearnerPresent checks for the learner(non-voting) member in a cluster.
 	IsLearnerPresent(context.Context) (bool, error)
+
+	// GetPeerURLs returns the list of current peer URLs of the etcd cluster member.
+	GetPeerURLs(context.Context, etcdClient.ClusterCloser) ([]string, error)
 }
 
 // memberControl holds the configuration for the mechanism of adding a new member to the cluster.
@@ -113,7 +116,7 @@ func NewMemberControl(etcdConnConfig *brtypes.EtcdConnectionConfig) Control {
 // AddMemberAsLearner add a member as a learner to the etcd cluster
 func (m *memberControl) AddMemberAsLearner(ctx context.Context) error {
 	//Add member as learner to cluster
-	memberURL, err := getMemberPeerURL(m.configFile, m.podName)
+	memberURL, err := miscellaneous.GetMemberPeerURL(m.configFile, m.podName)
 	if err != nil {
 		m.logger.Fatalf("Error fetching etcd member URL : %v", err)
 	}
@@ -198,28 +201,12 @@ func (m *memberControl) IsMemberInCluster(ctx context.Context) (bool, error) {
 	return false, nil
 }
 
-func getMemberPeerURL(configFile string, podName string) (string, error) {
-	config, err := miscellaneous.ReadConfigFileAsMap(configFile)
-	if err != nil {
-		return "", err
-	}
-	initAdPeerURL := config["initial-advertise-peer-urls"]
-	if initAdPeerURL == nil {
-		return "", errors.New("initial-advertise-peer-urls must be set in etcd config")
-	}
-	peerURL, err := miscellaneous.ParsePeerURL(initAdPeerURL.(string), podName)
-	if err != nil {
-		return "", fmt.Errorf("could not parse peer URL from the config file : %v", err)
-	}
-	return peerURL, nil
-}
-
 // doUpdateMemberPeerAddress updated the peer address of a specified etcd member
 func (m *memberControl) doUpdateMemberPeerAddress(ctx context.Context, cli etcdClient.ClusterCloser, id uint64) error {
 	// Already existing clusters or cluster after restoration have `http://localhost:2380` as the peer address. This needs to explicitly updated to the correct peer address.
 	m.logger.Infof("Updating member peer URL for %s", m.podName)
 
-	memberPeerURL, err := getMemberPeerURL(m.configFile, m.podName)
+	memberPeerURL, err := miscellaneous.GetMemberPeerURL(m.configFile, m.podName)
 	if err != nil {
 		return fmt.Errorf("could not fetch member URL : %v", err)
 	}
@@ -350,6 +337,33 @@ func (m *memberControl) IsClusterScaledUp(ctx context.Context, clientSet client.
 		}
 	}
 	return false, nil
+}
+
+// GetPeerURLs returns the list of current peer URLs of the etcd cluster member.
+func (m *memberControl) GetPeerURLs(ctx context.Context, closer etcdClient.ClusterCloser) ([]string, error) {
+	var (
+		etcdMemberList *clientv3.MemberListResponse
+		err            error
+	)
+	backoff := miscellaneous.CreateBackoff(RetryPeriod, RetrySteps)
+
+	// List all members in etcd cluster
+	if err = retry.OnError(backoff, func(err error) bool {
+		return err != nil
+	}, func() error {
+		memListCtx, cancel := context.WithTimeout(ctx, EtcdTimeout)
+		defer cancel()
+		etcdMemberList, err = closer.MemberList(memListCtx)
+		return err
+	}); err != nil {
+		return nil, fmt.Errorf("could not list any etcd members %w", err)
+	}
+	for _, member := range etcdMemberList.Members {
+		if member.GetName() == m.podName {
+			return member.GetPeerURLs(), nil
+		}
+	}
+	return []string{}, nil
 }
 
 // WasMemberInCluster checks the whether etcd member was part of etcd cluster.
