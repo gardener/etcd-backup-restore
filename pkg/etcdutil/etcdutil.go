@@ -277,10 +277,19 @@ func TakeAndSaveFullSnapshot(ctx context.Context, client client.MaintenanceClose
 	var snapshotData io.ReadCloser
 	snapshotTempDBPath := filepath.Join(tempDir, "db")
 	if snapshotData, err = checkFullSnapshotIntegrity(rc, snapshotTempDBPath, logger); err != nil {
-		logger.Errorf("verification of full snapshot SHA256 hash has been failed: %v", err)
+		logger.Errorf("verification of full snapshot SHA256 hash has failed: %v", err)
 		return nil, err
 	}
 	logger.Info("full snapshot SHA256 hash has been successfully verified.")
+
+	defer func() {
+		if err := os.Remove(snapshotTempDBPath); err != nil {
+			logger.Warnf("failed to remove temporary full snapshot file: %v", err)
+		}
+		if err := snapshotData.Close(); err != nil {
+			logger.Warnf("failed to close snapshot data file: %v", err)
+		}
+	}()
 
 	if cc.Enabled {
 		startTimeCompression := time.Now()
@@ -308,14 +317,6 @@ func TakeAndSaveFullSnapshot(ctx context.Context, client client.MaintenanceClose
 	metrics.SnapshotDurationSeconds.With(prometheus.Labels{metrics.LabelKind: brtypes.SnapshotKindFull, metrics.LabelSucceeded: metrics.ValueSucceededTrue}).Observe(timeTaken.Seconds())
 	logger.Infof("Total time to save full snapshot: %f seconds.", timeTaken.Seconds())
 
-	defer func() {
-		if err := os.Remove(snapshotTempDBPath); err != nil {
-			logger.Warnf("failed to remove temporary full snapshot file: %v", err)
-		}
-		if err := snapshotData.Close(); err != nil {
-			logger.Warnf("failed to close snapshot data file: %v", err)
-		}
-	}()
 	return snapshot, nil
 }
 
@@ -372,7 +373,7 @@ func checkFullSnapshotIntegrity(snapshotData io.ReadCloser, snapTempDBFilePath s
 		offset, err := db.Read(buf)
 		if err != nil {
 			logger.Errorf("unable to read snapshot data into buffer to calculate SHA256: %v", err)
-			break
+			return nil, err
 		}
 
 		hash.Write(buf[:offset])
