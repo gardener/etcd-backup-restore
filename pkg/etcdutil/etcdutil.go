@@ -286,9 +286,6 @@ func TakeAndSaveFullSnapshot(ctx context.Context, client client.MaintenanceClose
 		if err := os.Remove(snapshotTempDBPath); err != nil {
 			logger.Warnf("failed to remove temporary full snapshot file: %v", err)
 		}
-		if err := snapshotData.Close(); err != nil {
-			logger.Warnf("failed to close snapshot data file: %v", err)
-		}
 	}()
 
 	if cc.Enabled {
@@ -300,6 +297,11 @@ func TakeAndSaveFullSnapshot(ctx context.Context, client client.MaintenanceClose
 		timeTakenCompression := time.Since(startTimeCompression)
 		logger.Infof("Total time taken in full snapshot compression: %f seconds.", timeTakenCompression.Seconds())
 	}
+	defer func() {
+		if err := snapshotData.Close(); err != nil {
+			logger.Warnf("failed to close snapshot data file: %v", err)
+		}
+	}()
 
 	logger.Infof("Successfully opened snapshot reader on etcd")
 
