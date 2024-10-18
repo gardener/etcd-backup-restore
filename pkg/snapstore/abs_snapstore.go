@@ -305,7 +305,7 @@ func (a *ABSSnapStore) List(includeAll bool) (brtypes.SnapList, error) {
 			return nil, fmt.Errorf("failed to list the blobs, error: %w", err)
 		}
 
-	Blob:
+	blob:
 		for _, blobItem := range resp.Segment.BlobItems {
 			// process the blobs returned in the result segment
 			if strings.Contains(*blobItem.Name, backupVersionV1) || strings.Contains(*blobItem.Name, backupVersionV2) {
@@ -319,7 +319,7 @@ func (a *ABSSnapStore) List(includeAll bool) (brtypes.SnapList, error) {
 							// skip this blob
 							if !includeAll && (*tag.Key == brtypes.ExcludeSnapshotMetadataKey && *tag.Value == "true") {
 								logrus.Infof("Ignoring snapshot %s due to the exclude tag %q in the snapshot metadata", snapshot.SnapName, *tag.Key)
-								continue Blob
+								continue blob
 							}
 						}
 					}
