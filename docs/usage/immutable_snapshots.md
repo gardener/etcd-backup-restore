@@ -31,3 +31,30 @@ Therefore, it is advisable to configure your garbage collection policies based o
 ## Storage Considerations
 
 Making objects immutable for extended periods can increase storage costs since these objects cannot be removed once uploaded. Storing outdated snapshots beyond their utility does not significantly enhance recovery capabilities. Therefore, consider all factors before enabling immutability for buckets, as this feature is irreversible once set by cloud providers.
+
+## Ignoring Snapshots From Restoration
+
+There might be certain cases where operators would like etcd-backup-restore to ignore particular snapshots in the object store from restoration.
+When snapshots were mutable, operators could simply delete these snapshots, and the restoration that follows this would not include them.
+Once immutability is turned on, however, it would not be possible to do this.
+
+Various cloud providers provide functionality to add custom annotations/tags to objects to add additional information to objects. These additional annotations/tags are orthogonal to the object's metadata, and therefore do not affect the object itself.  This feature is thus available for objects which are immutable as well.
+
+We leverage this feature to signal to etcd-backup-restore to not consider certain snapshots during restoration.
+The annotation/tag that is to be added to a snapshot for this is `x-etcd-snapshot-exclude=true`, `ExcludeSnapshotMetadataKey` as defined in `pkg/types`.
+
+You can add these tags through for the following providers like so:
+
+- **Google Cloud Storage**: as specified in the [docs](https://cloud.google.com/sdk/gcloud/reference/storage/objects/update?hl=en). (GCS calls this Custom Metadata).
+
+    ```sh
+    gcloud storage objects update gs://bucket/your-snapshot --custom-metadata=x-etcd-snapshot-exclude=true
+    ```
+
+- **Azure Blob Storage**: as specified in the [docs](https://learn.microsoft.com/en-us/cli/azure/storage/blob/tag?view=azure-cli-latest#az-storage-blob-tag-set). (ABS calls this tags).
+
+    ```sh
+    az storage blob tag set --container-name your-container --name your-snapshot --tags "x-etcd-snapshot-exclude"="true"
+    ```
+
+Once these annotations/tags are added, etcd-backup-restore will ignore those snapshots from restoration.
