@@ -32,9 +32,12 @@ listen-client-urls: https://0.0.0.0:2379
 # List of this member's client URLs to advertise to the public.
 # The URLs needed to be a comma-separated list.
 advertise-client-urls:
-  etcd-events-0: https://etcd-events-0.etcd-events-peer.shoot--dev--test.svc:2379
-  etcd-events-1: https://etcd-events-1.etcd-events-peer.shoot--dev--test.svc:2379
-  etcd-events-2: https://etcd-events-2.etcd-events-peer.shoot--dev--test.svc:2379
+  etcd-events-0: 
+    - https://etcd-events-0.etcd-events-peer.shoot--dev--test.svc:2379
+  etcd-events-1: 
+    - https://etcd-events-1.etcd-events-peer.shoot--dev--test.svc:2379
+  etcd-events-2:
+    - https://etcd-events-2.etcd-events-peer.shoot--dev--test.svc:2379
 peer-transport-security:
     # Path to the peer server TLS cert file.
     cert-file: /var/etcd/ssl/peer/server/tls.crt
