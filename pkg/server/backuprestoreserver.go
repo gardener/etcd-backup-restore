@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -571,13 +572,14 @@ func handleSsrStopRequest(ctx context.Context, handler *HTTPHandler, _ *snapshot
 }
 
 func hasPeerURLChanged(ctx context.Context, m member.Control, cli client.ClusterCloser) (bool, error) {
-	peerURLsFromEtcdConfig, err := miscellaneous.GetAdvertisePeerURLs(miscellaneous.GetConfigFilePath())
+	peerURLsFromEtcdConfig, err := miscellaneous.GetAdvertiseURLs("initial-advertise-peer-urls", miscellaneous.GetConfigFilePath())
 	if err != nil {
 		return false, err
 	}
+	peerURLsList := strings.Split(peerURLsFromEtcdConfig, ",")
 	existingPeerURLs, err := m.GetPeerURLs(ctx, cli)
 	if err != nil {
 		return false, err
 	}
-	return sets.New[string](peerURLsFromEtcdConfig).Difference(sets.New[string](existingPeerURLs...)).Len() > 0, nil
+	return sets.New[string](peerURLsList...).Difference(sets.New[string](existingPeerURLs...)).Len() > 0, nil
 }

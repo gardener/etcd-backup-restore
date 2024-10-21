@@ -535,8 +535,8 @@ func ReadConfigFileAsMap(path string) (map[string]interface{}, error) {
 	return c, nil
 }
 
-// GetAdvertisePeerURLs returns the advertise peer URLs for the etcd member.
-func GetAdvertisePeerURLs(configFile string) (string, error) {
+// GetAdvertiseURLs returns the advertise URLs of desired type for the etcd member.
+func GetAdvertiseURLs(advURLType string, configFile string) (string, error) {
 	memberName, err := GetEnvVarOrError("POD_NAME")
 	if err != nil {
 		return "", err
@@ -545,17 +545,17 @@ func GetAdvertisePeerURLs(configFile string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	initAdPeerURL := config["initial-advertise-peer-urls"]
-	if initAdPeerURL == nil {
-		return "", fmt.Errorf("initial-advertise-peer-urls must be set in etcd config")
+	advertiseURLs := config[advURLType]
+	if advertiseURLs == nil {
+		return "", fmt.Errorf("%s must be set in etcd config", advURLType)
 	}
 
-	peerUrlsMap, ok := initAdPeerURL.(map[interface{}]interface{})
+	podUrlsMap, ok := advertiseURLs.(map[interface{}]interface{})
 	if !ok {
-		return "", fmt.Errorf("initial-advertise-peer-urls is not in the expected format")
+		return "", fmt.Errorf("%s is not in the expected format", advURLType)
 	}
 	resultMap := make(map[string][]string)
-	for pod, urls := range peerUrlsMap {
+	for pod, urls := range podUrlsMap {
 		podName, ok := pod.(string)
 		if !ok {
 			return "", fmt.Errorf("pod name is not a string")
@@ -572,60 +572,22 @@ func GetAdvertisePeerURLs(configFile string) (string, error) {
 			resultMap[podName] = append(resultMap[podName], urlStr)
 		}
 	}
-	peerUrls, ok := resultMap[memberName]
+	podUrls, ok := resultMap[memberName]
 	if !ok {
 		return "", fmt.Errorf("peer url not found for pod %s", memberName)
 	}
-	return strings.Join(peerUrls, ","), nil
-}
-
-// GetAdvertiseClientURL returns the advertise client URL for the etcd member.
-func GetAdvertiseClientURL(configFile string) (string, error) {
-	memberName, err := GetEnvVarOrError("POD_NAME")
-	if err != nil {
-		return "", err
-	}
-	config, err := ReadConfigFileAsMap(configFile)
-	if err != nil {
-		return "", err
-	}
-	initAdClientURL := config["advertise-client-urls"]
-	if initAdClientURL == nil {
-		return "", fmt.Errorf("advertise-client-urls must be set in etcd config")
-	}
-	clientUrlsMap, ok := initAdClientURL.(map[interface{}]interface{})
-	if !ok {
-		return "", fmt.Errorf("advertise-client-urls is not in the expected format")
-	}
-	resultMap := make(map[string]string)
-	for pod, url := range clientUrlsMap {
-		podName, ok := pod.(string)
-		if !ok {
-			return "", fmt.Errorf("pod name is not a string")
-		}
-		urlStr, ok := url.(string)
-		if !ok {
-			return "", fmt.Errorf("url is not a string")
-		}
-		resultMap[podName] = urlStr
-	}
-	clientURL, ok := resultMap[memberName]
-	if !ok {
-		return "", fmt.Errorf("client url not found for pod %s", memberName)
-	}
-	return clientURL, nil
+	return strings.Join(podUrls, ","), nil
 }
 
 // IsPeerURLTLSEnabled checks whether the peer address is TLS enabled or not.
 func IsPeerURLTLSEnabled() (bool, error) {
 	configFile := GetConfigFilePath()
-	// TODO: Need to handle multiple peer URLs once etcd config is updated to support it.
-	// It is required in the context of Gardener usecase to support live control plane migration.
-	memberPeerURL, err := GetAdvertisePeerURLs(configFile)
+	memberPeerURLs, err := GetAdvertiseURLs("initial-advertise-peer-urls", configFile)
 	if err != nil {
 		return false, err
 	}
-	peerURL, err := url.Parse(memberPeerURL)
+	memberPeerURLsList := strings.Split(memberPeerURLs, ",")
+	peerURL, err := url.Parse(memberPeerURLsList[0])
 	if err != nil {
 		return false, err
 	}

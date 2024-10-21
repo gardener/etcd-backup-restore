@@ -134,7 +134,8 @@ enable-v2: false
 quota-backend-bytes: 1073741824
 listen-client-urls: http://0.0.0.0:2379
 advertise-client-urls:
-  ` + podName + `: http://0.0.0.0:2379
+  ` + podName + `: 
+  	- http://0.0.0.0:2379
 initial-advertise-peer-urls:
   ` + podName + `:
     - http://etcd-main-peer.default:2380

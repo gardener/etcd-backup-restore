@@ -429,22 +429,22 @@ func (h *HTTPHandler) serveConfig(rw http.ResponseWriter, req *http.Request) {
 	config["name"] = podName
 
 	// fetch initial-advertise-peer-urls from etcd config file
-	initAdPeerURL, err := miscellaneous.GetAdvertisePeerURLs(inputFileName)
+	initAdPeerURLs, err := miscellaneous.GetAdvertiseURLs("initial-advertise-peer-urls", inputFileName)
 	if err != nil {
 		h.Logger.Warnf("Unable to get initial-advertise-peer-urls from etcd config file: %v", err)
 		rw.WriteHeader(http.StatusInternalServerError)
 		return
 	}
-	config["initial-advertise-peer-urls"] = initAdPeerURL
+	config["initial-advertise-peer-urls"] = initAdPeerURLs
 
 	// fetch advertise-client-urls from etcd config file
-	advClientURL, err := miscellaneous.GetAdvertiseClientURL(inputFileName)
+	advClientURLs, err := miscellaneous.GetAdvertiseURLs("advertise-client-urls", inputFileName)
 	if err != nil {
 		h.Logger.Warnf("Unable to get advertise-client-urls : %v", err)
 		rw.WriteHeader(http.StatusInternalServerError)
 		return
 	}
-	config["advertise-client-urls"] = advClientURL
+	config["advertise-client-urls"] = advClientURLs
 
 	config["initial-cluster"] = getInitialCluster(req.Context(), fmt.Sprint(config["initial-cluster"]), *h.EtcdConnectionConfig, *h.Logger, podName)
 
