@@ -86,14 +86,15 @@ func (ssr *Snapshotter) RunGarbageCollector(stopCh <-chan struct{}) {
 					eod          = now.Truncate(24 * time.Hour).Add(23 * time.Hour).Add(59 * time.Minute).Add(59 * time.Second)
 					trackingWeek = 0
 				)
+				// snapStream indicates the list of snapshot, where first snapshot is base/full snapshot followed by list of incremental snapshots based on it.
 				// Here we start processing from second last snapstream, because we want to keep last snapstream
 				// including delta snapshots in it.
-				for snapStreamIndex := len(fullSnapshotIndexList) - 1; snapStreamIndex > 0; snapStreamIndex-- {
-					snap := snapList[fullSnapshotIndexList[snapStreamIndex]]
-					nextSnap := snapList[fullSnapshotIndexList[snapStreamIndex-1]]
+				for fullSnapshotIndex := len(fullSnapshotIndexList) - 1; fullSnapshotIndex > 0; fullSnapshotIndex-- {
+					snap := snapList[fullSnapshotIndexList[fullSnapshotIndex]]
+					nextSnap := snapList[fullSnapshotIndexList[fullSnapshotIndex-1]]
 
 					// garbage collect delta snapshots.
-					deletedSnap, err := ssr.GarbageCollectDeltaSnapshots(snapList[fullSnapshotIndexList[snapStreamIndex-1]:fullSnapshotIndexList[snapStreamIndex]])
+					deletedSnap, err := ssr.GarbageCollectDeltaSnapshots(snapList[fullSnapshotIndexList[fullSnapshotIndex-1]:fullSnapshotIndexList[fullSnapshotIndex]])
 					total += deletedSnap
 					if err != nil {
 						continue
@@ -162,14 +163,14 @@ func (ssr *Snapshotter) RunGarbageCollector(stopCh <-chan struct{}) {
 			case brtypes.GarbageCollectionPolicyLimitBased:
 				// Delete delta snapshots in all snapStream but the latest one.
 				// Delete all snapshots beyond limit set by ssr.maxBackups.
-				for snapStreamIndex := 0; snapStreamIndex < len(fullSnapshotIndexList)-1; snapStreamIndex++ {
-					deletedSnap, err := ssr.GarbageCollectDeltaSnapshots(snapList[fullSnapshotIndexList[snapStreamIndex]:fullSnapshotIndexList[snapStreamIndex+1]])
+				for fullSnapshotIndex := 0; fullSnapshotIndex < len(fullSnapshotIndexList)-1; fullSnapshotIndex++ {
+					deletedSnap, err := ssr.GarbageCollectDeltaSnapshots(snapList[fullSnapshotIndexList[fullSnapshotIndex]:fullSnapshotIndexList[fullSnapshotIndex+1]])
 					total += deletedSnap
 					if err != nil {
 						continue
 					}
-					if snapStreamIndex < len(fullSnapshotIndexList)-int(ssr.config.MaxBackups) {
-						snap := snapList[fullSnapshotIndexList[snapStreamIndex]]
+					if fullSnapshotIndex < len(fullSnapshotIndexList)-int(ssr.config.MaxBackups) {
+						snap := snapList[fullSnapshotIndexList[fullSnapshotIndex]]
 						snapPath := path.Join(snap.SnapDir, snap.SnapName)
 						ssr.logger.Infof("GC: Deleting old full snapshot: %s", snapPath)
 						if err := ssr.store.Delete(*snap); err != nil {
@@ -265,17 +266,13 @@ func (ssr *Snapshotter) GarbageCollectDeltaSnapshots(snapStream brtypes.SnapList
 			}
 			if err := ssr.store.Delete(*snapStream[i]); err != nil {
 				errorCount++
-				if errorCount == errorThreshold {
-					ssr.logger.Warnf("GC: Failed to delete snapshot %s: %v", snapPath, err)
-					metrics.SnapshotterOperationFailure.With(prometheus.Labels{metrics.LabelError: err.Error()}).Inc()
-					metrics.GCSnapshotCounter.With(prometheus.Labels{metrics.LabelKind: brtypes.SnapshotKindDelta, metrics.LabelSucceeded: metrics.ValueSucceededFalse}).Inc()
-					finalError = errors.Join(finalError, err)
-					return totalDeleted, finalError
-				}
 				ssr.logger.Warnf("GC: Failed to delete snapshot %s: %v", snapPath, err)
 				metrics.SnapshotterOperationFailure.With(prometheus.Labels{metrics.LabelError: err.Error()}).Inc()
 				metrics.GCSnapshotCounter.With(prometheus.Labels{metrics.LabelKind: brtypes.SnapshotKindDelta, metrics.LabelSucceeded: metrics.ValueSucceededFalse}).Inc()
 				finalError = errors.Join(finalError, err)
+				if errorCount == errorThreshold {
+					return totalDeleted, finalError
+				}
 			} else { 
 				metrics.GCSnapshotCounter.With(prometheus.Labels{metrics.LabelKind: brtypes.SnapshotKindDelta, metrics.LabelSucceeded: metrics.ValueSucceededTrue}).Inc()
 				totalDeleted++
