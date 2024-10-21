@@ -539,22 +539,15 @@ var _ = Describe("Snapshotter", func() {
 						Expect(err).ShouldNot(HaveOccurred())
 						
 						// delete a few snapshots in between to induce an error
-						err = os.Remove(path.Join(list[7].Prefix,list[7].SnapName))
-						Expect(err).ShouldNot(HaveOccurred())
-
-						err = os.Remove(path.Join(list[5].Prefix, list[5].SnapName))
-						Expect(err).ShouldNot(HaveOccurred())
-
-						err = os.Remove(path.Join(list[3].Prefix, list[3].SnapName))
-						Expect(err).ShouldNot(HaveOccurred())
-						
-						err = os.Remove(path.Join(list[2].Prefix, list[2].SnapName))
-						Expect(err).ShouldNot(HaveOccurred())
+						snapshotsToBeDeleted := []int{7, 5, 3, 2}
+						for _, i := range snapshotsToBeDeleted {
+							err := os.Remove(path.Join(list[i].Prefix, list[i].SnapName))
+							Expect(err).ShouldNot(HaveOccurred())
+						}
 
 						deleted, err := ssr.GarbageCollectDeltaSnapshots(list)
-						Expect(deleted).ToNot(BeZero())
 						Expect(deleted).Should(Equal(6))
-						Expect(err).ToNot(BeNil())
+						Expect(err).Should(HaveOccurred())
 					})
 				})
 				Context("When the number of errors while deleting are greater than the threshold", func() {
@@ -569,14 +562,14 @@ var _ = Describe("Snapshotter", func() {
 
 
 						// Threshold is set as 5
-						for i := len(list)-3 ; i > len(list)-9 ; i-- { // first 2 are deleted and next 5 return error while deleting
+						for i := len(list)-3 ; i > len(list)-9 ; i-- { // 5 snapshots from the list of snapshots to be deleted, are removed before passing it to the function ssr.GarbageCollectDeltaSnapshots. This will cause an error when the function tries to delete them.
 							err = os.Remove(path.Join(list[i].Prefix, list[i].SnapName))
 							Expect(err).ShouldNot(HaveOccurred())
 						}
 
 						deleted, err := ssr.GarbageCollectDeltaSnapshots(list)
 						Expect(deleted).Should(Equal(2)) 
-						Expect(err).To(HaveOccurred())
+						Expect(err).Should(HaveOccurred())
 
 					})
 				})
