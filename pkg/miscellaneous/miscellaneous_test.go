@@ -806,7 +806,7 @@ var _ = Describe("Miscellaneous Tests", func() {
 		Context("with non-TLS enabled peer url", func() {
 			BeforeEach(func() {
 				etcdConfigYaml := `name: etcd1
-custom-advertise-urls:
+initial-advertise-peer-urls:
   test_pod:
   - http://etcd-main-peer.default:2380
   - http://etcd-main-peer.default:2381
@@ -831,7 +831,7 @@ initial-cluster: etcd1=http://0.0.0.0:2380`
 		Context("with TLS enabled peer url", func() {
 			BeforeEach(func() {
 				etcdConfigYaml := `name: etcd1
-custom-advertise-urls:
+initial-advertise-peer-urls:
   test_pod:
   - https://etcd-main-peer.default:2380
   - https://etcd-main-peer.default:2381
@@ -855,7 +855,7 @@ initial-cluster: etcd1=https://0.0.0.0:2380`
 		Context("with empty peer url passed", func() {
 			BeforeEach(func() {
 				etcdConfigYaml := `name: etcd1
-custom-advertise-urls: ""
+initial-advertise-peer-urls: ""
 initial-cluster: etcd1=http://0.0.0.0:2380`
 				err := os.WriteFile(outfile, []byte(etcdConfigYaml), 0755)
 				Expect(err).ShouldNot(HaveOccurred())
