@@ -18,9 +18,9 @@ import (
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 	"github.com/gardener/etcd-backup-restore/pkg/wrappers"
 
-	"github.com/ghodss/yaml"
 	"github.com/sirupsen/logrus"
 	flag "github.com/spf13/pflag"
+	"sigs.k8s.io/yaml"
 )
 
 type serverOptions struct {

@@ -24,6 +24,7 @@ import (
 	"strings"
 	"time"
 
+	"go.etcd.io/etcd/etcdserver/api/rafthttp"
 	"go.etcd.io/etcd/etcdserver/api/v3rpc/rpctypes"
 	pb "go.etcd.io/etcd/etcdserver/etcdserverpb"
 	"go.etcd.io/etcd/mvcc"
@@ -126,6 +127,19 @@ func (s *EtcdServer) CheckInitialHashKV() error {
 				} else {
 					plog.Warningf("%s cannot check the hash of peer(%q) at revision %d: local node is lagging behind(%q)", s.ID(), p.eps, rev, p.err.Error())
 				}
+			case rpctypes.ErrClusterIdMismatch:
+				if lg != nil {
+					lg.Warn(
+						"cluster ID mismatch",
+						zap.String("local-member-id", s.ID().String()),
+						zap.Int64("local-member-revision", rev),
+						zap.Int64("local-member-compact-revision", crev),
+						zap.Uint32("local-member-hash", h),
+						zap.String("remote-peer-id", p.id.String()),
+						zap.Strings("remote-peer-endpoints", p.eps),
+						zap.Error(err),
+					)
+				}
 			}
 		}
 	}
@@ -202,13 +216,17 @@ func (s *EtcdServer) checkHashKV() error {
 	}
 
 	alarmed := false
-	mismatch := func(id uint64) {
+	mismatch := func(id types.ID) {
 		if alarmed {
 			return
 		}
 		alarmed = true
+		// It isn't clear which member's data is corrupted, so we
+		// intentionally set the memberID as 0. We will identify
+		// the corrupted members using quorum in 3.6. Please see
+		// discussion in https://github.com/etcd-io/etcd/pull/14828.
 		a := &pb.AlarmRequest{
-			MemberID: id,
+			MemberID: 0,
 			Action:   pb.AlarmRequest_ACTIVATE,
 			Alarm:    pb.AlarmType_CORRUPT,
 		}
@@ -231,7 +249,7 @@ func (s *EtcdServer) checkHashKV() error {
 		} else {
 			plog.Warningf("mismatched hashes %d and %d for revision %d", h, h2, rev)
 		}
-		mismatch(uint64(s.ID()))
+		mismatch(s.ID())
 	}
 
 	checkedCount := 0
@@ -240,7 +258,6 @@ func (s *EtcdServer) checkHashKV() error {
 			continue
 		}
 		checkedCount++
-		id := p.resp.Header.MemberId
 
 		// leader expects follower's latest revision less than or equal to leader's
 		if p.resp.Header.Revision > rev2 {
@@ -249,16 +266,16 @@ func (s *EtcdServer) checkHashKV() error {
 					"revision from follower must be less than or equal to leader's",
 					zap.Int64("leader-revision", rev2),
 					zap.Int64("follower-revision", p.resp.Header.Revision),
-					zap.String("follower-peer-id", types.ID(id).String()),
+					zap.String("follower-peer-id", p.id.String()),
 				)
 			} else {
 				plog.Warningf(
 					"revision %d from member %v, expected at most %d",
 					p.resp.Header.Revision,
-					types.ID(id),
+					p.id,
 					rev2)
 			}
-			mismatch(id)
+			mismatch(p.id)
 		}
 
 		// leader expects follower's latest compact revision less than or equal to leader's
@@ -268,17 +285,17 @@ func (s *EtcdServer) checkHashKV() error {
 					"compact revision from follower must be less than or equal to leader's",
 					zap.Int64("leader-compact-revision", crev2),
 					zap.Int64("follower-compact-revision", p.resp.CompactRevision),
-					zap.String("follower-peer-id", types.ID(id).String()),
+					zap.String("follower-peer-id", p.id.String()),
 				)
 			} else {
 				plog.Warningf(
 					"compact revision %d from member %v, expected at most %d",
 					p.resp.CompactRevision,
-					types.ID(id),
+					p.id,
 					crev2,
 				)
 			}
-			mismatch(id)
+			mismatch(p.id)
 		}
 
 		// follower's compact revision is leader's old one, then hashes must match
@@ -290,18 +307,18 @@ func (s *EtcdServer) checkHashKV() error {
 					zap.Uint32("leader-hash", h),
 					zap.Int64("follower-compact-revision", p.resp.CompactRevision),
 					zap.Uint32("follower-hash", p.resp.Hash),
-					zap.String("follower-peer-id", types.ID(id).String()),
+					zap.String("follower-peer-id", p.id.String()),
 				)
 			} else {
 				plog.Warningf(
 					"hash %d at revision %d from member %v, expected hash %d",
 					p.resp.Hash,
 					rev,
-					types.ID(id),
+					p.id,
 					h,
 				)
 			}
-			mismatch(id)
+			mismatch(p.id)
 		}
 	}
 	if lg != nil {
@@ -350,7 +367,7 @@ func (s *EtcdServer) getPeerHashKVs(rev int64) []*peerHashKVResp {
 			ctx, cancel := context.WithTimeout(context.Background(), s.Cfg.ReqTimeout())
 
 			var resp *pb.HashKVResponse
-			resp, lastErr = s.getPeerHashKVHTTP(ctx, ep, rev)
+			resp, lastErr = s.getPeerHashKVHTTP(ctx, s.cluster.ID(), ep, rev)
 			cancel()
 			if lastErr == nil {
 				resps = append(resps, &peerHashKVResp{peerInfo: p, resp: resp, err: nil})
@@ -437,6 +454,10 @@ func (h *hashKVHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad path", http.StatusBadRequest)
 		return
 	}
+	if gcid := r.Header.Get("X-Etcd-Cluster-ID"); gcid != "" && gcid != h.server.cluster.ID().String() {
+		http.Error(w, rafthttp.ErrClusterIDMismatch.Error(), http.StatusPreconditionFailed)
+		return
+	}
 
 	defer r.Body.Close()
 	b, err := ioutil.ReadAll(r.Body)
@@ -475,8 +496,13 @@ func (h *hashKVHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 // getPeerHashKVHTTP fetch hash of kv store at the given rev via http call to the given url
-func (s *EtcdServer) getPeerHashKVHTTP(ctx context.Context, url string, rev int64) (*pb.HashKVResponse, error) {
-	cc := &http.Client{Transport: s.peerRt}
+func (s *EtcdServer) getPeerHashKVHTTP(ctx context.Context, cid types.ID, url string, rev int64) (*pb.HashKVResponse, error) {
+	cc := &http.Client{
+		Transport: s.peerRt,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
 	hashReq := &pb.HashKVRequest{Revision: rev}
 	hashReqBytes, err := json.Marshal(hashReq)
 	if err != nil {
@@ -489,6 +515,7 @@ func (s *EtcdServer) getPeerHashKVHTTP(ctx context.Context, url string, rev int6
 	}
 	req = req.WithContext(ctx)
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Etcd-Cluster-ID", cid.String())
 	req.Cancel = ctx.Done()
 
 	resp, err := cc.Do(req)
@@ -507,6 +534,10 @@ func (s *EtcdServer) getPeerHashKVHTTP(ctx context.Context, url string, rev int6
 		}
 		if strings.Contains(string(b), mvcc.ErrFutureRev.Error()) {
 			return nil, rpctypes.ErrFutureRev
+		}
+	} else if resp.StatusCode == http.StatusPreconditionFailed {
+		if strings.Contains(string(b), rafthttp.ErrClusterIDMismatch.Error()) {
+			return nil, rpctypes.ErrClusterIdMismatch
 		}
 	}
 	if resp.StatusCode != http.StatusOK {

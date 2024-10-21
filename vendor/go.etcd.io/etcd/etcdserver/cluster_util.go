@@ -35,7 +35,7 @@ import (
 // isMemberBootstrapped tries to check if the given member has been bootstrapped
 // in the given cluster.
 func isMemberBootstrapped(lg *zap.Logger, cl *membership.RaftCluster, member string, rt http.RoundTripper, timeout time.Duration) bool {
-	rcl, err := getClusterFromRemotePeers(lg, getRemotePeerURLs(cl, member), timeout, false, rt)
+	rcl, err := getClusterFromRemotePeers(lg, getRemotePeerURLs(cl, member), timeout, false, rt, cl.NextClusterVersionCompatible)
 	if err != nil {
 		return false
 	}
@@ -57,15 +57,18 @@ func isMemberBootstrapped(lg *zap.Logger, cl *membership.RaftCluster, member str
 // response, an error is returned.
 // Each request has a 10-second timeout. Because the upper limit of TTL is 5s,
 // 10 second is enough for building connection and finishing request.
-func GetClusterFromRemotePeers(lg *zap.Logger, urls []string, rt http.RoundTripper) (*membership.RaftCluster, error) {
-	return getClusterFromRemotePeers(lg, urls, 10*time.Second, true, rt)
+func GetClusterFromRemotePeers(lg *zap.Logger, urls []string, rt http.RoundTripper, nextClusterVersionCompatible bool) (*membership.RaftCluster, error) {
+	return getClusterFromRemotePeers(lg, urls, 10*time.Second, true, rt, nextClusterVersionCompatible)
 }
 
 // If logerr is true, it prints out more error messages.
-func getClusterFromRemotePeers(lg *zap.Logger, urls []string, timeout time.Duration, logerr bool, rt http.RoundTripper) (*membership.RaftCluster, error) {
+func getClusterFromRemotePeers(lg *zap.Logger, urls []string, timeout time.Duration, logerr bool, rt http.RoundTripper, nextClusterVersionCompatible bool) (*membership.RaftCluster, error) {
 	cc := &http.Client{
 		Transport: rt,
 		Timeout:   timeout,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
 	}
 	for _, u := range urls {
 		addr := u + "/members"
@@ -125,7 +128,7 @@ func getClusterFromRemotePeers(lg *zap.Logger, urls []string, timeout time.Durat
 		// if membership members are not present then the raft cluster formed will be
 		// an invalid empty cluster hence return failed to get raft cluster member(s) from the given urls error
 		if len(membs) > 0 {
-			return membership.NewClusterFromMembers(lg, "", id, membs), nil
+			return membership.NewClusterFromMembers(lg, "", id, membs, nextClusterVersionCompatible), nil
 		}
 		return nil, fmt.Errorf("failed to get raft cluster member(s) from the given URLs")
 	}
@@ -230,13 +233,16 @@ func decideClusterVersion(lg *zap.Logger, vers map[string]*version.Versions) *se
 // cluster version in the range of [MinClusterVersion, Version] and no known members has a cluster version
 // out of the range.
 // We set this rule since when the local member joins, another member might be offline.
-func isCompatibleWithCluster(lg *zap.Logger, cl *membership.RaftCluster, local types.ID, rt http.RoundTripper) bool {
+func isCompatibleWithCluster(lg *zap.Logger, cl *membership.RaftCluster, local types.ID, rt http.RoundTripper, nextClusterVersionCompatible bool) bool {
 	vers := getVersions(lg, cl, local, rt)
 	minV := semver.Must(semver.NewVersion(version.MinClusterVersion))
 	maxV := semver.Must(semver.NewVersion(version.Version))
 	maxV = &semver.Version{
 		Major: maxV.Major,
 		Minor: maxV.Minor,
+	}
+	if nextClusterVersionCompatible {
+		maxV.Minor++
 	}
 	return isCompatibleWithVers(lg, vers, local, minV, maxV)
 }
@@ -301,6 +307,9 @@ func isCompatibleWithVers(lg *zap.Logger, vers map[string]*version.Versions, loc
 func getVersion(lg *zap.Logger, m *membership.Member, rt http.RoundTripper) (*version.Versions, error) {
 	cc := &http.Client{
 		Transport: rt,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
 	}
 	var (
 		err  error
@@ -359,7 +368,12 @@ func getVersion(lg *zap.Logger, m *membership.Member, rt http.RoundTripper) (*ve
 }
 
 func promoteMemberHTTP(ctx context.Context, url string, id uint64, peerRt http.RoundTripper) ([]*membership.Member, error) {
-	cc := &http.Client{Transport: peerRt}
+	cc := &http.Client{
+		Transport: peerRt,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
 	// TODO: refactor member http handler code
 	// cannot import etcdhttp, so manually construct url
 	requestUrl := url + "/members/promote/" + fmt.Sprintf("%d", id)

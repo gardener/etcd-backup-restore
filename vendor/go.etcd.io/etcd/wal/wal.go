@@ -789,14 +789,16 @@ func (w *WAL) cut() error {
 }
 
 func (w *WAL) sync() error {
-	if w.unsafeNoSync {
-		return nil
-	}
 	if w.encoder != nil {
 		if err := w.encoder.flush(); err != nil {
 			return err
 		}
 	}
+
+	if w.unsafeNoSync {
+		return nil
+	}
+
 	start := time.Now()
 	err := fileutil.Fdatasync(w.tail().File)
 
@@ -947,7 +949,10 @@ func (w *WAL) Save(st raftpb.HardState, ents []raftpb.Entry) error {
 	}
 	if curOff < SegmentSizeBytes {
 		if mustSync {
-			return w.sync()
+			// gofail: var walBeforeSync struct{}
+			err = w.sync()
+			// gofail: var walAfterSync struct{}
+			return err
 		}
 		return nil
 	}
