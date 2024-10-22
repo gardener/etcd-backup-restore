@@ -5,6 +5,7 @@
 package etcdutil
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"crypto/tls"
@@ -12,7 +13,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"reflect"
 	"time"
 
 	"github.com/gardener/etcd-backup-restore/pkg/compressor"
@@ -374,27 +374,23 @@ func checkFullSnapshotIntegrity(snapshotData io.ReadCloser, snapTempDBFilePath s
 	for currentOffset+hashBufferSize < snapshotLastOffset {
 		offset, err := db.Read(buf)
 		if err != nil {
-			logger.Errorf("unable to read snapshot data into buffer to calculate SHA256: %v", err)
-			return nil, err
+			return nil, fmt.Errorf("unable to read snapshot data into buffer to calculate SHA256: %v", err)
 		}
 
 		hash.Write(buf[:offset])
-		if currentOffset, err = db.Seek(0, io.SeekCurrent); err != nil {
-			logger.Warnf("unable to get currentOffset using seek: %v", err)
-			currentOffset += int64(offset)
-		}
+		currentOffset += int64(offset)
 	}
 
 	if currentOffset < snapshotLastOffset {
 		if _, err := db.Read(buf); err != nil {
-			logger.Errorf("unable to read snapshot data into buffer to calculate SHA256: %v", err)
+			return nil, fmt.Errorf("unable to read last chunk of snapshot data into buffer to calculate SHA256: %v", err)
 		}
 
 		hash.Write(buf[:snapshotLastOffset-currentOffset])
 	}
 
 	dbSha := hash.Sum(nil)
-	if !reflect.DeepEqual(sha, dbSha) {
+	if !bytes.Equal(sha, dbSha) {
 		return nil, fmt.Errorf("expected SHA256 for full snapshot: %v, got %v", sha, dbSha)
 	}
 
