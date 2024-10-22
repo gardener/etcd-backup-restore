@@ -371,7 +371,7 @@ func checkFullSnapshotIntegrity(snapshotData io.ReadCloser, snapTempDBFilePath s
 		return nil, err
 	}
 
-	for currentOffset+hashBufferSize < snapshotLastOffset {
+	for currentOffset+hashBufferSize <= snapshotLastOffset {
 		offset, err := db.Read(buf)
 		if err != nil {
 			return nil, fmt.Errorf("unable to read snapshot data into buffer to calculate SHA256: %v", err)
