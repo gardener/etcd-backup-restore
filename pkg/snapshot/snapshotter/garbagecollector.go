@@ -71,6 +71,7 @@ func (ssr *Snapshotter) RunGarbageCollector(stopCh <-chan struct{}) {
 			}
 
 			fullSnapshotIndexList := getFullSnapshotIndexList(snapList)
+			// snapStream indicates the list of snapshot, where first snapshot is base/full snapshot followed by list of incremental snapshots based on it.
 			switch ssr.config.GarbageCollectionPolicy {
 			case brtypes.GarbageCollectionPolicyExponential:
 				// Overall policy:
@@ -86,7 +87,6 @@ func (ssr *Snapshotter) RunGarbageCollector(stopCh <-chan struct{}) {
 					eod          = now.Truncate(24 * time.Hour).Add(23 * time.Hour).Add(59 * time.Minute).Add(59 * time.Second)
 					trackingWeek = 0
 				)
-				// snapStream indicates the list of snapshot, where first snapshot is base/full snapshot followed by list of incremental snapshots based on it.
 				// Here we start processing from second last snapstream, because we want to keep last snapstream
 				// including delta snapshots in it.
 				for fullSnapshotIndex := len(fullSnapshotIndexList) - 1; fullSnapshotIndex > 0; fullSnapshotIndex-- {
