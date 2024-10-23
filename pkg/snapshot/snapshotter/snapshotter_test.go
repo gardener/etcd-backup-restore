@@ -528,6 +528,21 @@ var _ = Describe("Snapshotter", func() {
 						Expect(len(list)).Should(Equal(3))
 					})
 				})
+				Context("When no error occurs while deletion of delta snapshots", func() {
+					It("Should have no errors and all the snapshots should get deleted", func() {
+						store := prepareStoreWithDeltaSnapshots(testDir, 10)
+						list, err := store.List(false)
+						Expect(err).ShouldNot(HaveOccurred())
+						Expect(len(list)).Should(Equal(10))
+
+						ssr, err := NewSnapshotter(logger, snapshotterConfig, store, etcdConnectionConfig, compressionConfig, healthConfig, snapstoreConfig)
+						Expect(err).ShouldNot(HaveOccurred())	
+						
+						deleted, err := ssr.GarbageCollectDeltaSnapshots(list)
+						Expect(deleted).Should(Equal(10))
+						Expect(err).ShouldNot(HaveOccurred())
+					})
+				})
 				Context("When an error occurs while deletion of delta snapshot and number of errors are lesser than the threshold(5)", func() {
 					It("should continue with the deletion while joining the errors", func() {
 						store := prepareStoreWithDeltaSnapshots(testDir, 10)
@@ -550,7 +565,7 @@ var _ = Describe("Snapshotter", func() {
 						Expect(err).Should(HaveOccurred())
 					})
 				})
-				Context("When the number of errors while deleting are greater than the threshold", func() {
+				Context("When the number of errors while deleting are greater than or equal to the threshold", func() {
 					It("Should halt the process and return", func() {
 						store := prepareStoreWithDeltaSnapshots(testDir, 15)
 						list, err := store.List(false)
