@@ -341,18 +341,18 @@ func checkFullSnapshotIntegrity(snapshotData io.ReadCloser, snapTempDBFilePath s
 		return nil, err
 	}
 
-	off, err := db.Seek(0, io.SeekEnd)
+	lastOffset, err := db.Seek(0, io.SeekEnd)
 	if err != nil {
 		return nil, err
 	}
 	// 512 is chosen because it's a minimum disk sector size in most systems.
-	hasHash := (off % 512) == sha256.Size
+	hasHash := (lastOffset % 512) == sha256.Size
 	if !hasHash {
 		return nil, fmt.Errorf("SHA256 hash seems to be missing from snapshot data")
 	}
 
-	var snapshotLastOffset int64
-	if snapshotLastOffset, err = db.Seek(-sha256.Size, io.SeekEnd); err != nil {
+	totalSnapshotBytes, err := db.Seek(-sha256.Size, io.SeekEnd)
+	if err != nil {
 		return nil, err
 	}
 
@@ -365,13 +365,16 @@ func checkFullSnapshotIntegrity(snapshotData io.ReadCloser, snapTempDBFilePath s
 	buf := make([]byte, hashBufferSize)
 	hash := sha256.New()
 
+	logger.Infof("Total no. of bytes received from snapshot api call with SHA: %d", lastOffset)
+	logger.Infof("Total no. of bytes received from snapshot api call without SHA: %d", totalSnapshotBytes)
+
 	// reset the file pointer back to starting
 	currentOffset, err := db.Seek(0, io.SeekStart)
 	if err != nil {
 		return nil, err
 	}
 
-	for currentOffset+hashBufferSize <= snapshotLastOffset {
+	for currentOffset+hashBufferSize <= totalSnapshotBytes {
 		offset, err := db.Read(buf)
 		if err != nil {
 			return nil, fmt.Errorf("unable to read snapshot data into buffer to calculate SHA256: %v", err)
@@ -381,12 +384,12 @@ func checkFullSnapshotIntegrity(snapshotData io.ReadCloser, snapTempDBFilePath s
 		currentOffset += int64(offset)
 	}
 
-	if currentOffset < snapshotLastOffset {
+	if currentOffset < totalSnapshotBytes {
 		if _, err := db.Read(buf); err != nil {
 			return nil, fmt.Errorf("unable to read last chunk of snapshot data into buffer to calculate SHA256: %v", err)
 		}
 
-		hash.Write(buf[:snapshotLastOffset-currentOffset])
+		hash.Write(buf[:totalSnapshotBytes-currentOffset])
 	}
 
 	dbSha := hash.Sum(nil)
