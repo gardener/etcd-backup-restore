@@ -840,7 +840,7 @@ var _ = Describe("Miscellaneous Tests", func() {
 			outfile = "/tmp/etcd.conf.yaml"
 		)
 		BeforeEach(func() {
-			Expect(os.Setenv("POD_NAME", "test_pod")).To(Succeed())
+			Expect(os.Setenv("POD_NAME", "test_pod1")).To(Succeed())
 			Expect(os.Setenv("ETCD_CONF", outfile)).To(Succeed())
 		})
 		AfterEach(func() {
@@ -852,7 +852,7 @@ var _ = Describe("Miscellaneous Tests", func() {
 			BeforeEach(func() {
 				etcdConfigYaml := `name: etcd1
 initial-advertise-peer-urls:
-  test_pod:
+  test_pod1:
   - http://etcd-main-peer.default:2380
   - http://etcd-main-peer.default:2381
   test_pod2:
@@ -877,7 +877,7 @@ initial-cluster: etcd1=http://0.0.0.0:2380`
 			BeforeEach(func() {
 				etcdConfigYaml := `name: etcd1
 initial-advertise-peer-urls:
-  test_pod:
+  test_pod1:
   - https://etcd-main-peer.default:2380
   - https://etcd-main-peer.default:2381
   test_pod2:
