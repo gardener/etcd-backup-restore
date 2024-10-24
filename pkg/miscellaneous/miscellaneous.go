@@ -554,6 +554,7 @@ func parseAdvertiseURLsConfig(configFile string) (*advertiseURLsConfig, error) {
 	return &advURLsConfig, nil
 }
 
+// GetInitialAdvertisePeerURLs retrieves the initial advertise peer URLs for the etcd member.
 func GetInitialAdvertisePeerURLs(configFile string) ([]string, error) {
 	memberName, err := GetEnvVarOrError("POD_NAME")
 	if err != nil {
@@ -578,6 +579,7 @@ func GetInitialAdvertisePeerURLs(configFile string) ([]string, error) {
 	return peerURLs, nil
 }
 
+// GetAdvertiseClientURLs retrieves the advertise client URLs for the etcd member.
 func GetAdvertiseClientURLs(configFile string) ([]string, error) {
 	memberName, err := GetEnvVarOrError("POD_NAME")
 	if err != nil {
