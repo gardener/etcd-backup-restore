@@ -62,6 +62,11 @@ const (
 	etcdWrapperPort = "9095"
 )
 
+type advertiseURLsConfig struct {
+	AdvertiseClientURLs      map[string][]string `yaml:"advertise-client-urls"`
+	InitialAdvertisePeerURLs map[string][]string `yaml:"initial-advertise-peer-urls"`
+}
+
 // GetLatestFullSnapshotAndDeltaSnapList returns the latest snapshot
 func GetLatestFullSnapshotAndDeltaSnapList(store brtypes.SnapStore) (*brtypes.Snapshot, brtypes.SnapList, error) {
 	var (
@@ -535,59 +540,76 @@ func ReadConfigFileAsMap(path string) (map[string]interface{}, error) {
 	return c, nil
 }
 
-// GetAdvertiseURLs returns the advertise URLs of desired type for the etcd member.
-func GetAdvertiseURLs(advURLType string, configFile string) (string, error) {
-	memberName, err := GetEnvVarOrError("POD_NAME")
+// parseAdvertiseURLsConfig reads and parses the config file and returns the advertise URLs config.
+func parseAdvertiseURLsConfig(configFile string) (*advertiseURLsConfig, error) {
+	var advURLsConfig advertiseURLsConfig
+	config, err := os.ReadFile(configFile)
 	if err != nil {
-		return "", err
-	}
-	config, err := ReadConfigFileAsMap(configFile)
-	if err != nil {
-		return "", err
-	}
-	advertiseURLs := config[advURLType]
-	if advertiseURLs == nil {
-		return "", fmt.Errorf("%s must be set in etcd config", advURLType)
+		return nil, fmt.Errorf("unable to read etcd config file at path: %s : %w", configFile, err)
 	}
 
-	podUrlsMap, ok := advertiseURLs.(map[interface{}]interface{})
-	if !ok {
-		return "", fmt.Errorf("%s is not in the expected format", advURLType)
+	if err := yaml.Unmarshal(config, &advURLsConfig); err != nil {
+		return nil, fmt.Errorf("unable to unmarshal etcd config yaml file at path: %s : %w", configFile, err)
 	}
-	resultMap := make(map[string][]string)
-	for pod, urls := range podUrlsMap {
-		podName, ok := pod.(string)
-		if !ok {
-			return "", fmt.Errorf("pod name is not a string")
-		}
-		urlsList, ok := urls.([]interface{})
-		if !ok {
-			return "", fmt.Errorf("urls is not a list")
-		}
-		for _, url := range urlsList {
-			urlStr, ok := url.(string)
-			if !ok {
-				return "", fmt.Errorf("url is not a string")
-			}
-			resultMap[podName] = append(resultMap[podName], urlStr)
+	return &advURLsConfig, nil
+}
+
+func GetInitialAdvertisePeerURLs(configFile string) ([]string, error) {
+	memberName, err := GetEnvVarOrError("POD_NAME")
+	if err != nil {
+		return nil, err
+	}
+
+	advURLsConfig, err := parseAdvertiseURLsConfig(configFile)
+	if err != nil {
+		return nil, err
+	}
+
+	peerURLs, ok := advURLsConfig.InitialAdvertisePeerURLs[memberName]
+	if !ok || len(peerURLs) == 0 {
+		return nil, fmt.Errorf("peer url not found for pod %s", memberName)
+	}
+
+	for _, peerURL := range peerURLs {
+		if _, err := url.Parse(peerURL); err != nil {
+			return nil, fmt.Errorf("peer url %s is not valid", peerURL)
 		}
 	}
-	podUrls, ok := resultMap[memberName]
-	if !ok {
-		return "", fmt.Errorf("peer url not found for pod %s", memberName)
+	return peerURLs, nil
+}
+
+func GetAdvertiseClientURLs(configFile string) ([]string, error) {
+	memberName, err := GetEnvVarOrError("POD_NAME")
+	if err != nil {
+		return nil, err
 	}
-	return strings.Join(podUrls, ","), nil
+
+	advURLsConfig, err := parseAdvertiseURLsConfig(configFile)
+	if err != nil {
+		return nil, err
+	}
+
+	clientURLs, ok := advURLsConfig.AdvertiseClientURLs[memberName]
+	if !ok || len(clientURLs) == 0 {
+		return nil, fmt.Errorf("client url not found for pod %s", memberName)
+	}
+
+	for _, clientURL := range clientURLs {
+		if _, err := url.Parse(clientURL); err != nil {
+			return nil, fmt.Errorf("client url %s is not valid", clientURL)
+		}
+	}
+	return clientURLs, nil
 }
 
 // IsPeerURLTLSEnabled checks whether the peer address is TLS enabled or not.
 func IsPeerURLTLSEnabled() (bool, error) {
 	configFile := GetConfigFilePath()
-	memberPeerURLs, err := GetAdvertiseURLs("initial-advertise-peer-urls", configFile)
+	memberPeerURLs, err := GetInitialAdvertisePeerURLs(configFile)
 	if err != nil {
 		return false, err
 	}
-	memberPeerURLsList := strings.Split(memberPeerURLs, ",")
-	peerURL, err := url.Parse(memberPeerURLsList[0])
+	peerURL, err := url.Parse(memberPeerURLs[0])
 	if err != nil {
 		return false, err
 	}

@@ -314,7 +314,7 @@ spec:
       volumes:
       - name: etcd-config-file
         configMap:
-          name: {{ .Release.Name }}-etcd-bootstrap
+          name: {{ .Release.Name }}-etcd-config
           defaultMode: 0644
           items:
           - key: etcd.conf.yaml

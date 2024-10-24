@@ -11,7 +11,6 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
-	"strings"
 	"time"
 
 	mockfactory "github.com/gardener/etcd-backup-restore/pkg/mock/etcdutil/client"
@@ -588,120 +587,166 @@ var _ = Describe("Miscellaneous Tests", func() {
 		})
 	})
 
-	Describe("GetAdvertiseURLs", func() {
+	Describe("Get Advertise URLs", func() {
 		const (
-			configFile        = "/tmp/etcd-config.yaml"
-			podName           = "test-pod"
-			customAdvURLfield = "custom-advertise-urls"
+			configFile = "/tmp/etcd-config.yaml"
+			podName    = "test-pod"
 		)
+		type testCase struct {
+			name     string
+			field    string
+			function func(string) ([]string, error)
+		}
+		testCases := []testCase{
+			{
+				name:     "GetInitialAdvertisePeerURLs",
+				field:    "initial-advertise-peer-urls",
+				function: GetInitialAdvertisePeerURLs,
+			},
+			{
+				name:     "GetAdvertiseClientURLs",
+				field:    "advertise-client-urls",
+				function: GetAdvertiseClientURLs,
+			},
+		}
 		Context("When POD_NAME environment variable is not set", func() {
-			It("should return an error", func() {
-				_, err := GetAdvertiseURLs(customAdvURLfield, configFile)
-				Expect(err).To(HaveOccurred())
-			})
+			for _, tc := range testCases {
+				tc := tc
+				It(fmt.Sprintf("should return an error for %s", tc.name), func() {
+					_, err := tc.function(configFile)
+					Expect(err).To(HaveOccurred())
+				})
+			}
 		})
 
 		Context("When POD_NAME environment variable is set", func() {
+			var config map[string]interface{}
+			var podUrlsMap map[string][]string
+
 			BeforeEach(func() {
 				Expect(os.Setenv("POD_NAME", podName)).To(Succeed())
 				Expect(os.Setenv("ETCD_CONF", configFile)).To(Succeed())
 			})
-			AfterEach(func() {
-				Expect(os.Unsetenv("POD_NAME")).To(Succeed())
-				Expect(os.Unsetenv("ETCD_CONF")).To(Succeed())
-			})
 
 			Context("When the config file cannot be read", func() {
-				It("should return an error", func() {
-					_, err := GetAdvertiseURLs(customAdvURLfield, configFile)
-					Expect(err).To(HaveOccurred())
-				})
+				for _, tc := range testCases {
+					tc := tc
+					It(fmt.Sprintf("should return an error for %s", tc.name), func() {
+						_, err := tc.function(configFile)
+						Expect(err).To(HaveOccurred())
+					})
+				}
 			})
 
-			Context("When custom-advertise-urls is not set in the config file", func() {
-				var config map[string]interface{}
+			Context("When advertise-urls is not set in the config file", func() {
+				BeforeEach(func() {
+					config = map[string]interface{}{
+						"name": "etcd-test",
+					}
+				})
+
+				AfterEach(func() {
+					Expect(os.Remove(configFile)).To(Succeed())
+				})
+
+				for _, tc := range testCases {
+					tc := tc
+					It(fmt.Sprintf("should return an error for %s", tc.name), func() {
+						writeConfigToFile(configFile, config)
+
+						_, err := tc.function(configFile)
+						Expect(err).To(HaveOccurred())
+					})
+				}
+			})
+
+			Context("When advertise-urls is set in the config file", func() {
 
 				BeforeEach(func() {
 					config = map[string]interface{}{
 						"name": "etcd-test",
 					}
-					writeConfigToFile(configFile, config)
+					podUrlsMap = make(map[string][]string)
 				})
 
 				AfterEach(func() {
 					Expect(os.Remove(configFile)).To(Succeed())
 				})
 
-				It("should return an error", func() {
-					_, err := GetAdvertiseURLs(customAdvURLfield, configFile)
-					Expect(err).To(HaveOccurred())
-				})
-			})
+				Context("When the advertise urls is not in the expected format", func() {
+					for _, tc := range testCases {
+						tc := tc
+						It(fmt.Sprintf("should return an error for %s", tc.name), func() {
+							config[tc.field] = "invalid-format"
+							writeConfigToFile(configFile, config)
 
-			Context("When custom-advertise-urls is set in the config file", func() {
-				var config map[string]interface{}
-				podUrlsMap := make(map[string]interface{})
-
-				AfterEach(func() {
-					Expect(os.Remove(configFile)).To(Succeed())
-					podUrlsMap = make(map[string]interface{})
-				})
-
-				Context("When the custom-advertise-urls is not in the expected format", func() {
-					BeforeEach(func() {
-						config = map[string]interface{}{
-							"name":                  "etcd-test",
-							"custom-advertise-urls": "invalid-format",
-						}
-						writeConfigToFile(configFile, config)
-					})
-
-					It("should return an error", func() {
-						_, err := GetAdvertiseURLs(customAdvURLfield, configFile)
-						Expect(err).To(HaveOccurred())
-					})
+							_, err := tc.function(configFile)
+							Expect(err).To(HaveOccurred())
+						})
+					}
 				})
 
 				Context("When the pod name is not present in the config file", func() {
 					BeforeEach(func() {
-						otherPodPeerURLs := []string{"http://pod1:2380", "http://pod1:2381"}
-						podUrlsMap["other-pod"] = otherPodPeerURLs
-
-						config = map[string]interface{}{
-							"name":                  "etcd-test",
-							"custom-advertise-urls": podUrlsMap,
+						podUrlsMap = map[string][]string{
+							"other-pod": {"http://pod1:2380", "http://pod1:2381"},
 						}
-						writeConfigToFile(configFile, config)
 					})
 
-					It("should return an error", func() {
-						_, err := GetAdvertiseURLs(customAdvURLfield, configFile)
-						Expect(err).To(HaveOccurred())
-					})
+					for _, tc := range testCases {
+						tc := tc
+						It(fmt.Sprintf("should return an error for %s", tc.name), func() {
+							config[tc.field] = podUrlsMap
+							writeConfigToFile(configFile, config)
+
+							_, err := tc.function(configFile)
+							Expect(err).To(HaveOccurred())
+						})
+					}
 				})
 
 				Context("When the pod name is present in the config file", func() {
-					var podPeerURLs []string
-					BeforeEach(func() {
-						podPeerURLs = []string{"http://pod:2380", "http://pod:2381"}
-						podUrlsMap[podName] = podPeerURLs
+					Context("When an url is not in valid format", func() {
+						BeforeEach(func() {
+							podUrlsMap = map[string][]string{
+								podName: {"http://pod:2380", "ht@tp://invalid-url"},
+							}
+						})
 
-						config = map[string]interface{}{
-							"name":                  "etcd-test",
-							"custom-advertise-urls": podUrlsMap,
+						for _, tc := range testCases {
+							tc := tc
+							It(fmt.Sprintf("should return an error for %s", tc.name), func() {
+								config[tc.field] = podUrlsMap
+								writeConfigToFile(configFile, config)
+
+								_, err := tc.function(configFile)
+								Expect(err).To(HaveOccurred())
+							})
 						}
-						writeConfigToFile(configFile, config)
 					})
 
-					It("should return the peer URLs", func() {
-						peerURLs, err := GetAdvertiseURLs(customAdvURLfield, configFile)
-						Expect(err).To(Not(HaveOccurred()))
-						Expect(peerURLs).To(Equal(strings.Join(podPeerURLs, ",")))
+					Context("When the urls are in valid format", func() {
+						BeforeEach(func() {
+							podUrlsMap = map[string][]string{
+								podName: {"http://pod:2380", "http://pod:2381"},
+							}
+						})
+
+						for _, tc := range testCases {
+							tc := tc
+							It(fmt.Sprintf("should return the peer URLs for %s", tc.field), func() {
+								config[tc.field] = podUrlsMap
+								writeConfigToFile(configFile, config)
+
+								urls, err := tc.function(configFile)
+								Expect(err).To(Not(HaveOccurred()))
+								Expect(urls).To(Equal(podUrlsMap[podName]))
+							})
+						}
 					})
 				})
 			})
 		})
-
 	})
 
 	Describe("Etcd Statefulset", func() {
