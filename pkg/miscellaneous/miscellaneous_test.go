@@ -592,31 +592,15 @@ var _ = Describe("Miscellaneous Tests", func() {
 			configFile = "/tmp/etcd-config.yaml"
 			podName    = "test-pod"
 		)
-		type testCase struct {
-			name     string
-			field    string
-			function func(string) ([]string, error)
-		}
-		testCases := []testCase{
-			{
-				name:     "GetInitialAdvertisePeerURLs",
-				field:    "initial-advertise-peer-urls",
-				function: GetInitialAdvertisePeerURLs,
-			},
-			{
-				name:     "GetAdvertiseClientURLs",
-				field:    "advertise-client-urls",
-				function: GetAdvertiseClientURLs,
-			},
-		}
 		Context("When POD_NAME environment variable is not set", func() {
-			for _, tc := range testCases {
-				tc := tc
-				It(fmt.Sprintf("should return an error for %s", tc.name), func() {
-					_, err := tc.function(configFile)
+			DescribeTable("should return an error",
+				func(field string, function func(string) ([]string, error)) {
+					_, err := function(configFile)
 					Expect(err).To(HaveOccurred())
-				})
-			}
+				},
+				Entry("GetInitialAdvertisePeerURLs", "initial-advertise-peer-urls", GetInitialAdvertisePeerURLs),
+				Entry("GetAdvertiseClientURLs", "advertise-client-urls", GetAdvertiseClientURLs),
+			)
 		})
 
 		Context("When POD_NAME environment variable is set", func() {
@@ -629,13 +613,14 @@ var _ = Describe("Miscellaneous Tests", func() {
 			})
 
 			Context("When the config file cannot be read", func() {
-				for _, tc := range testCases {
-					tc := tc
-					It(fmt.Sprintf("should return an error for %s", tc.name), func() {
-						_, err := tc.function(configFile)
+				DescribeTable("should return an error",
+					func(field string, function func(string) ([]string, error)) {
+						_, err := function(configFile)
 						Expect(err).To(HaveOccurred())
-					})
-				}
+					},
+					Entry("GetInitialAdvertisePeerURLs", "initial-advertise-peer-urls", GetInitialAdvertisePeerURLs),
+					Entry("GetAdvertiseClientURLs", "advertise-client-urls", GetAdvertiseClientURLs),
+				)
 			})
 
 			Context("When advertise-urls is not set in the config file", func() {
@@ -649,15 +634,16 @@ var _ = Describe("Miscellaneous Tests", func() {
 					Expect(os.Remove(configFile)).To(Succeed())
 				})
 
-				for _, tc := range testCases {
-					tc := tc
-					It(fmt.Sprintf("should return an error for %s", tc.name), func() {
+				DescribeTable("should return an error",
+					func(field string, function func(string) ([]string, error)) {
 						writeConfigToFile(configFile, config)
 
-						_, err := tc.function(configFile)
+						_, err := function(configFile)
 						Expect(err).To(HaveOccurred())
-					})
-				}
+					},
+					Entry("GetInitialAdvertisePeerURLs", "initial-advertise-peer-urls", GetInitialAdvertisePeerURLs),
+					Entry("GetAdvertiseClientURLs", "advertise-client-urls", GetAdvertiseClientURLs),
+				)
 			})
 
 			Context("When advertise-urls is set in the config file", func() {
@@ -674,16 +660,18 @@ var _ = Describe("Miscellaneous Tests", func() {
 				})
 
 				Context("When the advertise urls is not in the expected format", func() {
-					for _, tc := range testCases {
-						tc := tc
-						It(fmt.Sprintf("should return an error for %s", tc.name), func() {
-							config[tc.field] = "invalid-format"
+
+					DescribeTable("should return an error",
+						func(field string, function func(string) ([]string, error)) {
+							config[field] = "invalid-format"
 							writeConfigToFile(configFile, config)
 
-							_, err := tc.function(configFile)
+							_, err := function(configFile)
 							Expect(err).To(HaveOccurred())
-						})
-					}
+						},
+						Entry("GetInitialAdvertisePeerURLs", "initial-advertise-peer-urls", GetInitialAdvertisePeerURLs),
+						Entry("GetAdvertiseClientURLs", "advertise-client-urls", GetAdvertiseClientURLs),
+					)
 				})
 
 				Context("When the pod name is not present in the config file", func() {
@@ -693,16 +681,17 @@ var _ = Describe("Miscellaneous Tests", func() {
 						}
 					})
 
-					for _, tc := range testCases {
-						tc := tc
-						It(fmt.Sprintf("should return an error for %s", tc.name), func() {
-							config[tc.field] = podUrlsMap
+					DescribeTable("should return an error",
+						func(field string, function func(string) ([]string, error)) {
+							config[field] = podUrlsMap
 							writeConfigToFile(configFile, config)
 
-							_, err := tc.function(configFile)
+							_, err := function(configFile)
 							Expect(err).To(HaveOccurred())
-						})
-					}
+						},
+						Entry("GetInitialAdvertisePeerURLs", "initial-advertise-peer-urls", GetInitialAdvertisePeerURLs),
+						Entry("GetAdvertiseClientURLs", "advertise-client-urls", GetAdvertiseClientURLs),
+					)
 				})
 
 				Context("When the pod name is present in the config file", func() {
@@ -713,16 +702,17 @@ var _ = Describe("Miscellaneous Tests", func() {
 							}
 						})
 
-						for _, tc := range testCases {
-							tc := tc
-							It(fmt.Sprintf("should return an error for %s", tc.name), func() {
-								config[tc.field] = podUrlsMap
+						DescribeTable("should return an error",
+							func(field string, function func(string) ([]string, error)) {
+								config[field] = podUrlsMap
 								writeConfigToFile(configFile, config)
 
-								_, err := tc.function(configFile)
+								_, err := function(configFile)
 								Expect(err).To(HaveOccurred())
-							})
-						}
+							},
+							Entry("GetInitialAdvertisePeerURLs", "initial-advertise-peer-urls", GetInitialAdvertisePeerURLs),
+							Entry("GetAdvertiseClientURLs", "advertise-client-urls", GetAdvertiseClientURLs),
+						)
 					})
 
 					Context("When the urls are in valid format", func() {
@@ -732,17 +722,18 @@ var _ = Describe("Miscellaneous Tests", func() {
 							}
 						})
 
-						for _, tc := range testCases {
-							tc := tc
-							It(fmt.Sprintf("should return the peer URLs for %s", tc.field), func() {
-								config[tc.field] = podUrlsMap
+						DescribeTable("should return the peer URLs",
+							func(field string, function func(string) ([]string, error)) {
+								config[field] = podUrlsMap
 								writeConfigToFile(configFile, config)
 
-								urls, err := tc.function(configFile)
+								urls, err := function(configFile)
 								Expect(err).To(Not(HaveOccurred()))
 								Expect(urls).To(Equal(podUrlsMap[podName]))
-							})
-						}
+							},
+							Entry("GetInitialAdvertisePeerURLs", "initial-advertise-peer-urls", GetInitialAdvertisePeerURLs),
+							Entry("GetAdvertiseClientURLs", "advertise-client-urls", GetAdvertiseClientURLs),
+						)
 					})
 				})
 			})

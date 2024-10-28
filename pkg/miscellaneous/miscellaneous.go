@@ -56,7 +56,7 @@ const (
 	// ScaledToMultiNodeAnnotationKey defines annotation key for scale-up to multi-node cluster.
 	ScaledToMultiNodeAnnotationKey = "gardener.cloud/scaled-to-multi-node"
 
-	https = "https"
+	httpProtocol = "http"
 
 	// etcdWrapperPort defines the port no. used by etcd-wrapper.
 	etcdWrapperPort = "9095"
@@ -554,7 +554,7 @@ func parseAdvertiseURLsConfig(configFile string) (*advertiseURLsConfig, error) {
 	return &advURLsConfig, nil
 }
 
-// GetInitialAdvertisePeerURLs retrieves the initial advertise peer URLs for the etcd member.
+// GetInitialAdvertisePeerURLs retrieves the initial advertise peer URLs for the etcd member using the POD_NAME environment variable.
 func GetInitialAdvertisePeerURLs(configFile string) ([]string, error) {
 	memberName, err := GetEnvVarOrError("POD_NAME")
 	if err != nil {
@@ -563,23 +563,23 @@ func GetInitialAdvertisePeerURLs(configFile string) ([]string, error) {
 
 	advURLsConfig, err := parseAdvertiseURLsConfig(configFile)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to parse advertise URLs config: %w", err)
 	}
 
 	peerURLs, ok := advURLsConfig.InitialAdvertisePeerURLs[memberName]
 	if !ok || len(peerURLs) == 0 {
-		return nil, fmt.Errorf("peer url not found for pod %s", memberName)
+		return nil, fmt.Errorf("no peer URLs found for pod %s", memberName)
 	}
 
 	for _, peerURL := range peerURLs {
 		if _, err := url.Parse(peerURL); err != nil {
-			return nil, fmt.Errorf("peer url %s is not valid", peerURL)
+			return nil, fmt.Errorf("invalid peer URL %s: %w", peerURL, err)
 		}
 	}
 	return peerURLs, nil
 }
 
-// GetAdvertiseClientURLs retrieves the advertise client URLs for the etcd member.
+// GetAdvertiseClientURLs retrieves the advertise client URLs for the etcd member using the POD_NAME environment variable.
 func GetAdvertiseClientURLs(configFile string) ([]string, error) {
 	memberName, err := GetEnvVarOrError("POD_NAME")
 	if err != nil {
@@ -588,17 +588,17 @@ func GetAdvertiseClientURLs(configFile string) ([]string, error) {
 
 	advURLsConfig, err := parseAdvertiseURLsConfig(configFile)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to parse advertise URLs config: %w", err)
 	}
 
 	clientURLs, ok := advURLsConfig.AdvertiseClientURLs[memberName]
 	if !ok || len(clientURLs) == 0 {
-		return nil, fmt.Errorf("client url not found for pod %s", memberName)
+		return nil, fmt.Errorf("no client URLs found for pod %s", memberName)
 	}
 
 	for _, clientURL := range clientURLs {
 		if _, err := url.Parse(clientURL); err != nil {
-			return nil, fmt.Errorf("client url %s is not valid", clientURL)
+			return nil, fmt.Errorf("invalid client URL %s: %w", clientURL, err)
 		}
 	}
 	return clientURLs, nil
@@ -606,16 +606,20 @@ func GetAdvertiseClientURLs(configFile string) ([]string, error) {
 
 // IsPeerURLTLSEnabled checks whether the peer address is TLS enabled or not.
 func IsPeerURLTLSEnabled() (bool, error) {
-	configFile := GetConfigFilePath()
-	memberPeerURLs, err := GetInitialAdvertisePeerURLs(configFile)
+	memberPeerURLs, err := GetInitialAdvertisePeerURLs(GetConfigFilePath())
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("failed to get initial advertise peer URLs: %w", err)
 	}
-	peerURL, err := url.Parse(memberPeerURLs[0])
-	if err != nil {
-		return false, err
+	for _, peerURL := range memberPeerURLs {
+		parsedPeerURL, err := url.Parse(peerURL)
+		if err != nil {
+			return false, fmt.Errorf("failed to parse peer URL %s: %w", peerURL, err)
+		}
+		if parsedPeerURL.Scheme == httpProtocol {
+			return false, nil
+		}
 	}
-	return peerURL.Scheme == https, nil
+	return true, nil
 }
 
 // GetPrevScheduledSnapTime returns the previous schedule snapshot time.
