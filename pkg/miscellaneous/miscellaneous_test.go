@@ -888,6 +888,30 @@ initial-cluster: etcd1=https://0.0.0.0:2380`
 			})
 		})
 
+		Context("with both TLS and non-TLS enabled peer url for the same pod", func() {
+			BeforeEach(func() {
+				etcdConfigYaml := `name: etcd1
+initial-advertise-peer-urls:
+  test_pod1:
+  - https://etcd-main-peer.default:2380
+  - http://etcd-main-peer.default:2381
+  test_pod2:
+  - https://etcd-main-peer.default:2380
+  - https://etcd-main-peer.default:2381
+  test_pod3:
+  - https://etcd-main-peer.default:2380
+  - https://etcd-main-peer.default:2381
+initial-cluster: etcd1=https://0.0.0.0:2380`
+				err := os.WriteFile(outfile, []byte(etcdConfigYaml), 0755)
+				Expect(err).ShouldNot(HaveOccurred())
+			})
+			It("should return error", func() {
+				enabled, err := IsPeerURLTLSEnabled()
+				Expect(err).Should(HaveOccurred())
+				Expect(enabled).To(BeFalse())
+			})
+		})
+
 		Context("with empty peer url passed", func() {
 			BeforeEach(func() {
 				etcdConfigYaml := `name: etcd1

@@ -56,7 +56,7 @@ const (
 	// ScaledToMultiNodeAnnotationKey defines annotation key for scale-up to multi-node cluster.
 	ScaledToMultiNodeAnnotationKey = "gardener.cloud/scaled-to-multi-node"
 
-	httpProtocol = "http"
+	https = "https"
 
 	// etcdWrapperPort defines the port no. used by etcd-wrapper.
 	etcdWrapperPort = "9095"
@@ -610,16 +610,25 @@ func IsPeerURLTLSEnabled() (bool, error) {
 	if err != nil {
 		return false, fmt.Errorf("failed to get initial advertise peer URLs: %w", err)
 	}
+
+	peerURLsSchemes := make([]string, 0)
 	for _, peerURL := range memberPeerURLs {
 		parsedPeerURL, err := url.Parse(peerURL)
 		if err != nil {
 			return false, fmt.Errorf("failed to parse peer URL %s: %w", peerURL, err)
 		}
-		if parsedPeerURL.Scheme == httpProtocol {
-			return false, nil
-		}
+		peerURLsSchemes = append(peerURLsSchemes, parsedPeerURL.Scheme)
 	}
-	return true, nil
+
+	sort.Strings(peerURLsSchemes)
+
+	if peerURLsSchemes[0] != peerURLsSchemes[len(peerURLsSchemes)-1] {
+		return false, fmt.Errorf("peer URLs have different schemes")
+	}
+	if peerURLsSchemes[0] == https {
+		return true, nil
+	}
+	return false, nil
 }
 
 // GetPrevScheduledSnapTime returns the previous schedule snapshot time.
