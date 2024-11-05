@@ -17,7 +17,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
-const errorThreshold = 5
+const ErrorThreshold = 5
 // RunGarbageCollector basically consider the older backups as garbage and deletes it
 func (ssr *Snapshotter) RunGarbageCollector(stopCh <-chan struct{}) {
 	if ssr.config.GarbageCollectionPeriod.Duration <= time.Second {
@@ -71,7 +71,8 @@ func (ssr *Snapshotter) RunGarbageCollector(stopCh <-chan struct{}) {
 			}
 
 			fullSnapshotIndexList := getFullSnapshotIndexList(snapList)
-			// snapStream indicates the list of snapshot, where first snapshot is base/full snapshot followed by list of incremental snapshots based on it.
+			// snapStream indicates a list of snapshots, where the first snapshot is base/full snapshot followed by a list of incremental snapshots based on it.
+			//Garbage collection is performed on one snapStream at a time.
 			switch ssr.config.GarbageCollectionPolicy {
 			case brtypes.GarbageCollectionPolicyExponential:
 				// Overall policy:
@@ -89,13 +90,16 @@ func (ssr *Snapshotter) RunGarbageCollector(stopCh <-chan struct{}) {
 				)
 				// Here we start processing from second last snapstream, because we want to keep last snapstream
 				// including delta snapshots in it.
-				for fullSnapshotIndex := len(fullSnapshotIndexList) - 1; fullSnapshotIndex > 0; fullSnapshotIndex-- {
-					snap := snapList[fullSnapshotIndexList[fullSnapshotIndex]]
-					nextSnap := snapList[fullSnapshotIndexList[fullSnapshotIndex-1]]
+				for fullSnapshotIndex := 0; fullSnapshotIndex < len(fullSnapshotIndexList) - 1; fullSnapshotIndex++ {
+					descIndex := len(fullSnapshotIndexList) - 1 - fullSnapshotIndex
+    				nextDescIndex := descIndex - 1
+					snap := snapList[fullSnapshotIndexList[descIndex]]
+					nextSnap := snapList[fullSnapshotIndexList[nextDescIndex]]
 
 					// garbage collect delta snapshots.
-					deletedSnap, err := ssr.GarbageCollectDeltaSnapshots(snapList[fullSnapshotIndexList[fullSnapshotIndex-1]:fullSnapshotIndexList[fullSnapshotIndex]])
-					total += deletedSnap
+					snapStream := snapList[fullSnapshotIndexList[nextDescIndex]:fullSnapshotIndexList[descIndex]]
+					numDeletedSnapshots, err := ssr.GarbageCollectDeltaSnapshots(snapStream)
+					total += numDeletedSnapshots
 					if err != nil {
 						continue
 					}
@@ -164,8 +168,9 @@ func (ssr *Snapshotter) RunGarbageCollector(stopCh <-chan struct{}) {
 				// Delete delta snapshots in all snapStream but the latest one.
 				// Delete all snapshots beyond limit set by ssr.maxBackups.
 				for fullSnapshotIndex := 0; fullSnapshotIndex < len(fullSnapshotIndexList)-1; fullSnapshotIndex++ {
-					deletedSnap, err := ssr.GarbageCollectDeltaSnapshots(snapList[fullSnapshotIndexList[fullSnapshotIndex]:fullSnapshotIndexList[fullSnapshotIndex+1]])
-					total += deletedSnap
+					snapStream := snapList[fullSnapshotIndexList[fullSnapshotIndex]:fullSnapshotIndexList[fullSnapshotIndex+1]]
+					numDeletedSnapshots, err := ssr.GarbageCollectDeltaSnapshots(snapStream)
+					total += numDeletedSnapshots
 					if err != nil {
 						continue
 					}
@@ -270,7 +275,7 @@ func (ssr *Snapshotter) GarbageCollectDeltaSnapshots(snapStream brtypes.SnapList
 				metrics.SnapshotterOperationFailure.With(prometheus.Labels{metrics.LabelError: err.Error()}).Inc()
 				metrics.GCSnapshotCounter.With(prometheus.Labels{metrics.LabelKind: brtypes.SnapshotKindDelta, metrics.LabelSucceeded: metrics.ValueSucceededFalse}).Inc()
 				finalError = errors.Join(finalError, err)
-				if errorCount == errorThreshold {
+				if errorCount == ErrorThreshold {
 					return totalDeleted, finalError
 				}
 			} else { 

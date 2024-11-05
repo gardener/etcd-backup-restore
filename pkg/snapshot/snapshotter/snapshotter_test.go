@@ -576,8 +576,7 @@ var _ = Describe("Snapshotter", func() {
 						Expect(err).ShouldNot(HaveOccurred())
 
 
-						// Threshold is set as 5
-						for i := len(list)-3 ; i > len(list)-9 ; i-- { // 5 snapshots from the list of snapshots to be deleted, are removed before passing it to the function ssr.GarbageCollectDeltaSnapshots. This will cause an error when the function tries to delete them.
+						for i := len(list)-3 ; i > len(list)- 3 - ErrorThreshold-1 ; i-- { // 5 snapshots from the list of snapshots to be deleted, are removed before passing it to the function ssr.GarbageCollectDeltaSnapshots. This will cause an error when the function tries to delete them.
 							err = os.Remove(path.Join(list[i].Prefix, list[i].SnapName))
 							Expect(err).ShouldNot(HaveOccurred())
 						}
