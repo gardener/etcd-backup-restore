@@ -604,30 +604,32 @@ func GetAdvertiseClientURLs(configFile string) ([]string, error) {
 	return clientURLs, nil
 }
 
-// IsPeerURLTLSEnabled checks whether the peer address is TLS enabled or not.
+// IsPeerURLTLSEnabled checks whether all peer URLs are TLS-enabled (i.e., use the "https" scheme).
 func IsPeerURLTLSEnabled() (bool, error) {
 	memberPeerURLs, err := GetInitialAdvertisePeerURLs(GetConfigFilePath())
 	if err != nil {
 		return false, fmt.Errorf("failed to get initial advertise peer URLs: %w", err)
 	}
 
-	peerURLsSchemes := make([]string, 0)
+	peerURLSchemes := make(map[string]bool)
 	for _, peerURL := range memberPeerURLs {
 		parsedPeerURL, err := url.Parse(peerURL)
 		if err != nil {
 			return false, fmt.Errorf("failed to parse peer URL %s: %w", peerURL, err)
 		}
-		peerURLsSchemes = append(peerURLsSchemes, parsedPeerURL.Scheme)
+		peerURLSchemes[parsedPeerURL.Scheme] = true
 	}
 
-	sort.Strings(peerURLsSchemes)
-
-	if peerURLsSchemes[0] != peerURLsSchemes[len(peerURLsSchemes)-1] {
+	// Check for mixed schemes
+	if len(peerURLSchemes) > 1 {
 		return false, fmt.Errorf("peer URLs have different schemes")
 	}
-	if peerURLsSchemes[0] == https {
+
+	// Check if the single scheme is "https"
+	if _, isTLSEnabled := peerURLSchemes[https]; isTLSEnabled {
 		return true, nil
 	}
+
 	return false, nil
 }
 
