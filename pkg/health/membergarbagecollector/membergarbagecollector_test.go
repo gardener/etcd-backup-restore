@@ -14,15 +14,15 @@ import (
 	"go.etcd.io/etcd/etcdserver/etcdserverpb"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	"github.com/golang/mock/gomock"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"go.uber.org/mock/gomock"
 
 	appsv1 "k8s.io/api/apps/v1"
 	coordv1 "k8s.io/api/coordination/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/utils/pointer"
+	"k8s.io/utils/ptr"
 )
 
 var _ = Describe("Membergarbagecollector", func() {
@@ -226,7 +226,7 @@ func getStsWithName(name string, replicas int32) *appsv1.StatefulSet {
 			Namespace: os.Getenv("POD_NAMESPACE"),
 		},
 		Spec: appsv1.StatefulSetSpec{
-			Replicas: pointer.Int32Ptr(replicas),
+			Replicas: ptr.To(int32(replicas)),
 		},
 		Status: appsv1.StatefulSetStatus{
 			Replicas: replicas,

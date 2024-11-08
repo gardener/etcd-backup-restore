@@ -31,11 +31,11 @@ import (
 	"go.etcd.io/etcd/etcdserver/api/v3rpc/rpctypes"
 	"go.etcd.io/etcd/etcdserver/etcdserverpb"
 	"go.etcd.io/etcd/pkg/types"
-	"gopkg.in/yaml.v2"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/util/retry"
-	"k8s.io/utils/pointer"
+	"k8s.io/utils/ptr"
+	"sigs.k8s.io/yaml"
 
 	appsv1 "k8s.io/api/apps/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -442,11 +442,11 @@ func GetInitialClusterStateIfScaleup(ctx context.Context, logger logrus.Entry, c
 	}
 
 	if IsAnnotationPresent(etcdSts, ScaledToMultiNodeAnnotationKey) {
-		return pointer.StringPtr(ClusterStateExisting), nil
+		return ptr.To(ClusterStateExisting), nil
 	}
 
 	if *etcdSts.Spec.Replicas > 1 && *etcdSts.Spec.Replicas > etcdSts.Status.UpdatedReplicas {
-		return pointer.StringPtr(ClusterStateExisting), nil
+		return ptr.To(ClusterStateExisting), nil
 	}
 	return nil, nil
 }

@@ -1,3 +1,4 @@
+//go:build tools
 // +build tools
 
 // SPDX-FileCopyrightText: 2024 SAP SE or an SAP affiliate company and Gardener contributors
@@ -8,5 +9,5 @@
 package tools
 
 import (
-	_ "github.com/golang/mock/mockgen/model"
+	_ "go.uber.org/mock/mockgen/model"
 )

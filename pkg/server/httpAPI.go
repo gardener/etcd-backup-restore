@@ -30,12 +30,12 @@ import (
 	"github.com/gardener/etcd-backup-restore/pkg/snapshot/snapshotter"
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
-	"github.com/ghodss/yaml"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/sirupsen/logrus"
 	"go.etcd.io/etcd/clientv3"
 	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/yaml"
 )
 
 const (
