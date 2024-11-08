@@ -63,8 +63,8 @@ const (
 )
 
 type advertiseURLsConfig struct {
-	AdvertiseClientURLs      map[string][]string `yaml:"advertise-client-urls"`
-	InitialAdvertisePeerURLs map[string][]string `yaml:"initial-advertise-peer-urls"`
+	AdvertiseClientURLs      map[string][]string `json:"advertise-client-urls"`
+	InitialAdvertisePeerURLs map[string][]string `json:"initial-advertise-peer-urls"`
 }
 
 // GetLatestFullSnapshotAndDeltaSnapList returns the latest snapshot
@@ -554,8 +554,8 @@ func parseAdvertiseURLsConfig(configFile string) (*advertiseURLsConfig, error) {
 	return &advURLsConfig, nil
 }
 
-// GetInitialAdvertisePeerURLs retrieves the initial advertise peer URLs for the etcd member using the POD_NAME environment variable.
-func GetInitialAdvertisePeerURLs(configFile string) ([]string, error) {
+// GetMemberPeerURLs retrieves the initial advertise peer URLs for the etcd member using the POD_NAME environment variable.
+func GetMemberPeerURLs(configFile string) ([]string, error) {
 	memberName, err := GetEnvVarOrError("POD_NAME")
 	if err != nil {
 		return nil, err
@@ -579,8 +579,8 @@ func GetInitialAdvertisePeerURLs(configFile string) ([]string, error) {
 	return peerURLs, nil
 }
 
-// GetAdvertiseClientURLs retrieves the advertise client URLs for the etcd member using the POD_NAME environment variable.
-func GetAdvertiseClientURLs(configFile string) ([]string, error) {
+// GetMemberClientURLs retrieves the advertise client URLs for the etcd member using the POD_NAME environment variable.
+func GetMemberClientURLs(configFile string) ([]string, error) {
 	memberName, err := GetEnvVarOrError("POD_NAME")
 	if err != nil {
 		return nil, err
@@ -606,7 +606,7 @@ func GetAdvertiseClientURLs(configFile string) ([]string, error) {
 
 // IsPeerURLTLSEnabled checks whether all peer URLs are TLS-enabled (i.e., use the "https" scheme).
 func IsPeerURLTLSEnabled() (bool, error) {
-	memberPeerURLs, err := GetInitialAdvertisePeerURLs(GetConfigFilePath())
+	memberPeerURLs, err := GetMemberPeerURLs(GetConfigFilePath())
 	if err != nil {
 		return false, fmt.Errorf("failed to get initial advertise peer URLs: %w", err)
 	}

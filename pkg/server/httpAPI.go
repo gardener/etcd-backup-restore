@@ -429,7 +429,7 @@ func (h *HTTPHandler) serveConfig(rw http.ResponseWriter, req *http.Request) {
 	config["name"] = podName
 
 	// fetch initial-advertise-peer-urls from etcd config file
-	initAdPeerURLs, err := miscellaneous.GetInitialAdvertisePeerURLs(inputFileName)
+	initAdPeerURLs, err := miscellaneous.GetMemberPeerURLs(inputFileName)
 	if err != nil {
 		h.Logger.Warnf("Unable to get initial-advertise-peer-urls from etcd config file: %v", err)
 		rw.WriteHeader(http.StatusInternalServerError)
@@ -438,7 +438,7 @@ func (h *HTTPHandler) serveConfig(rw http.ResponseWriter, req *http.Request) {
 	config["initial-advertise-peer-urls"] = strings.Join(initAdPeerURLs, ",")
 
 	// fetch advertise-client-urls from etcd config file
-	advClientURLs, err := miscellaneous.GetAdvertiseClientURLs(inputFileName)
+	advClientURLs, err := miscellaneous.GetMemberClientURLs(inputFileName)
 	if err != nil {
 		h.Logger.Warnf("Unable to get advertise-client-urls from etcd config file: %v", err)
 		rw.WriteHeader(http.StatusInternalServerError)

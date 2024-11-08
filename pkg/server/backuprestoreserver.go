@@ -571,7 +571,7 @@ func handleSsrStopRequest(ctx context.Context, handler *HTTPHandler, _ *snapshot
 }
 
 func hasPeerURLChanged(ctx context.Context, m member.Control, cli client.ClusterCloser) (bool, error) {
-	peerURLsFromEtcdConfig, err := miscellaneous.GetInitialAdvertisePeerURLs(miscellaneous.GetConfigFilePath())
+	peerURLsFromEtcdConfig, err := miscellaneous.GetMemberPeerURLs(miscellaneous.GetConfigFilePath())
 	if err != nil {
 		return false, fmt.Errorf("failed to get initial advertise peer URLs: %w", err)
 	}

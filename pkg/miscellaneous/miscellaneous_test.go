@@ -598,8 +598,8 @@ var _ = Describe("Miscellaneous Tests", func() {
 					_, err := function(configFile)
 					Expect(err).To(HaveOccurred())
 				},
-				Entry("GetInitialAdvertisePeerURLs", "initial-advertise-peer-urls", GetInitialAdvertisePeerURLs),
-				Entry("GetAdvertiseClientURLs", "advertise-client-urls", GetAdvertiseClientURLs),
+				Entry("GetMemberPeerURLs", "initial-advertise-peer-urls", GetMemberPeerURLs),
+				Entry("GetMemberClientURLs", "advertise-client-urls", GetMemberClientURLs),
 			)
 		})
 
@@ -618,8 +618,8 @@ var _ = Describe("Miscellaneous Tests", func() {
 						_, err := function(configFile)
 						Expect(err).To(HaveOccurred())
 					},
-					Entry("GetInitialAdvertisePeerURLs", "initial-advertise-peer-urls", GetInitialAdvertisePeerURLs),
-					Entry("GetAdvertiseClientURLs", "advertise-client-urls", GetAdvertiseClientURLs),
+					Entry("GetMemberPeerURLs", "initial-advertise-peer-urls", GetMemberPeerURLs),
+					Entry("GetMemberClientURLs", "advertise-client-urls", GetMemberClientURLs),
 				)
 			})
 
@@ -641,8 +641,8 @@ var _ = Describe("Miscellaneous Tests", func() {
 						_, err := function(configFile)
 						Expect(err).To(HaveOccurred())
 					},
-					Entry("GetInitialAdvertisePeerURLs", "initial-advertise-peer-urls", GetInitialAdvertisePeerURLs),
-					Entry("GetAdvertiseClientURLs", "advertise-client-urls", GetAdvertiseClientURLs),
+					Entry("GetMemberPeerURLs", "initial-advertise-peer-urls", GetMemberPeerURLs),
+					Entry("GetMemberClientURLs", "advertise-client-urls", GetMemberClientURLs),
 				)
 			})
 
@@ -669,8 +669,8 @@ var _ = Describe("Miscellaneous Tests", func() {
 							_, err := function(configFile)
 							Expect(err).To(HaveOccurred())
 						},
-						Entry("GetInitialAdvertisePeerURLs", "initial-advertise-peer-urls", GetInitialAdvertisePeerURLs),
-						Entry("GetAdvertiseClientURLs", "advertise-client-urls", GetAdvertiseClientURLs),
+						Entry("GetMemberPeerURLs", "initial-advertise-peer-urls", GetMemberPeerURLs),
+						Entry("GetMemberClientURLs", "advertise-client-urls", GetMemberClientURLs),
 					)
 				})
 
@@ -689,8 +689,8 @@ var _ = Describe("Miscellaneous Tests", func() {
 							_, err := function(configFile)
 							Expect(err).To(HaveOccurred())
 						},
-						Entry("GetInitialAdvertisePeerURLs", "initial-advertise-peer-urls", GetInitialAdvertisePeerURLs),
-						Entry("GetAdvertiseClientURLs", "advertise-client-urls", GetAdvertiseClientURLs),
+						Entry("GetMemberPeerURLs", "initial-advertise-peer-urls", GetMemberPeerURLs),
+						Entry("GetMemberClientURLs", "advertise-client-urls", GetMemberClientURLs),
 					)
 				})
 
@@ -710,8 +710,8 @@ var _ = Describe("Miscellaneous Tests", func() {
 								_, err := function(configFile)
 								Expect(err).To(HaveOccurred())
 							},
-							Entry("GetInitialAdvertisePeerURLs", "initial-advertise-peer-urls", GetInitialAdvertisePeerURLs),
-							Entry("GetAdvertiseClientURLs", "advertise-client-urls", GetAdvertiseClientURLs),
+							Entry("GetMemberPeerURLs", "initial-advertise-peer-urls", GetMemberPeerURLs),
+							Entry("GetMemberClientURLs", "advertise-client-urls", GetMemberClientURLs),
 						)
 					})
 
@@ -731,8 +731,8 @@ var _ = Describe("Miscellaneous Tests", func() {
 								Expect(err).To(Not(HaveOccurred()))
 								Expect(urls).To(Equal(podUrlsMap[podName]))
 							},
-							Entry("GetInitialAdvertisePeerURLs", "initial-advertise-peer-urls", GetInitialAdvertisePeerURLs),
-							Entry("GetAdvertiseClientURLs", "advertise-client-urls", GetAdvertiseClientURLs),
+							Entry("GetMemberPeerURLs", "initial-advertise-peer-urls", GetMemberPeerURLs),
+							Entry("GetMemberClientURLs", "advertise-client-urls", GetMemberClientURLs),
 						)
 					})
 				})

@@ -116,7 +116,7 @@ func NewMemberControl(etcdConnConfig *brtypes.EtcdConnectionConfig) Control {
 // AddMemberAsLearner add a member as a learner to the etcd cluster
 func (m *memberControl) AddMemberAsLearner(ctx context.Context) error {
 	//Add member as learner to cluster
-	memberPeerURLs, err := miscellaneous.GetInitialAdvertisePeerURLs(m.configFile)
+	memberPeerURLs, err := miscellaneous.GetMemberPeerURLs(m.configFile)
 	if err != nil {
 		m.logger.Fatalf("Error fetching etcd member URL : %v", err)
 	}
@@ -133,7 +133,7 @@ func (m *memberControl) AddMemberAsLearner(ctx context.Context) error {
 	response, err := cli.MemberAddAsLearner(memAddCtx, memberPeerURLs)
 	if err != nil {
 		if errors.Is(err, rpctypes.Error(rpctypes.ErrGRPCPeerURLExist)) || errors.Is(err, rpctypes.Error(rpctypes.ErrGRPCMemberExist)) {
-			m.logger.Infof("Member %s already part of etcd cluster", m.podName)
+			m.logger.Infof("Member %s with peer urls %v already part of etcd cluster", m.podName, memberPeerURLs)
 			return nil
 		} else if errors.Is(err, rpctypes.Error(rpctypes.ErrGRPCTooManyLearners)) {
 			m.logger.Infof("Unable to add member %s as a learner because the cluster already has a learner", m.podName)
@@ -205,7 +205,7 @@ func (m *memberControl) IsMemberInCluster(ctx context.Context) (bool, error) {
 func (m *memberControl) doUpdateMemberPeerAddress(ctx context.Context, cli etcdClient.ClusterCloser, id uint64) error {
 	// Already existing clusters or cluster after restoration have `http://localhost:2380` as the peer address. This needs to explicitly updated to the correct peer address.
 	m.logger.Infof("Updating member peer URL for %s", m.podName)
-	memberPeerURLs, err := miscellaneous.GetInitialAdvertisePeerURLs(m.configFile)
+	memberPeerURLs, err := miscellaneous.GetMemberPeerURLs(m.configFile)
 	if err != nil {
 		return fmt.Errorf("could not fetch member URL : %v", err)
 	}
