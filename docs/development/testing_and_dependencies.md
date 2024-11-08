@@ -42,7 +42,8 @@ make integration-test-cluster
 :warning: Prerequisite for this command is to set the following environment variables:
 
 - INTEGRATION_TEST_KUBECONFIG: kubeconfig to the cluster on which you wish to run the test
-- ETCD_VERSION: optional, defaults to `v3.4.13-bootstrap-1`
+<!-- TODO: change the etcd wrapper version to a newer version which spawns etcd v3.4.34 -->
+- ETCD_WRAPPER_VERSION: optional, defaults to `v0.2.0`
 - ETCDBR_VERSION: optional, defaults to `v0.12.1`
 - ACCESS_KEY_ID: S3 credentials
 - SECRET_ACCESS_KEY: S3 credentials

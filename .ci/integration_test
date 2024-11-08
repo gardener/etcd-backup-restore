@@ -70,7 +70,7 @@ function setup_ginkgo() {
 
 function setup_etcd(){
   echo "Downloading and installing etcd..."
-  export ETCD_VER=v3.4.13
+  export ETCD_VER=v3.4.34
   if [[ $(uname) == 'Darwin' ]]; then
     curl -L https://storage.googleapis.com/etcd/${ETCD_VER}/etcd-${ETCD_VER}-darwin-amd64.zip -o etcd-${ETCD_VER}-darwin-amd64.zip
     unzip etcd-${ETCD_VER}-darwin-amd64.zip > /dev/null
@@ -307,11 +307,12 @@ function run_test_on_cluster() {
     setup-aws-infrastructure
   fi
 
-  export ETCD_VERSION=${ETCD_VERSION:-"v3.4.13-bootstrap-1"}
-  echo "Etcd version: ${ETCD_VERSION}"
+  # TODO: change the etcd wrapper version to a newer version which spawns etcd v3.4.34
+  export ETCD_WRAPPER_VERSION=${ETCD_WRAPPER_VERSION:-"v0.2.0"}
+  echo "etcd-wrapper version: ${ETCD_WRAPPER_VERSION}"
 
   export ETCDBR_VERSION=${ETCDBR_VERSION:-${ETCDBR_VER:-"v0.12.1"}}
-  echo "Etcd-backup-restore version: ${ETCDBR_VERSION}"
+  echo "etcd-backup-restore version: ${ETCDBR_VERSION}"
 
   echo "Starting integration tests on k8s cluster."
 

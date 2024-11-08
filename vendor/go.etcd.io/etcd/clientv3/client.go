@@ -18,55 +18,29 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net"
-	"os"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/google/uuid"
-	"go.etcd.io/etcd/clientv3/balancer"
-	"go.etcd.io/etcd/clientv3/balancer/picker"
-	"go.etcd.io/etcd/clientv3/balancer/resolver/endpoint"
-	"go.etcd.io/etcd/clientv3/credentials"
-	"go.etcd.io/etcd/etcdserver/api/v3rpc/rpctypes"
-	"go.etcd.io/etcd/pkg/logutil"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	grpccredentials "google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/keepalive"
 	"google.golang.org/grpc/status"
+
+	"go.etcd.io/etcd/clientv3/credentials"
+	"go.etcd.io/etcd/clientv3/internal/endpoint"
+	"go.etcd.io/etcd/clientv3/internal/resolver"
+	"go.etcd.io/etcd/etcdserver/api/v3rpc/rpctypes"
+	"go.etcd.io/etcd/pkg/logutil"
 )
 
 var (
 	ErrNoAvailableEndpoints = errors.New("etcdclient: no available endpoints")
 	ErrOldCluster           = errors.New("etcdclient: old cluster version")
-
-	roundRobinBalancerName = fmt.Sprintf("etcd-%s", picker.RoundrobinBalanced.String())
 )
-
-func init() {
-	lg := zap.NewNop()
-	if os.Getenv("ETCD_CLIENT_DEBUG") != "" {
-		lcfg := logutil.DefaultZapLoggerConfig
-		lcfg.Level = zap.NewAtomicLevelAt(zap.DebugLevel)
-
-		var err error
-		lg, err = lcfg.Build() // info level logging
-		if err != nil {
-			panic(err)
-		}
-	}
-
-	// TODO: support custom balancer
-	balancer.RegisterBuilder(balancer.Config{
-		Policy: picker.RoundrobinBalanced,
-		Name:   roundRobinBalancerName,
-		Logger: lg,
-	})
-}
 
 // Client provides and manages an etcd v3 client session.
 type Client struct {
@@ -79,10 +53,12 @@ type Client struct {
 
 	conn *grpc.ClientConn
 
-	cfg           Config
-	creds         grpccredentials.TransportCredentials
-	resolverGroup *endpoint.ResolverGroup
-	mu            *sync.RWMutex
+	cfg      Config
+	creds    grpccredentials.TransportCredentials
+	resolver *resolver.EtcdManualResolver
+
+	epMu      *sync.RWMutex
+	endpoints []string
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -95,7 +71,8 @@ type Client struct {
 
 	callOpts []grpc.CallOption
 
-	lg *zap.Logger
+	lgMu *sync.RWMutex
+	lg   *zap.Logger
 }
 
 // New creates a new etcdv3 client from a given configuration.
@@ -112,7 +89,7 @@ func New(cfg Config) (*Client, error) {
 // service interface implementations and do not need connection management.
 func NewCtxClient(ctx context.Context) *Client {
 	cctx, cancel := context.WithCancel(ctx)
-	return &Client{ctx: cctx, cancel: cancel}
+	return &Client{ctx: cctx, cancel: cancel, lgMu: new(sync.RWMutex), epMu: new(sync.RWMutex), lg: zap.NewNop()}
 }
 
 // NewFromURL creates a new etcdv3 client from a URL.
@@ -125,6 +102,23 @@ func NewFromURLs(urls []string) (*Client, error) {
 	return New(Config{Endpoints: urls})
 }
 
+// WithLogger sets a logger
+func (c *Client) WithLogger(lg *zap.Logger) *Client {
+	c.lgMu.Lock()
+	c.lg = lg
+	c.lgMu.Unlock()
+	return c
+}
+
+// GetLogger gets the logger.
+// NOTE: This method is for internal use of etcd-client library and should not be used as general-purpose logger.
+func (c *Client) GetLogger() *zap.Logger {
+	c.lgMu.RLock()
+	l := c.lg
+	c.lgMu.RUnlock()
+	return l
+}
+
 // Close shuts down the client's etcd connections.
 func (c *Client) Close() error {
 	c.cancel()
@@ -133,9 +127,6 @@ func (c *Client) Close() error {
 	}
 	if c.Lease != nil {
 		c.Lease.Close()
-	}
-	if c.resolverGroup != nil {
-		c.resolverGroup.Close()
 	}
 	if c.conn != nil {
 		return toErr(c.ctx, c.conn.Close())
@@ -151,19 +142,20 @@ func (c *Client) Ctx() context.Context { return c.ctx }
 // Endpoints lists the registered endpoints for the client.
 func (c *Client) Endpoints() []string {
 	// copy the slice; protect original endpoints from being changed
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	eps := make([]string, len(c.cfg.Endpoints))
-	copy(eps, c.cfg.Endpoints)
+	c.epMu.RLock()
+	defer c.epMu.RUnlock()
+	eps := make([]string, len(c.endpoints))
+	copy(eps, c.endpoints)
 	return eps
 }
 
 // SetEndpoints updates client's endpoints.
 func (c *Client) SetEndpoints(eps ...string) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.cfg.Endpoints = eps
-	c.resolverGroup.SetEndpoints(eps)
+	c.epMu.Lock()
+	defer c.epMu.Unlock()
+	c.endpoints = eps
+
+	c.resolver.SetEndpoints(eps)
 }
 
 // Sync synchronizes client's endpoints with the known endpoints from the etcd membership.
@@ -174,7 +166,9 @@ func (c *Client) Sync(ctx context.Context) error {
 	}
 	var eps []string
 	for _, m := range mresp.Members {
-		eps = append(eps, m.ClientURLs...)
+		if len(m.Name) != 0 && !m.IsLearner {
+			eps = append(eps, m.ClientURLs...)
+		}
 	}
 	c.SetEndpoints(eps...)
 	return nil
@@ -194,27 +188,10 @@ func (c *Client) autoSync() {
 			err := c.Sync(ctx)
 			cancel()
 			if err != nil && err != c.ctx.Err() {
-				lg.Lvl(4).Infof("Auto sync endpoints failed: %v", err)
+				c.lg.Info("Auto sync endpoints failed.", zap.Error(err))
 			}
 		}
 	}
-}
-
-func (c *Client) processCreds(scheme string) (creds grpccredentials.TransportCredentials) {
-	creds = c.creds
-	switch scheme {
-	case "unix":
-	case "http":
-		creds = nil
-	case "https", "unixs":
-		if creds != nil {
-			break
-		}
-		creds = credentials.NewBundle(credentials.Config{}).TransportCredentials()
-	default:
-		creds = nil
-	}
-	return creds
 }
 
 // dialSetupOpts gives the dial opts prior to any authentication.
@@ -229,28 +206,36 @@ func (c *Client) dialSetupOpts(creds grpccredentials.TransportCredentials, dopts
 	}
 	opts = append(opts, dopts...)
 
-	dialer := endpoint.Dialer
 	if creds != nil {
 		opts = append(opts, grpc.WithTransportCredentials(creds))
-		// gRPC load balancer workaround. See credentials.transportCredential for details.
-		if credsDialer, ok := creds.(TransportCredentialsWithDialer); ok {
-			dialer = credsDialer.Dialer
-		}
 	} else {
 		opts = append(opts, grpc.WithInsecure())
 	}
-	opts = append(opts, grpc.WithContextDialer(dialer))
+
+	unaryMaxRetries := defaultUnaryMaxRetries
+	if c.cfg.MaxUnaryRetries > 0 {
+		unaryMaxRetries = c.cfg.MaxUnaryRetries
+	}
+
+	backoffWaitBetween := defaultBackoffWaitBetween
+	if c.cfg.BackoffWaitBetween > 0 {
+		backoffWaitBetween = c.cfg.BackoffWaitBetween
+	}
+
+	backoffJitterFraction := defaultBackoffJitterFraction
+	if c.cfg.BackoffJitterFraction > 0 {
+		backoffJitterFraction = c.cfg.BackoffJitterFraction
+	}
 
 	// Interceptor retry and backoff.
-	// TODO: Replace all of clientv3/retry.go with interceptor based retry, or with
-	// https://github.com/grpc/proposal/blob/master/A6-client-retries.md#retry-policy
-	// once it is available.
-	rrBackoff := withBackoff(c.roundRobinQuorumBackoff(defaultBackoffWaitBetween, defaultBackoffJitterFraction))
+	// TODO: Replace all of clientv3/retry.go with RetryPolicy:
+	// https://github.com/grpc/grpc-proto/blob/cdd9ed5c3d3f87aef62f373b93361cf7bddc620d/grpc/service_config/service_config.proto#L130
+	rrBackoff := withBackoff(c.roundRobinQuorumBackoff(backoffWaitBetween, backoffJitterFraction))
 	opts = append(opts,
 		// Disable stream retry by default since go-grpc-middleware/retry does not support client streams.
 		// Streams that are safe to retry are enabled individually.
 		grpc.WithStreamInterceptor(c.streamClientInterceptor(c.lg, withMax(0), rrBackoff)),
-		grpc.WithUnaryInterceptor(c.unaryClientInterceptor(c.lg, withMax(defaultUnaryMaxRetries), rrBackoff)),
+		grpc.WithUnaryInterceptor(c.unaryClientInterceptor(c.lg, withMax(unaryMaxRetries), rrBackoff)),
 	)
 
 	return opts, nil
@@ -258,94 +243,48 @@ func (c *Client) dialSetupOpts(creds grpccredentials.TransportCredentials, dopts
 
 // Dial connects to a single endpoint using the client's config.
 func (c *Client) Dial(ep string) (*grpc.ClientConn, error) {
-	creds, err := c.directDialCreds(ep)
-	if err != nil {
-		return nil, err
-	}
-	// Use the grpc passthrough resolver to directly dial a single endpoint.
-	// This resolver passes through the 'unix' and 'unixs' endpoints schemes used
-	// by etcd without modification, allowing us to directly dial endpoints and
-	// using the same dial functions that we use for load balancer dialing.
-	return c.dial(fmt.Sprintf("passthrough:///%s", ep), creds)
+	creds := c.credentialsForEndpoint(ep)
+
+	// Using ad-hoc created resolver, to guarantee only explicitly given
+	// endpoint is used.
+	return c.dial(creds, grpc.WithResolvers(resolver.New(ep)))
 }
 
 func (c *Client) getToken(ctx context.Context) error {
 	var err error // return last error in a case of fail
-	var auth *authenticator
 
-	eps := c.Endpoints()
-	for _, ep := range eps {
-		// use dial options without dopts to avoid reusing the client balancer
-		var dOpts []grpc.DialOption
-		_, host, _ := endpoint.ParseEndpoint(ep)
-		target := c.resolverGroup.Target(host)
-		creds := c.dialWithBalancerCreds(ep)
-		dOpts, err = c.dialSetupOpts(creds, c.cfg.DialOptions...)
-		if err != nil {
-			err = fmt.Errorf("failed to configure auth dialer: %v", err)
-			continue
-		}
-		dOpts = append(dOpts, grpc.WithBalancerName(roundRobinBalancerName))
-		auth, err = newAuthenticator(ctx, target, dOpts, c)
-		if err != nil {
-			continue
-		}
-		defer auth.close()
-
-		var resp *AuthenticateResponse
-		resp, err = auth.authenticate(ctx, c.Username, c.Password)
-		if err != nil {
-			// return err without retrying other endpoints
-			if err == rpctypes.ErrAuthNotEnabled {
-				return err
-			}
-			continue
-		}
-
-		c.authTokenBundle.UpdateAuthToken(resp.Token)
+	if c.Username == "" || c.Password == "" {
 		return nil
 	}
 
-	return err
+	resp, err := c.Auth.Authenticate(ctx, c.Username, c.Password)
+	if err != nil {
+		if err == rpctypes.ErrAuthNotEnabled {
+			return nil
+		}
+		return err
+	}
+	c.authTokenBundle.UpdateAuthToken(resp.Token)
+	return nil
 }
 
 // dialWithBalancer dials the client's current load balanced resolver group.  The scheme of the host
 // of the provided endpoint determines the scheme used for all endpoints of the client connection.
-func (c *Client) dialWithBalancer(ep string, dopts ...grpc.DialOption) (*grpc.ClientConn, error) {
-	_, host, _ := endpoint.ParseEndpoint(ep)
-	target := c.resolverGroup.Target(host)
-	creds := c.dialWithBalancerCreds(ep)
-	return c.dial(target, creds, dopts...)
+func (c *Client) dialWithBalancer(dopts ...grpc.DialOption) (*grpc.ClientConn, error) {
+	creds := c.credentialsForEndpoint(c.Endpoints()[0])
+	opts := append(dopts, grpc.WithResolvers(c.resolver))
+	return c.dial(creds, opts...)
 }
 
 // dial configures and dials any grpc balancer target.
-func (c *Client) dial(target string, creds grpccredentials.TransportCredentials, dopts ...grpc.DialOption) (*grpc.ClientConn, error) {
+func (c *Client) dial(creds grpccredentials.TransportCredentials, dopts ...grpc.DialOption) (*grpc.ClientConn, error) {
 	opts, err := c.dialSetupOpts(creds, dopts...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to configure dialer: %v", err)
 	}
-
 	if c.Username != "" && c.Password != "" {
 		c.authTokenBundle = credentials.NewBundle(credentials.Config{})
-
-		ctx, cancel := c.ctx, func() {}
-		if c.cfg.DialTimeout > 0 {
-			ctx, cancel = context.WithTimeout(ctx, c.cfg.DialTimeout)
-		}
-
-		err = c.getToken(ctx)
-		if err != nil {
-			if toErr(ctx, err) != rpctypes.ErrAuthNotEnabled {
-				if err == ctx.Err() && ctx.Err() != c.ctx.Err() {
-					err = context.DeadlineExceeded
-				}
-				cancel()
-				return nil, err
-			}
-		} else {
-			opts = append(opts, grpc.WithPerRPCCredentials(c.authTokenBundle.PerRPCCredentials()))
-		}
-		cancel()
+		opts = append(opts, grpc.WithPerRPCCredentials(c.authTokenBundle.PerRPCCredentials()))
 	}
 
 	opts = append(opts, c.cfg.DialOptions...)
@@ -357,6 +296,7 @@ func (c *Client) dial(target string, creds grpccredentials.TransportCredentials,
 		defer cancel() // TODO: Is this right for cases where grpc.WithBlock() is not set on the dial options?
 	}
 
+	target := fmt.Sprintf("%s://%p/%s", resolver.Schema, c, authority(c.Endpoints()[0]))
 	conn, err := grpc.DialContext(dctx, target, opts...)
 	if err != nil {
 		return nil, err
@@ -364,36 +304,35 @@ func (c *Client) dial(target string, creds grpccredentials.TransportCredentials,
 	return conn, nil
 }
 
-func (c *Client) directDialCreds(ep string) (grpccredentials.TransportCredentials, error) {
-	_, host, scheme := endpoint.ParseEndpoint(ep)
-	creds := c.creds
-	if len(scheme) != 0 {
-		creds = c.processCreds(scheme)
-		if creds != nil {
-			clone := creds.Clone()
-			// Set the server name must to the endpoint hostname without port since grpc
-			// otherwise attempts to check if x509 cert is valid for the full endpoint
-			// including the scheme and port, which fails.
-			overrideServerName, _, err := net.SplitHostPort(host)
-			if err != nil {
-				// Either the host didn't have a port or the host could not be parsed. Either way, continue with the
-				// original host string.
-				overrideServerName = host
-			}
-			clone.OverrideServerName(overrideServerName)
-			creds = clone
+func authority(endpoint string) string {
+	spl := strings.SplitN(endpoint, "://", 2)
+	if len(spl) < 2 {
+		if strings.HasPrefix(endpoint, "unix:") {
+			return endpoint[len("unix:"):]
 		}
+		if strings.HasPrefix(endpoint, "unixs:") {
+			return endpoint[len("unixs:"):]
+		}
+		return endpoint
 	}
-	return creds, nil
+	return spl[1]
 }
 
-func (c *Client) dialWithBalancerCreds(ep string) grpccredentials.TransportCredentials {
-	_, _, scheme := endpoint.ParseEndpoint(ep)
-	creds := c.creds
-	if len(scheme) != 0 {
-		creds = c.processCreds(scheme)
+func (c *Client) credentialsForEndpoint(ep string) grpccredentials.TransportCredentials {
+	r := endpoint.RequiresCredentials(ep)
+	switch r {
+	case endpoint.CREDS_DROP:
+		return nil
+	case endpoint.CREDS_OPTIONAL:
+		return c.creds
+	case endpoint.CREDS_REQUIRE:
+		if c.creds != nil {
+			return c.creds
+		}
+		return credentials.NewBundle(credentials.Config{}).TransportCredentials()
+	default:
+		panic(fmt.Errorf("Unsupported CredsRequirement: %v", r))
 	}
-	return creds
 }
 
 func newClient(cfg *Config) (*Client, error) {
@@ -418,8 +357,9 @@ func newClient(cfg *Config) (*Client, error) {
 		creds:    creds,
 		ctx:      ctx,
 		cancel:   cancel,
-		mu:       new(sync.RWMutex),
+		epMu:     new(sync.RWMutex),
 		callOpts: defaultCallOpts,
+		lgMu:     new(sync.RWMutex),
 	}
 
 	lcfg := logutil.DefaultZapLoggerConfig
@@ -454,30 +394,22 @@ func newClient(cfg *Config) (*Client, error) {
 		client.callOpts = callOpts
 	}
 
-	// Prepare a 'endpoint://<unique-client-id>/' resolver for the client and create a endpoint target to pass
-	// to dial so the client knows to use this resolver.
-	client.resolverGroup, err = endpoint.NewResolverGroup(fmt.Sprintf("client-%s", uuid.New().String()))
-	if err != nil {
-		client.cancel()
-		return nil, err
-	}
-	client.resolverGroup.SetEndpoints(cfg.Endpoints)
+	client.resolver = resolver.New(cfg.Endpoints...)
 
 	if len(cfg.Endpoints) < 1 {
 		return nil, fmt.Errorf("at least one Endpoint must is required in client config")
 	}
-	dialEndpoint := cfg.Endpoints[0]
+	client.SetEndpoints(cfg.Endpoints...)
 
 	// Use a provided endpoint target so that for https:// without any tls config given, then
 	// grpc will assume the certificate server name is the endpoint host.
-	conn, err := client.dialWithBalancer(dialEndpoint, grpc.WithBalancerName(roundRobinBalancerName))
+	conn, err := client.dialWithBalancer()
 	if err != nil {
 		client.cancel()
-		client.resolverGroup.Close()
+		client.resolver.Close()
+		// TODO: Error like `fmt.Errorf(dialing [%s] failed: %v, strings.Join(cfg.Endpoints, ";"), err)` would help with debugging a lot.
 		return nil, err
 	}
-	// TODO: With the old grpc balancer interface, we waited until the dial timeout
-	// for the balancer to be ready. Is there an equivalent wait we should do with the new grpc balancer interface?
 	client.conn = conn
 
 	client.Cluster = NewCluster(client)
@@ -486,6 +418,20 @@ func newClient(cfg *Config) (*Client, error) {
 	client.Watcher = NewWatcher(client)
 	client.Auth = NewAuth(client)
 	client.Maintenance = NewMaintenance(client)
+
+	//get token with established connection
+	ctx, cancel = client.ctx, func() {}
+	if client.cfg.DialTimeout > 0 {
+		ctx, cancel = context.WithTimeout(ctx, client.cfg.DialTimeout)
+	}
+	err = client.getToken(ctx)
+	if err != nil {
+		client.Close()
+		cancel()
+		//TODO: Consider fmt.Errorf("communicating with [%s] failed: %v", strings.Join(cfg.Endpoints, ";"), err)
+		return nil, err
+	}
+	cancel()
 
 	if cfg.RejectOldCluster {
 		if err := client.checkVersion(); err != nil {
@@ -548,7 +494,7 @@ func (c *Client) checkVersion() (err error) {
 					return
 				}
 			}
-			if maj < 3 || (maj == 3 && min < 2) {
+			if maj < 3 || (maj == 3 && min < 3) {
 				rerr = ErrOldCluster
 			}
 			errc <- rerr
@@ -556,7 +502,7 @@ func (c *Client) checkVersion() (err error) {
 	}
 	// wait for success
 	for range eps {
-		if err = <-errc; err == nil {
+		if err = <-errc; err != nil {
 			break
 		}
 	}
@@ -655,10 +601,4 @@ func IsConnCanceled(err error) bool {
 
 	// <= gRPC v1.7.x returns 'errors.New("grpc: the client connection is closing")'
 	return strings.Contains(err.Error(), "grpc: the client connection is closing")
-}
-
-// TransportCredentialsWithDialer is for a gRPC load balancer workaround. See credentials.transportCredential for details.
-type TransportCredentialsWithDialer interface {
-	grpccredentials.TransportCredentials
-	Dialer(ctx context.Context, dialEp string) (net.Conn, error)
 }

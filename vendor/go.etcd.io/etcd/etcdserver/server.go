@@ -25,6 +25,7 @@ import (
 	"os"
 	"path"
 	"regexp"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -258,10 +259,6 @@ type EtcdServer struct {
 	peerRt   http.RoundTripper
 	reqIDGen *idutil.Generator
 
-	// forceVersionC is used to force the version monitor loop
-	// to detect the cluster version immediately.
-	forceVersionC chan struct{}
-
 	// wgMu blocks concurrent waitgroup mutation while server stopping
 	wgMu sync.RWMutex
 	// wg is used to wait for the go routines that depends on the server state
@@ -275,6 +272,9 @@ type EtcdServer struct {
 
 	leadTimeMu      sync.RWMutex
 	leadElectedTime time.Time
+
+	firstCommitInTermMu sync.RWMutex
+	firstCommitInTermC  chan struct{}
 
 	*AccessController
 }
@@ -323,6 +323,17 @@ func NewServer(cfg ServerConfig) (srv *EtcdServer, err error) {
 			plog.Fatalf("create snapshot directory error: %v", err)
 		}
 	}
+
+	if err = fileutil.RemoveMatchFile(cfg.Logger, cfg.SnapDir(), func(fileName string) bool {
+		return strings.HasPrefix(fileName, "tmp")
+	}); err != nil {
+		cfg.Logger.Error(
+			"failed to remove temp file(s) in snapshot directory",
+			zap.String("path", cfg.SnapDir()),
+			zap.Error(err),
+		)
+	}
+
 	ss := snap.New(cfg.Logger, cfg.SnapDir())
 
 	bepath := cfg.backendPath()
@@ -330,7 +341,7 @@ func NewServer(cfg ServerConfig) (srv *EtcdServer, err error) {
 	be := openBackend(cfg)
 
 	defer func() {
-		if err != nil {
+		if be != nil && err != nil {
 			be.Close()
 		}
 	}()
@@ -349,18 +360,18 @@ func NewServer(cfg ServerConfig) (srv *EtcdServer, err error) {
 		if err = cfg.VerifyJoinExisting(); err != nil {
 			return nil, err
 		}
-		cl, err = membership.NewClusterFromURLsMap(cfg.Logger, cfg.InitialClusterToken, cfg.InitialPeerURLsMap)
+		cl, err = membership.NewClusterFromURLsMap(cfg.Logger, cfg.InitialClusterToken, cfg.InitialPeerURLsMap, cfg.NextClusterVersionCompatible)
 		if err != nil {
 			return nil, err
 		}
-		existingCluster, gerr := GetClusterFromRemotePeers(cfg.Logger, getRemotePeerURLs(cl, cfg.Name), prt)
+		existingCluster, gerr := GetClusterFromRemotePeers(cfg.Logger, getRemotePeerURLs(cl, cfg.Name), prt, cfg.NextClusterVersionCompatible)
 		if gerr != nil {
 			return nil, fmt.Errorf("cannot fetch cluster info from peer urls: %v", gerr)
 		}
 		if err = membership.ValidateClusterAndAssignIDs(cfg.Logger, cl, existingCluster); err != nil {
 			return nil, fmt.Errorf("error validating peerURLs %s: %v", existingCluster, err)
 		}
-		if !isCompatibleWithCluster(cfg.Logger, cl, cl.MemberByName(cfg.Name).ID, prt) {
+		if !isCompatibleWithCluster(cfg.Logger, cl, cl.MemberByName(cfg.Name).ID, prt, cfg.NextClusterVersionCompatible) {
 			return nil, fmt.Errorf("incompatible with current running cluster")
 		}
 
@@ -375,7 +386,7 @@ func NewServer(cfg ServerConfig) (srv *EtcdServer, err error) {
 		if err = cfg.VerifyBootstrap(); err != nil {
 			return nil, err
 		}
-		cl, err = membership.NewClusterFromURLsMap(cfg.Logger, cfg.InitialClusterToken, cfg.InitialPeerURLsMap)
+		cl, err = membership.NewClusterFromURLsMap(cfg.Logger, cfg.InitialClusterToken, cfg.InitialPeerURLsMap, cfg.NextClusterVersionCompatible)
 		if err != nil {
 			return nil, err
 		}
@@ -397,7 +408,7 @@ func NewServer(cfg ServerConfig) (srv *EtcdServer, err error) {
 			if checkDuplicateURL(urlsmap) {
 				return nil, fmt.Errorf("discovery cluster %s has duplicate url", urlsmap)
 			}
-			if cl, err = membership.NewClusterFromURLsMap(cfg.Logger, cfg.InitialClusterToken, urlsmap); err != nil {
+			if cl, err = membership.NewClusterFromURLsMap(cfg.Logger, cfg.InitialClusterToken, urlsmap, cfg.NextClusterVersionCompatible); err != nil {
 				return nil, err
 			}
 		}
@@ -520,16 +531,16 @@ func NewServer(cfg ServerConfig) (srv *EtcdServer, err error) {
 				storage:     NewStorage(w, ss),
 			},
 		),
-		id:               id,
-		attributes:       membership.Attributes{Name: cfg.Name, ClientURLs: cfg.ClientURLs.StringSlice()},
-		cluster:          cl,
-		stats:            sstats,
-		lstats:           lstats,
-		SyncTicker:       time.NewTicker(500 * time.Millisecond),
-		peerRt:           prt,
-		reqIDGen:         idutil.NewGenerator(uint16(id), time.Now()),
-		forceVersionC:    make(chan struct{}),
-		AccessController: &AccessController{CORS: cfg.CORS, HostWhitelist: cfg.HostWhitelist},
+		id:                 id,
+		attributes:         membership.Attributes{Name: cfg.Name, ClientURLs: cfg.ClientURLs.StringSlice()},
+		cluster:            cl,
+		stats:              sstats,
+		lstats:             lstats,
+		SyncTicker:         time.NewTicker(500 * time.Millisecond),
+		peerRt:             prt,
+		reqIDGen:           idutil.NewGenerator(uint16(id), time.Now()),
+		AccessController:   &AccessController{CORS: cfg.CORS, HostWhitelist: cfg.HostWhitelist},
+		firstCommitInTermC: make(chan struct{}),
 	}
 	serverID.With(prometheus.Labels{"server_id": id.String()}).Set(1)
 
@@ -543,9 +554,11 @@ func NewServer(cfg ServerConfig) (srv *EtcdServer, err error) {
 	srv.lessor = lease.NewLessor(
 		srv.getLogger(),
 		srv.be,
+		srv.cluster,
 		lease.LessorConfig{
 			MinLeaseTTL:                int64(math.Ceil(minTTL.Seconds())),
 			CheckpointInterval:         cfg.LeaseCheckpointInterval,
+			CheckpointPersist:          cfg.LeaseCheckpointPersist,
 			ExpiredLeasesRetryInterval: srv.Cfg.ReqTimeout(),
 		})
 
@@ -565,7 +578,7 @@ func NewServer(cfg ServerConfig) (srv *EtcdServer, err error) {
 	}
 	srv.authStore = auth.NewAuthStore(srv.getLogger(), srv.be, tp, int(cfg.BcryptCost))
 
-	srv.kv = mvcc.New(srv.getLogger(), srv.be, srv.lessor, srv.authStore, &srv.consistIndex, mvcc.StoreConfig{CompactionBatchLimit: cfg.CompactionBatchLimit})
+	srv.kv = mvcc.New(srv.getLogger(), srv.be, srv.lessor, srv.authStore, &srv.consistIndex, mvcc.StoreConfig{CompactionBatchLimit: cfg.CompactionBatchLimit, NextClusterVersionCompatible: cfg.NextClusterVersionCompatible})
 	if beExist {
 		kvindex := srv.kv.ConsistentIndex()
 		// TODO: remove kvindex != 0 checking when we do not expect users to upgrade
@@ -609,8 +622,19 @@ func NewServer(cfg ServerConfig) (srv *EtcdServer, err error) {
 
 	if srv.Cfg.EnableLeaseCheckpoint {
 		// setting checkpointer enables lease checkpoint feature.
-		srv.lessor.SetCheckpointer(func(ctx context.Context, cp *pb.LeaseCheckpointRequest) {
+		srv.lessor.SetCheckpointer(func(ctx context.Context, cp *pb.LeaseCheckpointRequest) error {
+			if !srv.ensureLeadership() {
+				if lg := srv.getLogger(); lg != nil {
+					lg.Warn("Ignore the checkpoint request because current member isn't a leader",
+						zap.Uint64("local-member-id", uint64(srv.ID())))
+				} else {
+					plog.Warningf("Ignore the checkpoint request because current member %d isn't a leader", uint64(srv.ID()))
+				}
+				return lease.ErrNotPrimary
+			}
+
 			srv.raftRequestOnce(ctx, pb.InternalRaftRequest{LeaseCheckpoint: cp})
+			return nil
 		})
 	}
 
@@ -652,6 +676,10 @@ func (s *EtcdServer) getLogger() *zap.Logger {
 	l := s.lg
 	s.lgMu.RUnlock()
 	return l
+}
+
+func (s *EtcdServer) Config() ServerConfig {
+	return s.Cfg
 }
 
 func tickToDur(ticks int, tickMs uint) string {
@@ -820,8 +848,8 @@ func (s *EtcdServer) purgeFile() {
 	var dberrc, serrc, werrc <-chan error
 	var dbdonec, sdonec, wdonec <-chan struct{}
 	if s.Cfg.MaxSnapFiles > 0 {
-		dbdonec, dberrc = fileutil.PurgeFileWithDoneNotify(s.getLogger(), s.Cfg.SnapDir(), "snap.db", s.Cfg.MaxSnapFiles, purgeFileInterval, s.stopping)
-		sdonec, serrc = fileutil.PurgeFileWithDoneNotify(s.getLogger(), s.Cfg.SnapDir(), "snap", s.Cfg.MaxSnapFiles, purgeFileInterval, s.stopping)
+		dbdonec, dberrc = fileutil.PurgeFileWithoutFlock(s.getLogger(), s.Cfg.SnapDir(), "snap.db", s.Cfg.MaxSnapFiles, purgeFileInterval, s.stopping)
+		sdonec, serrc = fileutil.PurgeFileWithoutFlock(s.getLogger(), s.Cfg.SnapDir(), "snap", s.Cfg.MaxSnapFiles, purgeFileInterval, s.stopping)
 	}
 	if s.Cfg.MaxWALFiles > 0 {
 		wdonec, werrc = fileutil.PurgeFileWithDoneNotify(s.getLogger(), s.Cfg.WALDir(), "wal", s.Cfg.MaxWALFiles, purgeFileInterval, s.stopping)
@@ -894,6 +922,18 @@ func (s *EtcdServer) Process(ctx context.Context, m raftpb.Message) error {
 			plog.Warningf("reject message from removed member %s", types.ID(m.From).String())
 		}
 		return httptypes.NewHTTPError(http.StatusForbidden, "cannot process message from removed member")
+	}
+	if s.ID() != types.ID(m.To) {
+		if lg := s.getLogger(); lg != nil {
+			lg.Warn(
+				"rejected Raft message to mismatch member",
+				zap.String("local-member-id", s.ID().String()),
+				zap.String("mismatch-member-id", types.ID(m.To).String()),
+			)
+		} else {
+			plog.Warningf("rejected message to mismatch member %s", types.ID(m.From).String())
+		}
+		return httptypes.NewHTTPError(http.StatusForbidden, "cannot process message to mismatch member")
 	}
 	if m.Type == raftpb.MsgApp {
 		s.stats.RecvAppendReq(types.ID(m.From).String(), m.Size())
@@ -1059,37 +1099,7 @@ func (s *EtcdServer) run() {
 			f := func(context.Context) { s.applyAll(&ep, &ap) }
 			sched.Schedule(f)
 		case leases := <-expiredLeaseC:
-			s.goAttach(func() {
-				// Increases throughput of expired leases deletion process through parallelization
-				c := make(chan struct{}, maxPendingRevokes)
-				for _, lease := range leases {
-					select {
-					case c <- struct{}{}:
-					case <-s.stopping:
-						return
-					}
-					lid := lease.ID
-					s.goAttach(func() {
-						ctx := s.authStore.WithRoot(s.ctx)
-						_, lerr := s.LeaseRevoke(ctx, &pb.LeaseRevokeRequest{ID: int64(lid)})
-						if lerr == nil {
-							leaseExpired.Inc()
-						} else {
-							if lg != nil {
-								lg.Warn(
-									"failed to revoke lease",
-									zap.String("lease-id", fmt.Sprintf("%016x", lid)),
-									zap.Error(lerr),
-								)
-							} else {
-								plog.Warningf("failed to revoke %016x (%q)", lid, lerr.Error())
-							}
-						}
-
-						<-c
-					})
-				}
-			})
+			s.revokeExpiredLeases(leases)
 		case err := <-s.errorc:
 			if lg != nil {
 				lg.Warn("server error", zap.Error(err))
@@ -1107,6 +1117,115 @@ func (s *EtcdServer) run() {
 			return
 		}
 	}
+}
+
+func (s *EtcdServer) revokeExpiredLeases(leases []*lease.Lease) {
+	s.goAttach(func() {
+		// We shouldn't revoke any leases if current member isn't a leader,
+		// because the operation should only be performed by the leader. When
+		// the leader gets blocked on the raft loop, such as writing WAL entries,
+		// it can't process any events or messages from raft. It may think it
+		// is still the leader even the leader has already changed.
+		// Refer to https://github.com/etcd-io/etcd/issues/15247
+		lg := s.Logger()
+		if !s.ensureLeadership() {
+			if lg != nil {
+				lg.Warn("Ignore the lease revoking request because current member isn't a leader",
+					zap.Uint64("local-member-id", uint64(s.ID())))
+			} else {
+				plog.Warningf("Ignore the lease revoking request because current member %d isn't a leader", uint64(s.ID()))
+			}
+			return
+		}
+
+		// Increases throughput of expired leases deletion process through parallelization
+		c := make(chan struct{}, maxPendingRevokes)
+		for _, curLease := range leases {
+			select {
+			case c <- struct{}{}:
+			case <-s.stopping:
+				return
+			}
+
+			f := func(lid int64) {
+				s.goAttach(func() {
+					ctx := s.authStore.WithRoot(s.ctx)
+					_, lerr := s.LeaseRevoke(ctx, &pb.LeaseRevokeRequest{ID: lid})
+					if lerr == nil {
+						leaseExpired.Inc()
+					} else {
+						if lg != nil {
+							lg.Warn(
+								"failed to revoke lease",
+								zap.String("lease-id", fmt.Sprintf("%016x", lid)),
+								zap.Error(lerr),
+							)
+						} else {
+							plog.Warningf("failed to revoke %016x (%q)", lid, lerr.Error())
+						}
+					}
+
+					<-c
+				})
+			}
+
+			f(int64(curLease.ID))
+		}
+	})
+}
+
+// isActive checks if the etcd instance is still actively processing the
+// heartbeat message (ticks). It returns false if no heartbeat has been
+// received within 3 * tickMs.
+func (s *EtcdServer) isActive() bool {
+	latestTickTs := s.r.getLatestTickTs()
+	threshold := 3 * time.Duration(s.Cfg.TickMs) * time.Millisecond
+	return latestTickTs.Add(threshold).After(time.Now())
+}
+
+// ensureLeadership checks whether current member is still the leader.
+func (s *EtcdServer) ensureLeadership() bool {
+	lg := s.Logger()
+
+	if s.isActive() {
+		if lg != nil {
+			lg.Debug("The member is active, skip checking leadership",
+				zap.Time("latestTickTs", s.r.getLatestTickTs()),
+				zap.Time("now", time.Now()))
+		} else {
+			plog.Debugf("The member is active, skip checking leadership, latestTickTs: %s, now: %s",
+				s.r.getLatestTickTs(), time.Now())
+		}
+
+		return true
+	}
+
+	ctx, cancel := context.WithTimeout(s.ctx, s.Cfg.ReqTimeout())
+	defer cancel()
+	if err := s.linearizableReadNotify(ctx); err != nil {
+		if lg != nil {
+			lg.Warn("Failed to check current member's leadership", zap.Error(err))
+		} else {
+			plog.Warningf("Failed to check current member's leadership: %s", err)
+		}
+
+		return false
+	}
+
+	newLeaderId := s.raftStatus().Lead
+	if newLeaderId != uint64(s.ID()) {
+		if lg != nil {
+			lg.Warn("Current member isn't a leader",
+				zap.Uint64("local-member-id", uint64(s.ID())),
+				zap.Uint64("new-lead", newLeaderId))
+		} else {
+			plog.Warningf("Current member %d isn't a leader (new-lead=%d)", uint64(s.ID()), newLeaderId)
+		}
+
+		return false
+	}
+
+	return true
 }
 
 func (s *EtcdServer) applyAll(ep *etcdProgress, apply *apply) {
@@ -1776,6 +1895,10 @@ func (s *EtcdServer) mayPromoteMember(id types.ID) error {
 // Note: it will return nil if member is not found in cluster or if member is not learner.
 // These two conditions will be checked before apply phase later.
 func (s *EtcdServer) isLearnerReady(id uint64) error {
+	if err := s.waitAppliedIndex(); err != nil {
+		return err
+	}
+
 	rs := s.raftStatus()
 
 	// leader's raftStatus.Progress is not nil
@@ -1795,12 +1918,16 @@ func (s *EtcdServer) isLearnerReady(id uint64) error {
 		}
 	}
 
-	if isFound {
-		leaderMatch := rs.Progress[leaderID].Match
-		// the learner's Match not caught up with leader yet
-		if float64(learnerMatch) < float64(leaderMatch)*readyPercent {
-			return ErrLearnerNotReady
-		}
+	// We should return an error in API directly, to avoid the request
+	// being unnecessarily delivered to raft.
+	if !isFound {
+		return membership.ErrIDNotFound
+	}
+
+	leaderMatch := rs.Progress[leaderID].Match
+	// the learner's Match not caught up with leader yet
+	if float64(learnerMatch) < float64(leaderMatch)*readyPercent {
+		return ErrLearnerNotReady
 	}
 
 	return nil
@@ -1910,6 +2037,16 @@ func (s *EtcdServer) leaderChangedNotify() <-chan struct{} {
 	s.leaderChangedMu.RLock()
 	defer s.leaderChangedMu.RUnlock()
 	return s.leaderChanged
+}
+
+// FirstCommitInTermNotify returns channel that will be unlocked on first
+// entry committed in new term, which is necessary for new leader to answer
+// read-only requests (leader is not able to respond any read-only requests
+// as long as linearizable semantic is required)
+func (s *EtcdServer) FirstCommitInTermNotify() <-chan struct{} {
+	s.firstCommitInTermMu.RLock()
+	defer s.firstCommitInTermMu.RUnlock()
+	return s.firstCommitInTermC
 }
 
 // RaftStatusGetter represents etcd server and Raft progress.
@@ -2135,6 +2272,7 @@ func (s *EtcdServer) apply(
 		e := es[i]
 		switch e.Type {
 		case raftpb.EntryNormal:
+			// gofail: var beforeApplyOneEntryNormal struct{}
 			s.applyEntryNormal(&e)
 			s.setAppliedIndex(e.Index)
 			s.setTerm(e.Term)
@@ -2179,10 +2317,8 @@ func (s *EtcdServer) applyEntryNormal(e *raftpb.Entry) {
 	// raft state machine may generate noop entry when leader confirmation.
 	// skip it in advance to avoid some potential bug in the future
 	if len(e.Data) == 0 {
-		select {
-		case s.forceVersionC <- struct{}{}:
-		default:
-		}
+		s.notifyAboutFirstCommitInTerm()
+
 		// promote lessor when the local member is leader and finished
 		// applying all entries from the last term.
 		if s.isLeader() {
@@ -2255,16 +2391,30 @@ func (s *EtcdServer) applyEntryNormal(e *raftpb.Entry) {
 	})
 }
 
+func (s *EtcdServer) notifyAboutFirstCommitInTerm() {
+	newNotifier := make(chan struct{})
+	s.firstCommitInTermMu.Lock()
+	notifierToClose := s.firstCommitInTermC
+	s.firstCommitInTermC = newNotifier
+	s.firstCommitInTermMu.Unlock()
+	close(notifierToClose)
+}
+
 // applyConfChange applies a ConfChange to the server. It is only
 // invoked with a ConfChange that has already passed through Raft
 func (s *EtcdServer) applyConfChange(cc raftpb.ConfChange, confState *raftpb.ConfState) (bool, error) {
+	lg := s.getLogger()
 	if err := s.cluster.ValidateConfigurationChange(cc); err != nil {
+		if lg != nil {
+			lg.Error("Validation on configuration change failed", zap.Error(err))
+		} else {
+			plog.Errorf("Validation on configuration change failed: %v", err)
+		}
 		cc.NodeID = raft.None
 		s.r.ApplyConfChange(cc)
 		return false, err
 	}
 
-	lg := s.getLogger()
 	*confState = *s.r.ApplyConfChange(cc)
 	switch cc.Type {
 	case raftpb.ConfChangeAddNode, raftpb.ConfChangeAddLearnerNode:
@@ -2481,7 +2631,7 @@ func (s *EtcdServer) ClusterVersion() *semver.Version {
 func (s *EtcdServer) monitorVersions() {
 	for {
 		select {
-		case <-s.forceVersionC:
+		case <-s.FirstCommitInTermNotify():
 		case <-time.After(monitorVersionInterval):
 		case <-s.stopping:
 			return
@@ -2513,8 +2663,8 @@ func (s *EtcdServer) monitorVersions() {
 		}
 
 		// update cluster version only if the decided version is greater than
-		// the current cluster version
-		if v != nil && s.cluster.Version().LessThan(*v) {
+		// the current cluster version or it is a valid downgrade
+		if v != nil && membership.IsValidClusterVersionChange(s.cluster.Version(), v, s.Config().NextClusterVersionCompatible) {
 			s.goAttach(func() { s.updateClusterVersion(v.String()) })
 		}
 	}

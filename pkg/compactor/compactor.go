@@ -67,19 +67,6 @@ func (cp *Compactor) Compact(ctx context.Context, opts *brtypes.CompactOptions) 
 		return nil, fmt.Errorf("no base snapshot found. Nothing is available for compaction")
 	}
 
-	cp.logger.Infof("Creating temporary etcd directory %s for restoration.", compactorRestoreOptions.Config.DataDir)
-	err := os.MkdirAll(compactorRestoreOptions.Config.DataDir, 0700)
-	if err != nil {
-		cp.logger.Errorf("Unable to create temporary etcd directory for compaction: %s", err.Error())
-		return nil, err
-	}
-
-	defer func() {
-		if err := os.RemoveAll(compactorRestoreOptions.Config.DataDir); err != nil {
-			cp.logger.Errorf("Failed to remove temporary etcd directory %s: %v", compactorRestoreOptions.Config.DataDir, err)
-		}
-	}()
-
 	// Then restore from the snapshots
 	r, err := restorer.NewRestorer(cp.store, cp.logger)
 	if err != nil {
@@ -89,6 +76,12 @@ func (cp *Compactor) Compact(ctx context.Context, opts *brtypes.CompactOptions) 
 	if err != nil {
 		return nil, fmt.Errorf("unable to restore snapshots during compaction: %v", err)
 	}
+
+	defer func() {
+		if err := os.RemoveAll(compactorRestoreOptions.Config.DataDir); err != nil {
+			cp.logger.Errorf("Failed to remove temporary etcd directory %s: %v", compactorRestoreOptions.Config.DataDir, err)
+		}
+	}()
 
 	cp.logger.Info("Restoration for compaction is done.")
 	// There is a possibility that restore operation may not start an embedded ETCD.

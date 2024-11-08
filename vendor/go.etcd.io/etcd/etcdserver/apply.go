@@ -33,10 +33,6 @@ import (
 	"go.uber.org/zap"
 )
 
-const (
-	warnApplyDuration = 100 * time.Millisecond
-)
-
 type applyResult struct {
 	resp proto.Message
 	err  error
@@ -68,6 +64,7 @@ type applierV3 interface {
 
 	AuthEnable() (*pb.AuthEnableResponse, error)
 	AuthDisable() (*pb.AuthDisableResponse, error)
+	AuthStatus() (*pb.AuthStatusResponse, error)
 
 	UserAdd(ua *pb.AuthUserAddRequest) (*pb.AuthUserAddResponse, error)
 	UserDelete(ua *pb.AuthUserDeleteRequest) (*pb.AuthUserDeleteResponse, error)
@@ -115,7 +112,7 @@ func (s *EtcdServer) newApplierV3() applierV3 {
 func (a *applierV3backend) Apply(r *pb.InternalRaftRequest) *applyResult {
 	ar := &applyResult{}
 	defer func(start time.Time) {
-		warnOfExpensiveRequest(a.s.getLogger(), start, &pb.InternalRaftStringer{Request: r}, ar.resp, ar.err)
+		warnOfExpensiveRequest(a.s.getLogger(), a.s.Cfg.WarningApplyDuration, start, &pb.InternalRaftStringer{Request: r}, ar.resp, ar.err)
 		if ar.err != nil {
 			warnOfFailedRequest(a.s.getLogger(), start, &pb.InternalRaftStringer{Request: r}, ar.resp, ar.err)
 		}
@@ -147,6 +144,8 @@ func (a *applierV3backend) Apply(r *pb.InternalRaftRequest) *applyResult {
 		ar.resp, ar.err = a.s.applyV3.AuthEnable()
 	case r.AuthDisable != nil:
 		ar.resp, ar.err = a.s.applyV3.AuthDisable()
+	case r.AuthStatus != nil:
+		ar.resp, ar.err = a.s.applyV3.AuthStatus()
 	case r.AuthUserAdd != nil:
 		ar.resp, ar.err = a.s.applyV3.UserAdd(r.AuthUserAdd)
 	case r.AuthUserDelete != nil:
@@ -185,7 +184,7 @@ func (a *applierV3backend) Put(txn mvcc.TxnWrite, p *pb.PutRequest) (resp *pb.Pu
 	trace = traceutil.New("put",
 		a.s.getLogger(),
 		traceutil.Field{Key: "key", Value: string(p.Key)},
-		traceutil.Field{Key: "req_size", Value: proto.Size(p)},
+		traceutil.Field{Key: "req_size", Value: p.Size()},
 	)
 	val, leaseID := p.Value, lease.LeaseID(p.Lease)
 	if txn == nil {
@@ -723,6 +722,12 @@ func (a *applierV3backend) AuthDisable() (*pb.AuthDisableResponse, error) {
 	return &pb.AuthDisableResponse{Header: newHeader(a.s)}, nil
 }
 
+func (a *applierV3backend) AuthStatus() (*pb.AuthStatusResponse, error) {
+	enabled := a.s.AuthStore().IsAuthEnabled()
+	authRevision := a.s.AuthStore().Revision()
+	return &pb.AuthStatusResponse{Header: newHeader(a.s), Enabled: enabled, AuthRevision: authRevision}, nil
+}
+
 func (a *applierV3backend) Authenticate(r *pb.InternalAuthenticateRequest) (*pb.AuthenticateResponse, error) {
 	ctx := context.WithValue(context.WithValue(a.s.ctx, auth.AuthenticateParamIndex{}, a.s.consistIndex.ConsistentIndex()), auth.AuthenticateParamSimpleTokenPrefix{}, r.SimpleToken)
 	resp, err := a.s.AuthStore().Authenticate(ctx, r.Name, r.Password)
@@ -998,7 +1003,7 @@ func mkGteRange(rangeEnd []byte) []byte {
 }
 
 func noSideEffect(r *pb.InternalRaftRequest) bool {
-	return r.Range != nil || r.AuthUserGet != nil || r.AuthRoleGet != nil
+	return r.Range != nil || r.AuthUserGet != nil || r.AuthRoleGet != nil || r.AuthStatus != nil
 }
 
 func removeNeedlessRangeReqs(txn *pb.TxnRequest) {

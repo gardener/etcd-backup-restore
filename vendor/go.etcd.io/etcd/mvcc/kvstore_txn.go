@@ -125,14 +125,15 @@ func (tr *storeTxnRead) rangeKeys(key, end []byte, curRev int64, ro RangeOptions
 	if rev < tr.s.compactMainRev {
 		return &RangeResult{KVs: nil, Count: -1, Rev: 0}, ErrCompacted
 	}
-
-	revpairs := tr.s.kvindex.Revisions(key, end, rev)
+	if ro.Count {
+		total := tr.s.kvindex.CountRevisions(key, end, rev)
+		tr.trace.Step("count revisions from in-memory index tree")
+		return &RangeResult{KVs: nil, Count: total, Rev: curRev}, nil
+	}
+	revpairs, total := tr.s.kvindex.Revisions(key, end, rev, int(ro.Limit))
 	tr.trace.Step("range keys from in-memory index tree")
 	if len(revpairs) == 0 {
-		return &RangeResult{KVs: nil, Count: 0, Rev: curRev}, nil
-	}
-	if ro.Count {
-		return &RangeResult{KVs: nil, Count: len(revpairs), Rev: curRev}, nil
+		return &RangeResult{KVs: nil, Count: total, Rev: curRev}, nil
 	}
 
 	limit := int(ro.Limit)
@@ -151,6 +152,13 @@ func (tr *storeTxnRead) rangeKeys(key, end []byte, curRev int64, ro RangeOptions
 					"range failed to find revision pair",
 					zap.Int64("revision-main", revpair.main),
 					zap.Int64("revision-sub", revpair.sub),
+					zap.Int64("revision-current", curRev),
+					zap.Int64("range-option-rev", ro.Rev),
+					zap.Int64("range-option-limit", ro.Limit),
+					zap.Binary("key", key),
+					zap.Binary("end", end),
+					zap.Int("len-revpairs", len(revpairs)),
+					zap.Int("len-values", len(vs)),
 				)
 			} else {
 				plog.Fatalf("range cannot find rev (%d,%d)", revpair.main, revpair.sub)
@@ -168,7 +176,7 @@ func (tr *storeTxnRead) rangeKeys(key, end []byte, curRev int64, ro RangeOptions
 		}
 	}
 	tr.trace.Step("range keys from bolt db")
-	return &RangeResult{KVs: kvs, Count: len(revpairs), Rev: curRev}, nil
+	return &RangeResult{KVs: kvs, Count: total, Rev: curRev}, nil
 }
 
 func (tw *storeTxnWrite) put(key, value []byte, leaseID lease.LeaseID) {
@@ -182,8 +190,8 @@ func (tw *storeTxnWrite) put(key, value []byte, leaseID lease.LeaseID) {
 	if err == nil {
 		c = created.main
 		oldLease = tw.s.le.GetLease(lease.LeaseItem{Key: string(key)})
+		tw.trace.Step("get key's previous created_revision and leaseID")
 	}
-	tw.trace.Step("get key's previous created_revision and leaseID")
 	ibytes := newRevBytes()
 	idxRev := revision{main: rev, sub: int64(len(tw.changes))}
 	revToBytes(idxRev, ibytes)
