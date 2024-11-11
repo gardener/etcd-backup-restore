@@ -45,17 +45,14 @@ TEST_PACKAGES="${TEST_PACKAGES:-"
 ./pkg/backoff \
 ./pkg/compactor \
 ./pkg/defragmentor \
-./pkg/health/heartbeat \
-./pkg/health/membergarbagecollector \
-./pkg/initializer/validator \
+./pkg/health/... \
+./pkg/initializer/... \
 ./pkg/leaderelection \
 ./pkg/member \
 ./pkg/metrics \
 ./pkg/miscellaneous \
 ./pkg/server \
-./pkg/snapshot/copier \
-./pkg/snapshot/restorer \
-./pkg/snapshot/snapshotter \
+./pkg/snapshot/... \
 ./pkg/snapstore"
 }"
 
