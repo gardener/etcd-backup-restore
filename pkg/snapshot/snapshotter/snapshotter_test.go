@@ -575,8 +575,10 @@ var _ = Describe("Snapshotter", func() {
 						ssr, err := NewSnapshotter(logger, snapshotterConfig, store, etcdConnectionConfig, compressionConfig, healthConfig, snapstoreConfig)
 						Expect(err).ShouldNot(HaveOccurred())
 
-
-						for i := len(list)-3 ; i > len(list)- 3 - ErrorThreshold-1 ; i-- { // 5 snapshots from the list of snapshots to be deleted, are removed before passing it to the function ssr.GarbageCollectDeltaSnapshots. This will cause an error when the function tries to delete them.
+						// This below loop deletes snapshots until the number of deletions reaches the threshold.
+						// This will cause an error when passed into ssr.GarbageCollectDeltaSnapshots for deletion.
+						// Once the count of these individual errors is greater than or equal to the threshold, it errors out.
+						for i := len(list) - 3; i > len(list)-3-DeltaSnapshotGCErrorThreshold-1; i-- {
 							err = os.Remove(path.Join(list[i].Prefix, list[i].SnapName))
 							Expect(err).ShouldNot(HaveOccurred())
 						}
