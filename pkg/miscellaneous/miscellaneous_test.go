@@ -905,9 +905,9 @@ initial-cluster: etcd1=https://0.0.0.0:2380`
 				err := os.WriteFile(outfile, []byte(etcdConfigYaml), 0755)
 				Expect(err).ShouldNot(HaveOccurred())
 			})
-			It("should return error", func() {
+			It("should return false", func() {
 				enabled, err := IsPeerURLTLSEnabled()
-				Expect(err).Should(HaveOccurred())
+				Expect(err).To(BeNil())
 				Expect(enabled).To(BeFalse())
 			})
 		})

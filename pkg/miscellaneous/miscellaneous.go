@@ -611,26 +611,17 @@ func IsPeerURLTLSEnabled() (bool, error) {
 		return false, fmt.Errorf("failed to get initial advertise peer URLs: %w", err)
 	}
 
-	peerURLSchemes := make(map[string]bool)
 	for _, peerURL := range memberPeerURLs {
 		parsedPeerURL, err := url.Parse(peerURL)
 		if err != nil {
 			return false, fmt.Errorf("failed to parse peer URL %s: %w", peerURL, err)
 		}
-		peerURLSchemes[parsedPeerURL.Scheme] = true
+		if parsedPeerURL.Scheme != https {
+			return false, nil
+		}
 	}
 
-	// Check for mixed schemes
-	if len(peerURLSchemes) > 1 {
-		return false, fmt.Errorf("peer URLs have different schemes")
-	}
-
-	// Check if the single scheme is "https"
-	if _, isTLSEnabled := peerURLSchemes[https]; isTLSEnabled {
-		return true, nil
-	}
-
-	return false, nil
+	return true, nil
 }
 
 // GetPrevScheduledSnapTime returns the previous schedule snapshot time.
