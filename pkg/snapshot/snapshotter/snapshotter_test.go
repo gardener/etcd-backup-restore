@@ -536,8 +536,8 @@ var _ = Describe("Snapshotter", func() {
 						Expect(len(list)).Should(Equal(10))
 
 						ssr, err := NewSnapshotter(logger, snapshotterConfig, store, etcdConnectionConfig, compressionConfig, healthConfig, snapstoreConfig)
-						Expect(err).ShouldNot(HaveOccurred())	
-						
+						Expect(err).ShouldNot(HaveOccurred())
+
 						deleted, err := ssr.GarbageCollectDeltaSnapshots(list)
 						Expect(deleted).Should(Equal(10))
 						Expect(err).ShouldNot(HaveOccurred())
@@ -552,7 +552,7 @@ var _ = Describe("Snapshotter", func() {
 
 						ssr, err := NewSnapshotter(logger, snapshotterConfig, store, etcdConnectionConfig, compressionConfig, healthConfig, snapstoreConfig)
 						Expect(err).ShouldNot(HaveOccurred())
-						
+
 						// delete a few snapshots in between to induce an error
 						snapshotsToBeDeleted := []int{7, 5, 3, 2}
 						for _, i := range snapshotsToBeDeleted {
@@ -584,7 +584,7 @@ var _ = Describe("Snapshotter", func() {
 						}
 
 						deleted, err := ssr.GarbageCollectDeltaSnapshots(list)
-						Expect(deleted).Should(Equal(2)) 
+						Expect(deleted).Should(Equal(2))
 						Expect(err).Should(HaveOccurred())
 
 					})

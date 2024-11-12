@@ -6,7 +6,6 @@ package snapshotter
 
 import (
 	"errors"
-	// "fmt"
 	"math"
 	"path"
 	"time"
@@ -18,7 +17,9 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
+// DeltaSnapshotGCErrorThreshold represents the threshold value for the number of individual errors that can occur while deleting delta snapshots.
 const DeltaSnapshotGCErrorThreshold = 5
+
 // RunGarbageCollector basically consider the older backups as garbage and deletes it
 func (ssr *Snapshotter) RunGarbageCollector(stopCh <-chan struct{}) {
 	if ssr.config.GarbageCollectionPeriod.Duration <= time.Second {
@@ -91,7 +92,7 @@ func (ssr *Snapshotter) RunGarbageCollector(stopCh <-chan struct{}) {
 				)
 				// Here we start processing from second last snapstream, because we want to keep last snapstream
 				// including delta snapshots in it.
-				for fullSnapshotIndex := len(fullSnapshotIndexList) - 1; fullSnapshotIndex > 0; fullSnapshotIndex--{
+				for fullSnapshotIndex := len(fullSnapshotIndexList) - 1; fullSnapshotIndex > 0; fullSnapshotIndex-- {
 					snap := snapList[fullSnapshotIndexList[fullSnapshotIndex]]
 					nextSnap := snapList[fullSnapshotIndexList[fullSnapshotIndex-1]]
 
@@ -259,7 +260,7 @@ func (ssr *Snapshotter) GarbageCollectDeltaSnapshots(snapStream brtypes.SnapList
 	totalDeleted := 0
 	cutoffTime := time.Now().UTC().Add(-ssr.config.DeltaSnapshotRetentionPeriod.Duration)
 	var finalError error
-	for i , errorCount:= len(snapStream) - 1 , 0; i >= 0; i-- {
+	for i, errorCount := len(snapStream)-1, 0; i >= 0; i-- {
 		if (*snapStream[i]).Kind == brtypes.SnapshotKindDelta && snapStream[i].CreatedOn.Before(cutoffTime) {
 
 			snapPath := path.Join(snapStream[i].SnapDir, snapStream[i].SnapName)
@@ -277,7 +278,7 @@ func (ssr *Snapshotter) GarbageCollectDeltaSnapshots(snapStream brtypes.SnapList
 				if errorCount == DeltaSnapshotGCErrorThreshold {
 					return totalDeleted, finalError
 				}
-			} else { 
+			} else {
 				metrics.GCSnapshotCounter.With(prometheus.Labels{metrics.LabelKind: brtypes.SnapshotKindDelta, metrics.LabelSucceeded: metrics.ValueSucceededTrue}).Inc()
 				totalDeleted++
 			}
