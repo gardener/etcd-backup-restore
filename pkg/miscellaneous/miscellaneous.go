@@ -62,6 +62,11 @@ const (
 	etcdWrapperPort = "9095"
 )
 
+type advertiseURLsConfig struct {
+	AdvertiseClientURLs      map[string][]string `json:"advertise-client-urls"`
+	InitialAdvertisePeerURLs map[string][]string `json:"initial-advertise-peer-urls"`
+}
+
 // GetLatestFullSnapshotAndDeltaSnapList returns the latest snapshot
 func GetLatestFullSnapshotAndDeltaSnapList(store brtypes.SnapStore) (*brtypes.Snapshot, brtypes.SnapList, error) {
 	var (
@@ -535,42 +540,88 @@ func ReadConfigFileAsMap(path string) (map[string]interface{}, error) {
 	return c, nil
 }
 
-// ParsePeerURL forms a PeerURL, given podName by parsing the initial-advertise-peer-urls
-func ParsePeerURL(initialAdvertisePeerURLs, podName string) (string, error) {
-	tokens := strings.Split(initialAdvertisePeerURLs, "@")
-	if len(tokens) < 4 {
-		return "", fmt.Errorf("invalid peer URL : %s", initialAdvertisePeerURLs)
+// parseAdvertiseURLsConfig reads and parses the config file and returns the advertise URLs config.
+func parseAdvertiseURLsConfig(configFile string) (*advertiseURLsConfig, error) {
+	var advURLsConfig advertiseURLsConfig
+	config, err := os.ReadFile(configFile)
+	if err != nil {
+		return nil, fmt.Errorf("unable to read etcd config file at path: %s : %w", configFile, err)
 	}
-	domaiName := fmt.Sprintf("%s.%s.%s", tokens[1], tokens[2], "svc")
-	return fmt.Sprintf("%s://%s.%s:%s", tokens[0], podName, domaiName, tokens[3]), nil
+
+	if err := yaml.Unmarshal(config, &advURLsConfig); err != nil {
+		return nil, fmt.Errorf("unable to unmarshal etcd config yaml file at path: %s : %w", configFile, err)
+	}
+	return &advURLsConfig, nil
 }
 
-// IsPeerURLTLSEnabled checks whether the peer address is TLS enabled or not.
+// GetMemberPeerURLs retrieves the initial advertise peer URLs for the etcd member using the POD_NAME environment variable.
+func GetMemberPeerURLs(configFile string) ([]string, error) {
+	memberName, err := GetEnvVarOrError("POD_NAME")
+	if err != nil {
+		return nil, err
+	}
+
+	advURLsConfig, err := parseAdvertiseURLsConfig(configFile)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse advertise URLs config: %w", err)
+	}
+
+	peerURLs, ok := advURLsConfig.InitialAdvertisePeerURLs[memberName]
+	if !ok || len(peerURLs) == 0 {
+		return nil, fmt.Errorf("no peer URLs found for pod %s", memberName)
+	}
+
+	for _, peerURL := range peerURLs {
+		if _, err := url.Parse(peerURL); err != nil {
+			return nil, fmt.Errorf("invalid peer URL %s: %w", peerURL, err)
+		}
+	}
+	return peerURLs, nil
+}
+
+// GetMemberClientURLs retrieves the advertise client URLs for the etcd member using the POD_NAME environment variable.
+func GetMemberClientURLs(configFile string) ([]string, error) {
+	memberName, err := GetEnvVarOrError("POD_NAME")
+	if err != nil {
+		return nil, err
+	}
+
+	advURLsConfig, err := parseAdvertiseURLsConfig(configFile)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse advertise URLs config: %w", err)
+	}
+
+	clientURLs, ok := advURLsConfig.AdvertiseClientURLs[memberName]
+	if !ok || len(clientURLs) == 0 {
+		return nil, fmt.Errorf("no client URLs found for pod %s", memberName)
+	}
+
+	for _, clientURL := range clientURLs {
+		if _, err := url.Parse(clientURL); err != nil {
+			return nil, fmt.Errorf("invalid client URL %s: %w", clientURL, err)
+		}
+	}
+	return clientURLs, nil
+}
+
+// IsPeerURLTLSEnabled checks whether all peer URLs are TLS-enabled (i.e., use the "https" scheme).
 func IsPeerURLTLSEnabled() (bool, error) {
-	podName, err := GetEnvVarOrError("POD_NAME")
+	memberPeerURLs, err := GetMemberPeerURLs(GetConfigFilePath())
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("failed to get initial advertise peer URLs: %w", err)
 	}
 
-	configFile := GetConfigFilePath()
-
-	config, err := ReadConfigFileAsMap(configFile)
-	if err != nil {
-		return false, err
-	}
-	initAdPeerURL := config["initial-advertise-peer-urls"]
-
-	memberPeerURL, err := ParsePeerURL(initAdPeerURL.(string), podName)
-	if err != nil {
-		return false, err
+	for _, peerURL := range memberPeerURLs {
+		parsedPeerURL, err := url.Parse(peerURL)
+		if err != nil {
+			return false, fmt.Errorf("failed to parse peer URL %s: %w", peerURL, err)
+		}
+		if parsedPeerURL.Scheme != https {
+			return false, nil
+		}
 	}
 
-	peerURL, err := url.Parse(memberPeerURL)
-	if err != nil {
-		return false, err
-	}
-
-	return peerURL.Scheme == https, nil
+	return true, nil
 }
 
 // GetPrevScheduledSnapTime returns the previous schedule snapshot time.
@@ -609,23 +660,6 @@ func RemoveDir(dir string) error {
 		return err
 	}
 	return nil
-}
-
-// GetMemberPeerURL returns the peerURL from fiven configuration file provided to etcd member.
-func GetMemberPeerURL(configFile string, podName string) (string, error) {
-	config, err := ReadConfigFileAsMap(configFile)
-	if err != nil {
-		return "", err
-	}
-	initAdPeerURL := config["initial-advertise-peer-urls"]
-	if initAdPeerURL == nil {
-		return "", fmt.Errorf("initial-advertise-peer-urls must be set in etcd config")
-	}
-	peerURL, err := ParsePeerURL(initAdPeerURL.(string), podName)
-	if err != nil {
-		return "", fmt.Errorf("could not parse peer URL from the config file : %v", err)
-	}
-	return peerURL, nil
 }
 
 // RestartEtcdWrapper is to call the "/stop" endpoint of etcd-wrapper to restart the etcd-wrapper container.
