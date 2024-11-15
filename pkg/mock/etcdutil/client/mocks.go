@@ -10,8 +10,8 @@ import (
 	reflect "reflect"
 
 	client "github.com/gardener/etcd-backup-restore/pkg/etcdutil/client"
-	"go.uber.org/mock/gomock"
 	clientv3 "go.etcd.io/etcd/clientv3"
+	"go.uber.org/mock/gomock"
 )
 
 // MockFactory is a mock of Factory interface.
