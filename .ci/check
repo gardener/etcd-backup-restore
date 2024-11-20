@@ -56,11 +56,10 @@ helm lint "${HELM_CHART_PATH}"
 
 echo "Checking Go version"
 GOVERSION=$(go list -f {{.GoVersion}} -m)
-if [[ $GOVERSION =~ ^[0-9]+\.[0-9]+\.0$ ]]; then
-  # Go version is valid, adheres to x.y.0 version
-  exit 0
-else
+if [[ ! $GOVERSION =~ ^[0-9]+\.[0-9]+\.0$ ]]; then
   echo "Go version is invalid, please adhere to x.y.0 version"
   echo "See https://github.com/gardener/etcd-backup-restore/pull/801"
   exit 1
 fi
+
+echo "All checks successful"
