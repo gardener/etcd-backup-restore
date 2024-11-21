@@ -8,8 +8,8 @@ import (
 	context "context"
 	reflect "reflect"
 
-	"go.uber.org/mock/gomock"
 	clientv3 "go.etcd.io/etcd/clientv3"
+	"go.uber.org/mock/gomock"
 )
 
 // MockWatcher is a mock of Watcher interface.
