@@ -61,6 +61,11 @@ const (
 	ExcludeSnapshotMetadataKey = "x-etcd-snapshot-exclude"
 )
 
+var (
+	// ErrSnapshotDeleteFailDueToImmutability is the error returned when the Delete call fails due to immutability
+	ErrSnapshotDeleteFailDueToImmutability = fmt.Errorf("ErrSnapshotDeleteFailDueToImmutability")
+)
+
 // SnapStore is the interface to be implemented for different
 // storage backend like local file system, S3, ABS, GCS, Swift, OSS, ECS etc.
 // Only purpose of these implementation to provide CPI layer to

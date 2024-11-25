@@ -461,7 +461,9 @@ func (a *ABSSnapStore) blockUploader(wg *sync.WaitGroup, stopCh <-chan struct{},
 func (a *ABSSnapStore) Delete(snap brtypes.Snapshot) error {
 	blobName := path.Join(snap.Prefix, snap.SnapDir, snap.SnapName)
 	blobClient := a.client.NewBlockBlobClient(blobName)
-	if _, err := blobClient.Delete(context.Background(), nil); err != nil {
+	if _, err := blobClient.Delete(context.Background(), nil); bloberror.HasCode(err, bloberror.BlobImmutableDueToPolicy) {
+		return fmt.Errorf("failed to delete blob %s due to immutability: %w, with provider error: %w", blobName, brtypes.ErrSnapshotDeleteFailDueToImmutability, err)
+	} else if err != nil {
 		return fmt.Errorf("failed to delete blob %s with error: %w", blobName, err)
 	}
 	return nil

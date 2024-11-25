@@ -153,7 +153,11 @@ func (ssr *Snapshotter) RunGarbageCollector(stopCh <-chan struct{}) {
 							continue
 						}
 						ssr.logger.Infof("GC: Deleting old full snapshot: %s %v", nextSnap.CreatedOn.UTC(), deleteSnap)
-						if err := ssr.store.Delete(*nextSnap); err != nil {
+						if err := ssr.store.Delete(*nextSnap); errors.Is(err, brtypes.ErrSnapshotDeleteFailDueToImmutability) {
+							// The snapshot is still immutable, attempt to gargbage collect it in the next run
+							ssr.logger.Warnf("GC: Skipping the snapshot: %s, since it is still immutable", nextSnap.SnapName)
+							continue
+						} else if err != nil {
 							ssr.logger.Warnf("GC: Failed to delete snapshot %s: %v", path.Join(nextSnap.SnapDir, nextSnap.SnapName), err)
 							metrics.SnapshotterOperationFailure.With(prometheus.Labels{metrics.LabelError: err.Error()}).Inc()
 							metrics.GCSnapshotCounter.With(prometheus.Labels{metrics.LabelKind: brtypes.SnapshotKindFull, metrics.LabelSucceeded: metrics.ValueSucceededFalse}).Inc()
@@ -178,7 +182,11 @@ func (ssr *Snapshotter) RunGarbageCollector(stopCh <-chan struct{}) {
 						snap := snapList[fullSnapshotIndexList[fullSnapshotIndex]]
 						snapPath := path.Join(snap.SnapDir, snap.SnapName)
 						ssr.logger.Infof("GC: Deleting old full snapshot: %s", snapPath)
-						if err := ssr.store.Delete(*snap); err != nil {
+						if err := ssr.store.Delete(*snap); errors.Is(err, brtypes.ErrSnapshotDeleteFailDueToImmutability) {
+							// The snapshot is still immutable, attempt to gargbage collect it in the next run
+							ssr.logger.Warnf("GC: Skipping the snapshot: %s, since it is still immutable", snapPath)
+							continue
+						} else if err != nil {
 							ssr.logger.Warnf("GC: Failed to delete snapshot %s: %v", snapPath, err)
 							metrics.SnapshotterOperationFailure.With(prometheus.Labels{metrics.LabelError: err.Error()}).Inc()
 							metrics.GCSnapshotCounter.With(prometheus.Labels{metrics.LabelKind: brtypes.SnapshotKindFull, metrics.LabelSucceeded: metrics.ValueSucceededFalse}).Inc()
@@ -232,7 +240,11 @@ func (ssr *Snapshotter) GarbageCollectChunks(snapList brtypes.SnapList) (int, br
 			continue
 		}
 		ssr.logger.Infof("GC: Deleting chunk for old snapshot: %s", snapPath)
-		if err := ssr.store.Delete(*snap); err != nil {
+		if err := ssr.store.Delete(*snap); errors.Is(err, brtypes.ErrSnapshotDeleteFailDueToImmutability) {
+			// The snapshot is still immutable, attempt to gargbage collect it in the next run
+			ssr.logger.Warnf("GC: Skipping the snapshot: %s, since it is still immutable", snapPath)
+			continue
+		} else if err != nil {
 			ssr.logger.Warnf("GC: Failed to delete chunk %s: %v", snapPath, err)
 			metrics.SnapshotterOperationFailure.With(prometheus.Labels{metrics.LabelError: err.Error()}).Inc()
 			metrics.GCSnapshotCounter.With(prometheus.Labels{metrics.LabelKind: brtypes.SnapshotKindChunk, metrics.LabelSucceeded: metrics.ValueSucceededFalse}).Inc()
@@ -269,7 +281,11 @@ func (ssr *Snapshotter) GarbageCollectDeltaSnapshots(snapStream brtypes.SnapList
 				ssr.logger.Infof("GC: Skipping the snapshot: %s, since its immutability period hasn't expired yet", snapPath)
 				continue
 			}
-			if err := ssr.store.Delete(*snapStream[i]); err != nil {
+			if err := ssr.store.Delete(*snapStream[i]); errors.Is(err, brtypes.ErrSnapshotDeleteFailDueToImmutability) {
+				// The snapshot is still immutable, attempt to gargbage collect it in the next run
+				ssr.logger.Warnf("GC: Skipping the snapshot: %s, since it is still immutable", snapPath)
+				continue
+			} else if err != nil {
 				errorCount++
 				ssr.logger.Warnf("GC: Failed to delete snapshot %s: %v", snapPath, err)
 				metrics.SnapshotterOperationFailure.With(prometheus.Labels{metrics.LabelError: err.Error()}).Inc()
