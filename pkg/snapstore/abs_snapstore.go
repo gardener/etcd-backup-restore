@@ -220,7 +220,6 @@ func absCredentialsFromJSON(jsonData []byte) (*absCredentials, error) {
 
 	return absConfig, nil
 }
-
 func readABSCredentialFiles(dirname string) (*absCredentials, error) {
 	absConfig := &absCredentials{}
 
@@ -284,7 +283,7 @@ func (a *ABSSnapStore) Fetch(snap brtypes.Snapshot) (io.ReadCloser, error) {
 }
 
 // List will return sorted list with all snapshot files on store.
-func (a *ABSSnapStore) List(_ bool) (brtypes.SnapList, error) {
+func (a *ABSSnapStore) List(includeAll bool) (brtypes.SnapList, error) {
 	prefixTokens := strings.Split(a.prefix, "/")
 	// Last element of the tokens is backup version
 	// Consider the parent of the backup version level (Required for Backward Compatibility)
@@ -292,23 +291,43 @@ func (a *ABSSnapStore) List(_ bool) (brtypes.SnapList, error) {
 	var snapList brtypes.SnapList
 
 	// Prefix is compulsory here, since the container could potentially be used by other instances of etcd-backup-restore
-	pager := a.client.NewListBlobsFlatPager(&container.ListBlobsFlatOptions{Prefix: &prefix})
+	pager := a.client.NewListBlobsFlatPager(&container.ListBlobsFlatOptions{Prefix: &prefix,
+		Include: container.ListBlobsInclude{
+			Metadata:           true,
+			Tags:               true,
+			Versions:           true,
+			ImmutabilityPolicy: true,
+		},
+	})
 	for pager.More() {
 		resp, err := pager.NextPage(context.Background())
 		if err != nil {
 			return nil, fmt.Errorf("failed to list the blobs, error: %w", err)
 		}
 
+	blob:
 		for _, blobItem := range resp.Segment.BlobItems {
 			// process the blobs returned in the result segment
 			if strings.Contains(*blobItem.Name, backupVersionV1) || strings.Contains(*blobItem.Name, backupVersionV2) {
-				//the blob may contain the full path in its name including the prefix
-				blobName := strings.TrimPrefix(*blobItem.Name, prefix)
-				s, err := ParseSnapshot(path.Join(prefix, blobName))
+				snapshot, err := ParseSnapshot(*blobItem.Name)
 				if err != nil {
-					logrus.Warnf("Invalid snapshot found. Ignoring it:%s\n", *blobItem.Name)
+					logrus.Warnf("Invalid snapshot found. Ignoring: %s", *blobItem.Name)
 				} else {
-					snapList = append(snapList, s)
+					// Tagged snapshots are not listed when excluded, e.g. during restoration
+					if blobItem.BlobTags != nil {
+						for _, tag := range blobItem.BlobTags.BlobTagSet {
+							// skip this blob
+							if !includeAll && (*tag.Key == brtypes.ExcludeSnapshotMetadataKey && *tag.Value == "true") {
+								logrus.Infof("Ignoring snapshot %s due to the exclude tag %q in the snapshot metadata", snapshot.SnapName, *tag.Key)
+								continue blob
+							}
+						}
+					}
+					// nil check only necessary for Azurite
+					if blobItem.Properties.ImmutabilityPolicyExpiresOn != nil {
+						snapshot.ImmutabilityExpiryTime = *blobItem.Properties.ImmutabilityPolicyExpiresOn
+					}
+					snapList = append(snapList, snapshot)
 				}
 			}
 		}
@@ -442,7 +461,9 @@ func (a *ABSSnapStore) blockUploader(wg *sync.WaitGroup, stopCh <-chan struct{},
 func (a *ABSSnapStore) Delete(snap brtypes.Snapshot) error {
 	blobName := path.Join(snap.Prefix, snap.SnapDir, snap.SnapName)
 	blobClient := a.client.NewBlockBlobClient(blobName)
-	if _, err := blobClient.Delete(context.Background(), nil); err != nil {
+	if _, err := blobClient.Delete(context.Background(), nil); bloberror.HasCode(err, bloberror.BlobImmutableDueToPolicy) {
+		return fmt.Errorf("failed to delete blob %s due to immutability: %w, with provider error: %w", blobName, brtypes.ErrSnapshotDeleteFailDueToImmutability, err)
+	} else if err != nil {
 		return fmt.Errorf("failed to delete blob %s with error: %w", blobName, err)
 	}
 	return nil
