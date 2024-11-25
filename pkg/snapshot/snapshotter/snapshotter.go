@@ -344,8 +344,8 @@ func (ssr *Snapshotter) takeFullSnapshot(isFinal bool) (*brtypes.Snapshot, error
 		}
 	}
 	lastRevision := resp.Header.Revision
-	if isFinal && ssr.PrevSnapshot.Kind == brtypes.SnapshotKindFull && ssr.PrevSnapshot.LastRevision == lastRevision && ssr.PrevSnapshot.IsFinal{
-		ssr.logger.Infof("There are no updates since final last snapshot, skipping final full snapshot.")
+	if isFinal && ssr.PrevSnapshot.IsFinal && ssr.PrevSnapshot.Kind == brtypes.SnapshotKindFull && ssr.PrevSnapshot.LastRevision == lastRevision {
+		ssr.logger.Infof("There are no new updates since previous final full snapshot, skipping new final full snapshot.")
 	} else {
 		// Note: As FullSnapshot size can be very large, so to avoid context timeout use "SnapshotTimeout" in context.WithTimeout()
 		ctx, cancel = context.WithTimeout(context.TODO(), ssr.etcdConnectionConfig.SnapshotTimeout.Duration)
