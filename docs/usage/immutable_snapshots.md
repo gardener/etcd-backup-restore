@@ -18,13 +18,27 @@ Etcd-backup-restore supports immutable objects, typically at what cloud provider
 
 It is also possible to enable immutability retroactively by making appropriate API calls to your cloud provider, allowing the immutable snapshots feature to be used with existing buckets. For information on such configurations, please refer to your cloud provider's documentation.
 
-The behaviour of bucket's objects uploaded before a bucket is set to immutable varies among storage providers. Etcd-backup-restore manages these objects and will perform garbage collection according to the configured garbage collection policy and the object's immutability expiry.
+Setting the immutability period at the bucket level through the CLI can be done through the following commands:
+
+- Google Cloud Storage would be done like so:
+
+    ```sh
+    gcloud storage buckets update <your-bucket> --retention-period=<desired-immutability-period>
+    ```
+
+- Azure Blob Storage Container would be done like so:
+
+    ```sh
+    az storage container immutability-policy create --resource-group <your-resource-group> --account-name <your-account-name> --container-name <your-container-name> --period <desired-immutability-period>
+    ```
+
+The behaviour of bucket's objects uploaded before a bucket is set to immutable varies among storage providers. etcd-backup-restore manages these objects and will perform garbage collection according to the configured garbage collection policy and the object's immutability expiry.
 
 > Note: If immutable snapshots are not enabled then the object's immutability expiry will be considered as zero, hence causing no effect on current functionality.
 
 ## Current Capabilities
 
-Etcd-backup-restore does not require configurations related to the immutability period of bucket's objects as this information is derived from the bucket's existing immutability settings. The etcd-backup-restore process also verifies the immutability expiry time of an object prior to initiating its garbage collection.
+etcd-backup-restore does not require configurations related to the immutability period of bucket's objects as this information is derived from the bucket's existing immutability settings. The etcd-backup-restore process also verifies the immutability expiry time of an object prior to initiating its garbage collection.
 
 Therefore, it is advisable to configure your garbage collection policies based on the duration you want your objects to remain immutable.
 
