@@ -217,6 +217,9 @@ To lock the immutability policy:
            --query etag --output tsv)
    ```
 
+> [!CAUTION]
+> Once locked, the policy cannot be removed or decreased.
+
 2. **Lock the Policy**
 
    ```bash
@@ -236,8 +239,6 @@ To lock the immutability policy:
        --container-name my-container \
        --if-match $etag
    ```
-
-   **Caution:** Once locked, the policy cannot be removed or decreased.
 
 ---
 
