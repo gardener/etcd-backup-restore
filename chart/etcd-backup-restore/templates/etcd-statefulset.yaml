@@ -10,7 +10,7 @@ metadata:
 spec:
   updateStrategy:
     type: RollingUpdate
-  serviceName: {{ .Release.Name }}-etcd-client
+  serviceName: {{ .Release.Name }}-etcd-peer
   replicas: 1
   selector:
     matchLabels:
@@ -27,41 +27,53 @@ spec:
         app.kubernetes.io/name: etcd
         app.kubernetes.io/instance: {{ .Release.Name }}
     spec:
+{{- if and .Values.backup.storageProvider (eq .Values.backup.storageProvider "Local") }}
+      initContainers:
+      - args: 
+        - chown -R 65532:65532 /home/nonroot/{{ .Values.backup.storageContainer}}
+        command:
+        - sh
+        - -c
+        - --
+        name: change-backup-bucket-permissions
+        image: {{ .Values.images.initContainer.repository }}:{{ .Values.images.initContainer.tag }}
+        imagePullPolicy: {{ .Values.images.initContainer.pullPolicy }}
+        volumeMounts:
+        - name: local-backup
+          mountPath: /home/nonroot/{{ .Values.backup.storageContainer}}
+        securityContext:
+          runAsGroup: 0
+          runAsNonRoot: false
+          runAsUser: 0
+{{- end }}
       containers:
-      - name: etcd
+      - args: 
+        - start-etcd
+        - --backup-restore-host-port=localhost:{{ .Values.servicePorts.backupRestore }}
+        - --etcd-server-name=localhost
+{{- if .Values.etcdTLS }}
+        - --backup-restore-tls-enabled=true
+        - --backup-restore-ca-cert-bundle-path=/var/etcdbr/ssl/ca/bundle.crt
+        - --etcd-client-cert-path=/var/etcd/ssl/client/tls.crt
+        - --etcd-client-key-path=/var/etcd/ssl/client/tls.key
+{{- else }}
+        - --backup-restore-tls-enabled=false
+{{- end }}
+        name: etcd
         image: {{ .Values.images.etcd.repository }}:{{ .Values.images.etcd.tag }}
         imagePullPolicy: {{ .Values.images.etcd.pullPolicy }}
-        command:
-        - /var/etcd/bin/bootstrap.sh
         readinessProbe:
           httpGet:
 {{- if .Values.backupRestoreTLS }}
             scheme: HTTPS
+{{- else }}
+            scheme: HTTP
 {{- end }}
             path: /healthz
             port: {{ .Values.servicePorts.backupRestore }}
-          initialDelaySeconds: 5
-          periodSeconds: 5
-        livenessProbe:
-          exec:
-            command:
-            - /bin/sh
-            - -ec
-            - ETCDCTL_API=3
-            - etcdctl
-{{ if .Values.etcdTLS }}
-            - --cert=/var/etcd/ssl/tls/tls.crt
-            - --key=/var/etcd/ssl/tls/tls.key
-            - --cacert=/var/etcd/ssl/ca/ca.crt
-{{ end }}
-            - --endpoints={{ if .Values.etcdTLS }}https{{ else }}http{{ end }}://{{ .Release.Name }}-etcd-0:{{ .Values.servicePorts.client }}
-{{- if and .Values.etcdAuth.username .Values.etcdAuth.password }}
-            - --user={{ .Values.etcdAuth.username }}:{{ .Values.etcdAuth.password }}
-{{- end }}
-            - get
-            - foo
           initialDelaySeconds: 15
           periodSeconds: 5
+          failureThreshold: 5
         ports:
         - containerPort: {{ .Values.servicePorts.server }}
           name: server
@@ -71,48 +83,68 @@ spec:
           protocol: TCP
         resources:
 {{ toYaml .Values.resources.etcd | indent 10 }}
-        env:
-        - name: ENABLE_TLS
-          value: "{{ if .Values.backupRestoreTLS }}true{{ else }}false{{ end }}"
-        - name: BACKUP_ENDPOINT
-          value: "http{{ if .Values.backupRestoreTLS }}s{{ end }}://localhost:{{ .Values.servicePorts.backupRestore }}"
-        - name: FAIL_BELOW_REVISION_PARAMETER
-          value: "{{ if .Values.backup.failBelowRevision }}&failbelowrevision={{ int $.Values.backup.failBelowRevision }}{{ end }}"
         volumeMounts:
         - name: {{ .Release.Name }}-etcd
           mountPath: /var/etcd/data/
-        - name: etcd-config-file
-          mountPath: /var/etcd/config/
 {{- if .Values.etcdTLS }}
-        - name: ca-etcd
+        - name: etcd-ca
           mountPath: /var/etcd/ssl/ca
-        - name: etcd-tls
-          mountPath: /var/etcd/ssl/tls
+        - name: etcd-server-tls
+          mountPath: /var/etcd/ssl/server
+        - name: etcd-client-tls
+          mountPath: /var/etcd/ssl/client
 {{- end }}
 {{- if .Values.backupRestoreTLS }}
-        - name: ca-etcdbr
+        - name: backup-restore-ca
           mountPath: /var/etcdbr/ssl/ca
 {{- end }}
       - name: backup-restore
-        command:
-        - etcdbrctl
+        args:
         - server
-        - --schedule={{ .Values.backup.schedule }}
-{{- if eq .Values.backup.garbageCollectionPolicy "LimitBased" }}
-        - --max-backups={{ .Values.backup.maxBackups }}
-        - --garbage-collection-policy={{ .Values.backup.garbageCollectionPolicy }}
-{{- end }}
-        - --garbage-collection-period={{ .Values.backup.garbageCollectionPeriod }}
-        - --data-dir=/var/etcd/data/new.etcd
+{{- if .Values.backup.storageProvider}}
+        # Snapstore flags
         - --storage-provider={{ .Values.backup.storageProvider }}
         - --store-prefix={{ .Release.Name }}-etcd
-{{- if .Values.backup.etcdQuotaBytes }}
-        - --embedded-etcd-quota-bytes={{ int $.Values.backup.etcdQuotaBytes }}
+        # Snapshot flags
+        - --schedule={{ .Values.backup.schedule }}
+        - --delta-snapshot-period={{ .Values.backup.deltaSnapshotPeriod }}
+        - --delta-snapshot-memory-limit={{ int $.Values.backup.deltaSnapshotMemoryLimit }}
+        # GC flags
+        - --garbage-collection-policy={{ .Values.backup.garbageCollectionPolicy }}
+  {{- if eq .Values.backup.garbageCollectionPolicy "LimitBased" }}
+        - --max-backups={{ .Values.backup.maxBackups }}
+  {{- end }}
+        - --garbage-collection-period={{ .Values.backup.garbageCollectionPeriod }}
+        # Snapshot compression and timeout flags
+  {{- if .Values.backup.compression }}
+    {{- if .Values.backup.compression.enabled }}
+        - --compress-snapshots={{ .Values.backup.compression.enabled }}
+    {{- end }}
+    {{- if .Values.backup.compression.policy }}        
+        - --compression-policy={{ .Values.backup.compression.policy }}
+    {{- end }}
+  {{- end }}
+        - --etcd-snapshot-timeout={{ .Values.backup.etcdSnapshotTimeout }}
 {{- end }}
+        # Defragmentation flags
+{{- if .Values.backup.defragmentationSchedule }}
+        - --defragmentation-schedule={{ .Values.backup.defragmentationSchedule }}
+{{- end }}
+        - --etcd-defrag-timeout={{ .Values.backup.etcdDefragTimeout}}
+        # Compaction flags
+{{- if .Values.autoCompaction }}
+  {{- if .Values.autoCompaction.mode }}
+        - --auto-compaction-mode={{ .Values.autoCompaction.mode }}
+  {{- end }}
+  {{- if .Values.autoCompaction.retentionLength }}
+        - --auto-compaction-retention={{ .Values.autoCompaction.retentionLength }}
+  {{- end }}
+{{- end }}
+        # Client and Backup TLS command line flags
 {{- if .Values.etcdTLS }}
-        - --cert=/var/etcd/ssl/tls/tls.crt
-        - --key=/var/etcd/ssl/tls/tls.key
-        - --cacert=/var/etcd/ssl/ca/ca.crt
+        - --cacert=/var/etcd/ssl/ca/bundle.crt
+        - --cert=/var/etcd/ssl/client/tls.crt
+        - --key=/var/etcd/ssl/client/tls.key
         - --insecure-transport=false
         - --insecure-skip-tls-verify=false
         - --endpoints=https://{{ .Release.Name }}-etcd-0:{{ .Values.servicePorts.client }}
@@ -121,37 +153,22 @@ spec:
         - --insecure-skip-tls-verify=true
         - --endpoints=http://{{ .Release.Name }}-etcd-0:{{ .Values.servicePorts.client }}
 {{- end }}
-{{- if .Values.backup.defragmentationSchedule }}
-        - --defragmentation-schedule={{ .Values.backup.defragmentationSchedule }}
+{{- if .Values.backupRestoreTLS }}
+        - --server-cert=/var/etcdbr/ssl/server/tls.crt
+        - --server-key=/var/etcdbr/ssl/server/tls.key
+{{- end }}
+        # Other flags
+        - --data-dir=/var/etcd/data/new.etcd
+        - --restoration-temp-snapshots-dir=/var/etcd/data/restoration.tmp
+        - --snapstore-temp-directory=/var/etcd/data/temp
+{{- if .Values.backup.etcdQuotaBytes }}
+        - --embedded-etcd-quota-bytes={{ int $.Values.backup.etcdQuotaBytes }}
 {{- end }}
         - --etcd-connection-timeout={{ .Values.backup.etcdConnectionTimeout }}
-        - --etcd-snapshot-timeout={{ .Values.backup.etcdSnapshotTimeout }}
-        - --etcd-defrag-timeout={{ .Values.backup.etcdDefragTimeout}}
-        - --delta-snapshot-period={{ .Values.backup.deltaSnapshotPeriod }}
-        - --delta-snapshot-memory-limit={{ int $.Values.backup.deltaSnapshotMemoryLimit }}
+        - --use-etcd-wrapper=true
 {{- if and .Values.etcdAuth.username .Values.etcdAuth.password }}
         - --etcd-username={{ .Values.etcdAuth.username }}
         - --etcd-password={{ .Values.etcdAuth.password }}
-{{- end }}
-{{- if .Values.backupRestoreTLS }}
-        - --server-cert=/var/etcdbr/ssl/tls/tls.crt
-        - --server-key=/var/etcdbr/ssl/tls/tls.key
-{{- end }}
-{{- if .Values.backup.compression }}
-        {{- if .Values.backup.compression.enabled }}
-        - --compress-snapshots={{ .Values.backup.compression.enabled }}
-        {{- end }}
-        {{- if .Values.backup.compression.policy }}        
-        - --compression-policy={{ .Values.backup.compression.policy }}
-        {{- end }}
-{{- end }}
-{{- if .Values.autoCompaction }}
-        {{- if .Values.autoCompaction.mode }}
-        - --auto-compaction-mode={{ .Values.autoCompaction.mode }}
-        {{- end }}
-        {{- if .Values.autoCompaction.retentionLength }}
-        - --auto-compaction-retention={{ .Values.autoCompaction.retentionLength }}
-        {{- end }}
 {{- end }}
         image: {{ .Values.images.etcdBackupRestore.repository }}:{{ .Values.images.etcdBackupRestore.tag }}
         imagePullPolicy: {{ .Values.images.etcdBackupRestore.pullPolicy }}
@@ -162,86 +179,37 @@ spec:
         resources:
 {{ toYaml .Values.resources.backup | indent 10 }}
         env:
+        - name: "POD_NAME"
+          value: {{ .Release.Name }}-etcd-0
+        - name: "POD_NAMESPACE"
+          value: {{ .Release.Namespace }}
         - name: STORAGE_CONTAINER
           value: {{ .Values.backup.storageContainer }}
-{{- if eq .Values.backup.storageProvider "S3" }}
-        - name: "AWS_REGION"
-          valueFrom:
-            secretKeyRef:
-              name: {{ .Release.Name }}-etcd-backup
-              key: "region"
-        - name: "AWS_SECRET_ACCESS_KEY"
-          valueFrom:
-            secretKeyRef:
-              name: {{ .Release.Name }}-etcd-backup
-              key: "secretAccessKey"
-        - name: "AWS_ACCESS_KEY_ID"
-          valueFrom:
-            secretKeyRef:
-              name: {{ .Release.Name }}-etcd-backup
-              key: "accessKeyID"
-{{- else if eq .Values.backup.storageProvider "ABS" }}
-        - name: "STORAGE_ACCOUNT"
-          valueFrom:
-            secretKeyRef:
-              name: {{ .Release.Name }}-etcd-backup
-              key: "storageAccount"
-        - name: "STORAGE_KEY"
-          valueFrom:
-            secretKeyRef:
-              name: {{ .Release.Name }}-etcd-backup
-              key: "storageKey"
-{{- else if eq .Values.backup.storageProvider "GCS" }}
-        - name: "GOOGLE_APPLICATION_CREDENTIALS"
-          value: "/root/.gcp/serviceaccount.json"
-{{- else if eq .Values.backup.storageProvider "Swift" }}
-        - name: "OS_AUTH_URL"
-          valueFrom:
-            secretKeyRef:
-              name: {{ .Release.Name }}-etcd-backup
-              key: "authURL"
-        - name: "OS_DOMAIN_NAME"
-          valueFrom:
-            secretKeyRef:
-              name: {{ .Release.Name }}-etcd-backup
-              key: "domainName"
-        - name: "OS_USERNAME"
-          valueFrom:
-            secretKeyRef:
-              name: {{ .Release.Name }}-etcd-backup
-              key: "username"
-        - name: "OS_PASSWORD"
-          valueFrom:
-            secretKeyRef:
-              name: {{ .Release.Name }}-etcd-backup
-              key: "password"
-        - name: "OS_TENANT_NAME"
-          valueFrom:
-            secretKeyRef:
-              name: {{ .Release.Name }}-etcd-backup
-              key: "tenantName"
-        - name: "OS_REGION_NAME"
-          valueFrom:
-            secretKeyRef:
-              name: {{ .Release.Name }}-etcd-backup
-              key: "regionName"
-{{- else if eq .Values.backup.storageProvider "OSS" }}
-        - name: "ALICLOUD_ENDPOINT"
+{{- if .Values.backup.storageProvider }}
+  {{- if eq .Values.backup.storageProvider "S3" }}
+        - name: "AWS_APPLICATION_CREDENTIALS"
+          value: "/var/etcd-backup"
+    {{- if .Values.backup.s3.endpoint }}
+        - name: "AWS_ENDPOINT_URL_S3"
           valueFrom:
             secretKeyRef:
               name: {{ .Release.Name }}-etcd-backup
               key: "endpoint"
-        - name: "ALICLOUD_ACCESS_KEY_SECRET"
-          valueFrom:
-            secretKeyRef:
-              name: {{ .Release.Name }}-etcd-backup
-              key: "accessKeySecret"
-        - name: "ALICLOUD_ACCESS_KEY_ID"
-          valueFrom:
-            secretKeyRef:
-              name: {{ .Release.Name }}-etcd-backup
-              key: "accessKeyID"
-{{- else if eq .Values.backup.storageProvider "ECS" }}
+              optional: true
+    {{- end }}
+  {{- else if eq .Values.backup.storageProvider "ABS" }}
+        - name: "AZURE_APPLICATION_CREDENTIALS"
+          value: "/var/etcd-backup"
+  {{- else if eq .Values.backup.storageProvider "GCS" }}
+        - name: "GOOGLE_APPLICATION_CREDENTIALS"
+          value: "/var/.gcp/serviceaccount.json"
+  {{- else if eq .Values.backup.storageProvider "Swift" }}
+        - name: "OPENSTACK_APPLICATION_CREDENTIALS"
+          value: "/var/etcd-backup"
+  {{- else if eq .Values.backup.storageProvider "OSS" }}
+        - name: "ALICLOUD_APPLICATION_CREDENTIALS"
+          value: "/var/etcd-backup"
+  {{- else if eq .Values.backup.storageProvider "ECS" }}
         - name: "ECS_ENDPOINT"
           valueFrom:
             secretKeyRef:
@@ -257,21 +225,22 @@ spec:
             secretKeyRef:
               name: {{ .Release.Name }}-etcd-backup
               key: "secretAccessKey"
-  {{- if .Values.backup.ecs.disableSsl }}
+    {{- if .Values.backup.ecs.disableSsl }}
         - name: "ECS_DISABLE_SSL"
           valueFrom:
             secretKeyRef:
               name: {{ .Release.Name }}-etcd-backup
               key: "disableSsl"
               optional: true
-  {{- end }}
-  {{- if .Values.backup.ecs.insecureSkipVerify }}
+    {{- end }}
+    {{- if .Values.backup.ecs.insecureSkipVerify }}
         - name: "ECS_INSECURE_SKIP_VERIFY"
           valueFrom:
             secretKeyRef:
               name: {{ .Release.Name }}-etcd-backup
               key: "insecureSkipVerify"
               optional: true
+    {{- end }}
   {{- end }}
 {{- end }}
         volumeMounts:
@@ -280,49 +249,74 @@ spec:
         - name: etcd-config-file
           mountPath: /var/etcd/config/
 {{- if .Values.etcdTLS }}
-        - name: ca-etcd
+        - name: etcd-ca
           mountPath: /var/etcd/ssl/ca
-        - name: etcd-tls
-          mountPath: /var/etcd/ssl/tls
+        - name: etcd-client-tls
+          mountPath: /var/etcd/ssl/client
 {{- end }}
 {{- if .Values.backupRestoreTLS }}
-        - name: ca-etcdbr
-          mountPath: /var/etcdbr/ssl/ca
-        - name: etcdbr-tls
-          mountPath: /var/etcdbr/ssl/tls
+        - name: backup-restore-server-tls
+          mountPath: /var/etcdbr/ssl/server
 {{- end }}
-{{- if eq .Values.backup.storageProvider "GCS" }}
+{{- if .Values.backup.storageProvider }}
+  {{- if eq .Values.backup.storageProvider "Local"}}
+        - name: local-backup
+          mountPath: /home/nonroot/{{ .Values.backup.storageContainer}}
+  {{- else if eq .Values.backup.storageProvider "GCS" }}
         - name: etcd-backup
-          mountPath: "/root/.gcp/"
+          mountPath: "/var/.gcp/"
+  {{- else }}
+        - name: etcd-backup
+          mountPath: "/var/etcd-backup/"
+  {{- end }}
 {{- end }}
+      securityContext:
+        runAsGroup: 65532
+        runAsNonRoot: true
+        runAsUser: 65532
+        fsGroup: 65532
+      shareProcessNamespace: true
       volumes:
       - name: etcd-config-file
         configMap:
           name: {{ .Release.Name }}-etcd-config
-          defaultMode: 0644
+          defaultMode: 0640
           items:
           - key: etcd.conf.yaml
             path: etcd.conf.yaml
 {{- if .Values.etcdTLS }}
-      - name: ca-etcd
+      - name: etcd-ca
         secret:
           secretName: {{ .Release.Name }}-etcd-ca
-      - name: etcd-tls
+      - name: etcd-server-tls
         secret:
-          secretName: {{ .Release.Name }}-etcd-tls
+          secretName: {{ .Release.Name }}-etcd-server-tls
+      - name: etcd-client-tls
+        secret:
+          secretName: {{ .Release.Name }}-etcd-client-tls
 {{- end }}
 {{- if .Values.backupRestoreTLS }}
-      - name: ca-etcdbr
+      - name: backup-restore-ca
         secret:
           secretName: {{ .Release.Name }}-etcdbr-ca
-      - name: etcdbr-tls
+      - name: backup-restore-server-tls
         secret:
-          secretName: {{ .Release.Name }}-etcdbr-tls
+          secretName: {{ .Release.Name }}-etcdbr-server-tls
+      - name: backup-restore-client-tls
+        secret:
+          secretName: {{ .Release.Name }}-etcdbr-client-tls
 {{- end }}
-{{- if and .Values.backup.storageProvider (not (eq .Values.backup.storageProvider "Local")) }}
+{{- if .Values.backup.storageProvider }}
+  {{- if eq .Values.backup.storageProvider "Local"}}
+      - name: local-backup
+        hostPath:
+          path: {{ .Values.backup.local.path }}/{{ .Values.backup.storageContainer }}
+          type: Directory
+  {{- else }}
       - name: etcd-backup
         secret:
           secretName: {{ .Release.Name }}-etcd-backup
+  {{- end }}
 {{- end }}
   volumeClaimTemplates:
   - metadata:
@@ -332,5 +326,4 @@ spec:
       - "ReadWriteOnce"
       resources:
         requests:
-          storage: {{ .Values.storageCapacity }}
-          
+          storage: {{ .Values.storageCapacity }}   

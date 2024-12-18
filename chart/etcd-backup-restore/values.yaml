@@ -1,14 +1,18 @@
 images:
+  # initContainer image to use for changing backup bucket permissions
+  initContainer:
+    repository: europe-docker.pkg.dev/gardener-project/public/3rd/alpine
+    tag: 3.20.3
+    pullPolicy: IfNotPresent
   # etcd image to use
   etcd:
-    # TODO: change the etcd wrapper version to a newer version which spawns etcd v3.4.34
     repository: europe-docker.pkg.dev/gardener-project/public/gardener/etcd-wrapper
-    tag: v0.2.0
+    tag: v0.3.0
     pullPolicy: IfNotPresent
   # etcd-backup-restore image to use
   etcdBackupRestore:
-    repository: europe-docker.pkg.dev/gardener-project/public/gardener/etcdbrctl
-    tag: v0.12.1
+    repository: europe-docker.pkg.dev/gardener-project/releases/gardener/etcdbrctl
+    tag: v0.32.0
     pullPolicy: IfNotPresent
 
 resources:
@@ -60,7 +64,7 @@ backup:
   # garbageCollectionPeriod is the time period after which old snapshots are periodically garbage-collected
   garbageCollectionPeriod: "1m"
 
-  etcdConnectionTimeout: "30s"
+  etcdConnectionTimeout: "5m"
   etcdSnapshotTimeout: "8m"
   etcdDefragTimeout: "8m"
   # etcdQuotaBytes used to Raise alarms when backend DB size exceeds the given quota bytes
@@ -68,11 +72,11 @@ backup:
 
   # storageContainer is name of the container or bucket name used for storage.
   # Directory name in case of local storage provider.
-  storageContainer: "/var/etcd/data/backup"
+  storageContainer: "etcd-bucket"
 
   # storageProvider indicate the type of backup storage provider.
   # Supported values are ABS,GCS,S3,Swift,OSS,ECS,Local, empty means no backup.
-  storageProvider: "Local"
+  storageProvider: ""
 
   # compression defines the specification to compress the snapshots(full as well as delta).
   # it only supports 3 compression Policy: gzip(default), zlib, lzw.
@@ -85,10 +89,14 @@ backup:
   # failBelowRevision: 100000
 
   # Please uncomment the following section based on the storage provider.
+  # local:
+  #   path: "/etc/local-backupbuckets"
   # s3:
   #   region: region-where-bucket-exists
   #   secretAccessKey: secret-access-key-with-object-storage-privileges
   #   accessKeyID: access-key-id-with-route53-privileges
+  #   endpoint: endpoint-override-for-s3 # optional
+  #   s3ForcePathStyle: "true" # optional
   #   sseCustomerKey: aes-256-sse-customer-key # optional
   #   sseCustomerAlgorithm: aes-256-sse-customer-algorithm # optional
   # gcs:
@@ -126,34 +134,52 @@ etcdAuth: {}
   # password: password
 
 etcdTLS: {}
-#   caBundle: |
-#         -----BEGIN CERTIFICATE-----
-#         ...
-#         -----END CERTIFICATE-----
-#   crt: |
-#         -----BEGIN CERTIFICATE-----
-#         ...
-#         -----END CERTIFICATE-----
-#   key: |
-#         -----BEGIN RSA PRIVATE KEY-----
-#         ...
-#         -----END RSA PRIVATE KEY-----
-
+  # caBundle: |
+  #       -----BEGIN CERTIFICATE-----
+  #       ...
+  #       -----END CERTIFICATE-----
+  # serverTLS:
+  #   crt: |
+  #       -----BEGIN CERTIFICATE-----
+  #       ...
+  #       -----END CERTIFICATE-----
+  #   key: |
+  #       -----BEGIN PRIVATE KEY-----
+  #       ...
+  #       -----END PRIVATE KEY-----
+  # clientTLS:
+  #   crt: |
+  #       -----BEGIN CERTIFICATE-----
+  #       ...
+  #       -----END CERTIFICATE-----
+  #   key: |
+  #       -----BEGIN PRIVATE KEY-----
+  #       ...
+  #       -----END PRIVATE KEY-----
 # backupRestoreTLS field contains the pre-created secrets for backup-restore server.
 # Comment this whole section if you dont want to use tls for the backup-restore server.
 backupRestoreTLS: {}
-#   caBundle: |
-#         -----BEGIN CERTIFICATE-----
-#         ...
-#         -----END CERTIFICATE-----
-#   crt: |
-#         -----BEGIN CERTIFICATE-----
-#         ...
-#         -----END CERTIFICATE-----
-#   key: |
-#         -----BEGIN RSA PRIVATE KEY-----
-#         ...
-#         -----END RSA PRIVATE KEY-----
-
+  # caBundle: |
+  #       -----BEGIN CERTIFICATE-----
+  #       ...
+  #       -----END CERTIFICATE-----
+  # serverTLS:
+  #   crt: |
+  #       -----BEGIN CERTIFICATE-----
+  #       ...
+  #       -----END CERTIFICATE-----
+  #   key: |
+  #       -----BEGIN PRIVATE KEY-----
+  #       ...
+  #       -----END PRIVATE KEY-----
+  # clientTLS:
+  #   crt: |
+  #       -----BEGIN CERTIFICATE-----
+  #       ...
+  #       -----END CERTIFICATE-----
+  #   key: |
+  #       -----BEGIN PRIVATE KEY-----
+  #       ...
+  #       -----END PRIVATE KEY-----
 # podAnnotations that will be passed to the resulting etcd pod
 podAnnotations: {}
