@@ -22,6 +22,8 @@ data:
     # Number of committed transactions to trigger a snapshot to disk.
     snapshot-count: 75000
 
+    enable-v2: false
+
     # Raise alarms when backend size exceeds the given quota. 0 means use the
     # default quota.
     {{- if .Values.backup.etcdQuotaBytes }}
@@ -31,12 +33,26 @@ data:
     # List of comma separated URLs to listen on for client traffic.
     listen-client-urls: {{ if .Values.etcdTLS }}https{{ else }}http{{ end }}://0.0.0.0:{{ .Values.servicePorts.client }}
 
-    # List of this member's client URLs to advertise to the public.
-    # The URLs needed to be a comma-separated list.
-    advertise-client-urls: {{ if .Values.etcdTLS }}https{{ else }}http{{ end }}://0.0.0.0:{{ .Values.servicePorts.client }}
+    # List of comma separated URLs to listen on for peer traffic.
+    listen-peer-urls: http://0.0.0.0:{{ .Values.servicePorts.server }}
+
+    # List of each member's client URLs to advertise to the public.
+    # Each member should include it's client URLs under the member name.
+    advertise-client-urls:
+      {{ .Release.Name }}-etcd-0:
+      - {{ if .Values.etcdTLS }}https{{ else }}http{{ end }}://{{ .Release.Name }}-etcd-0.{{ .Release.Name }}-etcd-peer.{{ .Release.Namespace }}.svc:{{ .Values.servicePorts.client }}
+
+    # List of each member's peer URLs to advertise to the public
+    # Each member should include it's peer URLs under the member name.
+    initial-advertise-peer-urls:
+      {{ .Release.Name }}-etcd-0:
+      - http://{{ .Release.Name }}-etcd-0.{{ .Release.Name }}-etcd-peer.{{ .Release.Namespace }}.svc:{{ .Values.servicePorts.server }}
+
+    # List of server endpoints with which this cluster should be started
+    initial-cluster: {{ .Release.Name }}-etcd-0=http://{{ .Release.Name }}-etcd-0.{{ .Release.Name }}-etcd-peer.{{ .Release.Namespace }}.svc:{{ .Values.servicePorts.server }}
 
     # Initial cluster token for the etcd cluster during bootstrap.
-    initial-cluster-token: 'new'
+    initial-cluster-token: 'etcd-cluster'
 
     # Initial cluster state ('new' or 'existing').
     initial-cluster-state: 'new'
@@ -55,15 +71,17 @@ data:
 
 {{- if .Values.etcdTLS }}
     client-transport-security:
-      # Path to the client server TLS cert file.
-      cert-file: /var/etcd/ssl/tls/tls.crt
+      # Path to the etcd server TLS cert file.
+      cert-file: /var/etcd/ssl/server/tls.crt
 
-      # Path to the client server TLS key file.
-      key-file: /var/etcd/ssl/tls/tls.key
+      # Path to the etcd server TLS key file.
+      key-file: /var/etcd/ssl/server/tls.key
 
       # Enable client cert authentication.
       client-cert-auth: true
 
-      # Path to the client server TLS trusted CA cert file.
-      trusted-ca-file: /var/etcd/ssl/ca/ca.crt
+      # Path to the etcd server TLS trusted CA cert file.
+      trusted-ca-file: /var/etcd/ssl/ca/bundle.crt
+
+      auto-tls: false
 {{- end }}
