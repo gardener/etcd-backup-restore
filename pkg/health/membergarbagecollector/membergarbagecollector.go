@@ -132,7 +132,7 @@ func (mgc *MemberGarbageCollector) RemoveSuperfluousMembers(ctx context.Context,
 		}
 	}
 
-	if sts.Generation != sts.Status.ObservedGeneration && stsSpecReplicas != sts.Status.UpdatedReplicas && stsSpecReplicas >= int32(len(etcdMemberListResponse.Members)) {
+	if sts.Generation != sts.Status.ObservedGeneration && stsSpecReplicas != sts.Status.UpdatedReplicas && int(stsSpecReplicas) >= len(etcdMemberListResponse.Members) {
 		//Return if number of replicas in sts and etcd cluster match or cluster is in scale-up scenario
 		return nil
 	}

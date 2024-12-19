@@ -16,7 +16,7 @@ const (
 	ecsDisableSSL         string = "ECS_DISABLE_SSL"
 	ecsInsecureSkipVerify string = "ECS_INSECURE_SKIP_VERIFY"
 	ecsAccessKeyID        string = "ECS_ACCESS_KEY_ID"
-	ecsSecretAccessKey    string = "ECS_SECRET_ACCESS_KEY"
+	ecsSecretAccessKey    string = "ECS_SECRET_ACCESS_KEY" // #nosec G101 -- This is not a hardcoded password, but only the environment variable to the credentials.
 )
 
 // NewECSSnapStore creates a new S3SnapStore from shared configuration with the specified bucket.

@@ -369,7 +369,7 @@ func GetClusterSize(cluster string) (int, error) {
 func IsMultiNode(logger *logrus.Entry) bool {
 	inputFileName := GetConfigFilePath()
 
-	configYML, err := os.ReadFile(inputFileName)
+	configYML, err := os.ReadFile(inputFileName) // #nosec G304 -- this is a trusted etcd config file.
 	if err != nil {
 		return false
 	}
@@ -528,7 +528,7 @@ func RemoveMemberFromCluster(ctx context.Context, cli etcdClient.ClusterCloser, 
 
 // ReadConfigFileAsMap reads the config file given a path and converts it into a map[string]interface{}
 func ReadConfigFileAsMap(path string) (map[string]interface{}, error) {
-	configYML, err := os.ReadFile(path)
+	configYML, err := os.ReadFile(path) // #nosec G304 -- this is a trusted etcd config file.
 	if err != nil {
 		return nil, fmt.Errorf("unable to read etcd config file at path: %s : %v", path, err)
 	}
@@ -540,10 +540,10 @@ func ReadConfigFileAsMap(path string) (map[string]interface{}, error) {
 	return c, nil
 }
 
-// parseAdvertiseURLsConfig reads and parses the config file and returns the advertise URLs config.
+// parseAdvertiseURLsConfig reads and parses the config file and returns the advertise-urls config.
 func parseAdvertiseURLsConfig(configFile string) (*advertiseURLsConfig, error) {
 	var advURLsConfig advertiseURLsConfig
-	config, err := os.ReadFile(configFile)
+	config, err := os.ReadFile(configFile) // #nosec G304 -- this is a trusted advertise-urls config file.
 	if err != nil {
 		return nil, fmt.Errorf("unable to read etcd config file at path: %s : %w", configFile, err)
 	}
@@ -679,7 +679,7 @@ func RestartEtcdWrapper(ctx context.Context, tlsEnabled bool, etcdConnectionConf
 		}
 		caCertPool.AppendCertsFromPEM(caCert)
 		client.Transport = &http.Transport{
-			TLSClientConfig: &tls.Config{
+			TLSClientConfig: &tls.Config{ // #nosec G402 -- TLSClientConfig.MinVersion=1.2 by default.
 				RootCAs: caCertPool,
 			},
 		}
