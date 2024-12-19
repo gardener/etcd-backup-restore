@@ -164,7 +164,7 @@ type InitIndex int
 
 // ConsistentIndex gets the index
 func (i *InitIndex) ConsistentIndex() uint64 {
-	return uint64(*i)
+	return uint64(*i) // #nosec G115 -- size of InitIndex (int) is lesser than or equal to size of uint64, so no overflow is possible.
 }
 
 // Event is wrapper over etcd event to keep track of time of event

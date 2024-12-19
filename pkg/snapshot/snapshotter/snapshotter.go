@@ -610,6 +610,7 @@ func (ssr *Snapshotter) handleDeltaWatchEvents(wr clientv3.WatchResponse) error 
 		metrics.SnapshotRequired.With(prometheus.Labels{metrics.LabelKind: brtypes.SnapshotKindDelta}).Set(1)
 	}
 	ssr.logger.Debugf("Added events till revision: %d", ssr.lastEventRevision)
+	// #nosec G115 -- validated for size to be lesser than MaxInt.
 	if len(ssr.events) >= int(ssr.config.DeltaSnapshotMemoryLimit) {
 		ssr.logger.Infof("Delta events memory crossed the memory limit: %d Bytes", len(ssr.events))
 		_, err := ssr.takeDeltaSnapshotAndResetTimer()

@@ -16,8 +16,8 @@ import (
 )
 
 const (
-	ocsCredentialDirectory string = "OPENSHIFT_APPLICATION_CREDENTIALS"
-	ocsCredentialJSONFile  string = "OPENSHIFT_APPLICATION_CREDENTIALS_JSON"
+	ocsCredentialDirectory string = "OPENSHIFT_APPLICATION_CREDENTIALS"      // #nosec G101 -- This is not a hardcoded password, but only a path to the credentials.
+	ocsCredentialJSONFile  string = "OPENSHIFT_APPLICATION_CREDENTIALS_JSON" // #nosec G101 -- This is not a hardcoded password, but only a path to the credentials.
 )
 
 type ocsAuthOptions struct {
@@ -88,7 +88,7 @@ func readOCSCredentialFromDir(dirname string) (*ocsAuthOptions, error) {
 		switch file.Name() {
 		case "endpoint":
 			{
-				data, err := os.ReadFile(dirname + "/endpoint")
+				data, err := os.ReadFile(dirname + "/endpoint") // #nosec G304 -- this is a trusted file, obtained via user input.
 				if err != nil {
 					return nil, err
 				}
@@ -96,7 +96,7 @@ func readOCSCredentialFromDir(dirname string) (*ocsAuthOptions, error) {
 			}
 		case "accessKeyID":
 			{
-				data, err := os.ReadFile(dirname + "/accessKeyID")
+				data, err := os.ReadFile(dirname + "/accessKeyID") // #nosec G304 -- this is a trusted file, obtained via user input.
 				if err != nil {
 					return nil, err
 				}
@@ -104,7 +104,7 @@ func readOCSCredentialFromDir(dirname string) (*ocsAuthOptions, error) {
 			}
 		case "secretAccessKey":
 			{
-				data, err := os.ReadFile(dirname + "/secretAccessKey")
+				data, err := os.ReadFile(dirname + "/secretAccessKey") // #nosec G304 -- this is a trusted file, obtained via user input.
 				if err != nil {
 					return nil, err
 				}
@@ -112,7 +112,7 @@ func readOCSCredentialFromDir(dirname string) (*ocsAuthOptions, error) {
 			}
 		case "region":
 			{
-				data, err := os.ReadFile(dirname + "/region")
+				data, err := os.ReadFile(dirname + "/region") // #nosec G304 -- this is a trusted file, obtained via user input.
 				if err != nil {
 					return nil, err
 				}
@@ -120,7 +120,7 @@ func readOCSCredentialFromDir(dirname string) (*ocsAuthOptions, error) {
 			}
 		case "disableSSL":
 			{
-				data, err := os.ReadFile(dirname + "/disableSSL")
+				data, err := os.ReadFile(dirname + "/disableSSL") // #nosec G304 -- this is a trusted file, obtained via user input.
 				if err != nil {
 					return nil, err
 				}
@@ -131,7 +131,7 @@ func readOCSCredentialFromDir(dirname string) (*ocsAuthOptions, error) {
 			}
 		case "insecureSkipVerify":
 			{
-				data, err := os.ReadFile(dirname + "/insecureSkipVerify")
+				data, err := os.ReadFile(dirname + "/insecureSkipVerify") // #nosec G304 -- this is a trusted file, obtained via user input.
 				if err != nil {
 					return nil, err
 				}
@@ -150,7 +150,7 @@ func readOCSCredentialFromDir(dirname string) (*ocsAuthOptions, error) {
 }
 
 func readOCSCredentialsJSON(filename string) (*ocsAuthOptions, error) {
-	jsonData, err := os.ReadFile(filename)
+	jsonData, err := os.ReadFile(filename) // #nosec G304 -- this is a trusted file, obtained via user input.
 	if err != nil {
 		return nil, err
 	}
