@@ -178,6 +178,7 @@ func (ssr *Snapshotter) RunGarbageCollector(stopCh <-chan struct{}) {
 					if err != nil {
 						continue
 					}
+					// #nosec G115 -- validated for size to be lesser than MaxInt.
 					if fullSnapshotIndex < len(fullSnapshotIndexList)-int(ssr.config.MaxBackups) {
 						snap := snapList[fullSnapshotIndexList[fullSnapshotIndex]]
 						snapPath := path.Join(snap.SnapDir, snap.SnapName)

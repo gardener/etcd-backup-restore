@@ -32,3 +32,6 @@ compctedsnap.bkp*
 tmp
 dev
 *.DS_Store
+
+# gosec
+gosec-report.sarif

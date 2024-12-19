@@ -6,7 +6,7 @@ package snapstore
 
 import (
 	"context"
-	"crypto/md5"
+	"crypto/md5" // #nosec G501 -- S3 API supports only MD5 hash for SSE headers
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/base64"
@@ -139,7 +139,7 @@ func readAWSCredentialsJSONFile(filename string) (session.Options, SSECredential
 	httpClient := http.DefaultClient
 	if awsConfig.InsecureSkipVerify != nil && *awsConfig.InsecureSkipVerify == true {
 		httpClient.Transport = &http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: *awsConfig.InsecureSkipVerify},
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: *awsConfig.InsecureSkipVerify}, // #nosec G402 -- InsecureSkipVerify is set by user input, and can be allowed to be set to true based on user's requirement.
 		}
 	}
 
@@ -173,7 +173,7 @@ func readAWSCredentialsJSONFile(filename string) (session.Options, SSECredential
 
 // credentialsFromJSON obtains AWS credentials from a JSON value.
 func credentialsFromJSON(filename string) (*awsCredentials, error) {
-	jsonData, err := os.ReadFile(filename)
+	jsonData, err := os.ReadFile(filename) // #nosec G304 -- this is a trusted file, obtained via user input.
 	if err != nil {
 		return nil, err
 	}
@@ -193,7 +193,7 @@ func readAWSCredentialFiles(dirname string) (session.Options, SSECredentials, er
 	httpClient := http.DefaultClient
 	if awsConfig.InsecureSkipVerify != nil && *awsConfig.InsecureSkipVerify == true {
 		httpClient.Transport = &http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: *awsConfig.InsecureSkipVerify},
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: *awsConfig.InsecureSkipVerify}, // #nosec G402 -- InsecureSkipVerify is set by user input, and can be allowed to be set to true based on user's requirement.
 		}
 	}
 
@@ -235,31 +235,31 @@ func readAWSCredentialFromDir(dirname string) (*awsCredentials, error) {
 	for _, file := range files {
 		switch file.Name() {
 		case "accessKeyID":
-			data, err := os.ReadFile(dirname + "/accessKeyID")
+			data, err := os.ReadFile(dirname + "/accessKeyID") // #nosec G304 -- this is a trusted file, obtained via user input.
 			if err != nil {
 				return nil, err
 			}
 			awsConfig.AccessKeyID = string(data)
 		case "region":
-			data, err := os.ReadFile(dirname + "/region")
+			data, err := os.ReadFile(dirname + "/region") // #nosec G304 -- this is a trusted file, obtained via user input.
 			if err != nil {
 				return nil, err
 			}
 			awsConfig.Region = string(data)
 		case "secretAccessKey":
-			data, err := os.ReadFile(dirname + "/secretAccessKey")
+			data, err := os.ReadFile(dirname + "/secretAccessKey") // #nosec G304 -- this is a trusted file, obtained via user input.
 			if err != nil {
 				return nil, err
 			}
 			awsConfig.SecretAccessKey = string(data)
 		case "endpoint":
-			data, err := os.ReadFile(dirname + "/endpoint")
+			data, err := os.ReadFile(dirname + "/endpoint") // #nosec G304 -- this is a trusted file, obtained via user input.
 			if err != nil {
 				return nil, err
 			}
 			awsConfig.Endpoint = ptr.To(string(data))
 		case "s3ForcePathStyle":
-			data, err := os.ReadFile(dirname + "/s3ForcePathStyle")
+			data, err := os.ReadFile(dirname + "/s3ForcePathStyle") // #nosec G304 -- this is a trusted file, obtained via user input.
 			if err != nil {
 				return nil, err
 			}
@@ -269,7 +269,7 @@ func readAWSCredentialFromDir(dirname string) (*awsCredentials, error) {
 			}
 			awsConfig.S3ForcePathStyle = &val
 		case "insecureSkipVerify":
-			data, err := os.ReadFile(dirname + "/insecureSkipVerify")
+			data, err := os.ReadFile(dirname + "/insecureSkipVerify") // #nosec G304 -- this is a trusted file, obtained via user input.
 			if err != nil {
 				return nil, err
 			}
@@ -279,19 +279,19 @@ func readAWSCredentialFromDir(dirname string) (*awsCredentials, error) {
 			}
 			awsConfig.InsecureSkipVerify = &val
 		case "trustedCaCert":
-			data, err := os.ReadFile(dirname + "/trustedCaCert")
+			data, err := os.ReadFile(dirname + "/trustedCaCert") // #nosec G304 -- this is a trusted file, obtained via user input.
 			if err != nil {
 				return nil, err
 			}
 			awsConfig.TrustedCaCert = ptr.To(string(data))
 		case "sseCustomerKey":
-			data, err := os.ReadFile(dirname + "/sseCustomerKey")
+			data, err := os.ReadFile(dirname + "/sseCustomerKey") // #nosec G304 -- this is a trusted file, obtained via user input.
 			if err != nil {
 				return nil, err
 			}
 			awsConfig.SSECustomerKey = ptr.To(string(data))
 		case "sseCustomerAlgorithm":
-			data, err := os.ReadFile(dirname + "/sseCustomerAlgorithm")
+			data, err := os.ReadFile(dirname + "/sseCustomerAlgorithm") // #nosec G304 -- this is a trusted file, obtained via user input.
 			if err != nil {
 				return nil, err
 			}
@@ -339,22 +339,12 @@ func (s *S3SnapStore) Fetch(snap brtypes.Snapshot) (io.ReadCloser, error) {
 
 // Save will write the snapshot to store
 func (s *S3SnapStore) Save(snap brtypes.Snapshot, rc io.ReadCloser) error {
-	tmpfile, err := os.CreateTemp(s.tempDir, tmpBackupFilePrefix)
+	tempFile, size, err := writeSnapshotToTempFile(s.tempDir, rc)
 	if err != nil {
-		rc.Close()
-		return fmt.Errorf("failed to create snapshot tempfile: %v", err)
+		return err
 	}
-	defer func() {
-		tmpfile.Close()
-		os.Remove(tmpfile.Name())
-	}()
 
-	size, err := io.Copy(tmpfile, rc)
-	rc.Close()
-	if err != nil {
-		return fmt.Errorf("failed to save snapshot to tmpfile: %v", err)
-	}
-	_, err = tmpfile.Seek(0, io.SeekStart)
+	_, err = tempFile.Seek(0, io.SeekStart)
 	if err != nil {
 		return err
 	}
@@ -397,7 +387,7 @@ func (s *S3SnapStore) Save(snap brtypes.Snapshot, rc io.ReadCloser) error {
 
 	for i := uint(0); i < s.maxParallelChunkUploads; i++ {
 		wg.Add(1)
-		go s.partUploader(&wg, cancelCh, &snap, tmpfile, uploadOutput.UploadId, completedParts, chunkUploadCh, resCh)
+		go s.partUploader(&wg, cancelCh, &snap, tempFile, uploadOutput.UploadId, completedParts, chunkUploadCh, resCh)
 	}
 	logrus.Infof("Uploading snapshot of size: %d, chunkSize: %d, noOfChunks: %d", size, chunkSize, noOfChunks)
 
@@ -614,7 +604,7 @@ func getSSECreds(sseCustomerKey, sseCustomerAlgorithm *string) (SSECredentials, 
 		return SSECredentials{}, fmt.Errorf("both sseCustomerKey and sseCustomerAlgorithm are to be provided if customer managed SSE keys are to be used")
 	}
 
-	SSECustomerKeyMD5Bytes := md5.Sum([]byte(*sseCustomerKey))
+	SSECustomerKeyMD5Bytes := md5.Sum([]byte(*sseCustomerKey)) // #nosec G401 -- S3 API supports only MD5 hash for SSE headers, as per https://docs.aws.amazon.com/AmazonS3/latest/userguide/ServerSideEncryptionCustomerKeys.html
 	sseCustomerKeyMD5 := base64.StdEncoding.EncodeToString(SSECustomerKeyMD5Bytes[:])
 	return SSECredentials{
 		sseCustomerKey:       *sseCustomerKey,
