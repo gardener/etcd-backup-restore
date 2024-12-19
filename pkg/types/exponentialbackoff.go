@@ -6,6 +6,7 @@ package types
 
 import (
 	"fmt"
+	"math"
 	"time"
 
 	"github.com/gardener/etcd-backup-restore/pkg/wrappers"
@@ -51,6 +52,8 @@ func (e *ExponentialBackoffConfig) AddFlags(fs *flag.FlagSet) {
 func (e *ExponentialBackoffConfig) Validate() error {
 	if e.Multiplier <= 0 {
 		return fmt.Errorf("multiplicative factor for backoff mechanism can't be less than zero")
+	} else if e.Multiplier > math.MaxInt64 {
+		return fmt.Errorf("multiplicative factor for backoff mechanism can't be more than %d", math.MaxInt64)
 	}
 	if e.AttemptLimit <= 0 {
 		return fmt.Errorf("backoff attempt-limit can't be less than zero")

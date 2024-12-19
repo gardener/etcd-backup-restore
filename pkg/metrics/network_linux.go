@@ -36,7 +36,7 @@ func getNetworkUsageBytes(mode networkMode) float64 {
 
 	pid := os.Getpid()
 	fileName := fmt.Sprintf("/proc/%d/net/dev", pid)
-	fd, err := os.Open(fileName)
+	fd, err := os.Open(fileName) // #nosec #G304 -- trusted file to read network usage stats.
 	if err != nil {
 		fmt.Printf("failed to readfile: %s", fileName)
 		return math.NaN()

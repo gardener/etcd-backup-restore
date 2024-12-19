@@ -6,6 +6,7 @@ package snapstore
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path"
 	"path/filepath"
@@ -248,4 +249,27 @@ func getJSONCredentialModifiedTime(dir string) (time.Time, error) {
 	}
 	// No JSON credential file was found in a given directory.
 	return time.Time{}, nil
+}
+
+// writeSnapshotToTempFile writes the snapshot to a temporary file and returns the file handle.
+// The caller must ensure that the file is closed and removed after use.
+func writeSnapshotToTempFile(tempDir string, rc io.ReadCloser) (tempFile *os.File, written int64, err error) {
+	defer func() {
+		if err1 := rc.Close(); err1 != nil {
+			err = fmt.Errorf("failed to close snapshot reader: %v", err1)
+		}
+	}()
+
+	tempFile, err = os.CreateTemp(tempDir, tmpBackupFilePrefix)
+	if err != nil {
+		err = fmt.Errorf("failed to create snapshot tempfile: %v", err)
+		return
+	}
+
+	written, err = io.Copy(tempFile, rc)
+	if err != nil {
+		err = fmt.Errorf("failed to save snapshot to tempFile: %v", err)
+	}
+
+	return
 }

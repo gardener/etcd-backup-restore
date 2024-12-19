@@ -64,7 +64,7 @@ func (e *ExponentialBackoff) GetNextBackoffTime() time.Duration {
 	}
 
 	e.currentAttempt++
-	e.currentBackoffTime *= time.Duration(e.multiplier)
+	e.currentBackoffTime *= time.Duration(e.multiplier) // #nosec G115 -- validated for size to be lesser than MaxInt64.
 	return e.currentBackoffTime
 }
 

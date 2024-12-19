@@ -20,6 +20,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/gardener/etcd-backup-restore/pkg/etcdutil"
 	etcdclient "github.com/gardener/etcd-backup-restore/pkg/etcdutil/client"
@@ -43,6 +44,8 @@ const (
 	initializationStatusProgress   = "Progress"
 	initializationStatusSuccessful = "Successful"
 	initializationStatusFailed     = "Failed"
+
+	serverReadHeaderTimeout = 5 * time.Second
 )
 
 var emptyStruct struct{}
@@ -139,8 +142,9 @@ func (h *HTTPHandler) RegisterHandler() {
 	mux.Handle("/metrics", promhttp.Handler())
 
 	h.server = &http.Server{
-		Addr:    fmt.Sprintf(":%d", h.Port),
-		Handler: mux,
+		Addr:              fmt.Sprintf(":%d", h.Port),
+		Handler:           mux,
+		ReadHeaderTimeout: serverReadHeaderTimeout,
 	}
 }
 
@@ -202,12 +206,15 @@ func (h *HTTPHandler) serveHealthz(rw http.ResponseWriter, req *http.Request) {
 			return h.GetStatus() == http.StatusOK
 		}(),
 	}
-	json, err := json.Marshal(healthCheck)
+	out, err := json.Marshal(healthCheck)
 	if err != nil {
 		h.Logger.Errorf("Unable to marshal health status to json: %v", err)
 		return
 	}
-	rw.Write([]byte(json))
+	_, err = rw.Write(out)
+	if err != nil {
+		h.Logger.Errorf("Unable to write health status response: %v", err)
+	}
 }
 
 // serveInitialize starts initialization for the configured Initializer
@@ -271,7 +278,11 @@ func (h *HTTPHandler) serveInitializationStatus(rw http.ResponseWriter, req *htt
 
 	rw.WriteHeader(http.StatusOK)
 
-	rw.Write([]byte(h.initializationStatus))
+	_, err := rw.Write([]byte(h.initializationStatus))
+	if err != nil {
+		h.Logger.Errorf("Unable to write latest snapshot metadata response: %v", err)
+		return
+	}
 
 	if h.initializationStatus == initializationStatusSuccessful || h.initializationStatus == initializationStatusFailed {
 		h.Logger.Infof("Updating status from %s to %s", h.initializationStatus, initializationStatusNew)
@@ -309,14 +320,18 @@ func (h *HTTPHandler) serveFullSnapshotTrigger(rw http.ResponseWriter, req *http
 		rw.WriteHeader(http.StatusInternalServerError)
 		return
 	}
-	json, err := json.Marshal(s)
+	out, err := json.Marshal(s)
 	if err != nil {
 		h.Logger.Warnf("Unable to marshal out-of-schedule full snapshot to json: %v", err)
 		rw.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 	rw.WriteHeader(http.StatusOK)
-	rw.Write(json)
+	_, err = rw.Write(out)
+	if err != nil {
+		h.Logger.Errorf("Unable to write latest snapshot metadata response: %v", err)
+		return
+	}
 }
 
 // serveDeltaSnapshotTrigger triggers an out-of-schedule delta snapshot
@@ -340,14 +355,18 @@ func (h *HTTPHandler) serveDeltaSnapshotTrigger(rw http.ResponseWriter, req *htt
 		return
 	}
 
-	json, err := json.Marshal(s)
+	out, err := json.Marshal(s)
 	if err != nil {
 		h.Logger.Warnf("Unable to marshal out-of-schedule delta snapshot to json: %v", err)
 		rw.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 	rw.WriteHeader(http.StatusOK)
-	rw.Write(json)
+	_, err = rw.Write(out)
+	if err != nil {
+		h.Logger.Errorf("Unable to write latest snapshot metadata response: %v", err)
+		return
+	}
 }
 
 func (h *HTTPHandler) serveLatestSnapshotMetadata(rw http.ResponseWriter, req *http.Request) {
@@ -382,14 +401,18 @@ func (h *HTTPHandler) serveLatestSnapshotMetadata(rw http.ResponseWriter, req *h
 		DeltaSnapshots: deltaSnaps,
 	}
 
-	json, err := json.Marshal(resp)
+	out, err := json.Marshal(resp)
 	if err != nil {
 		h.Logger.Warnf("Unable to marshal latest snapshot metadata response to json: %v", err)
 		rw.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 	rw.WriteHeader(http.StatusOK)
-	rw.Write(json)
+	_, err = rw.Write(out)
+	if err != nil {
+		h.Logger.Errorf("Unable to write latest snapshot metadata response: %v", err)
+		return
+	}
 }
 
 func (h *HTTPHandler) serveConfig(rw http.ResponseWriter, req *http.Request) {
@@ -401,7 +424,7 @@ func (h *HTTPHandler) serveConfig(rw http.ResponseWriter, req *http.Request) {
 		return
 	}
 	outputFileName := filepath.Join(dir, "etcd.conf.yaml")
-	configYML, err := os.ReadFile(inputFileName)
+	configYML, err := os.ReadFile(inputFileName) // #nosec G304 -- this is a trusted etcd config file.
 	if err != nil {
 		h.Logger.Warnf("Unable to read etcd config file: %v", err)
 		rw.WriteHeader(http.StatusInternalServerError)
@@ -469,7 +492,7 @@ func (h *HTTPHandler) serveConfig(rw http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	if err := os.WriteFile(outputFileName, data, 0644); err != nil {
+	if err := os.WriteFile(outputFileName, data, 0600); err != nil {
 		h.Logger.Warnf("Unable to write etcd config file: %v", err)
 		rw.WriteHeader(http.StatusInternalServerError)
 		return
@@ -521,7 +544,11 @@ func getInitialCluster(ctx context.Context, initialCluster string, etcdConn brty
 		logger.Warnf("Error with NewCluster() : %v", err)
 		return initialCluster
 	}
-	defer cli.Close()
+	defer func() {
+		if err1 := cli.Close(); err1 != nil {
+			logger.Errorf("Error closing etcd cluster client: %v", err1)
+		}
+	}()
 
 	ctx, cancel := context.WithTimeout(ctx, member.EtcdTimeout)
 	defer cancel()
@@ -579,7 +606,11 @@ func (h *HTTPHandler) delegateReqToLeader(rw http.ResponseWriter, req *http.Requ
 		rw.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
-	defer clientMaintenance.Close()
+	defer func() {
+		if err1 := clientMaintenance.Close(); err != nil {
+			h.Logger.Errorf("Error closing etcd maintenance client: %v", err1)
+		}
+	}()
 
 	client, err := factory.NewCluster()
 	if err != nil {
@@ -587,7 +618,11 @@ func (h *HTTPHandler) delegateReqToLeader(rw http.ResponseWriter, req *http.Requ
 		rw.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
-	defer client.Close()
+	defer func() {
+		if err1 := client.Close(); err1 != nil {
+			h.Logger.Errorf("Error closing etcd cluster client: %v", err1)
+		}
+	}()
 
 	ctx, cancel := context.WithTimeout(req.Context(), h.EtcdConnectionConfig.ConnectionTimeout.Duration)
 	defer cancel()
@@ -647,7 +682,7 @@ func (h *HTTPHandler) delegateReqToLeader(rw http.ResponseWriter, req *http.Requ
 		}
 		caCertPool.AppendCertsFromPEM(caCert)
 		revProxyHandler.Transport = &http.Transport{
-			TLSClientConfig: &tls.Config{
+			TLSClientConfig: &tls.Config{ // #nosec G402 -- TLSClientConfig.MinVersion=1.2 by default.
 				RootCAs: caCertPool,
 			},
 		}
@@ -656,32 +691,36 @@ func (h *HTTPHandler) delegateReqToLeader(rw http.ResponseWriter, req *http.Requ
 	revProxyHandler.ServeHTTP(rw, req)
 }
 
-// IsBackupRestoreHealthy checks the whether the backup-restore of given backup-restore URL healthy or not.
-func IsBackupRestoreHealthy(backupRestoreURL string, TLSEnabled bool, rootCA string) (bool, error) {
+// IsBackupRestoreHealthy checks whether the backup-restore of given backup-restore URL is healthy or not.
+func IsBackupRestoreHealthy(backupRestoreURL string, TLSEnabled bool, rootCA string) (healthy bool, err error) {
 	var health healthCheck
-	client := &http.Client{}
+	cl := &http.Client{}
 
 	if TLSEnabled {
 		caCertPool := x509.NewCertPool()
 
-		caCert, err := os.ReadFile(rootCA)
+		caCert, err := os.ReadFile(rootCA) // #nosec G304 -- this is a trusted root CA file.
 		if err != nil {
 			return false, err
 		}
 		caCertPool.AppendCertsFromPEM(caCert)
 
-		client.Transport = &http.Transport{
-			TLSClientConfig: &tls.Config{
+		cl.Transport = &http.Transport{
+			TLSClientConfig: &tls.Config{ // #nosec G402 -- TLSClientConfig.MinVersion=1.2 by default.
 				RootCAs: caCertPool,
 			},
 		}
 	}
 
-	response, err := client.Get(backupRestoreURL)
+	response, err := cl.Get(backupRestoreURL)
 	if err != nil {
 		return false, err
 	}
-	defer response.Body.Close()
+	defer func() {
+		if err1 := response.Body.Close(); err1 != nil {
+			err = fmt.Errorf("failed to close response body: %v", err1)
+		}
+	}()
 
 	responseData, err := io.ReadAll(response.Body)
 	if err != nil {
