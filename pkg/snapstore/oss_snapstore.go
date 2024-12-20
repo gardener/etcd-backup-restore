@@ -117,9 +117,7 @@ func (s *OSSSnapStore) Save(snap brtypes.Snapshot, rc io.ReadCloser) (err error)
 		if err2 != nil {
 			err2 = fmt.Errorf("failed to remove snapshot tempfile: %v", err2)
 		}
-		if err1 != nil || err2 != nil {
-			err = errors.Join(err1, err2)
-		}
+		err = errors.Join(err, err1, err2)
 	}()
 
 	_, err = tempFile.Seek(0, io.SeekStart)

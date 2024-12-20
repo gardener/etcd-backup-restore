@@ -357,9 +357,7 @@ func (s *SwiftSnapStore) Save(snap brtypes.Snapshot, rc io.ReadCloser) (err erro
 		if err2 != nil {
 			err2 = fmt.Errorf("failed to remove snapshot tempfile: %v", err2)
 		}
-		if err1 != nil || err2 != nil {
-			err = errors.Join(err1, err2)
-		}
+		err = errors.Join(err, err1, err2)
 	}()
 
 	var (

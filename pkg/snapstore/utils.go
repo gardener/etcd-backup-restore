@@ -5,6 +5,7 @@
 package snapstore
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -256,7 +257,7 @@ func getJSONCredentialModifiedTime(dir string) (time.Time, error) {
 func writeSnapshotToTempFile(tempDir string, rc io.ReadCloser) (tempFile *os.File, written int64, err error) {
 	defer func() {
 		if err1 := rc.Close(); err1 != nil {
-			err = fmt.Errorf("failed to close snapshot reader: %v", err1)
+			err = errors.Join(err, fmt.Errorf("failed to close snapshot reader: %v", err1))
 		}
 	}()
 

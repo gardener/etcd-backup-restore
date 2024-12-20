@@ -9,6 +9,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -328,7 +329,6 @@ func (h *HTTPHandler) serveFullSnapshotTrigger(rw http.ResponseWriter, req *http
 	rw.WriteHeader(http.StatusOK)
 	if _, err = rw.Write(out); err != nil {
 		h.Logger.Errorf("Unable to write latest snapshot metadata response: %v", err)
-		return
 	}
 }
 
@@ -362,7 +362,6 @@ func (h *HTTPHandler) serveDeltaSnapshotTrigger(rw http.ResponseWriter, req *htt
 	rw.WriteHeader(http.StatusOK)
 	if _, err = rw.Write(out); err != nil {
 		h.Logger.Errorf("Unable to write latest snapshot metadata response: %v", err)
-		return
 	}
 }
 
@@ -407,7 +406,6 @@ func (h *HTTPHandler) serveLatestSnapshotMetadata(rw http.ResponseWriter, req *h
 	rw.WriteHeader(http.StatusOK)
 	if _, err = rw.Write(out); err != nil {
 		h.Logger.Errorf("Unable to write latest snapshot metadata response: %v", err)
-		return
 	}
 }
 
@@ -541,8 +539,8 @@ func getInitialCluster(ctx context.Context, initialCluster string, etcdConn brty
 		return initialCluster
 	}
 	defer func() {
-		if err1 := cli.Close(); err1 != nil {
-			logger.Errorf("Error closing etcd cluster client: %v", err1)
+		if err := cli.Close(); err != nil {
+			logger.Errorf("Error closing etcd cluster client: %v", err)
 		}
 	}()
 
@@ -603,8 +601,8 @@ func (h *HTTPHandler) delegateReqToLeader(rw http.ResponseWriter, req *http.Requ
 		return
 	}
 	defer func() {
-		if err1 := clientMaintenance.Close(); err != nil {
-			h.Logger.Errorf("Error closing etcd maintenance client: %v", err1)
+		if err := clientMaintenance.Close(); err != nil {
+			h.Logger.Errorf("Error closing etcd maintenance client: %v", err)
 		}
 	}()
 
@@ -615,8 +613,8 @@ func (h *HTTPHandler) delegateReqToLeader(rw http.ResponseWriter, req *http.Requ
 		return
 	}
 	defer func() {
-		if err1 := cl.Close(); err1 != nil {
-			h.Logger.Errorf("Error closing etcd cluster client: %v", err1)
+		if err := cl.Close(); err != nil {
+			h.Logger.Errorf("Error closing etcd cluster client: %v", err)
 		}
 	}()
 
@@ -714,7 +712,7 @@ func IsBackupRestoreHealthy(backupRestoreURL string, TLSEnabled bool, rootCA str
 	}
 	defer func() {
 		if err1 := response.Body.Close(); err1 != nil {
-			err = fmt.Errorf("failed to close response body: %v", err1)
+			err = errors.Join(err, fmt.Errorf("failed to close response body: %v", err1))
 		}
 	}()
 
