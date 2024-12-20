@@ -45,6 +45,7 @@ const (
 	initializationStatusSuccessful = "Successful"
 	initializationStatusFailed     = "Failed"
 
+	// serverReadHeaderTimeout is the timeout for reading the request headers, to avoid slowloris attacks.
 	serverReadHeaderTimeout = 5 * time.Second
 )
 
@@ -211,8 +212,7 @@ func (h *HTTPHandler) serveHealthz(rw http.ResponseWriter, req *http.Request) {
 		h.Logger.Errorf("Unable to marshal health status to json: %v", err)
 		return
 	}
-	_, err = rw.Write(out)
-	if err != nil {
+	if _, err = rw.Write(out); err != nil {
 		h.Logger.Errorf("Unable to write health status response: %v", err)
 	}
 }
@@ -278,8 +278,7 @@ func (h *HTTPHandler) serveInitializationStatus(rw http.ResponseWriter, req *htt
 
 	rw.WriteHeader(http.StatusOK)
 
-	_, err := rw.Write([]byte(h.initializationStatus))
-	if err != nil {
+	if _, err := rw.Write([]byte(h.initializationStatus)); err != nil {
 		h.Logger.Errorf("Unable to write latest snapshot metadata response: %v", err)
 		return
 	}
@@ -327,8 +326,7 @@ func (h *HTTPHandler) serveFullSnapshotTrigger(rw http.ResponseWriter, req *http
 		return
 	}
 	rw.WriteHeader(http.StatusOK)
-	_, err = rw.Write(out)
-	if err != nil {
+	if _, err = rw.Write(out); err != nil {
 		h.Logger.Errorf("Unable to write latest snapshot metadata response: %v", err)
 		return
 	}
@@ -362,8 +360,7 @@ func (h *HTTPHandler) serveDeltaSnapshotTrigger(rw http.ResponseWriter, req *htt
 		return
 	}
 	rw.WriteHeader(http.StatusOK)
-	_, err = rw.Write(out)
-	if err != nil {
+	if _, err = rw.Write(out); err != nil {
 		h.Logger.Errorf("Unable to write latest snapshot metadata response: %v", err)
 		return
 	}
@@ -408,8 +405,7 @@ func (h *HTTPHandler) serveLatestSnapshotMetadata(rw http.ResponseWriter, req *h
 		return
 	}
 	rw.WriteHeader(http.StatusOK)
-	_, err = rw.Write(out)
-	if err != nil {
+	if _, err = rw.Write(out); err != nil {
 		h.Logger.Errorf("Unable to write latest snapshot metadata response: %v", err)
 		return
 	}
@@ -612,14 +608,14 @@ func (h *HTTPHandler) delegateReqToLeader(rw http.ResponseWriter, req *http.Requ
 		}
 	}()
 
-	client, err := factory.NewCluster()
+	cl, err := factory.NewCluster()
 	if err != nil {
 		h.Logger.Warnf("failed to create etcd cluster client:  %v", err)
 		rw.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
 	defer func() {
-		if err1 := client.Close(); err1 != nil {
+		if err1 := cl.Close(); err1 != nil {
 			h.Logger.Errorf("Error closing etcd cluster client: %v", err1)
 		}
 	}()
@@ -633,7 +629,7 @@ func (h *HTTPHandler) delegateReqToLeader(rw http.ResponseWriter, req *http.Requ
 		return
 	}
 
-	_, etcdLeaderEndPoint, err := miscellaneous.GetLeader(ctx, clientMaintenance, client, h.EtcdConnectionConfig.Endpoints[0])
+	_, etcdLeaderEndPoint, err := miscellaneous.GetLeader(ctx, clientMaintenance, cl, h.EtcdConnectionConfig.Endpoints[0])
 	if err != nil {
 		h.Logger.Warnf("Unable to get the etcd leader endpoint: %v", err)
 		rw.WriteHeader(http.StatusMethodNotAllowed)

@@ -401,7 +401,7 @@ func AddLearnerWithRetry(ctx context.Context, m Control, retrySteps int, dataDir
 		}
 		if err := m.AddMemberAsLearner(ctx); err != nil {
 			if errors.Is(err, rpctypes.Error(rpctypes.ErrGRPCTooManyLearners)) {
-				if err1 := miscellaneous.SleepWithContext(ctx, EtcdTimeout); err != nil {
+				if err1 := miscellaneous.SleepWithContext(ctx, EtcdTimeout); err1 != nil {
 					return errors.Join(err, err1)
 				}
 			}
