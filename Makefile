@@ -14,6 +14,8 @@ IMG                 ?= ${IMAGE_REPOSITORY}:${IMAGE_TAG}
 
 .DEFAULT_GOAL := build-local
 
+include hack/tools.mk
+
 .PHONY: revendor
 revendor:
 	@env go mod tidy -v
@@ -51,6 +53,14 @@ verify: check test
 .PHONY: check
 check:
 	@.ci/check
+
+.PHONY: sast
+sast: $(GOSEC)
+	@./hack/sast.sh
+
+.PHONY: sast-report
+sast-report: $(GOSEC)
+	@./hack/sast.sh --gosec-report true
 
 .PHONY: test
 test:

@@ -34,8 +34,8 @@ const (
 	envPrefixSource                 = "SOURCE_OS_"
 	authTypePassword                = "password"
 	authTypeV3ApplicationCredential = "v3applicationcredential"
-	swiftCredentialDirectory        = "OPENSTACK_APPLICATION_CREDENTIALS"
-	swiftCredentialJSONFile         = "OPENSTACK_APPLICATION_CREDENTIALS_JSON"
+	swiftCredentialDirectory        = "OPENSTACK_APPLICATION_CREDENTIALS"      // #nosec G101 -- This is not a hardcoded password, but only a path to the credentials.
+	swiftCredentialJSONFile         = "OPENSTACK_APPLICATION_CREDENTIALS_JSON" // #nosec G101 -- This is not a hardcoded password, but only a path to the credentials.
 )
 
 // SwiftSnapStore is snapstore with Openstack Swift as backend
@@ -143,7 +143,7 @@ func getClientOpts(isSource bool) (*clientconfig.ClientOpts, error) {
 	}
 
 	// If a neither a swiftCredentialFile nor a swiftCredentialJSONFile was found, fall back to
-	// retreiving credentials from environment variables.
+	// retrieving credentials from environment variables.
 	// If the snapstore is used as source during a copy operation all environment variables have a SOURCE_OS_ prefix.
 	if isSource {
 		return &clientconfig.ClientOpts{EnvPrefix: envPrefixSource}, nil
@@ -161,7 +161,9 @@ func readSwiftCredentialsJSON(filename string) (*clientconfig.ClientOpts, error)
 		return &clientconfig.ClientOpts{}, err
 	}
 
-	os.Setenv("OS_TENANT_NAME", cred.TenantName)
+	if err := os.Setenv("OS_TENANT_NAME", cred.TenantName); err != nil {
+		return nil, fmt.Errorf("error setting tenant name: %w", err)
+	}
 
 	if cred.AuthType == authTypeV3ApplicationCredential {
 		return &clientconfig.ClientOpts{
@@ -192,7 +194,7 @@ func readSwiftCredentialsJSON(filename string) (*clientconfig.ClientOpts, error)
 // swiftCredentialsFromJSON obtains Swift credentials from a JSON value.
 func swiftCredentialsFromJSON(filename string) (*swiftCredentials, error) {
 	cred := &swiftCredentials{}
-	jsonData, err := os.ReadFile(filename)
+	jsonData, err := os.ReadFile(filename) // #nosec G304 -- this is a trusted file, obtained via user input.
 	if err != nil {
 		return nil, err
 	}
@@ -214,7 +216,9 @@ func readSwiftCredentialFiles(dirname string) (*clientconfig.ClientOpts, error) 
 		return nil, err
 	}
 
-	os.Setenv("OS_TENANT_NAME", cred.TenantName)
+	if err := os.Setenv("OS_TENANT_NAME", cred.TenantName); err != nil {
+		return nil, fmt.Errorf("error setting tenant name: %w", err)
+	}
 
 	if cred.AuthType == authTypeV3ApplicationCredential {
 		return &clientconfig.ClientOpts{
@@ -256,56 +260,56 @@ func readSwiftCredentialDir(dirName string) (*swiftCredentials, error) {
 	for _, file := range files {
 		switch file.Name() {
 		case "authURL":
-			data, err := os.ReadFile(dirName + "/authURL")
+			data, err := os.ReadFile(dirName + "/authURL") // #nosec G304 -- this is a trusted file, obtained via user input.
 			if err != nil {
 				return nil, err
 			}
 			cred.AuthURL = string(data)
 
 		case "domainName":
-			data, err := os.ReadFile(dirName + "/domainName")
+			data, err := os.ReadFile(dirName + "/domainName") // #nosec G304 -- this is a trusted file, obtained via user input.
 			if err != nil {
 				return nil, err
 			}
 			cred.DomainName = string(data)
 		case "password":
-			data, err := os.ReadFile(dirName + "/password")
+			data, err := os.ReadFile(dirName + "/password") // #nosec G304 -- this is a trusted file, obtained via user input.
 			if err != nil {
 				return nil, err
 			}
 			cred.Password = string(data)
 		case "region":
-			data, err := os.ReadFile(dirName + "/region")
+			data, err := os.ReadFile(dirName + "/region") // #nosec G304 -- this is a trusted file, obtained via user input.
 			if err != nil {
 				return nil, err
 			}
 			cred.Region = string(data)
 		case "tenantName":
-			data, err := os.ReadFile(dirName + "/tenantName")
+			data, err := os.ReadFile(dirName + "/tenantName") // #nosec G304 -- this is a trusted file, obtained via user input.
 			if err != nil {
 				return nil, err
 			}
 			cred.TenantName = string(data)
 		case "username":
-			data, err := os.ReadFile(dirName + "/username")
+			data, err := os.ReadFile(dirName + "/username") // #nosec G304 -- this is a trusted file, obtained via user input.
 			if err != nil {
 				return nil, err
 			}
 			cred.Username = string(data)
 		case "applicationCredentialID":
-			data, err := os.ReadFile(dirName + "/applicationCredentialID")
+			data, err := os.ReadFile(dirName + "/applicationCredentialID") // #nosec G304 -- this is a trusted file, obtained via user input.
 			if err != nil {
 				return nil, err
 			}
 			cred.ApplicationCredentialID = string(data)
 		case "applicationCredentialName":
-			data, err := os.ReadFile(dirName + "/applicationCredentialName")
+			data, err := os.ReadFile(dirName + "/applicationCredentialName") // #nosec G304 -- this is a trusted file, obtained via user input.
 			if err != nil {
 				return nil, err
 			}
 			cred.ApplicationCredentialName = string(data)
 		case "applicationCredentialSecret":
-			data, err := os.ReadFile(dirName + "/applicationCredentialSecret")
+			data, err := os.ReadFile(dirName + "/applicationCredentialSecret") // #nosec G304 -- this is a trusted file, obtained via user input.
 			if err != nil {
 				return nil, err
 			}
@@ -339,22 +343,22 @@ func (s *SwiftSnapStore) Fetch(snap brtypes.Snapshot) (io.ReadCloser, error) {
 
 // Save will write the snapshot to store, as a DLO (dynamic large object), as described
 // in https://docs.openstack.org/swift/latest/overview_large_objects.html
-func (s *SwiftSnapStore) Save(snap brtypes.Snapshot, rc io.ReadCloser) error {
-	// Save it locally
-	tempFile, err := os.CreateTemp(s.tempDir, tmpBackupFilePrefix)
+func (s *SwiftSnapStore) Save(snap brtypes.Snapshot, rc io.ReadCloser) (err error) {
+	tempFile, size, err := writeSnapshotToTempFile(s.tempDir, rc)
 	if err != nil {
-		rc.Close()
-		return fmt.Errorf("failed to create snapshot tempfile: %v", err)
+		return err
 	}
 	defer func() {
-		tempFile.Close()
-		os.Remove(tempFile.Name())
+		err1 := tempFile.Close()
+		if err1 != nil {
+			err1 = fmt.Errorf("failed to close snapshot tempfile: %v", err1)
+		}
+		err2 := os.Remove(tempFile.Name())
+		if err2 != nil {
+			err2 = fmt.Errorf("failed to remove snapshot tempfile: %v", err2)
+		}
+		err = errors.Join(err, err1, err2)
 	}()
-	size, err := io.Copy(tempFile, rc)
-	rc.Close()
-	if err != nil {
-		return fmt.Errorf("failed to save snapshot to tempFile: %v", err)
-	}
 
 	var (
 		chunkSize  = int64(math.Max(float64(s.minChunkSize), float64(size/swiftNoOfChunk)))

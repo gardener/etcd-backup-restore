@@ -101,7 +101,7 @@ func (d *DataValidator) sanityCheck(failBelowRevision int64) (DataDirStatus, err
 		}
 
 		// read the content of the file safe_guard and match it with the environment variable
-		content, err := os.ReadFile(path)
+		content, err := os.ReadFile(path) // #nosec G304 -- this is a trusted safe_guard file written to by etcdbr.
 		if err != nil {
 			return WrongVolumeMounted, fmt.Errorf("can't read the content of the `safe_guard` file to determine if a wrong volume is mounted: %v", err)
 		}
@@ -441,8 +441,7 @@ func getLatestEtcdRevision(path string) (int64, error) {
 			rev = 1
 			return nil
 		}
-		rev = int64(binary.BigEndian.Uint64(k[0:8]))
-
+		rev = int64(binary.BigEndian.Uint64(k[0:8])) // #nosec G115 -- only the first 8 bytes are used for integer conversion, so no overflow is possible.
 		return nil
 	})
 

@@ -30,7 +30,7 @@ func newGenericS3FromAuthOpt(bucket, prefix, tempDir string, maxParallelChunkUpl
 	httpClient := http.DefaultClient
 	if !ao.disableSSL {
 		httpClient.Transport = &http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: ao.insecureSkipVerify},
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: ao.insecureSkipVerify}, // #nosec G402 -- InsecureSkipVerify is set by user input, and can be allowed to be set to true based on user's requirement.
 		}
 	}
 

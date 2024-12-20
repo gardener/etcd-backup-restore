@@ -6,6 +6,7 @@ package snapstore
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -37,8 +38,8 @@ type OSSBucket interface {
 const (
 	// Total number of chunks to be uploaded must be one less than maximum limit allowed.
 	ossNoOfChunk           int64 = 9999
-	aliCredentialDirectory       = "ALICLOUD_APPLICATION_CREDENTIALS"
-	aliCredentialJSONFile        = "ALICLOUD_APPLICATION_CREDENTIALS_JSON"
+	aliCredentialDirectory       = "ALICLOUD_APPLICATION_CREDENTIALS"      // #nosec G101 -- This is not a hardcoded password, but only a path to the credentials.
+	aliCredentialJSONFile        = "ALICLOUD_APPLICATION_CREDENTIALS_JSON" // #nosec G101 -- This is not a hardcoded password, but only a path to the credentials.
 )
 
 type authOptions struct {
@@ -102,23 +103,24 @@ func (s *OSSSnapStore) Fetch(snap brtypes.Snapshot) (io.ReadCloser, error) {
 }
 
 // Save will write the snapshot to store
-func (s *OSSSnapStore) Save(snap brtypes.Snapshot, rc io.ReadCloser) error {
-	tmpfile, err := os.CreateTemp(s.tempDir, tmpBackupFilePrefix)
+func (s *OSSSnapStore) Save(snap brtypes.Snapshot, rc io.ReadCloser) (err error) {
+	tempFile, size, err := writeSnapshotToTempFile(s.tempDir, rc)
 	if err != nil {
-		rc.Close()
-		return fmt.Errorf("failed to create snapshot tempfile: %v", err)
+		return err
 	}
 	defer func() {
-		tmpfile.Close()
-		os.Remove(tmpfile.Name())
+		err1 := tempFile.Close()
+		if err1 != nil {
+			err1 = fmt.Errorf("failed to close snapshot tempfile: %v", err1)
+		}
+		err2 := os.Remove(tempFile.Name())
+		if err2 != nil {
+			err2 = fmt.Errorf("failed to remove snapshot tempfile: %v", err2)
+		}
+		err = errors.Join(err, err1, err2)
 	}()
 
-	size, err := io.Copy(tmpfile, rc)
-	rc.Close()
-	if err != nil {
-		return fmt.Errorf("failed to save snapshot to tmpfile: %v", err)
-	}
-	_, err = tmpfile.Seek(0, io.SeekStart)
+	_, err = tempFile.Seek(0, io.SeekStart)
 	if err != nil {
 		return err
 	}
@@ -131,7 +133,7 @@ func (s *OSSSnapStore) Save(snap brtypes.Snapshot, rc io.ReadCloser) error {
 		noOfChunks++
 	}
 
-	ossChunks, err := oss.SplitFileByPartNum(tmpfile.Name(), int(noOfChunks))
+	ossChunks, err := oss.SplitFileByPartNum(tempFile.Name(), int(noOfChunks))
 	if err != nil {
 		return err
 	}
@@ -151,17 +153,17 @@ func (s *OSSSnapStore) Save(snap brtypes.Snapshot, rc io.ReadCloser) error {
 
 	for i := uint(0); i < s.maxParallelChunkUploads; i++ {
 		wg.Add(1)
-		go s.partUploader(&wg, imur, tmpfile, completedParts, chunkUploadCh, cancelCh, resCh)
+		go s.partUploader(&wg, imur, tempFile, completedParts, chunkUploadCh, cancelCh, resCh)
 	}
 
 	for _, ossChunk := range ossChunks {
-		chunk := chunk{
+		c := chunk{
 			offset: ossChunk.Offset,
 			size:   ossChunk.Size,
 			id:     ossChunk.Number,
 		}
-		logrus.Debugf("Triggering chunk upload for offset: %d", chunk.offset)
-		chunkUploadCh <- chunk
+		logrus.Debugf("Triggering chunk upload for offset: %d", c.offset)
+		chunkUploadCh <- c
 	}
 
 	logrus.Infof("Triggered chunk upload for all chunks, total: %d", noOfChunks)
@@ -295,7 +297,7 @@ func getAuthOptions(prefix string) (*authOptions, error) {
 }
 
 func readALICredentialsJSON(filename string) (*authOptions, error) {
-	jsonData, err := os.ReadFile(filename)
+	jsonData, err := os.ReadFile(filename) // #nosec G304 -- this is a trusted file, obtained via user input.
 	if err != nil {
 		return nil, err
 	}
@@ -323,19 +325,19 @@ func readALICredentialFiles(dirname string) (*authOptions, error) {
 
 	for _, file := range files {
 		if file.Name() == "storageEndpoint" {
-			data, err := os.ReadFile(dirname + "/storageEndpoint")
+			data, err := os.ReadFile(dirname + "/storageEndpoint") // #nosec G304 -- this is a trusted file, obtained via user input.
 			if err != nil {
 				return nil, err
 			}
 			aliConfig.Endpoint = string(data)
 		} else if file.Name() == "accessKeySecret" {
-			data, err := os.ReadFile(dirname + "/accessKeySecret")
+			data, err := os.ReadFile(dirname + "/accessKeySecret") // #nosec G304 -- this is a trusted file, obtained via user input.
 			if err != nil {
 				return nil, err
 			}
 			aliConfig.AccessKey = string(data)
 		} else if file.Name() == "accessKeyID" {
-			data, err := os.ReadFile(dirname + "/accessKeyID")
+			data, err := os.ReadFile(dirname + "/accessKeyID") // #nosec G304 -- this is a trusted file, obtained via user input.
 			if err != nil {
 				return nil, err
 			}

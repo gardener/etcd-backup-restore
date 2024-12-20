@@ -6,6 +6,7 @@ package types
 
 import (
 	"fmt"
+	"math"
 	"time"
 
 	"github.com/gardener/etcd-backup-restore/pkg/wrappers"
@@ -77,6 +78,9 @@ func (c *SnapshotterConfig) Validate() error {
 	if c.GarbageCollectionPolicy == GarbageCollectionPolicyLimitBased && c.MaxBackups <= 0 {
 		return fmt.Errorf("max backups should be greather than zero for garbage collection policy set to limit based")
 	}
+	if c.MaxBackups > math.MaxInt {
+		return fmt.Errorf("max backups %d is greater than %d", c.MaxBackups, math.MaxInt)
+	}
 
 	if c.DeltaSnapshotPeriod.Duration < DeltaSnapshotIntervalThreshold {
 		logrus.Infof("Found delta snapshot interval %s less than 1 second. Disabling delta snapshotting. ", c.DeltaSnapshotPeriod)
@@ -85,6 +89,8 @@ func (c *SnapshotterConfig) Validate() error {
 	if c.DeltaSnapshotMemoryLimit < 1 {
 		logrus.Infof("Found delta snapshot memory limit %d bytes less than 1 byte. Setting it to default: %d ", c.DeltaSnapshotMemoryLimit, DefaultDeltaSnapMemoryLimit)
 		c.DeltaSnapshotMemoryLimit = DefaultDeltaSnapMemoryLimit
+	} else if c.DeltaSnapshotMemoryLimit > math.MaxInt {
+		return fmt.Errorf("delta snapshot memory limit %d bytes is greater than %d bytes", c.DeltaSnapshotMemoryLimit, math.MaxInt)
 	}
 	return nil
 }
