@@ -18,3 +18,11 @@ spec:
     protocol: TCP
     port: {{ .Values.servicePorts.client }}
     targetPort: {{ .Values.servicePorts.client }}
+  - name: server
+    protocol: TCP
+    port: {{ .Values.servicePorts.server }}
+    targetPort: {{ .Values.servicePorts.server }}
+  - name: backuprestore
+    protocol: TCP
+    port: {{ .Values.servicePorts.backupRestore }}
+    targetPort: {{ .Values.servicePorts.backupRestore }}
