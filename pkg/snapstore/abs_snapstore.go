@@ -15,7 +15,6 @@ import (
 	"path"
 	"path/filepath"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -91,10 +90,11 @@ type ABSSnapStore struct {
 }
 
 type absCredentials struct {
-	BucketName     string  `json:"bucketName"`
-	StorageAccount string  `json:"storageAccount"`
-	StorageKey     string  `json:"storageKey"`
-	Domain         *string `json:"domain,omitempty"`
+	BucketName      string  `json:"bucketName"`
+	StorageAccount  string  `json:"storageAccount"`
+	StorageKey      string  `json:"storageKey"`
+	Domain          *string `json:"domain,omitempty"`
+	EmulatorEnabled bool    `json:"emulatorEnabled,omitempty"`
 }
 
 // NewABSSnapStore creates a new ABSSnapStore using a shared configuration and a specified bucket
@@ -114,7 +114,7 @@ func NewABSSnapStore(config *brtypes.SnapstoreConfig) (*ABSSnapStore, error) {
 		domain = *absCreds.Domain
 	}
 
-	blobServiceURL, err := ConstructBlobServiceURL(absCreds.StorageAccount, domain)
+	blobServiceURL, err := ConstructBlobServiceURL(absCreds.StorageAccount, domain, absCreds.EmulatorEnabled)
 	if err != nil {
 		return nil, fmt.Errorf("failed to construct the blob service URL with error: %w", err)
 	}
@@ -146,21 +146,12 @@ func NewABSSnapStore(config *brtypes.SnapstoreConfig) (*ABSSnapStore, error) {
 
 // ConstructBlobServiceURL constructs the Blob Service URL based on the activation status of the Azurite Emulator.
 // It checks the environment variable for emulator configuration and constructs the URL accordingly.
-// The function expects the following environment variable:
-// - AZURE_EMULATOR_ENABLED: Indicates whether the Azurite Emulator is enabled (expects "true" or "false").
-func ConstructBlobServiceURL(storageAccount, domain string) (string, error) {
+func ConstructBlobServiceURL(storageAccount, domain string, emulatorEnabled bool) (string, error) {
 	scheme := "https"
 
-	emulatorEnabled, ok := os.LookupEnv(EnvAzureEmulatorEnabled)
-	if ok {
-		isEmulator, err := strconv.ParseBool(emulatorEnabled)
-		if err != nil {
-			return "", fmt.Errorf("invalid value for %s: %s, error: %w", EnvAzureEmulatorEnabled, emulatorEnabled, err)
-		}
-		if isEmulator {
-			// TODO: going forward, use Azurite with HTTPS (TLS) communication
-			scheme = "http"
-		}
+	if emulatorEnabled {
+		// TODO: going forward, use Azurite with HTTPS (TLS) communication
+		scheme = "http"
 	}
 
 	return fmt.Sprintf("%s://%s.%s", scheme, storageAccount, domain), nil

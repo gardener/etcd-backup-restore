@@ -558,34 +558,18 @@ var _ = Describe("Blob Service URL construction for Azure", func() {
 		credentials, err = container.NewSharedKeyCredential(storageAccount, storageKey)
 		Expect(err).ShouldNot(HaveOccurred())
 	})
-	Context(fmt.Sprintf("when the environment variable %q is not set", EnvAzureEmulatorEnabled), func() {
-		It("should return the default blob service URL", func() {
-			blobServiceURL, err := ConstructBlobServiceURL(credentials.AccountName(), domain)
+	Context("when emulatorEnabled field is not set or set to false", func() {
+		It("should return the default blob service URL with HTTPS scheme", func() {
+			blobServiceURL, err := ConstructBlobServiceURL(credentials.AccountName(), domain, false)
 			Expect(err).ShouldNot(HaveOccurred())
 			Expect(blobServiceURL).Should(Equal(fmt.Sprintf("https://%s.%s", credentials.AccountName(), domain)))
 		})
 	})
-	Context(fmt.Sprintf("when the environment variable %q is set", EnvAzureEmulatorEnabled), func() {
-		Context("to values which are not \"true\"", func() {
-			It("should error when the environment variable is not \"true\" or \"false\"", func() {
-				GinkgoT().Setenv(EnvAzureEmulatorEnabled, "")
-				_, err := ConstructBlobServiceURL(credentials.AccountName(), domain)
-				Expect(err).Should(HaveOccurred())
-			})
-			It("should return the default blob service URL when the environment variable is set to \"false\"", func() {
-				GinkgoT().Setenv(EnvAzureEmulatorEnabled, "false")
-				blobServiceURL, err := ConstructBlobServiceURL(credentials.AccountName(), domain)
-				Expect(err).ShouldNot(HaveOccurred())
-				Expect(blobServiceURL).Should(Equal(fmt.Sprintf("https://%s.%s", credentials.AccountName(), domain)))
-			})
-		})
-		Context("to \"true\"", func() {
-			It("should return the Azurite blob service URL with HTTP scheme", func() {
-				GinkgoT().Setenv(EnvAzureEmulatorEnabled, "true")
-				blobServiceURL, err := ConstructBlobServiceURL(credentials.AccountName(), domain)
-				Expect(err).ShouldNot(HaveOccurred())
-				Expect(blobServiceURL).Should(Equal(fmt.Sprintf("http://%s.%s", credentials.AccountName(), domain)))
-			})
+	Context("when emulatorEnabled field is set to true", func() {
+		It("should return the Azurite blob service URL with HTTP scheme", func() {
+			blobServiceURL, err := ConstructBlobServiceURL(credentials.AccountName(), domain, true)
+			Expect(err).ShouldNot(HaveOccurred())
+			Expect(blobServiceURL).Should(Equal(fmt.Sprintf("http://%s.%s", credentials.AccountName(), domain)))
 		})
 	})
 })
