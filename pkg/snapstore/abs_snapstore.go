@@ -15,6 +15,7 @@ import (
 	"path"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -114,7 +115,8 @@ func NewABSSnapStore(config *brtypes.SnapstoreConfig) (*ABSSnapStore, error) {
 		domain = *absCreds.Domain
 	}
 
-	blobServiceURL, err := ConstructBlobServiceURL(absCreds.StorageAccount, domain, absCreds.EmulatorEnabled)
+	emulatorEnabled := config.IsEmulatorEnabled || absCreds.EmulatorEnabled
+	blobServiceURL, err := ConstructBlobServiceURL(absCreds.StorageAccount, domain, emulatorEnabled)
 	if err != nil {
 		return nil, fmt.Errorf("failed to construct the blob service URL with error: %w", err)
 	}
@@ -147,14 +149,12 @@ func NewABSSnapStore(config *brtypes.SnapstoreConfig) (*ABSSnapStore, error) {
 // ConstructBlobServiceURL constructs the Blob Service URL based on the activation status of the Azurite Emulator.
 // It checks the environment variable for emulator configuration and constructs the URL accordingly.
 func ConstructBlobServiceURL(storageAccount, domain string, emulatorEnabled bool) (string, error) {
-	scheme := "https"
-
 	if emulatorEnabled {
 		// TODO: going forward, use Azurite with HTTPS (TLS) communication
-		scheme = "http"
+		// by using [production-style URLs](https://github.com/Azure/Azurite?tab=readme-ov-file#production-style-url)
+		return fmt.Sprintf("http://%s/%s", domain, storageAccount), nil
 	}
-
-	return fmt.Sprintf("%s://%s.%s", scheme, storageAccount, domain), nil
+	return fmt.Sprintf("https://%s.%s", storageAccount, domain), nil
 }
 
 func getCredentials(prefixString string) (*absCredentials, error) {
@@ -222,23 +222,33 @@ func readABSCredentialFiles(dirname string) (*absCredentials, error) {
 
 	for _, file := range files {
 		if file.Name() == "storageAccount" {
-			data, err := os.ReadFile(path.Join(dirname, file.Name())) // #nosec G304 -- this is a trusted file, obtained via user input.
+			data, err := os.ReadFile(path.Join(dirname, file.Name())) // #nosec G304 -- this is a trusted file, obtained via mounted secret.
 			if err != nil {
 				return nil, err
 			}
 			absConfig.StorageAccount = string(data)
 		} else if file.Name() == "storageKey" {
-			data, err := os.ReadFile(path.Join(dirname, file.Name())) // #nosec G304 -- this is a trusted file, obtained via user input.
+			data, err := os.ReadFile(path.Join(dirname, file.Name())) // #nosec G304 -- this is a trusted file, obtained via mounted secret.
 			if err != nil {
 				return nil, err
 			}
 			absConfig.StorageKey = string(data)
 		} else if file.Name() == "domain" {
-			data, err := os.ReadFile(path.Join(dirname, file.Name())) // #nosec G304 -- this is a trusted file, obtained via user input.
+			data, err := os.ReadFile(path.Join(dirname, file.Name())) // #nosec G304 -- this is a trusted file, obtained via mounted secret.
 			if err != nil {
 				return nil, err
 			}
 			absConfig.Domain = ptr.To(string(data))
+		} else if file.Name() == "emulatorEnabled" {
+			data, err := os.ReadFile(path.Join(dirname, file.Name())) // #nosec G304 -- this is a trusted file, obtained via mounted secret.
+			if err != nil {
+				return nil, err
+			}
+			emulatorEnabled, err := strconv.ParseBool(string(data))
+			if err != nil {
+				return nil, err
+			}
+			absConfig.EmulatorEnabled = emulatorEnabled
 		}
 	}
 

@@ -569,7 +569,7 @@ var _ = Describe("Blob Service URL construction for Azure", func() {
 		It("should return the Azurite blob service URL with HTTP scheme", func() {
 			blobServiceURL, err := ConstructBlobServiceURL(credentials.AccountName(), domain, true)
 			Expect(err).ShouldNot(HaveOccurred())
-			Expect(blobServiceURL).Should(Equal(fmt.Sprintf("http://%s.%s", credentials.AccountName(), domain)))
+			Expect(blobServiceURL).Should(Equal(fmt.Sprintf("http://%s/%s", domain, credentials.AccountName())))
 		})
 	})
 })
