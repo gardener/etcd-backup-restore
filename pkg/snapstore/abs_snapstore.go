@@ -110,12 +110,17 @@ func NewABSSnapStore(config *brtypes.SnapstoreConfig) (*ABSSnapStore, error) {
 		return nil, fmt.Errorf("failed to create sharedKeyCredential: %w", err)
 	}
 
+	emulatorEnabled := config.IsEmulatorEnabled || absCreds.EmulatorEnabled
 	domain := brtypes.AzureBlobStorageGlobalDomain
 	if absCreds.Domain != nil {
 		domain = *absCreds.Domain
+	} else {
+		// if emulator is enabled, but custom domain for the emulator is not provided, throw error
+		if emulatorEnabled {
+			return nil, fmt.Errorf("emulator enabled, but `domain` not provided")
+		}
 	}
 
-	emulatorEnabled := config.IsEmulatorEnabled || absCreds.EmulatorEnabled
 	blobServiceURL, err := ConstructBlobServiceURL(absCreds.StorageAccount, domain, emulatorEnabled)
 	if err != nil {
 		return nil, fmt.Errorf("failed to construct the blob service URL with error: %w", err)
@@ -147,7 +152,7 @@ func NewABSSnapStore(config *brtypes.SnapstoreConfig) (*ABSSnapStore, error) {
 }
 
 // ConstructBlobServiceURL constructs the Blob Service URL based on the activation status of the Azurite Emulator.
-// It checks the environment variable for emulator configuration and constructs the URL accordingly.
+// The `domain` must either be the default Azure global blob storage domain, or a specific domain for Azurite (without HTTP scheme).
 func ConstructBlobServiceURL(storageAccount, domain string, emulatorEnabled bool) (string, error) {
 	if emulatorEnabled {
 		// TODO: going forward, use Azurite with HTTPS (TLS) communication

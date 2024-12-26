@@ -74,6 +74,11 @@ func NewGCSSnapStore(config *brtypes.SnapstoreConfig) (*GCSSnapStore, error) {
 		if emulatorConfig.enabled {
 			emulatorConfig.endpoint = endpoint
 		}
+	} else {
+		// if emulator is enabled, but custom storage API endpoint for the emulator is not provided, throw error
+		if emulatorConfig.enabled {
+			return nil, fmt.Errorf("emulator enabled, but `storageAPIEndpoint` not provided")
+		}
 	}
 
 	var chunkDirSuffix string
