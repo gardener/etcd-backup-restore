@@ -33,6 +33,7 @@ func (cmd *Cmd) StopProcess() {
 
 // RunCmdWithFlags creates a process out of the  Cmd object.
 func (cmd *Cmd) RunCmdWithFlags() error {
+	var err error
 	cmd.process = exec.Command(cmd.Task, cmd.Flags...) // #nosec G204 -- only used by integration tests.
 	file, err := os.Create(cmd.Logfile)
 	if err != nil {
@@ -40,8 +41,8 @@ func (cmd *Cmd) RunCmdWithFlags() error {
 		return err
 	}
 	defer func() {
-		if err1 := file.Close(); err1 != nil {
-			cmd.Logger.Errorf("failed to close log file for command %s: %v", cmd.Task, err1)
+		if err = file.Close(); err != nil {
+			cmd.Logger.Errorf("failed to close log file for command %s: %v", cmd.Task, err)
 		}
 	}()
 	cmd.Logger.Infof("%v %v", cmd.Task, cmd.Flags)
@@ -69,11 +70,11 @@ func (cmd *Cmd) RunCmdWithFlags() error {
 				break
 			}
 			if len(line) > 0 {
-				if _, err1 := logWriter.WriteString(fmt.Sprintf("%s\n", line)); err1 != nil {
-					cmd.Logger.Errorf("failed to write to log file for command %s: %v", cmd.Task, err1)
+				if _, err = logWriter.WriteString(fmt.Sprintf("%s\n", line)); err != nil {
+					cmd.Logger.Errorf("failed to write to log file for command %s: %v", cmd.Task, err)
 				}
-				if err1 := logWriter.Flush(); err1 != nil {
-					cmd.Logger.Errorf("failed to flush log file for command %s: %v", cmd.Task, err1)
+				if err = logWriter.Flush(); err != nil {
+					cmd.Logger.Errorf("failed to flush log file for command %s: %v", cmd.Task, err)
 				}
 			}
 		}
@@ -87,19 +88,19 @@ func (cmd *Cmd) RunCmdWithFlags() error {
 				break
 			}
 			if len(line) > 0 {
-				if _, err1 := logWriter.WriteString(fmt.Sprintf("%s\n", line)); err1 != nil {
-					cmd.Logger.Errorf("failed to write to log file for command %s: %v", cmd.Task, err1)
+				if _, err = logWriter.WriteString(fmt.Sprintf("%s\n", line)); err != nil {
+					cmd.Logger.Errorf("failed to write to log file for command %s: %v", cmd.Task, err)
 				}
-				if err1 := logWriter.Flush(); err1 != nil {
-					cmd.Logger.Errorf("failed to flush log file for command %s: %v", cmd.Task, err1)
+				if err = logWriter.Flush(); err != nil {
+					cmd.Logger.Errorf("failed to flush log file for command %s: %v", cmd.Task, err)
 				}
 			}
 		}
 	}()
 
-	if err1 := cmd.process.Wait(); err1 != nil {
+	if err = cmd.process.Wait(); err != nil {
 		var exitErr *exec.ExitError
-		if errors.As(err1, &exitErr) {
+		if errors.As(err, &exitErr) {
 			cmd.Logger.Infof("command execution stopped (signal: %s)", exitErr.Error())
 		}
 	}
