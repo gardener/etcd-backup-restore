@@ -33,7 +33,6 @@ func (cmd *Cmd) StopProcess() {
 
 // RunCmdWithFlags creates a process out of the  Cmd object.
 func (cmd *Cmd) RunCmdWithFlags() error {
-	var err error
 	cmd.process = exec.Command(cmd.Task, cmd.Flags...) // #nosec G204 -- only used by integration tests.
 	file, err := os.Create(cmd.Logfile)
 	if err != nil {
@@ -101,7 +100,7 @@ func (cmd *Cmd) RunCmdWithFlags() error {
 	if err = cmd.process.Wait(); err != nil {
 		var exitErr *exec.ExitError
 		if errors.As(err, &exitErr) {
-			cmd.Logger.Infof("command execution stopped (signal: %s)", exitErr.Error())
+			cmd.Logger.Errorf("command execution stopped (signal: %s)", exitErr.Error())
 		}
 	}
 	return nil
