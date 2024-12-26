@@ -6,6 +6,7 @@ package snapstore
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -27,7 +28,7 @@ import (
 )
 
 const (
-	envStoreCredentials       = "GOOGLE_APPLICATION_CREDENTIALS"
+	envStoreCredentials       = "GOOGLE_APPLICATION_CREDENTIALS" // #nosec G101 -- This is not a hardcoded password, but only the environment variable to the credentials.
 	envStorageAPIEndpoint     = "GOOGLE_STORAGE_API_ENDPOINT"
 	envSourceStoreCredentials = "SOURCE_GOOGLE_APPLICATION_CREDENTIALS"
 
@@ -105,7 +106,7 @@ func NewGCSSnapStore(config *brtypes.SnapstoreConfig) (*GCSSnapStore, error) {
 
 func getGCSStorageAPIEndpoint(path string) (string, error) {
 	if _, err := os.Stat(path); err == nil {
-		data, err := os.ReadFile(path)
+		data, err := os.ReadFile(path) // #nosec G304 -- this is a trusted file, obtained via user input.
 		if err != nil {
 			return "", err
 		}
@@ -163,21 +164,22 @@ func (s *GCSSnapStore) Fetch(snap brtypes.Snapshot) (io.ReadCloser, error) {
 }
 
 // Save will write the snapshot to store.
-func (s *GCSSnapStore) Save(snap brtypes.Snapshot, rc io.ReadCloser) error {
-	tmpfile, err := os.CreateTemp(s.tempDir, tmpBackupFilePrefix)
+func (s *GCSSnapStore) Save(snap brtypes.Snapshot, rc io.ReadCloser) (err error) {
+	tempFile, size, err := writeSnapshotToTempFile(s.tempDir, rc)
 	if err != nil {
-		rc.Close()
-		return fmt.Errorf("failed to create snapshot tempfile: %v", err)
+		return err
 	}
 	defer func() {
-		tmpfile.Close()
-		os.Remove(tmpfile.Name())
+		err1 := tempFile.Close()
+		if err1 != nil {
+			err1 = fmt.Errorf("failed to close snapshot tempfile: %v", err1)
+		}
+		err2 := os.Remove(tempFile.Name())
+		if err2 != nil {
+			err2 = fmt.Errorf("failed to remove snapshot tempfile: %v", err2)
+		}
+		err = errors.Join(err, err1, err2)
 	}()
-	size, err := io.Copy(tmpfile, rc)
-	rc.Close()
-	if err != nil {
-		return fmt.Errorf("failed to save snapshot to tmpfile: %v", err)
-	}
 
 	var (
 		chunkSize  = int64(math.Max(float64(s.minChunkSize), float64(size/gcsNoOfChunk)))
@@ -196,7 +198,7 @@ func (s *GCSSnapStore) Save(snap brtypes.Snapshot, rc io.ReadCloser) error {
 
 	for i := uint(0); i < s.maxParallelChunkUploads; i++ {
 		wg.Add(1)
-		go s.componentUploader(&wg, cancelCh, &snap, tmpfile, chunkUploadCh, resCh)
+		go s.componentUploader(&wg, cancelCh, &snap, tempFile, chunkUploadCh, resCh)
 	}
 
 	logrus.Infof("Uploading snapshot of size: %d, chunkSize: %d, noOfChunks: %d", size, chunkSize, noOfChunks)
@@ -257,7 +259,9 @@ func (s *GCSSnapStore) uploadComponent(snap *brtypes.Snapshot, file *os.File, of
 	defer cancel()
 	w := obj.NewWriter(ctx)
 	if _, err := io.Copy(w, sr); err != nil {
-		w.Close()
+		if err1 := w.Close(); err1 != nil {
+			return errors.Join(err, err1)
+		}
 		return err
 	}
 	return w.Close()

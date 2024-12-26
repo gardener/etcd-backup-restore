@@ -114,7 +114,7 @@ func GetTLSClientForEtcd(tlsConfig *brtypes.EtcdConnectionConfig, options *clien
 	// should still setup an empty tls configuration for gRPC to setup
 	// secure connection.
 	if cfg.TLS == nil && !tlsConfig.InsecureTransport {
-		cfg.TLS = &tls.Config{}
+		cfg.TLS = &tls.Config{} // #nosec G402 -- cfg.TLS.MinVersion=1.2 by default.
 	}
 
 	// If the user wants to skip TLS verification then we should set

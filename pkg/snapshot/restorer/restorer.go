@@ -126,7 +126,10 @@ func (r *Restorer) Restore(ro brtypes.RestoreOptions, m member.Control) (*embed.
 				r.logger.Errorf("failed to close etcd cluster client: %v", err)
 			}
 		}()
-		m.UpdateMemberPeerURL(context.TODO(), clientCluster)
+
+		if err := m.UpdateMemberPeerURL(context.TODO(), clientCluster); err != nil {
+			return e, err
+		}
 	}
 	return e, nil
 }
@@ -146,7 +149,11 @@ func (r *Restorer) restoreFromBaseSnapshot(ro brtypes.RestoreOptions) error {
 	if err != nil {
 		return fmt.Errorf("failed to fetch the base snapshot from the object store with error: %w", err)
 	}
-	defer rc.Close()
+	defer func() {
+		if err := rc.Close(); err != nil {
+			r.logger.Errorf("failed to close the base snapshot reader: %v", err)
+		}
+	}()
 
 	// Decompress the snapshot if necessary
 	isCompressed, compressionPolicy, err := compressor.IsSnapshotCompressed(ro.BaseSnapshot.CompressionSuffix)
@@ -549,7 +556,11 @@ func (r *Restorer) getEventsDataFromDeltaSnapshot(snap brtypes.Snapshot) ([]byte
 			return nil, fmt.Errorf("unable to decompress the snapshot: %v", err)
 		}
 	}
-	defer rc.Close()
+	defer func(rc io.ReadCloser) {
+		if err := rc.Close(); err != nil {
+			r.logger.Errorf("failed to close the delta snapshot reader: %v", err)
+		}
+	}(rc)
 
 	buf := new(bytes.Buffer)
 	bufSize, err := buf.ReadFrom(rc)
@@ -586,7 +597,7 @@ func (r *Restorer) getEventsDataFromDeltaSnapshot(snap brtypes.Snapshot) ([]byte
 }
 
 func persistRawDeltaSnapshot(rc io.ReadCloser, tempFilePath string) error {
-	tempFile, err := os.Create(tempFilePath)
+	tempFile, err := os.Create(tempFilePath) // #nosec G304 -- this is a trusted filepath for persisting delta snapshots for restoration.
 	if err != nil {
 		err = fmt.Errorf("failed to create temp file %s to store raw delta snapshot", tempFilePath)
 		return err
@@ -714,7 +725,7 @@ func (r *Restorer) readSnapshotContentsFromReadCloser(rc io.ReadCloser, snap *br
 }
 
 func (r *Restorer) readSnapshotContentsFromFile(filePath string, snap *brtypes.Snapshot) ([]byte, error) {
-	file, err := os.Open(filePath)
+	file, err := os.Open(filePath) // #nosec G304 -- this is a trusted snapshot file.
 	if err != nil {
 		return nil, fmt.Errorf("failed to open file %s for delta snapshot %s : %v", filePath, snap.SnapName, err)
 	}

@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -34,8 +35,8 @@ import (
 )
 
 const (
-	absCredentialDirectory = "AZURE_APPLICATION_CREDENTIALS"
-	absCredentialJSONFile  = "AZURE_APPLICATION_CREDENTIALS_JSON"
+	absCredentialDirectory = "AZURE_APPLICATION_CREDENTIALS"      // #nosec G101 -- This is not a hardcoded password, but only a path to the credentials.
+	absCredentialJSONFile  = "AZURE_APPLICATION_CREDENTIALS_JSON" // #nosec G101 -- This is not a hardcoded password, but only a path to the credentials.
 	// AzuriteEndpoint is the environment variable which indicates the endpoint at which the Azurite emulator is hosted
 	AzuriteEndpoint = "AZURE_STORAGE_API_ENDPOINT"
 )
@@ -203,7 +204,7 @@ func getCredentials(prefixString string) (*absCredentials, error) {
 }
 
 func readABSCredentialsJSON(filename string) (*absCredentials, error) {
-	jsonData, err := os.ReadFile(filename)
+	jsonData, err := os.ReadFile(filename) // #nosec G304 -- this is a trusted file, obtained via user input.
 	if err != nil {
 		return nil, err
 	}
@@ -230,19 +231,19 @@ func readABSCredentialFiles(dirname string) (*absCredentials, error) {
 
 	for _, file := range files {
 		if file.Name() == "storageAccount" {
-			data, err := os.ReadFile(path.Join(dirname, file.Name()))
+			data, err := os.ReadFile(path.Join(dirname, file.Name())) // #nosec G304 -- this is a trusted file, obtained via user input.
 			if err != nil {
 				return nil, err
 			}
 			absConfig.StorageAccount = string(data)
 		} else if file.Name() == "storageKey" {
-			data, err := os.ReadFile(path.Join(dirname, file.Name()))
+			data, err := os.ReadFile(path.Join(dirname, file.Name())) // #nosec G304 -- this is a trusted file, obtained via user input.
 			if err != nil {
 				return nil, err
 			}
 			absConfig.StorageKey = string(data)
 		} else if file.Name() == "domain" {
-			data, err := os.ReadFile(path.Join(dirname, file.Name()))
+			data, err := os.ReadFile(path.Join(dirname, file.Name())) // #nosec G304 -- this is a trusted file, obtained via user input.
 			if err != nil {
 				return nil, err
 			}
@@ -338,22 +339,22 @@ func (a *ABSSnapStore) List(includeAll bool) (brtypes.SnapList, error) {
 }
 
 // Save will write the snapshot to store
-func (a *ABSSnapStore) Save(snap brtypes.Snapshot, rc io.ReadCloser) error {
-	// Save it locally
-	tmpfile, err := os.CreateTemp(a.tempDir, tmpBackupFilePrefix)
+func (a *ABSSnapStore) Save(snap brtypes.Snapshot, rc io.ReadCloser) (err error) {
+	tempFile, size, err := writeSnapshotToTempFile(a.tempDir, rc)
 	if err != nil {
-		rc.Close()
-		return fmt.Errorf("failed to create snapshot tempfile: %w", err)
+		return err
 	}
 	defer func() {
-		tmpfile.Close()
-		os.Remove(tmpfile.Name())
+		err1 := tempFile.Close()
+		if err1 != nil {
+			err1 = fmt.Errorf("failed to close snapshot tempfile: %v", err1)
+		}
+		err2 := os.Remove(tempFile.Name())
+		if err2 != nil {
+			err2 = fmt.Errorf("failed to remove snapshot tempfile: %v", err2)
+		}
+		err = errors.Join(err, err1, err2)
 	}()
-	size, err := io.Copy(tmpfile, rc)
-	rc.Close()
-	if err != nil {
-		return fmt.Errorf("failed to save snapshot to tmpfile: %w", err)
-	}
 
 	var (
 		chunkSize  = a.minChunkSize
@@ -372,7 +373,7 @@ func (a *ABSSnapStore) Save(snap brtypes.Snapshot, rc io.ReadCloser) error {
 
 	for i := uint(0); i < a.maxParallelChunkUploads; i++ {
 		wg.Add(1)
-		go a.blockUploader(&wg, cancelCh, &snap, tmpfile, chunkUploadCh, resCh)
+		go a.blockUploader(&wg, cancelCh, &snap, tempFile, chunkUploadCh, resCh)
 	}
 	logrus.Infof("Uploading snapshot of size: %d, chunkSize: %d, noOfChunks: %d", size, chunkSize, noOfChunks)
 	for offset, index := int64(0), 1; offset < size; offset += int64(chunkSize) {
