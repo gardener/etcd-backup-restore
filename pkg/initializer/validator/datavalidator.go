@@ -90,14 +90,17 @@ func (d *DataValidator) sanityCheck(failBelowRevision int64) (DataDirStatus, err
 		// create the file `safe_guard` if it doesn't exist
 		if _, err := os.Stat(path); err != nil {
 			if errors.Is(err, os.ErrNotExist) {
-				data := []byte(namespace)
-				err := os.WriteFile(path, data, 0600)
-				if err != nil {
+				if err = os.WriteFile(path, []byte(namespace), 0600); err != nil {
 					d.Logger.Fatalf("can't create `safe_guard` file because : %v", err)
 				}
 			} else {
 				d.Logger.Fatalf("can't check if the `safe_guard` file exists or not because : %v", err)
 			}
+		}
+
+		// change file permission to handle previously created files with too wide permissions.
+		if err := os.Chmod(path, 0600); err != nil {
+			d.Logger.Fatalf("can't change the permission of the `safe_guard` file because : %v", err)
 		}
 
 		// read the content of the file safe_guard and match it with the environment variable
@@ -288,7 +291,7 @@ func verifyDB(path string) error {
 	}()
 
 	// Open database.
-	db, err := bolt.Open(path, 0666, &bolt.Options{Timeout: timeoutToOpenBoltDB})
+	db, err := bolt.Open(path, 0600, &bolt.Options{Timeout: timeoutToOpenBoltDB})
 	if err != nil {
 		return err
 	}
