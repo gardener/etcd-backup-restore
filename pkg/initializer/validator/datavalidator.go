@@ -99,6 +99,7 @@ func (d *DataValidator) sanityCheck(failBelowRevision int64) (DataDirStatus, err
 		}
 
 		// change file permission to handle previously created files with too wide permissions.
+		// TODO (shreyas-s-rao): remove this code to change file mode, in etcd-backup-restore:v0.36.0.
 		if err := os.Chmod(path, 0600); err != nil {
 			d.Logger.Fatalf("can't change the permission of the `safe_guard` file because : %v", err)
 		}
