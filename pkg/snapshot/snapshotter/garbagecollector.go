@@ -182,6 +182,10 @@ func (ssr *Snapshotter) RunGarbageCollector(stopCh <-chan struct{}) {
 					if fullSnapshotIndex < len(fullSnapshotIndexList)-int(ssr.config.MaxBackups) {
 						snap := snapList[fullSnapshotIndexList[fullSnapshotIndex]]
 						snapPath := path.Join(snap.SnapDir, snap.SnapName)
+						if !snap.IsDeletable() {
+							ssr.logger.Infof("GC: Skipping the snapshot: %s, since its immutability period hasn't expired yet", snap.SnapName)
+							continue
+						}
 						ssr.logger.Infof("GC: Deleting old full snapshot: %s", snapPath)
 						if err := ssr.store.Delete(*snap); errors.Is(err, brtypes.ErrSnapshotDeleteFailDueToImmutability) {
 							// The snapshot is still immutable, attempt to gargbage collect it in the next run

@@ -181,10 +181,8 @@ func (m *mockS3Client) ListObjectsPages(in *s3.ListObjectsInput, callback func(*
 
 	for index, key := range keys {
 		if strings.HasPrefix(key, *in.Prefix) {
-			keyPtr := new(string)
-			*keyPtr = key
 			tempObj := &s3.Object{
-				Key: keyPtr,
+				Key: aws.String(key),
 			}
 			out.Contents = append(out.Contents, tempObj)
 			count++
@@ -205,6 +203,86 @@ func (m *mockS3Client) ListObjectsPages(in *s3.ListObjectsInput, callback func(*
 		}
 	}
 	return nil
+}
+
+// ListObjectVersionsPages returns the versioned objects from map for mock test.
+func (m *mockS3Client) ListObjectVersionsPages(in *s3.ListObjectVersionsInput, callback func(*s3.ListObjectVersionsOutput, bool) bool) error {
+	var (
+		count    int64 = 0
+		limit    int64 = 1 // aws default is 1000.
+		lastPage bool  = false
+		keys     []string
+		out      = &s3.ListObjectVersionsOutput{
+			Prefix:   in.Prefix,
+			Versions: make([]*s3.ObjectVersion, 0),
+		}
+	)
+
+	if in.MaxKeys != nil {
+		limit = *in.MaxKeys
+	}
+	for key := range m.objects {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+
+	for index, key := range keys {
+		if strings.HasPrefix(key, *in.Prefix) {
+			tempObj := &s3.ObjectVersion{
+				Key:       aws.String(key),
+				IsLatest:  aws.Bool(true),
+				VersionId: aws.String(fmt.Sprintf("%s:%d", "mock-versionID", count)),
+			}
+			out.Versions = append(out.Versions, tempObj)
+			count++
+		}
+		if index == len(keys)-1 {
+			lastPage = true
+		}
+		if count == limit || lastPage {
+			if !callback(out, lastPage) {
+				return nil
+			}
+			count = 0
+			out = &s3.ListObjectVersionsOutput{
+				Prefix:        in.Prefix,
+				Versions:      make([]*s3.ObjectVersion, 0),
+				NextKeyMarker: &key,
+			}
+		}
+	}
+	return nil
+}
+
+// GetBucketVersioning returns the versioning state of a bucket for mock bucket.
+func (m *mockS3Client) GetBucketVersioning(in *s3.GetBucketVersioningInput) (*s3.GetBucketVersioningOutput, error) {
+	if in != nil && *in.Bucket == "mock-S3NonObjectLockedBucket" {
+		return &s3.GetBucketVersioningOutput{}, nil
+	} else if in != nil && *in.Bucket == "mock-S3ObjectLockedBucket" {
+		return &s3.GetBucketVersioningOutput{
+			Status: aws.String("Enabled"),
+		}, nil
+	}
+	return nil, fmt.Errorf("unable to check bucket versioning")
+}
+
+func (m *mockS3Client) GetObjectLockConfiguration(in *s3.GetObjectLockConfigurationInput) (*s3.GetObjectLockConfigurationOutput, error) {
+	defaultRetentionPeriod := int64(2)
+
+	if in != nil && *in.Bucket == "mock-S3ObjectLockedBucket" {
+		return &s3.GetObjectLockConfigurationOutput{
+			ObjectLockConfiguration: &s3.ObjectLockConfiguration{
+				ObjectLockEnabled: aws.String("Enabled"),
+				Rule: &s3.ObjectLockRule{
+					DefaultRetention: &s3.DefaultRetention{
+						Days: aws.Int64(defaultRetentionPeriod),
+					},
+				},
+			},
+		}, nil
+	}
+
+	return nil, fmt.Errorf("unable to check object lock configuration for given bucket")
 }
 
 // DeleteObject deletes the object from map for mock test
