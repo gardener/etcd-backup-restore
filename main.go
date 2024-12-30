@@ -22,6 +22,8 @@ func main() {
 		runtime.GOMAXPROCS(runtime.NumCPU())
 	}
 
+	syscall.Umask(0077)
+
 	ctx := setupSignalHandler()
 	command := cmd.NewBackupRestoreCommand(ctx)
 	if err := command.Execute(); err != nil {

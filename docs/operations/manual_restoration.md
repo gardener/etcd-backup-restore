@@ -31,8 +31,9 @@ You may choose to follow different methods of restoration, based on your etcd + 
         Once the spec is changed, monitor the logs to make sure restoration occurs. Once restoration is complete, change the container spec back to its previous state and restart the pod. This should purge any previous issues with etcd or backup sidecar, and start snapshotting successfully.
 
 1. Deploying etcd and etcdbrctl separately, where etcdbrctl is started in `server` mode
-    1. If using [this bootstrap script](https://github.com/gardener/etcd-custom-image/blob/master/etcd_bootstrap_script.sh) for starting etcd, then deleting the `member` directory under the etcd data directory should kill the etcd process, and subsequently the script finishes execution and exits. You will have to re-run the script and allow it to trigger data validation anf restoration by etcdbrctl.
-    1. If not using the bootstrap script, then:
+    1. If running [etcd-wrapper](https://github.com/gardener/etcd-wrapper/) or legacy [etcd-custom-image](https://github.com/gardener/etcd-custom-image/) for running the etcd, then deleting the `member` directory under the etcd data directory should kill the etcd process, and subsequently the etcd-wrapper or etcd-custom-image process finishes execution and exits. You will have to re-run the etcd via one of the components and allow it to trigger data validation anf restoration by etcdbrctl.
+        1. If running etcd-wrapper or etcd-custom-image via Kubernetes pods, where the pods are managed by a pod-group such as a statefulset, then the statefulset controller takes care of restarting the pod once it crashes, and there is no need to manually restart the pod or the etcd process.
+    1. If not running etcd via the above-mentioned method, then:
         1. Delete the `member` directory and wait for etcd to crash
         1. `curl http://localhost:8080/initialization/status`, assuming etcdbrctl is running on port 8080
         1. `curl http://localhost:8080/initialization/start`
