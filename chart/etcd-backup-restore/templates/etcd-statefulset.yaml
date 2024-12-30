@@ -191,25 +191,9 @@ spec:
             secretKeyRef:
               name: {{ .Release.Name }}-etcd-backup
               key: "storageKey"
-  {{- if .Values.backup.abs.emulatorEnabled }}
-        - name: "AZURE_EMULATOR_ENABLED"
-          valueFrom:
-            secretKeyRef:
-              name: {{ .Release.Name }}-etcd-backup
-              key: "emulatorEnabled"
-              optional: true
-  {{- end }}
 {{- else if eq .Values.backup.storageProvider "GCS" }}
         - name: "GOOGLE_APPLICATION_CREDENTIALS"
           value: "/root/.gcp/serviceaccount.json"
-  {{- if .Values.backup.gcs.emulatorEnabled }}
-        - name: "GOOGLE_EMULATOR_ENABLED"
-          valueFrom:
-            secretKeyRef:
-              name: {{ .Release.Name }}-etcd-backup
-              key: "emulatorEnabled"
-              optional: true
-  {{- end }}
 {{- else if eq .Values.backup.storageProvider "Swift" }}
         - name: "OS_AUTH_URL"
           valueFrom:
