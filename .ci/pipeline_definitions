@@ -89,6 +89,7 @@ etcd-backup-restore:
           dockerimages:
             etcdbrctl:
               image: europe-docker.pkg.dev/gardener-project/releases/gardener/etcdbrctl
+              tag_as_latest: True
         release:
           nextversion: 'bump_minor'
           assets:
