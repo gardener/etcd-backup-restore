@@ -1,6 +1,6 @@
 ---
 name: Bug Report
-about: Report a bug encountered while working with etcd-druid
+about: Report a bug encountered while working with etcd-backup-restore
 
 ---
 

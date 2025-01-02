@@ -1,6 +1,6 @@
 ---
 name: Support Request
-about: Support request or question relating to etcd-druid
+about: Support request or question relating to etcd-backup-restore
 
 ---
 
