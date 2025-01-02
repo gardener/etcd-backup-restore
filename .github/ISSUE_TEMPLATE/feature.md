@@ -1,6 +1,6 @@
 ---
 name: Enhancement Request
-about: Suggest an enhancement for etcd-druid
+about: Suggest an enhancement for etcd-backup-restore
 
 ---
 
