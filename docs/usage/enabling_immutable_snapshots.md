@@ -113,7 +113,7 @@ To configure an immutability policy on an Azure Blob Storage container:
 
 #### AWS S3
 
-#### Enabling Object Lock on New S3 Buckets
+##### Enabling Object Lock on New S3 Buckets
 
 > Note: With S3 object lock, S3 versioning will automatically get enabled.
 
@@ -153,7 +153,7 @@ aws s3api put-object-lock-configuration --bucket my-bucket \
 --object-lock-configuration='{ "ObjectLockEnabled": "Enabled", "Rule": { "DefaultRetention": { "Mode": "COMPLIANCE" , "Days": 2 }}}'
 ```
 
-#### Enabling Object Lock on Old/Existing S3 Buckets
+##### Enabling Object Lock on Old/Existing S3 Buckets
 
   To achieve that, first enable versioning on the existing bucket, as it's a prerequisite for enabling object lock.
 

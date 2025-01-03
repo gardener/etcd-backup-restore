@@ -260,7 +260,7 @@ func (m *mockS3Client) GetBucketVersioning(in *s3.GetBucketVersioningInput) (*s3
 		return &s3.GetBucketVersioningOutput{}, nil
 	} else if in != nil && *in.Bucket == "mock-S3ObjectLockedBucket" {
 		return &s3.GetBucketVersioningOutput{
-			Status: aws.String("Enabled"),
+			Status: aws.String(s3.BucketVersioningStatusEnabled),
 		}, nil
 	}
 	return nil, fmt.Errorf("unable to check bucket versioning")
@@ -272,7 +272,7 @@ func (m *mockS3Client) GetObjectLockConfiguration(in *s3.GetObjectLockConfigurat
 	if in != nil && *in.Bucket == "mock-S3ObjectLockedBucket" {
 		return &s3.GetObjectLockConfigurationOutput{
 			ObjectLockConfiguration: &s3.ObjectLockConfiguration{
-				ObjectLockEnabled: aws.String("Enabled"),
+				ObjectLockEnabled: aws.String(s3.ObjectLockEnabledEnabled),
 				Rule: &s3.ObjectLockRule{
 					DefaultRetention: &s3.DefaultRetention{
 						Days: aws.Int64(defaultRetentionPeriod),

@@ -156,13 +156,13 @@ var _ = Describe("Save, List, Fetch, Delete from mock snapstore", func() {
 				}),
 				objectCountPerSnapshot: 1,
 			},
-			// Storage Provider S3 bucket with object locked enabled.
+			// Storage Provider S3 bucket with object lock enabled.
 			brtypes.SnapstoreProviderS3: {
 				SnapStore:              NewS3FromClient(s3ObjectLockedBucket, prefixV2, "/tmp", 5, brtypes.MinChunkSize, awsS3Client, SSECredentials{}),
 				objectCountPerSnapshot: 1,
 			},
-			// Storage Provider S3 bucket versioning not enabled
-			// Note: Don't remove this test as it's require to test S3 functionality when S3 bucket versioning is not enabled.
+			// Storage Provider S3 bucket with object lock not enabled
+			// Note: Don't remove this test as it's require to test S3 functionality when S3 bucket versioning or object lock is not enabled.
 			brtypes.SnapstoreProviderECS: {
 				SnapStore: NewS3FromClient(s3NonObjectLockedBucket, prefixV2, "/tmp", 5, brtypes.MinChunkSize, &mockS3Client{
 					objects:          objectMap,

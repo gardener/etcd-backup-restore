@@ -320,18 +320,14 @@ func NewS3FromClient(bucket, prefix, tempDir string, maxParallelChunkUploads uin
 
 // Fetch should open reader for the snapshot file from store
 func (s *S3SnapStore) Fetch(snap brtypes.Snapshot) (io.ReadCloser, error) {
-	getObjectInput := &s3.GetObjectInput{}
+	getObjectInput := &s3.GetObjectInput{
+		Bucket: aws.String(s.bucket),
+		Key:    aws.String(path.Join(snap.Prefix, snap.SnapDir, snap.SnapName)),
+	}
+
 	if len(snap.VersionID) > 0 {
-		getObjectInput = &s3.GetObjectInput{
-			Bucket:    aws.String(s.bucket),
-			Key:       aws.String(path.Join(snap.Prefix, snap.SnapDir, snap.SnapName)),
-			VersionId: aws.String(snap.VersionID),
-		}
-	} else {
-		getObjectInput = &s3.GetObjectInput{
-			Bucket: aws.String(s.bucket),
-			Key:    aws.String(path.Join(snap.Prefix, snap.SnapDir, snap.SnapName)),
-		}
+		// To fetch the versioned snapshots incase is object enabled for bucket.
+		getObjectInput.VersionId = aws.String(snap.VersionID)
 	}
 	if s.sseCustomerKey != "" {
 		// Customer managed Server Side Encryption
@@ -543,7 +539,7 @@ func (s *S3SnapStore) List(_ bool) (brtypes.SnapList, error) {
 		return nil, err
 	}
 
-	if versioningStatus.Status != nil && *versioningStatus.Status == "Enabled" {
+	if versioningStatus.Status != nil && *versioningStatus.Status == s3.BucketVersioningStatusEnabled {
 		// versioning is found to be enabled on given bucket.
 		logrus.Info("Bucket versioning is found to be enabled.")
 
@@ -574,8 +570,8 @@ func (s *S3SnapStore) List(_ bool) (brtypes.SnapList, error) {
 							// capture the versionID of snapshot and immutability expiry time of snapshot.
 							snap.VersionID = *version.VersionId
 							if bucketImmutableExpiryTimeInDays != nil {
-								// To get S3 object's "RetainUntilDate" or "ImmutabilityExpiryTime", backup-restore need to make an API call for each snapshots.
-								// To avoid API calls for each snapshots, backup-restore is calculating the "ImmutabilityExpiryTime" using bucket retention period.
+								// To get S3 object's "RetainUntilDate" or "ImmutabilityExpiryTime", backup-restore need to make an API call for each snapshot.
+								// To avoid API calls for each snapshot, backup-restore is calculating the "ImmutabilityExpiryTime" using bucket retention period.
 								// ImmutabilityExpiryTime = SnapshotCreationTime + ObjectRetentionTimeInDays
 								snap.ImmutabilityExpiryTime = snap.CreatedOn.Add(time.Duration(*bucketImmutableExpiryTimeInDays) * 24 * time.Hour)
 							} else {
@@ -590,7 +586,7 @@ func (s *S3SnapStore) List(_ bool) (brtypes.SnapList, error) {
 					}
 				} else {
 					// Warning
-					logrus.Warnf("Snapshot: %s with versionID: %s found to be not latest, it was last modified: %s. Ignoring it.", *version.Key, *version.VersionId, version.LastModified)
+					logrus.Warnf("Snapshot %s with versionID [%s] found not to be latest, it was last modified at %s. Ignoring it.", *version.Key, *version.VersionId, *version.LastModified)
 				}
 			}
 			return !lastPage
@@ -632,23 +628,20 @@ func (s *S3SnapStore) List(_ bool) (brtypes.SnapList, error) {
 func (s *S3SnapStore) Delete(snap brtypes.Snapshot) error {
 	if len(snap.VersionID) > 0 {
 		// to delete versioned snapshots present in bucket.
-		if _, err := s.client.DeleteObject(&s3.DeleteObjectInput{
+		_, err := s.client.DeleteObject(&s3.DeleteObjectInput{
 			Bucket:    aws.String(s.bucket),
 			Key:       aws.String(path.Join(snap.Prefix, snap.SnapDir, snap.SnapName)),
 			VersionId: &snap.VersionID,
-		}); err != nil {
-			return err
-		}
-	} else {
-		// to delete non-versioned snapshots present in bucket.
-		if _, err := s.client.DeleteObject(&s3.DeleteObjectInput{
-			Bucket: aws.String(s.bucket),
-			Key:    aws.String(path.Join(snap.Prefix, snap.SnapDir, snap.SnapName)),
-		}); err != nil {
-			return err
-		}
+		})
+		return err
 	}
-	return nil
+
+	// to delete non-versioned snapshots present in bucket.
+	_, err := s.client.DeleteObject(&s3.DeleteObjectInput{
+		Bucket: aws.String(s.bucket),
+		Key:    aws.String(path.Join(snap.Prefix, snap.SnapDir, snap.SnapName)),
+	})
+	return err
 }
 
 // GetS3CredentialsLastModifiedTime returns the latest modification timestamp of the AWS credential file(s)
@@ -729,7 +722,7 @@ func GetBucketImmutabilityTime(s *S3SnapStore) (bool, *int64, error) {
 		return false, nil, err
 	}
 
-	if *objectConfig.ObjectLockConfiguration.ObjectLockEnabled == "Enabled" {
+	if objectConfig.ObjectLockConfiguration.ObjectLockEnabled != nil && *objectConfig.ObjectLockConfiguration.ObjectLockEnabled == s3.ObjectLockEnabledEnabled {
 		// assumption: retention period of bucket will always be in days, not years.
 		return true, objectConfig.ObjectLockConfiguration.Rule.DefaultRetention.Days, nil
 	}
