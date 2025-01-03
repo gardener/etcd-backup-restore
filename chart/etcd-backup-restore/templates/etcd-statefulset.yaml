@@ -356,4 +356,5 @@ spec:
       - "ReadWriteOnce"
       resources:
         requests:
-          storage: {{ .Values.storageCapacity }}   
+          storage: {{ .Values.storageCapacity }}
+          

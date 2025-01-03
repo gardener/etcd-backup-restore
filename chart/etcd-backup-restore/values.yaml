@@ -83,7 +83,7 @@ backup:
 
   # storageProvider indicate the type of backup storage provider.
   # Supported values are ABS,GCS,S3,Swift,OSS,ECS,Local, empty means no backup.
-  storageProvider: "GCS"
+  storageProvider: ""
 
   # compression defines the specification to compress the snapshots(full as well as delta).
   # it only supports 3 compression Policy: gzip(default), zlib, lzw.
@@ -106,10 +106,10 @@ backup:
   #   s3ForcePathStyle: "true" # optional
   #   sseCustomerKey: aes-256-sse-customer-key # optional
   #   sseCustomerAlgorithm: aes-256-sse-customer-algorithm # optional
-  gcs:
-    serviceAccountJson: "hello"
-    storageAPIEndpoint: "http://fake-gcs.default:8000/storage/v1/"
-    emulatorEnabled: "true"
+  # gcs:
+  #   serviceAccountJson: service-account-json-with-object-storage-privileges
+  #   storageAPIEndpoint: endpoint-override-for-storage-api # optional
+  #   emulatorEnabled: boolean-flag-to-configure-etcdbr-to-use-gcs-emulator # optional
   # abs:
   #   storageAccount: storage-account-with-object-storage-privileges
   #   storageKey: storage-key-with-object-storage-privileges
@@ -180,7 +180,7 @@ tls:
     #         -----END PRIVATE KEY-----
   # # etcdBackupRestore field contains the pre-created secrets for backup-restore server.
   # # Comment this whole section if you dont want to use tls for the backup-restore server.
-  etcdBackupRestore:
+  etcdBackupRestore: {}
     # ca: |
     #     -----BEGIN CERTIFICATE-----
     #     ...

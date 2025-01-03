@@ -24,3 +24,4 @@ spec:
     protocol: TCP
     port: {{ .Values.servicePorts.etcd.peer }}
     targetPort: {{ .Values.servicePorts.etcd.peer }}
+    

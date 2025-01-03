@@ -26,3 +26,4 @@ spec:
     protocol: TCP
     port: {{ .Values.servicePorts.etcdBackupRestore.server }}
     targetPort: {{ .Values.servicePorts.etcdBackupRestore.server }}
+    
