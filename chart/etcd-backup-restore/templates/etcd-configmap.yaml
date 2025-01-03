@@ -10,6 +10,21 @@ metadata:
     app.kubernetes.io/instance: {{ .Release.Name }}
 data:
   etcd.conf.yaml: |-
+    {{- $replicas := int .Values.replicas }}
+    # precompute the peer scheme based on whether or not the peer is tls enabled
+    {{- $peerScheme := "http" }}
+    {{- if .Values.tls.etcd.peer }}
+    {{- $peerScheme = "https" }}
+    {{- end }}
+    # store the root context for later use
+    {{- $root := . }}
+    # store the cluster entries in a list to be used for the initial-cluster configuration
+    {{- $clusterEntries := list }}
+    {{- range $i := until $replicas }}
+    {{- $entry := printf "%s-etcd-%d=%s://%s-etcd-%d.%s-etcd-peer.%s.svc:%d" $root.Release.Name $i $peerScheme $root.Release.Name $i $root.Release.Name $root.Release.Namespace (int $root.Values.servicePorts.etcd.peer) }}
+    {{- $clusterEntries = append $clusterEntries $entry }}
+    {{- end }}
+
     # Human-readable name for this member.
     name: {{ .Release.Name }}-etcd
 
@@ -31,25 +46,29 @@ data:
     {{- end }}
 
     # List of comma separated URLs to listen on for client traffic.
-    listen-client-urls: {{ if .Values.etcdTLS }}https{{ else }}http{{ end }}://0.0.0.0:{{ .Values.servicePorts.client }}
+    listen-client-urls: {{ if .Values.tls.etcd }}https{{ else }}http{{ end }}://0.0.0.0:{{ .Values.servicePorts.etcd.client }}
 
     # List of comma separated URLs to listen on for peer traffic.
-    listen-peer-urls: http://0.0.0.0:{{ .Values.servicePorts.server }}
+    listen-peer-urls: {{ $peerScheme }}://0.0.0.0:{{ .Values.servicePorts.etcd.peer }}
 
     # List of each member's client URLs to advertise to the public.
     # Each member should include it's client URLs under the member name.
     advertise-client-urls:
-      {{ .Release.Name }}-etcd-0:
-      - {{ if .Values.etcdTLS }}https{{ else }}http{{ end }}://{{ .Release.Name }}-etcd-0.{{ .Release.Name }}-etcd-peer.{{ .Release.Namespace }}.svc:{{ .Values.servicePorts.client }}
+      {{- range $i := until $replicas }}
+      {{ $root.Release.Name }}-etcd-{{ $i }}:
+      - {{ if $root.Values.tls.etcd }}https{{ else }}http{{ end }}://{{ $root.Release.Name }}-etcd-{{ $i }}.{{ $root.Release.Name }}-etcd-peer.{{ $root.Release.Namespace }}.svc:{{ $root.Values.servicePorts.etcd.client }}
+      {{- end }}
 
     # List of each member's peer URLs to advertise to the public
     # Each member should include it's peer URLs under the member name.
     initial-advertise-peer-urls:
-      {{ .Release.Name }}-etcd-0:
-      - http://{{ .Release.Name }}-etcd-0.{{ .Release.Name }}-etcd-peer.{{ .Release.Namespace }}.svc:{{ .Values.servicePorts.server }}
+      {{- range $i := until $replicas }}
+      {{ $root.Release.Name }}-etcd-{{ $i }}:
+      - {{ $peerScheme }}://{{ $root.Release.Name }}-etcd-{{ $i }}.{{ $root.Release.Name }}-etcd-peer.{{ $root.Release.Namespace }}.svc:{{ $root.Values.servicePorts.etcd.peer }}
+      {{- end }}
 
     # List of server endpoints with which this cluster should be started
-    initial-cluster: {{ .Release.Name }}-etcd-0=http://{{ .Release.Name }}-etcd-0.{{ .Release.Name }}-etcd-peer.{{ .Release.Namespace }}.svc:{{ .Values.servicePorts.server }}
+    initial-cluster: {{ join "," $clusterEntries }}
 
     # Initial cluster token for the etcd cluster during bootstrap.
     initial-cluster-token: 'etcd-cluster'
@@ -69,7 +88,7 @@ data:
     {{- end }}
     {{- end }}
 
-{{- if .Values.etcdTLS }}
+{{- if .Values.tls.etcd }}
     client-transport-security:
       # Path to the etcd server TLS cert file.
       cert-file: /var/etcd/ssl/server/tls.crt
@@ -84,4 +103,20 @@ data:
       trusted-ca-file: /var/etcd/ssl/ca/bundle.crt
 
       auto-tls: false
+  {{- if .Values.tls.etcd.peer }}
+    peer-transport-security:
+      # Path to the etcd peer server TLS cert file.
+      cert-file: /var/etcd/ssl/peer/server/tls.crt
+
+      # Path to the etcd peer server TLS key file.
+      key-file: /var/etcd/ssl/peer/server/tls.key
+
+      # Enable peer client cert authentication.
+      client-cert-auth: true
+
+      # Path to the etcd peer server TLS trusted CA cert file.
+      trusted-ca-file: /var/etcd/ssl/peer/ca/bundle.crt
+
+      auto-tls: false
+  {{- end }}
 {{- end }}

@@ -11,7 +11,8 @@ spec:
   updateStrategy:
     type: RollingUpdate
   serviceName: {{ .Release.Name }}-etcd-peer
-  replicas: 1
+  replicas: {{ (int .Values.replicas) }}
+  podManagementPolicy: Parallel
   selector:
     matchLabels:
       app.kubernetes.io/name: etcd
@@ -36,8 +37,8 @@ spec:
         - -c
         - --
         name: change-backup-bucket-permissions
-        image: {{ .Values.images.initContainer.repository }}:{{ .Values.images.initContainer.tag }}
-        imagePullPolicy: {{ .Values.images.initContainer.pullPolicy }}
+        image: {{ .Values.images.changeBackupBucketPermissions.repository }}:{{ .Values.images.changeBackupBucketPermissions.tag }}
+        imagePullPolicy: {{ .Values.images.changeBackupBucketPermissions.pullPolicy }}
         volumeMounts:
         - name: local-backup
           mountPath: /home/nonroot/{{ .Values.backup.storageContainer}}
@@ -49,36 +50,43 @@ spec:
       containers:
       - args: 
         - start-etcd
-        - --backup-restore-host-port=localhost:{{ .Values.servicePorts.backupRestore }}
-        - --etcd-server-name=localhost
-{{- if .Values.etcdTLS }}
+        - --backup-restore-host-port={{ .Release.Name }}-etcd-local:{{ .Values.servicePorts.etcdBackupRestore.server }}
+        - --etcd-server-name={{ .Release.Name }}-etcd-local
+{{- if .Values.tls.etcdBackupRestore }}
         - --backup-restore-tls-enabled=true
         - --backup-restore-ca-cert-bundle-path=/var/etcdbr/ssl/ca/bundle.crt
-        - --etcd-client-cert-path=/var/etcd/ssl/client/tls.crt
-        - --etcd-client-key-path=/var/etcd/ssl/client/tls.key
 {{- else }}
         - --backup-restore-tls-enabled=false
 {{- end }}
+{{- if .Values.tls.etcd }}
+        - --etcd-client-cert-path=/var/etcd/ssl/client/tls.crt
+        - --etcd-client-key-path=/var/etcd/ssl/client/tls.key
+{{- end }}
         name: etcd
-        image: {{ .Values.images.etcd.repository }}:{{ .Values.images.etcd.tag }}
-        imagePullPolicy: {{ .Values.images.etcd.pullPolicy }}
+        image: {{ .Values.images.etcdWrapper.repository }}:{{ .Values.images.etcdWrapper.tag }}
+        imagePullPolicy: {{ .Values.images.etcdWrapper.pullPolicy }}
         readinessProbe:
           httpGet:
-{{- if .Values.backupRestoreTLS }}
+{{- if .Values.tls.etcdBackupRestore }}
             scheme: HTTPS
 {{- else }}
             scheme: HTTP
 {{- end }}
+{{- if eq (int .Values.replicas) 1 }}
             path: /healthz
-            port: {{ .Values.servicePorts.backupRestore }}
+            port: {{ .Values.servicePorts.etcdBackupRestore.server }}
+{{- else }}
+            path: /readyz
+            port: {{ .Values.servicePorts.etcdWrapper.server }}
+{{- end }}
           initialDelaySeconds: 15
           periodSeconds: 5
           failureThreshold: 5
         ports:
-        - containerPort: {{ .Values.servicePorts.server }}
-          name: server
+        - containerPort: {{ .Values.servicePorts.etcd.peer }}
+          name: peer
           protocol: TCP
-        - containerPort: {{ .Values.servicePorts.client }}
+        - containerPort: {{ .Values.servicePorts.etcd.client }}
           name: client
           protocol: TCP
         resources:
@@ -86,15 +94,21 @@ spec:
         volumeMounts:
         - name: {{ .Release.Name }}-etcd
           mountPath: /var/etcd/data/
-{{- if .Values.etcdTLS }}
+{{- if .Values.tls.etcd }}
         - name: etcd-ca
           mountPath: /var/etcd/ssl/ca
         - name: etcd-server-tls
           mountPath: /var/etcd/ssl/server
         - name: etcd-client-tls
           mountPath: /var/etcd/ssl/client
+  {{ if .Values.tls.etcd.peer }}
+        - name: etcd-peer-ca
+          mountPath: /var/etcd/ssl/peer/ca
+        - name: etcd-peer-server-tls
+          mountPath: /var/etcd/ssl/peer/server
+  {{- end }}
 {{- end }}
-{{- if .Values.backupRestoreTLS }}
+{{- if .Values.tls.etcdBackupRestore }}
         - name: backup-restore-ca
           mountPath: /var/etcdbr/ssl/ca
 {{- end }}
@@ -141,19 +155,19 @@ spec:
   {{- end }}
 {{- end }}
         # Client and Backup TLS command line flags
-{{- if .Values.etcdTLS }}
+{{- if .Values.tls.etcd }}
         - --cacert=/var/etcd/ssl/ca/bundle.crt
         - --cert=/var/etcd/ssl/client/tls.crt
         - --key=/var/etcd/ssl/client/tls.key
         - --insecure-transport=false
         - --insecure-skip-tls-verify=false
-        - --endpoints=https://{{ .Release.Name }}-etcd-0:{{ .Values.servicePorts.client }}
+        - --endpoints=https://{{ .Release.Name }}-etcd-local:{{ .Values.servicePorts.etcd.client }}
 {{ else }}
         - --insecure-transport=true
         - --insecure-skip-tls-verify=true
-        - --endpoints=http://{{ .Release.Name }}-etcd-0:{{ .Values.servicePorts.client }}
+        - --endpoints=http://{{ .Release.Name }}-etcd-local:{{ .Values.servicePorts.etcd.client }}
 {{- end }}
-{{- if .Values.backupRestoreTLS }}
+{{- if .Values.tls.etcdBackupRestore }}
         - --server-cert=/var/etcdbr/ssl/server/tls.crt
         - --server-key=/var/etcdbr/ssl/server/tls.key
 {{- end }}
@@ -173,14 +187,17 @@ spec:
         image: {{ .Values.images.etcdBackupRestore.repository }}:{{ .Values.images.etcdBackupRestore.tag }}
         imagePullPolicy: {{ .Values.images.etcdBackupRestore.pullPolicy }}
         ports:
-        - containerPort: {{ .Values.servicePorts.backupRestore }}
+        - containerPort: {{ .Values.servicePorts.etcdBackupRestore.server }}
           name: server
           protocol: TCP
         resources:
 {{ toYaml .Values.resources.backup | indent 10 }}
         env:
         - name: "POD_NAME"
-          value: {{ .Release.Name }}-etcd-0
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: metadata.name
         - name: "POD_NAMESPACE"
           value: {{ .Release.Namespace }}
         - name: STORAGE_CONTAINER
@@ -248,13 +265,13 @@ spec:
           mountPath: /var/etcd/data/
         - name: etcd-config-file
           mountPath: /var/etcd/config/
-{{- if .Values.etcdTLS }}
+{{- if .Values.tls.etcd }}
         - name: etcd-ca
           mountPath: /var/etcd/ssl/ca
         - name: etcd-client-tls
           mountPath: /var/etcd/ssl/client
 {{- end }}
-{{- if .Values.backupRestoreTLS }}
+{{- if .Values.tls.etcdBackupRestore }}
         - name: backup-restore-server-tls
           mountPath: /var/etcdbr/ssl/server
 {{- end }}
@@ -276,6 +293,11 @@ spec:
         runAsUser: 65532
         fsGroup: 65532
       shareProcessNamespace: true
+      hostAliases:
+      - hostnames:
+        - {{ .Release.Name }}-etcd-local
+        ip: 127.0.0.1
+      serviceAccountName: {{ .Release.Name }}-etcd
       volumes:
       - name: etcd-config-file
         configMap:
@@ -284,7 +306,7 @@ spec:
           items:
           - key: etcd.conf.yaml
             path: etcd.conf.yaml
-{{- if .Values.etcdTLS }}
+{{- if .Values.tls.etcd }}
       - name: etcd-ca
         secret:
           secretName: {{ .Release.Name }}-etcd-ca
@@ -294,8 +316,16 @@ spec:
       - name: etcd-client-tls
         secret:
           secretName: {{ .Release.Name }}-etcd-client-tls
+  {{ if .Values.tls.etcd.peer }}
+      - name: etcd-peer-ca
+        secret:
+          secretName: {{ .Release.Name }}-etcd-peer-ca
+      - name: etcd-peer-server-tls
+        secret:
+          secretName: {{ .Release.Name }}-etcd-peer-server-tls
+  {{- end }}
 {{- end }}
-{{- if .Values.backupRestoreTLS }}
+{{- if .Values.tls.etcdBackupRestore }}
       - name: backup-restore-ca
         secret:
           secretName: {{ .Release.Name }}-etcdbr-ca

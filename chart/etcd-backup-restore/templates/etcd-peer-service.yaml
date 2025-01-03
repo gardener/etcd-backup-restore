@@ -22,5 +22,5 @@ spec:
   ports:
   - name: peer
     protocol: TCP
-    port: {{ .Values.servicePorts.server }}
-    targetPort: {{ .Values.servicePorts.server }}
+    port: {{ .Values.servicePorts.etcd.peer }}
+    targetPort: {{ .Values.servicePorts.etcd.peer }}
