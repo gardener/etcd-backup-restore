@@ -737,14 +737,12 @@ func GetBucketImmutabilityTime(s *S3SnapStore) (bool, *int64, error) {
 			if objectConfig.ObjectLockConfiguration.Rule != nil && objectConfig.ObjectLockConfiguration.Rule.DefaultRetention != nil {
 				//assumption: retention period of bucket should always be in days, not years.
 				return true, objectConfig.ObjectLockConfiguration.Rule.DefaultRetention.Days, nil
-			} else {
-				// object lock is enabled but rules are not defined for bucket
-				return true, nil, nil
 			}
-		} else {
-			// object lock is not enabled for bucket
-			return false, nil, nil
+			// object lock is enabled but rules are not defined for bucket
+			return true, nil, nil
 		}
+		// object lock is not enabled for bucket
+		return false, nil, nil
 	}
 
 	return false, nil, fmt.Errorf("got nil object lock configuration")
