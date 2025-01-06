@@ -8,8 +8,10 @@ import (
 	"context"
 
 	"github.com/gardener/etcd-backup-restore/pkg/snapshot/restorer"
+	"github.com/go-logr/logr"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
+	runtimelog "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
 // NewRestoreCommand returns the command to restore
@@ -26,6 +28,7 @@ func NewRestoreCommand(ctx context.Context) *cobra.Command {
 			- Restore etcd data diretory from full snapshot.
 			*/
 			logger := logrus.New()
+			runtimelog.SetLogger(logr.New(runtimelog.NullLogSink{}))
 
 			options, store, err := BuildRestoreOptionsAndStore(opts)
 			if err != nil {

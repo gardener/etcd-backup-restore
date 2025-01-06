@@ -9,8 +9,10 @@ import (
 
 	"github.com/gardener/etcd-backup-restore/pkg/snapshot/copier"
 
+	"github.com/go-logr/logr"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
+	runtimelog "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
 // NewCopyCommand creates a cobra command for copy.
@@ -23,6 +25,7 @@ func NewCopyCommand(ctx context.Context) *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			printVersionInfo()
 			logger := logrus.NewEntry(logrus.New())
+			runtimelog.SetLogger(logr.New(runtimelog.NullLogSink{}))
 			if err := opts.validate(); err != nil {
 				logger.Fatalf("failed to validate the options: %v", err)
 			}

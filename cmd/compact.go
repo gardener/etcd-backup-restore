@@ -11,10 +11,12 @@ import (
 	"github.com/gardener/etcd-backup-restore/pkg/compactor"
 	"github.com/gardener/etcd-backup-restore/pkg/miscellaneous"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
+	"github.com/go-logr/logr"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"go.etcd.io/etcd/mvcc"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	runtimelog "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
 // NewCompactCommand compacts the ETCD instance
@@ -33,6 +35,7 @@ func NewCompactCommand(ctx context.Context) *cobra.Command {
 			- Save the snapshot
 			*/
 			logger := logrus.New()
+			runtimelog.SetLogger(logr.New(runtimelog.NullLogSink{}))
 			if err := opts.validate(); err != nil {
 				logger.Fatalf("failed to validate the options: %v", err)
 				return
