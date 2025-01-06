@@ -17,6 +17,7 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/container"
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/service/s3"
 	. "github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 	fake "github.com/gophercloud/gophercloud/testhelper/client"
@@ -649,18 +650,55 @@ var _ = Describe("Server Side Encryption Customer Managed Key for S3", func() {
 	})
 })
 
-var _ = Describe("Get Immutability time for S3 bucket", func() {
+var _ = Describe("Get Bucket versioning status for S3 buckets", func() {
 	awsS3Client := &mockS3Client{
 		objects:          objectMap,
 		prefix:           prefixV2,
 		multiPartUploads: map[string]*[][]byte{},
 	}
 	Context("S3 bucket with object lock enabled", func() {
+		It("Should return enabled versioning status", func() {
+			versioningStatus, err := awsS3Client.GetBucketVersioning(&s3.GetBucketVersioningInput{
+				Bucket: &s3ObjectLockedBucket,
+			})
+			Expect(err).ShouldNot(HaveOccurred())
+			Expect(*versioningStatus.Status).Should(Equal(s3.BucketVersioningStatusEnabled))
+		})
+	})
+	Context("S3 bucket with object lock not enabled", func() {
+		It("Should return versioning status as nil", func() {
+			versioningStatus, err := awsS3Client.GetBucketVersioning(&s3.GetBucketVersioningInput{
+				Bucket: &s3NonObjectLockedBucket,
+			})
+			Expect(err).ShouldNot(HaveOccurred())
+			Expect(versioningStatus.Status).Should(BeNil())
+		})
+	})
+})
+
+var _ = Describe("Get Immutability time for S3 bucket", func() {
+	awsS3Client := &mockS3Client{
+		objects:          objectMap,
+		prefix:           prefixV2,
+		multiPartUploads: map[string]*[][]byte{},
+	}
+	var s3ObjectLockBucketBUTRulesNotDefined = "mock-s3ObjectLockBucketBUTRulesNotDefined"
+
+	Context("S3 bucket with object lock enabled and object lock config defined", func() {
 		It("Should return retention period", func() {
 			snapStore := NewS3FromClient(s3ObjectLockedBucket, prefixV2, "/tmp", 5, brtypes.MinChunkSize, awsS3Client, SSECredentials{})
 			isObjectLockEnabled, retentionPeriod, err := GetBucketImmutabilityTime(snapStore)
 			Expect(err).ShouldNot(HaveOccurred())
 			Expect(retentionPeriod).Should(Equal(aws.Int64(2)))
+			Expect(isObjectLockEnabled).Should(BeTrue())
+		})
+	})
+	Context("S3 bucket with object lock enabled but object lock config is not defined", func() {
+		It("Should return nil retention period", func() {
+			snapStore := NewS3FromClient(s3ObjectLockBucketBUTRulesNotDefined, prefixV2, "/tmp", 5, brtypes.MinChunkSize, awsS3Client, SSECredentials{})
+			isObjectLockEnabled, retentionPeriod, err := GetBucketImmutabilityTime(snapStore)
+			Expect(err).ShouldNot(HaveOccurred())
+			Expect(retentionPeriod).Should(BeNil())
 			Expect(isObjectLockEnabled).Should(BeTrue())
 		})
 	})

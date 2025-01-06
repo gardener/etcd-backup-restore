@@ -31,6 +31,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/aws/aws-sdk-go/service/s3/s3iface"
 	"github.com/sirupsen/logrus"
+	"k8s.io/client-go/util/retry"
 	"k8s.io/utils/ptr"
 
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
@@ -543,13 +544,26 @@ func (s *S3SnapStore) List(_ bool) (brtypes.SnapList, error) {
 		// versioning is found to be enabled on given bucket.
 		logrus.Info("Bucket versioning is found to be enabled.")
 
-		isObjectLockEnabled, bucketImmutableExpiryTimeInDays, err := GetBucketImmutabilityTime(s)
-		if err != nil {
-			logrus.Warnf("unable to check object lock configuration for the bucket: %v", err)
-		}
-		if !isObjectLockEnabled {
-			logrus.Warnf("Bucket versioning is found to be enabled but object lock is not found to be enabled.")
-			logrus.Warnf("Please enable the object lock as well for the given bucket for immutability of snapshots.")
+		var bucketImmutableExpiryTimeInDays *int64
+		var isObjectLockEnabled bool
+
+		if err := retry.OnError(retry.DefaultBackoff, func(err error) bool {
+			return err != nil
+		}, func() error {
+			if isObjectLockEnabled, bucketImmutableExpiryTimeInDays, err = GetBucketImmutabilityTime(s); err != nil {
+				logrus.Errorf("unable to check bucket immutability retention period: %v", err)
+				return err
+			}
+			if !isObjectLockEnabled {
+				logrus.Warnf("Bucket versioning is found to be enabled but object lock is not found to be enabled.")
+				logrus.Warnf("Please enable the object lock for the given bucket to to have immutable snapshots.")
+			}
+			if isObjectLockEnabled && bucketImmutableExpiryTimeInDays == nil {
+				logrus.Warnf("Object lock is found to be enabled but object lock rules or default retention period are not found to be set.")
+			}
+			return nil
+		}); err != nil {
+			logrus.Errorf("unable to check object lock configuration for the bucket: %v", err)
 		}
 
 		in := &s3.ListObjectVersionsInput{
@@ -574,12 +588,6 @@ func (s *S3SnapStore) List(_ bool) (brtypes.SnapList, error) {
 								// To avoid API calls for each snapshot, backup-restore is calculating the "ImmutabilityExpiryTime" using bucket retention period.
 								// ImmutabilityExpiryTime = SnapshotCreationTime + ObjectRetentionTimeInDays
 								snap.ImmutabilityExpiryTime = snap.CreatedOn.Add(time.Duration(*bucketImmutableExpiryTimeInDays) * 24 * time.Hour)
-							} else {
-								// retry to get bucketImmutableExpiryTimeInDays
-								_, bucketImmutableExpiryTimeInDays, err = GetBucketImmutabilityTime(s)
-								if err != nil {
-									logrus.Warnf("unable to get bucket immutability expiry time: %v", err)
-								}
 							}
 							snapList = append(snapList, snap)
 						}
@@ -722,10 +730,22 @@ func GetBucketImmutabilityTime(s *S3SnapStore) (bool, *int64, error) {
 		return false, nil, err
 	}
 
-	if objectConfig.ObjectLockConfiguration.ObjectLockEnabled != nil && *objectConfig.ObjectLockConfiguration.ObjectLockEnabled == s3.ObjectLockEnabledEnabled {
-		// assumption: retention period of bucket will always be in days, not years.
-		return true, objectConfig.ObjectLockConfiguration.Rule.DefaultRetention.Days, nil
+	if objectConfig != nil && objectConfig.ObjectLockConfiguration != nil {
+		// check if object lock is enabled for bucket
+		if objectConfig.ObjectLockConfiguration.ObjectLockEnabled != nil && *objectConfig.ObjectLockConfiguration.ObjectLockEnabled == s3.ObjectLockEnabledEnabled {
+			// check if rules for object lock is defined for bucket.
+			if objectConfig.ObjectLockConfiguration.Rule != nil && objectConfig.ObjectLockConfiguration.Rule.DefaultRetention != nil {
+				//assumption: retention period of bucket should always be in days, not years.
+				return true, objectConfig.ObjectLockConfiguration.Rule.DefaultRetention.Days, nil
+			} else {
+				// object lock is enabled but rules are not defined for bucket
+				return true, nil, nil
+			}
+		} else {
+			// object lock is not enabled for bucket
+			return false, nil, nil
+		}
 	}
 
-	return false, nil, nil
+	return false, nil, fmt.Errorf("got nil object lock configuration")
 }
