@@ -283,7 +283,7 @@ func (m *mockS3Client) GetObjectLockConfiguration(in *s3.GetObjectLockConfigurat
 		}, nil
 	}
 
-	if in != nil && *in.Bucket == "mock-s3ObjectLockBucketBUTRulesNotDefined" {
+	if in != nil && *in.Bucket == "mock-s3ObjectLockBucketButRulesNotDefined" {
 		return &s3.GetObjectLockConfigurationOutput{
 			ObjectLockConfiguration: &s3.ObjectLockConfiguration{
 				ObjectLockEnabled: aws.String(s3.ObjectLockEnabledEnabled),

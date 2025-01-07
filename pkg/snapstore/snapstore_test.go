@@ -682,7 +682,7 @@ var _ = Describe("Get Immutability time for S3 bucket", func() {
 		prefix:           prefixV2,
 		multiPartUploads: map[string]*[][]byte{},
 	}
-	var s3ObjectLockBucketBUTRulesNotDefined = "mock-s3ObjectLockBucketBUTRulesNotDefined"
+	var s3ObjectLockBucketButRulesNotDefined = "mock-s3ObjectLockBucketButRulesNotDefined"
 
 	Context("S3 bucket with object lock enabled and object lock config defined", func() {
 		It("Should return retention period", func() {
@@ -695,7 +695,7 @@ var _ = Describe("Get Immutability time for S3 bucket", func() {
 	})
 	Context("S3 bucket with object lock enabled but object lock config is not defined", func() {
 		It("Should return nil retention period", func() {
-			snapStore := NewS3FromClient(s3ObjectLockBucketBUTRulesNotDefined, prefixV2, "/tmp", 5, brtypes.MinChunkSize, awsS3Client, SSECredentials{})
+			snapStore := NewS3FromClient(s3ObjectLockBucketButRulesNotDefined, prefixV2, "/tmp", 5, brtypes.MinChunkSize, awsS3Client, SSECredentials{})
 			isObjectLockEnabled, retentionPeriod, err := GetBucketImmutabilityTime(snapStore)
 			Expect(err).ShouldNot(HaveOccurred())
 			Expect(retentionPeriod).Should(BeNil())
