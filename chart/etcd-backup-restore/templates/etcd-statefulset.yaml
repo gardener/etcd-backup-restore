@@ -162,10 +162,12 @@ spec:
         - --insecure-transport=false
         - --insecure-skip-tls-verify=false
         - --endpoints=https://{{ .Release.Name }}-etcd-local:{{ .Values.servicePorts.etcd.client }}
+        - --service-endpoints=https://{{ .Release.Name }}-etcd-client:{{ .Values.servicePorts.etcd.client }}
 {{ else }}
         - --insecure-transport=true
         - --insecure-skip-tls-verify=true
         - --endpoints=http://{{ .Release.Name }}-etcd-local:{{ .Values.servicePorts.etcd.client }}
+        - --service-endpoints=http://{{ .Release.Name }}-etcd-client:{{ .Values.servicePorts.etcd.client }}
 {{- end }}
 {{- if .Values.tls.etcdBackupRestore }}
         - --server-cert=/var/etcdbr/ssl/server/tls.crt
@@ -179,6 +181,9 @@ spec:
         - --embedded-etcd-quota-bytes={{ int $.Values.backup.etcdQuotaBytes }}
 {{- end }}
         - --etcd-connection-timeout={{ .Values.backup.etcdConnectionTimeout }}
+        - --etcd-connection-timeout-leader-election={{ .Values.backup.leaderElection.etcdConnectionTimeout }}
+        - --reelection-period={{ .Values.backup.leaderElection.reelectionPeriod }}
+        - --k8s-heartbeat-duration=10s
         - --use-etcd-wrapper=true
 {{- if and .Values.etcdAuth.username .Values.etcdAuth.password }}
         - --etcd-username={{ .Values.etcdAuth.username }}
@@ -225,6 +230,9 @@ spec:
           value: "/var/etcd-backup"
   {{- else if eq .Values.backup.storageProvider "OSS" }}
         - name: "ALICLOUD_APPLICATION_CREDENTIALS"
+          value: "/var/etcd-backup"
+  {{- else if eq .Values.backup.storageProvider "OCS" }}
+        - name: "OPENSHIFT_APPLICATION_CREDENTIALS"
           value: "/var/etcd-backup"
   {{- else if eq .Values.backup.storageProvider "ECS" }}
         - name: "ECS_ENDPOINT"
@@ -297,7 +305,9 @@ spec:
       - hostnames:
         - {{ .Release.Name }}-etcd-local
         ip: 127.0.0.1
+{{- if gt (int .Values.replicas) 1 }}
       serviceAccountName: {{ .Release.Name }}-etcd
+{{- end }}
       volumes:
       - name: etcd-config-file
         configMap:
@@ -357,4 +367,3 @@ spec:
       resources:
         requests:
           storage: {{ .Values.storageCapacity }}
-          
