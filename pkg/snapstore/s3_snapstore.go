@@ -326,9 +326,9 @@ func (s *S3SnapStore) Fetch(snap brtypes.Snapshot) (io.ReadCloser, error) {
 		Key:    aws.String(path.Join(snap.Prefix, snap.SnapDir, snap.SnapName)),
 	}
 
-	if len(snap.VersionID) > 0 {
+	if snap.VersionID != nil {
 		// To fetch the versioned snapshots incase is object enabled for bucket.
-		getObjectInput.VersionId = aws.String(snap.VersionID)
+		getObjectInput.VersionId = snap.VersionID
 	}
 	if s.sseCustomerKey != "" {
 		// Customer managed Server Side Encryption
@@ -582,7 +582,7 @@ func (s *S3SnapStore) List(_ bool) (brtypes.SnapList, error) {
 							logrus.Warnf("Invalid snapshot found. Ignoring it: %s", k)
 						} else {
 							// capture the versionID of snapshot and immutability expiry time of snapshot.
-							snap.VersionID = *version.VersionId
+							snap.VersionID = version.VersionId
 							if bucketImmutableExpiryTimeInDays != nil {
 								// To get S3 object's "RetainUntilDate" or "ImmutabilityExpiryTime", backup-restore need to make an API call for each snapshot.
 								// To avoid API calls for each snapshot, backup-restore is calculating the "ImmutabilityExpiryTime" using bucket retention period.
@@ -634,21 +634,19 @@ func (s *S3SnapStore) List(_ bool) (brtypes.SnapList, error) {
 
 // Delete should delete the snapshot file from store
 func (s *S3SnapStore) Delete(snap brtypes.Snapshot) error {
-	if len(snap.VersionID) > 0 {
-		// to delete versioned snapshots present in bucket.
-		_, err := s.client.DeleteObject(&s3.DeleteObjectInput{
-			Bucket:    aws.String(s.bucket),
-			Key:       aws.String(path.Join(snap.Prefix, snap.SnapDir, snap.SnapName)),
-			VersionId: &snap.VersionID,
-		})
-		return err
-	}
-
-	// to delete non-versioned snapshots present in bucket.
-	_, err := s.client.DeleteObject(&s3.DeleteObjectInput{
+	deleteObjectInput := &s3.DeleteObjectInput{
 		Bucket: aws.String(s.bucket),
 		Key:    aws.String(path.Join(snap.Prefix, snap.SnapDir, snap.SnapName)),
-	})
+	}
+
+	if snap.VersionID != nil {
+		// to delete versioned snapshot present in bucket
+		// update deleteObject input with versionID of snapshot.
+		deleteObjectInput.VersionId = snap.VersionID
+	}
+
+	// delete snapshot present in bucket.
+	_, err := s.client.DeleteObject(deleteObjectInput)
 	return err
 }
 

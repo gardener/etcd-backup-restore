@@ -99,7 +99,7 @@ type Snapshot struct {
 	IsFinal                bool      `json:"isFinal"`
 	ImmutabilityExpiryTime time.Time `json:"immutabilityExpriyTime"`
 	// It is used only for AWS S3 object lock immutability.
-	VersionID string `json:"versionID"`
+	VersionID *string `json:"versionID"`
 }
 
 // IsDeletable determines if the snapshot can be deleted.
