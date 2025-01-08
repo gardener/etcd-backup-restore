@@ -208,9 +208,9 @@ func (m *mockS3Client) ListObjectsPages(in *s3.ListObjectsInput, callback func(*
 // ListObjectVersionsPages returns the versioned objects from map for mock test.
 func (m *mockS3Client) ListObjectVersionsPages(in *s3.ListObjectVersionsInput, callback func(*s3.ListObjectVersionsOutput, bool) bool) error {
 	var (
-		count    int64 = 0
+		count    int64
 		limit    int64 = 1 // aws default is 1000.
-		lastPage bool  = false
+		lastPage bool
 		keys     []string
 		out      = &s3.ListObjectVersionsOutput{
 			Prefix:   in.Prefix,

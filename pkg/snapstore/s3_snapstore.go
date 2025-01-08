@@ -327,7 +327,7 @@ func (s *S3SnapStore) Fetch(snap brtypes.Snapshot) (io.ReadCloser, error) {
 	}
 
 	if snap.VersionID != nil {
-		// To fetch the versioned snapshots incase is object enabled for bucket.
+		// To fetch the versioned snapshot incase object lock is enabled for bucket.
 		getObjectInput.VersionId = snap.VersionID
 	}
 	if s.sseCustomerKey != "" {
@@ -553,12 +553,10 @@ func (s *S3SnapStore) List(_ bool) (brtypes.SnapList, error) {
 			if isObjectLockEnabled, bucketImmutableExpiryTimeInDays, err = GetBucketImmutabilityTime(s); err != nil {
 				logrus.Errorf("unable to check bucket immutability retention period: %v", err)
 				return err
-			}
-			if !isObjectLockEnabled {
+			} else if !isObjectLockEnabled {
 				logrus.Warnf("Bucket versioning is found to be enabled but object lock is not found to be enabled.")
-				logrus.Warnf("Please enable the object lock for the given bucket to to have immutable snapshots.")
-			}
-			if isObjectLockEnabled && bucketImmutableExpiryTimeInDays == nil {
+				logrus.Warnf("Please enable the object lock for the given bucket to have immutable snapshots.")
+			} else if bucketImmutableExpiryTimeInDays == nil {
 				logrus.Warnf("Object lock is found to be enabled but object lock rules or default retention period are not found to be set.")
 			}
 			return nil
