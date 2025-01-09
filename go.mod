@@ -5,8 +5,8 @@ go 1.23.0
 require (
 	cloud.google.com/go/iam v1.1.1
 	cloud.google.com/go/storage v1.30.1
-	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.11.1
-	github.com/Azure/azure-sdk-for-go/sdk/storage/azblob v1.3.2
+	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.16.0
+	github.com/Azure/azure-sdk-for-go/sdk/storage/azblob v1.5.0
 	github.com/aliyun/aliyun-oss-go-sdk v2.1.8+incompatible
 	github.com/aws/aws-sdk-go v1.55.5 // TODO: upgrade to v2
 	github.com/gophercloud/gophercloud v0.17.0
@@ -36,7 +36,7 @@ require (
 require (
 	cloud.google.com/go v0.110.6 // indirect
 	cloud.google.com/go/compute/metadata v0.3.0 // indirect
-	github.com/Azure/azure-sdk-for-go/sdk/internal v1.5.2 // indirect
+	github.com/Azure/azure-sdk-for-go/sdk/internal v1.10.0 // indirect
 	github.com/BurntSushi/toml v0.3.1 // indirect
 	github.com/Masterminds/goutils v1.1.1 // indirect
 	github.com/Masterminds/semver v1.5.0 // indirect
