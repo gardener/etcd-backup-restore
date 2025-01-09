@@ -53,7 +53,6 @@ type authOptions struct {
 type OSSSnapStore struct {
 	prefix                  string
 	bucket                  OSSBucket
-	multiPart               sync.Mutex
 	maxParallelChunkUploads uint
 	minChunkSize            int64
 	tempDir                 string
