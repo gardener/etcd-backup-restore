@@ -10,7 +10,6 @@ import (
 	"os"
 
 	"github.com/gardener/etcd-backup-restore/pkg/compressor"
-
 	"github.com/gardener/etcd-backup-restore/pkg/initializer/validator"
 	"github.com/gardener/etcd-backup-restore/pkg/server"
 	"github.com/gardener/etcd-backup-restore/pkg/snapshot/snapshotter"
@@ -18,8 +17,10 @@ import (
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 	"github.com/gardener/etcd-backup-restore/pkg/wrappers"
 
+	"github.com/go-logr/logr"
 	"github.com/sirupsen/logrus"
 	flag "github.com/spf13/pflag"
+	runtimelog "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/yaml"
 )
 
@@ -35,6 +36,7 @@ type serverOptions struct {
 func newServerOptions() *serverOptions {
 	logger := logrus.New()
 	logger.SetLevel(logrus.InfoLevel)
+	runtimelog.SetLogger(logr.New(runtimelog.NullLogSink{}))
 
 	return &serverOptions{
 		LogLevel: 4,

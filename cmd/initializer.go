@@ -10,9 +10,12 @@ import (
 	"github.com/gardener/etcd-backup-restore/pkg/initializer"
 	"github.com/gardener/etcd-backup-restore/pkg/initializer/validator"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
+
+	"github.com/go-logr/logr"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"go.etcd.io/etcd/pkg/types"
+	runtimelog "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
 // NewInitializeCommand returns the command to initialize etcd by validating the data
@@ -26,6 +29,7 @@ func NewInitializeCommand(ctx context.Context) *cobra.Command {
 		Long:  `Initializes an etcd instance. Data directory is checked for corruption and restored in case of corruption.`,
 		Run: func(cmd *cobra.Command, args []string) {
 			logger := logrus.New()
+			runtimelog.SetLogger(logr.New(runtimelog.NullLogSink{}))
 			if err := opts.validate(); err != nil {
 				logger.Fatalf("failed to validate the options: %v", err)
 				return
