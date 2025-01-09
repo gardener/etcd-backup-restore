@@ -8,6 +8,7 @@ import (
 	"context"
 
 	"github.com/gardener/etcd-backup-restore/pkg/snapshot/restorer"
+
 	"github.com/go-logr/logr"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"

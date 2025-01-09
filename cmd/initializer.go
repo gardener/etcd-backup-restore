@@ -10,6 +10,7 @@ import (
 	"github.com/gardener/etcd-backup-restore/pkg/initializer"
 	"github.com/gardener/etcd-backup-restore/pkg/initializer/validator"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
+
 	"github.com/go-logr/logr"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"

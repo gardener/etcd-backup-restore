@@ -7,16 +7,16 @@ package cmd
 import (
 	"context"
 
+	"github.com/gardener/etcd-backup-restore/pkg/defragmentor"
+	"github.com/gardener/etcd-backup-restore/pkg/snapshot/snapshotter"
+	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
+	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
+
 	"github.com/go-logr/logr"
 	cron "github.com/robfig/cron/v3"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	runtimelog "sigs.k8s.io/controller-runtime/pkg/log"
-
-	"github.com/gardener/etcd-backup-restore/pkg/defragmentor"
-	"github.com/gardener/etcd-backup-restore/pkg/snapshot/snapshotter"
-	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
-	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 )
 
 // NewSnapshotCommand create cobra command for snapshot
