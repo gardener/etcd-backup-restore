@@ -16,5 +16,14 @@ spec:
   ports:
   - name: client
     protocol: TCP
-    port: {{ .Values.servicePorts.client }}
-    targetPort: {{ .Values.servicePorts.client }}
+    port: {{ .Values.servicePorts.etcd.client }}
+    targetPort: {{ .Values.servicePorts.etcd.client }}
+  - name: peer
+    protocol: TCP
+    port: {{ .Values.servicePorts.etcd.peer }}
+    targetPort: {{ .Values.servicePorts.etcd.peer }}
+  - name: backuprestore
+    protocol: TCP
+    port: {{ .Values.servicePorts.etcdBackupRestore.server }}
+    targetPort: {{ .Values.servicePorts.etcdBackupRestore.server }}
+    
