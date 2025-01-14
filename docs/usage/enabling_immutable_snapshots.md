@@ -417,9 +417,6 @@ After adding the annotation or tag, `etcd-backup-restore` will ignore these snap
 #### AWS S3
 
 - The approach of tagging snapshot objects to exclude them during restoration is not supported for `AWS S3` buckets.
-- With object lock enabled, S3 automatically activates object versioning. This eliminates the need for additional handling, as users can place a deletion marker top of any snapshots they wish to skip during restoration. During the restoration of etcd's data-dir, the backup-restore process will only consider the latest snapshots
-- If you want your snapshot back, just delete the deletion-marker which you had placed.
-- For more info: https://docs.aws.amazon.com/AmazonS3/latest/userguide/DeletingObjectVersions.html
 
 > Note: With S3 object lock, S3 versioning will automatically get enabled, it only prevent locked object versions from being permanently deleted.
 

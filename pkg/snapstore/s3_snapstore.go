@@ -521,8 +521,8 @@ func (s *S3SnapStore) partUploader(wg *sync.WaitGroup, stopCh <-chan struct{}, s
 // If Bucket versioning is not enabled for S3 bucket:
 //   - It returns a sorted list of all snapshot files present in the object store.
 //
-// If Bucket versioning is enabled for S3 bucket:
-//   - It returns a sorted list of all latest snapshot files present in the object store.
+// If Bucket versioning or object lock is enabled for S3 bucket:
+//   - It returns a sorted list of all firstCreated/oldest snapshot files present in the object store.
 //   - It also captures the "ImmutabilityExpiryTime" and "VersionID" of corresponding versioned snapshot.
 func (s *S3SnapStore) List(_ bool) (brtypes.SnapList, error) {
 	var snapList brtypes.SnapList
@@ -569,35 +569,54 @@ func (s *S3SnapStore) List(_ bool) (brtypes.SnapList, error) {
 			Prefix: aws.String(prefix),
 		}
 
+		// allSnapKeysMapToCreationTime contains oldest snapshots mapped to their creation timestamp.
+		allSnapKeysMapToCreationTime := make(map[string]time.Time)
+
+		// allSnapKeysMapToVersionID contains oldest snapshots mapped to their versionID.
+		allSnapKeysMapToVersionID := make(map[string]string)
+
 		if err := s.client.ListObjectVersionsPages(in, func(page *s3.ListObjectVersionsOutput, lastPage bool) bool {
 			for _, version := range page.Versions {
-				if *version.IsLatest {
-					k := (*version.Key)[len(*page.Prefix):]
-					if strings.Contains(k, backupVersionV1) || strings.Contains(k, backupVersionV2) {
-						snap, err := ParseSnapshot(path.Join(prefix, k))
-						if err != nil {
-							// Warning
-							logrus.Warnf("Invalid snapshot found. Ignoring it: %s", k)
-						} else {
-							// capture the versionID of snapshot and immutability expiry time of snapshot.
-							snap.VersionID = version.VersionId
-							if bucketImmutableExpiryTimeInDays != nil {
-								// To get S3 object's "RetainUntilDate" or "ImmutabilityExpiryTime", backup-restore need to make an API call for each snapshot.
-								// To avoid API calls for each snapshot, backup-restore is calculating the "ImmutabilityExpiryTime" using bucket retention period.
-								// ImmutabilityExpiryTime = SnapshotCreationTime + ObjectRetentionTimeInDays
-								snap.ImmutabilityExpiryTime = snap.CreatedOn.Add(time.Duration(*bucketImmutableExpiryTimeInDays) * 24 * time.Hour)
-							}
-							snapList = append(snapList, snap)
+				snapKey := (*version.Key)[len(*page.Prefix):]
+				if strings.Contains(snapKey, backupVersionV1) || strings.Contains(snapKey, backupVersionV2) {
+					if value, ok := allSnapKeysMapToCreationTime[*version.Key]; ok {
+						// snapshot key found to be already present in map
+						// update the maps if the incoming version of snapshot key is older
+						// than already seen version of snapshot key.
+						if (*version.LastModified).Before(value) {
+							// update both of the map.
+							allSnapKeysMapToVersionID[*version.Key] = *version.VersionId
+							allSnapKeysMapToCreationTime[*version.Key] = *version.LastModified
 						}
+					} else {
+						// snapshot key doesn't present in map
+						// then add the key to both of the maps.
+						allSnapKeysMapToVersionID[*version.Key] = *version.VersionId
+						allSnapKeysMapToCreationTime[*version.Key] = *version.LastModified
 					}
-				} else {
-					// Warning
-					logrus.Warnf("Snapshot %s with versionID [%s] found not to be latest, it was last modified at %s. Ignoring it.", *version.Key, *version.VersionId, *version.LastModified)
 				}
 			}
 			return !lastPage
 		}); err != nil {
 			return nil, err
+		}
+
+		for key, val := range allSnapKeysMapToVersionID {
+			snap, err := ParseSnapshot(key)
+			if err != nil {
+				// Warning
+				logrus.Warnf("Invalid snapshot found. Ignoring it: %s", key)
+			} else {
+				// capture the versionID of snapshot and immutability expiry time of snapshot.
+				snap.VersionID = aws.String(val)
+				if bucketImmutableExpiryTimeInDays != nil {
+					// To get S3 object's "RetainUntilDate" or "ImmutabilityExpiryTime", backup-restore need to make an API call for each snapshot.
+					// To avoid API calls for each snapshot, backup-restore is calculating the "ImmutabilityExpiryTime" using bucket retention period.
+					// ImmutabilityExpiryTime = SnapshotCreationTime + ObjectRetentionTimeInDays
+					snap.ImmutabilityExpiryTime = snap.CreatedOn.Add(time.Duration(*bucketImmutableExpiryTimeInDays) * 24 * time.Hour)
+				}
+				snapList = append(snapList, snap)
+			}
 		}
 	} else {
 		// versioning is not found to be enabled on given bucket.

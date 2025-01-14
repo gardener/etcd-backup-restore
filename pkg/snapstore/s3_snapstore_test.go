@@ -229,9 +229,10 @@ func (m *mockS3Client) ListObjectVersionsPages(in *s3.ListObjectVersionsInput, c
 	for index, key := range keys {
 		if strings.HasPrefix(key, *in.Prefix) {
 			tempObj := &s3.ObjectVersion{
-				Key:       aws.String(key),
-				IsLatest:  aws.Bool(true),
-				VersionId: aws.String(fmt.Sprintf("%s:%d", "mock-versionID", count)),
+				Key:          aws.String(key),
+				IsLatest:     aws.Bool(true),
+				VersionId:    aws.String(fmt.Sprintf("%s:%d", "mock-versionID", count)),
+				LastModified: aws.Time(time.Now()),
 			}
 			out.Versions = append(out.Versions, tempObj)
 			count++
