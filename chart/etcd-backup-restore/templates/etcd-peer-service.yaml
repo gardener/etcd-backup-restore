@@ -1,20 +1,27 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ .Release.Name }}-backup-client
+  name: {{ .Release.Name }}-etcd-peer
   namespace: {{ .Release.Namespace }}
   labels:
     app.kubernetes.io/name: etcd
     app.kubernetes.io/managed-by: {{ .Release.Service }}
     app.kubernetes.io/instance: {{ .Release.Name }}
 spec:
+  publishNotReadyAddresses: true
   type: ClusterIP
+  clusterIP: None
+  clusterIPs:
+    - None
+  internalTrafficPolicy: Cluster
+  ipFamilyPolicy: SingleStack
   sessionAffinity: None
   selector:
     app.kubernetes.io/name: etcd
     app.kubernetes.io/instance: {{ .Release.Name }}
   ports:
-  - name: client
+  - name: peer
     protocol: TCP
-    port: {{ .Values.servicePorts.backupRestore }}
-    targetPort: {{ .Values.servicePorts.backupRestore }}
+    port: {{ .Values.servicePorts.etcd.peer }}
+    targetPort: {{ .Values.servicePorts.etcd.peer }}
+    

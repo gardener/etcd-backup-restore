@@ -1,14 +1,18 @@
-{{- if .Values.tls.etcdBackupRestore }}
-apiVersion: v1
-kind: Secret
+{{- if gt (int .Values.replicas) 1 }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
 metadata:
-  name: {{ .Release.Name }}-etcdbr-ca
+  name: {{ .Release.Name }}-etcd
   namespace: {{ .Release.Namespace }}
   labels:
     app.kubernetes.io/name: etcd
     app.kubernetes.io/managed-by: {{ .Release.Service }}
     app.kubernetes.io/instance: {{ .Release.Name }}
-type: Opaque
-data:
-  bundle.crt: {{ .Values.tls.etcdBackupRestore.ca | b64enc }}
+rules:
+  - apiGroups:
+    - apps
+    resources:
+    - statefulsets
+    verbs:
+    - get
 {{- end }}

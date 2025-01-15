@@ -1,14 +1,19 @@
 images:
+  # Image to use for changing backup bucket permissions
+  changeBackupBucketPermissions:
+    repository: europe-docker.pkg.dev/gardener-project/public/3rd/alpine
+    tag: 3.20.3
+    pullPolicy: IfNotPresent
   # etcd image to use
-  etcd:
-    # TODO: change the etcd wrapper version to a newer version which spawns etcd v3.4.34
+  etcdWrapper:
     repository: europe-docker.pkg.dev/gardener-project/public/gardener/etcd-wrapper
-    tag: v0.2.0
+    tag: latest
     pullPolicy: IfNotPresent
   # etcd-backup-restore image to use
+  # TODO: @anveshreddy18: use the latest tag for etcd-backup-restore once the v0.33.0 is released
   etcdBackupRestore:
-    repository: europe-docker.pkg.dev/gardener-project/public/gardener/etcdbrctl
-    tag: v0.12.1
+    repository: europe-docker.pkg.dev/gardener-project/snapshots/gardener/etcdbrctl
+    tag: v0.33.0-dev-e1690dd6ea14ca889d357307018ba2e53ced5203
     pullPolicy: IfNotPresent
 
 resources:
@@ -28,9 +33,13 @@ resources:
       memory: 128Mi
 
 servicePorts:
-  client: 2379
-  server: 2380
-  backupRestore: 8080
+  etcd:
+    client: 2379
+    peer: 2380
+  etcdBackupRestore:
+    server: 8080
+  etcdWrapper:
+    server: 9095
 
 storageCapacity: 20Gi
 
@@ -40,6 +49,8 @@ storageCapacity: 20Gi
 autoCompaction:
   mode: periodic
   retentionLength: "30m"
+
+replicas: 1
 
 backup:
   # schedule is cron standard schedule to take full snapshots.
@@ -60,7 +71,7 @@ backup:
   # garbageCollectionPeriod is the time period after which old snapshots are periodically garbage-collected
   garbageCollectionPeriod: "1m"
 
-  etcdConnectionTimeout: "30s"
+  etcdConnectionTimeout: "5m"
   etcdSnapshotTimeout: "8m"
   etcdDefragTimeout: "8m"
   # etcdQuotaBytes used to Raise alarms when backend DB size exceeds the given quota bytes
@@ -68,27 +79,34 @@ backup:
 
   # storageContainer is name of the container or bucket name used for storage.
   # Directory name in case of local storage provider.
-  storageContainer: "/var/etcd/data/backup"
+  storageContainer: "etcd-bucket"
 
   # storageProvider indicate the type of backup storage provider.
-  # Supported values are ABS,GCS,S3,Swift,OSS,ECS,Local, empty means no backup.
-  storageProvider: "Local"
+  # Supported values are ABS,GCS,S3,Swift,OSS,OCS,ECS,Local, empty means no backup.
+  storageProvider: ""
 
   # compression defines the specification to compress the snapshots(full as well as delta).
   # it only supports 3 compression Policy: gzip(default), zlib, lzw.
   compression:
     enabled: true
     policy: "gzip"
+  leaderElection:
+    etcdConnectionTimeout: 5s
+    reelectionPeriod: 5s
 
   # failBelowRevision indicates the revision below which the validation of etcd will fail and restore will not be triggered in case
   # there is no snapshot on configured backup bucket.
   # failBelowRevision: 100000
 
   # Please uncomment the following section based on the storage provider.
+  # local:
+  #   path: "/etc/local-backupbuckets"
   # s3:
   #   region: region-where-bucket-exists
   #   secretAccessKey: secret-access-key-with-object-storage-privileges
   #   accessKeyID: access-key-id-with-route53-privileges
+  #   endpoint: endpoint-override-for-s3 # optional
+  #   s3ForcePathStyle: "true" # optional
   #   sseCustomerKey: aes-256-sse-customer-key # optional
   #   sseCustomerAlgorithm: aes-256-sse-customer-algorithm # optional
   # gcs:
@@ -98,7 +116,7 @@ backup:
   # abs:
   #   storageAccount: storage-account-with-object-storage-privileges
   #   storageKey: storage-key-with-object-storage-privileges
-  #   domain: non-default-domain-for-object-storage-service
+  #   domain: non-default-domain-for-object-storage-service # optional
   #   emulatorEnabled: boolean-float-to-enable-e2e-tests-to-use-azure-emulator # optional
   # swift:
   #   authURL: identity-server-url
@@ -117,6 +135,11 @@ backup:
   #   accessKeyID: access-key-id-with-object-storage-privileges
   #   disableSsl: "false"         # optional
   #   insecureSkipVerify: "false" # optional
+  # ocs:
+  #   accessKeyID: access-key-id-with-object-storage-privileges
+  #   secretAccessKey: secret-access-key-with-object-storage-privileges
+  #   endpoint: ocs-endpoint-url
+  #   region: region-name
 
 # etcdAuth field contains the pre-created username-password pair
 # for etcd. Comment this whole section if you dont want to use
@@ -125,35 +148,68 @@ etcdAuth: {}
   # username: username
   # password: password
 
-etcdTLS: {}
-#   caBundle: |
-#         -----BEGIN CERTIFICATE-----
-#         ...
-#         -----END CERTIFICATE-----
-#   crt: |
-#         -----BEGIN CERTIFICATE-----
-#         ...
-#         -----END CERTIFICATE-----
-#   key: |
-#         -----BEGIN RSA PRIVATE KEY-----
-#         ...
-#         -----END RSA PRIVATE KEY-----
-
-# backupRestoreTLS field contains the pre-created secrets for backup-restore server.
-# Comment this whole section if you dont want to use tls for the backup-restore server.
-backupRestoreTLS: {}
-#   caBundle: |
-#         -----BEGIN CERTIFICATE-----
-#         ...
-#         -----END CERTIFICATE-----
-#   crt: |
-#         -----BEGIN CERTIFICATE-----
-#         ...
-#         -----END CERTIFICATE-----
-#   key: |
-#         -----BEGIN RSA PRIVATE KEY-----
-#         ...
-#         -----END RSA PRIVATE KEY-----
-
+tls:
+  etcd: {}
+    # ca: |
+    #     -----BEGIN CERTIFICATE-----
+    #     ...
+    #     -----END CERTIFICATE-----
+    # server:
+    #   crt: |
+    #       -----BEGIN CERTIFICATE-----
+    #       ...
+    #       -----END CERTIFICATE-----
+    #   key: |
+    #       -----BEGIN PRIVATE KEY-----
+    #       ...
+    #       -----END PRIVATE KEY-----
+    # client:
+    #   crt: |
+    #       -----BEGIN CERTIFICATE-----
+    #       ...
+    #       -----END CERTIFICATE-----
+    #   key: |
+    #       -----BEGIN PRIVATE KEY-----
+    #       ...
+    #       -----END PRIVATE KEY-----
+    # peer:
+    #   ca: |
+    #     -----BEGIN CERTIFICATE-----
+    #     ...
+    #     -----END CERTIFICATE-----
+    #   server:
+    #     crt: |
+    #         -----BEGIN CERTIFICATE-----
+    #         ...
+    #         -----END CERTIFICATE-----
+    #     key: |
+    #         -----BEGIN PRIVATE KEY-----
+    #         ...
+    #         -----END PRIVATE KEY-----
+  # # etcdBackupRestore field contains the pre-created secrets for backup-restore server.
+  # # Comment this whole section if you dont want to use tls for the backup-restore server.
+  etcdBackupRestore: {}
+    # ca: |
+    #     -----BEGIN CERTIFICATE-----
+    #     ...
+    #     -----END CERTIFICATE-----
+    # server:
+    #   crt: |
+    #       -----BEGIN CERTIFICATE-----
+    #       ...
+    #       -----END CERTIFICATE-----
+    #   key: |
+    #       -----BEGIN PRIVATE KEY-----
+    #       ...
+    #       -----END PRIVATE KEY-----
+    # client:
+    #   crt: |
+    #       -----BEGIN CERTIFICATE-----
+    #       ...
+    #       -----END CERTIFICATE-----
+    #   key: |
+    #       -----BEGIN PRIVATE KEY-----
+    #       ...
+    #       -----END PRIVATE KEY-----
 # podAnnotations that will be passed to the resulting etcd pod
 podAnnotations: {}
