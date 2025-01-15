@@ -569,30 +569,36 @@ func (s *S3SnapStore) List(_ bool) (brtypes.SnapList, error) {
 			Prefix: aws.String(prefix),
 		}
 
-		// allSnapKeysMapToCreationTime contains oldest snapshots mapped to their creation timestamp.
-		allSnapKeysMapToCreationTime := make(map[string]time.Time)
+		type versionSnapInfo struct {
+			creationTime *time.Time
+			versionID    *string
+		}
 
-		// allSnapKeysMapToVersionID contains oldest snapshots mapped to their versionID.
-		allSnapKeysMapToVersionID := make(map[string]string)
+		// allSnapKeysMapToCreationTime contains oldest snapshots mapped to their versionID and creation timestamp.
+		allSnapKeyMapToSnapshotInfo := make(map[string]versionSnapInfo)
 
 		if err := s.client.ListObjectVersionsPages(in, func(page *s3.ListObjectVersionsOutput, lastPage bool) bool {
 			for _, version := range page.Versions {
 				snapKey := (*version.Key)[len(*page.Prefix):]
 				if strings.Contains(snapKey, backupVersionV1) || strings.Contains(snapKey, backupVersionV2) {
-					if value, ok := allSnapKeysMapToCreationTime[*version.Key]; ok {
+					if value, ok := allSnapKeyMapToSnapshotInfo[*version.Key]; ok {
 						// snapshot key found to be already present in map
-						// update the maps if the incoming version of snapshot key is older
+						// update the map if the incoming version of snapshot key is older
 						// than already seen version of snapshot key.
-						if (*version.LastModified).Before(value) {
-							// update both of the map.
-							allSnapKeysMapToVersionID[*version.Key] = *version.VersionId
-							allSnapKeysMapToCreationTime[*version.Key] = *version.LastModified
+						if (*version.LastModified).Before(*value.creationTime) {
+							// update the map.
+							allSnapKeyMapToSnapshotInfo[*version.Key] = versionSnapInfo{
+								creationTime: version.LastModified,
+								versionID:    version.VersionId,
+							}
 						}
 					} else {
 						// snapshot key doesn't present in map
-						// then add the key to both of the maps.
-						allSnapKeysMapToVersionID[*version.Key] = *version.VersionId
-						allSnapKeysMapToCreationTime[*version.Key] = *version.LastModified
+						// then add the key to map.
+						allSnapKeyMapToSnapshotInfo[*version.Key] = versionSnapInfo{
+							creationTime: version.LastModified,
+							versionID:    version.VersionId,
+						}
 					}
 				}
 			}
@@ -601,14 +607,14 @@ func (s *S3SnapStore) List(_ bool) (brtypes.SnapList, error) {
 			return nil, err
 		}
 
-		for key, val := range allSnapKeysMapToVersionID {
+		for key, val := range allSnapKeyMapToSnapshotInfo {
 			snap, err := ParseSnapshot(key)
 			if err != nil {
 				// Warning
 				logrus.Warnf("Invalid snapshot found. Ignoring it: %s", key)
 			} else {
 				// capture the versionID of snapshot and immutability expiry time of snapshot.
-				snap.VersionID = aws.String(val)
+				snap.VersionID = aws.String(*val.versionID)
 				if bucketImmutableExpiryTimeInDays != nil {
 					// To get S3 object's "RetainUntilDate" or "ImmutabilityExpiryTime", backup-restore need to make an API call for each snapshot.
 					// To avoid API calls for each snapshot, backup-restore is calculating the "ImmutabilityExpiryTime" using bucket retention period.
