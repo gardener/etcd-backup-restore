@@ -581,20 +581,12 @@ func (s *S3SnapStore) List(_ bool) (brtypes.SnapList, error) {
 			for _, version := range page.Versions {
 				snapKey := (*version.Key)[len(*page.Prefix):]
 				if strings.Contains(snapKey, backupVersionV1) || strings.Contains(snapKey, backupVersionV2) {
-					if value, ok := allSnapKeyMapToSnapshotInfo[*version.Key]; ok {
-						// snapshot key found to be already present in map
-						// update the map if the incoming version of snapshot key is older
-						// than already seen version of snapshot key.
-						if (*version.LastModified).Before(value.creationTime) {
-							// update the map.
-							allSnapKeyMapToSnapshotInfo[*version.Key] = &snapshotMetaInfo{
-								creationTime: *version.LastModified,
-								versionID:    *version.VersionId,
-							}
-						}
-					} else {
-						// snapshot key doesn't present in map
-						// then add the key to map.
+					// Add snapshot key to map
+					//   - if snapshot key not found to be already present in map
+					//   - or if the incoming version of snapshot key is older
+					//     than already seen version of snapshot key.
+					if value, isKeyPresent := allSnapKeyMapToSnapshotInfo[*version.Key]; !isKeyPresent || (*version.LastModified).Before(value.creationTime) {
+						// update the map.
 						allSnapKeyMapToSnapshotInfo[*version.Key] = &snapshotMetaInfo{
 							creationTime: *version.LastModified,
 							versionID:    *version.VersionId,
