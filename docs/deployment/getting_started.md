@@ -164,6 +164,8 @@ INFO[0008] Successfully restored the etcd data directory.
 
 With sub-command `server` you can start a http server which exposes an endpoint to initialize etcd over REST interface. The server also keeps the backup schedule thread running to keep taking periodic backups. This is mainly made available to manage an etcd instance running in a Kubernetes cluster. You can deploy the example [helm chart](../../chart/etcd-backup-restore) on a Kubernetes cluster to have a fault-resilient, self-healing etcd cluster.
 
+> **Note**: When deployed with the helm chart, only the static single member & static multi-member etcd cluster configurations are supported. The dynamic etcd cluster configuration is not supported. That is 0 to 1 or 0 to 3 member clusters are supported but not 1 to 3 member clusters. This is due to extra complexity in handling the scale-up scenario which cannot be brought into the helm charts at the moment. We recommend using [etcd-druid](https://github.com/gardener/etcd-druid/) for full-fledged etcd cluster management.
+
 ## Etcdbrctl copy
 
 With sub-command `copy` you can copy all snapshots (Full and Delta) fom one snapstore to another. Using the two filter parameters `max-backups-to-copy` and `max-backup-age` you can also limit the number of snapshots that will be copied or target only the newest snapshots.
