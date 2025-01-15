@@ -31,6 +31,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/aws/aws-sdk-go/service/s3/s3iface"
 	"github.com/sirupsen/logrus"
+	"k8s.io/client-go/util/retry"
 	"k8s.io/utils/ptr"
 
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
@@ -65,10 +66,9 @@ type SSECredentials struct {
 
 // S3SnapStore is snapstore with AWS S3 object store as backend
 type S3SnapStore struct {
-	prefix    string
-	client    s3iface.S3API
-	bucket    string
-	multiPart sync.Mutex
+	prefix string
+	client s3iface.S3API
+	bucket string
 	// maxParallelChunkUploads hold the maximum number of parallel chunk uploads allowed.
 	maxParallelChunkUploads uint
 	minChunkSize            int64
@@ -138,7 +138,7 @@ func readAWSCredentialsJSONFile(filename string) (session.Options, SSECredential
 	}
 
 	httpClient := http.DefaultClient
-	if awsConfig.InsecureSkipVerify != nil && *awsConfig.InsecureSkipVerify == true {
+	if awsConfig.InsecureSkipVerify != nil && *awsConfig.InsecureSkipVerify {
 		httpClient.Transport = &http.Transport{
 			TLSClientConfig: &tls.Config{InsecureSkipVerify: *awsConfig.InsecureSkipVerify}, // #nosec G402 -- InsecureSkipVerify is set by user input, and can be allowed to be set to true based on user's requirement.
 		}
@@ -192,7 +192,7 @@ func readAWSCredentialFiles(dirname string) (session.Options, SSECredentials, er
 	}
 
 	httpClient := http.DefaultClient
-	if awsConfig.InsecureSkipVerify != nil && *awsConfig.InsecureSkipVerify == true {
+	if awsConfig.InsecureSkipVerify != nil && *awsConfig.InsecureSkipVerify {
 		httpClient.Transport = &http.Transport{
 			TLSClientConfig: &tls.Config{InsecureSkipVerify: *awsConfig.InsecureSkipVerify}, // #nosec G402 -- InsecureSkipVerify is set by user input, and can be allowed to be set to true based on user's requirement.
 		}
@@ -324,6 +324,11 @@ func (s *S3SnapStore) Fetch(snap brtypes.Snapshot) (io.ReadCloser, error) {
 	getObjectInput := &s3.GetObjectInput{
 		Bucket: aws.String(s.bucket),
 		Key:    aws.String(path.Join(snap.Prefix, snap.SnapDir, snap.SnapName)),
+	}
+
+	if snap.VersionID != nil {
+		// To fetch the versioned snapshot incase object lock is enabled for bucket.
+		getObjectInput.VersionId = snap.VersionID
 	}
 	if s.sseCustomerKey != "" {
 		// Customer managed Server Side Encryption
@@ -512,35 +517,130 @@ func (s *S3SnapStore) partUploader(wg *sync.WaitGroup, stopCh <-chan struct{}, s
 	}
 }
 
-// List will return sorted list with all snapshot files on store.
+// List returns a sorted list of snapshot files present in the object store.
+// If Bucket versioning is not enabled for S3 bucket:
+//   - It returns a sorted list of all snapshot files present in the object store.
+//
+// If Bucket versioning or object lock is enabled for S3 bucket:
+//   - It returns a sorted list of all firstCreated/oldest snapshot files present in the object store.
+//   - It also captures the "ImmutabilityExpiryTime" and "VersionID" of corresponding versioned snapshot.
 func (s *S3SnapStore) List(_ bool) (brtypes.SnapList, error) {
+	var snapList brtypes.SnapList
 	prefixTokens := strings.Split(s.prefix, "/")
 	// Last element of the tokens is backup version
 	// Consider the parent of the backup version level (Required for Backward Compatibility)
 	prefix := path.Join(strings.Join(prefixTokens[:len(prefixTokens)-1], "/"))
 
-	var snapList brtypes.SnapList
-	in := &s3.ListObjectsInput{
-		Bucket: aws.String(s.bucket),
-		Prefix: aws.String(prefix),
-	}
-	err := s.client.ListObjectsPages(in, func(page *s3.ListObjectsOutput, lastPage bool) bool {
-		for _, key := range page.Contents {
-			k := (*key.Key)[len(*page.Prefix):]
-			if strings.Contains(k, backupVersionV1) || strings.Contains(k, backupVersionV2) {
-				snap, err := ParseSnapshot(path.Join(prefix, k))
-				if err != nil {
-					// Warning
-					logrus.Warnf("Invalid snapshot found. Ignoring it: %s", k)
-				} else {
-					snapList = append(snapList, snap)
-				}
-			}
-		}
-		return !lastPage
+	// Get the status of bucket versioning.
+	// Note: Bucket versioning will always be enabled for object lock.
+	versioningStatus, err := s.client.GetBucketVersioning(&s3.GetBucketVersioningInput{
+		Bucket: &s.bucket,
 	})
 	if err != nil {
 		return nil, err
+	}
+
+	if versioningStatus.Status != nil && *versioningStatus.Status == s3.BucketVersioningStatusEnabled {
+		// versioning is found to be enabled on given bucket.
+		logrus.Info("Bucket versioning is found to be enabled.")
+
+		var bucketImmutableExpiryTimeInDays *int64
+		var isObjectLockEnabled bool
+
+		if err := retry.OnError(retry.DefaultBackoff, func(err error) bool {
+			return err != nil
+		}, func() error {
+			if isObjectLockEnabled, bucketImmutableExpiryTimeInDays, err = GetBucketImmutabilityTime(s); err != nil {
+				logrus.Errorf("unable to check bucket immutability retention period: %v", err)
+				return err
+			} else if !isObjectLockEnabled {
+				logrus.Warnf("Bucket versioning is found to be enabled but object lock is not found to be enabled.")
+				logrus.Warnf("Please enable the object lock for the given bucket to have immutable snapshots.")
+			} else if bucketImmutableExpiryTimeInDays == nil {
+				logrus.Warnf("Object lock is found to be enabled but object lock rules or default retention period are not found to be set.")
+			}
+			return nil
+		}); err != nil {
+			logrus.Errorf("unable to check object lock configuration for the bucket: %v", err)
+		}
+
+		in := &s3.ListObjectVersionsInput{
+			Bucket: aws.String(s.bucket),
+			Prefix: aws.String(prefix),
+		}
+
+		type snapshotMetaInfo struct {
+			creationTime time.Time
+			versionID    string
+		}
+
+		// allSnapKeysMapToCreationTime contains oldest snapshots keys mapped to their versionID and creation timestamp.
+		allSnapKeyMapToSnapshotInfo := make(map[string]*snapshotMetaInfo)
+
+		if err := s.client.ListObjectVersionsPages(in, func(page *s3.ListObjectVersionsOutput, lastPage bool) bool {
+			for _, version := range page.Versions {
+				snapKey := (*version.Key)[len(*page.Prefix):]
+				if strings.Contains(snapKey, backupVersionV1) || strings.Contains(snapKey, backupVersionV2) {
+					// Add snapshot key to map
+					//   - if snapshot key not found to be already present in map
+					//   - or if the incoming version of snapshot key is older
+					//     than already seen version of snapshot key.
+					if value, isKeyPresent := allSnapKeyMapToSnapshotInfo[*version.Key]; !isKeyPresent || (*version.LastModified).Before(value.creationTime) {
+						// update the map.
+						allSnapKeyMapToSnapshotInfo[*version.Key] = &snapshotMetaInfo{
+							creationTime: *version.LastModified,
+							versionID:    *version.VersionId,
+						}
+					}
+				}
+			}
+			return !lastPage
+		}); err != nil {
+			return nil, err
+		}
+
+		for key, val := range allSnapKeyMapToSnapshotInfo {
+			snap, err := ParseSnapshot(key)
+			if err != nil {
+				// Warning
+				logrus.Warnf("Invalid snapshot found. Ignoring it: %s", key)
+			} else {
+				// capture the versionID of snapshot and immutability expiry time of snapshot.
+				snap.VersionID = aws.String(val.versionID)
+				if bucketImmutableExpiryTimeInDays != nil {
+					// To get S3 object's "RetainUntilDate" or "ImmutabilityExpiryTime", backup-restore need to make an API call for each snapshot.
+					// To avoid API calls for each snapshot, backup-restore is calculating the "ImmutabilityExpiryTime" using bucket retention period.
+					// ImmutabilityExpiryTime = SnapshotCreationTime + ObjectRetentionTimeInDays
+					snap.ImmutabilityExpiryTime = snap.CreatedOn.Add(time.Duration(*bucketImmutableExpiryTimeInDays) * 24 * time.Hour)
+				}
+				snapList = append(snapList, snap)
+			}
+		}
+	} else {
+		// versioning is not found to be enabled on given bucket.
+		logrus.Info("Bucket versioning is not found to be enabled.")
+		in := &s3.ListObjectsInput{
+			Bucket: aws.String(s.bucket),
+			Prefix: aws.String(prefix),
+		}
+
+		if err := s.client.ListObjectsPages(in, func(page *s3.ListObjectsOutput, lastPage bool) bool {
+			for _, key := range page.Contents {
+				k := (*key.Key)[len(*page.Prefix):]
+				if strings.Contains(k, backupVersionV1) || strings.Contains(k, backupVersionV2) {
+					snap, err := ParseSnapshot(path.Join(prefix, k))
+					if err != nil {
+						// Warning
+						logrus.Warnf("Invalid snapshot found. Ignoring it: %s", k)
+					} else {
+						snapList = append(snapList, snap)
+					}
+				}
+			}
+			return !lastPage
+		}); err != nil {
+			return nil, err
+		}
 	}
 
 	sort.Sort(snapList)
@@ -549,10 +649,19 @@ func (s *S3SnapStore) List(_ bool) (brtypes.SnapList, error) {
 
 // Delete should delete the snapshot file from store
 func (s *S3SnapStore) Delete(snap brtypes.Snapshot) error {
-	_, err := s.client.DeleteObject(&s3.DeleteObjectInput{
+	deleteObjectInput := &s3.DeleteObjectInput{
 		Bucket: aws.String(s.bucket),
 		Key:    aws.String(path.Join(snap.Prefix, snap.SnapDir, snap.SnapName)),
-	})
+	}
+
+	if snap.VersionID != nil {
+		// to delete versioned snapshot present in bucket
+		// update deleteObject input with versionID of snapshot.
+		deleteObjectInput.VersionId = snap.VersionID
+	}
+
+	// delete snapshot present in bucket.
+	_, err := s.client.DeleteObject(deleteObjectInput)
 	return err
 }
 
@@ -623,4 +732,31 @@ func getSSECreds(sseCustomerKey, sseCustomerAlgorithm *string) (SSECredentials, 
 		sseCustomerKeyMD5:    sseCustomerKeyMD5,
 		sseCustomerAlgorithm: *sseCustomerAlgorithm,
 	}, nil
+}
+
+// GetBucketImmutabilityTime check objectlock is enabled for given bucket, if it does returns the retention period.
+func GetBucketImmutabilityTime(s *S3SnapStore) (bool, *int64, error) {
+	objectConfig, err := s.client.GetObjectLockConfiguration(&s3.GetObjectLockConfigurationInput{
+		Bucket: aws.String(s.bucket),
+	})
+	if err != nil {
+		return false, nil, err
+	}
+
+	if objectConfig != nil && objectConfig.ObjectLockConfiguration != nil {
+		// check if object lock is enabled for bucket
+		if objectConfig.ObjectLockConfiguration.ObjectLockEnabled != nil && *objectConfig.ObjectLockConfiguration.ObjectLockEnabled == s3.ObjectLockEnabledEnabled {
+			// check if rules for object lock is defined for bucket.
+			if objectConfig.ObjectLockConfiguration.Rule != nil && objectConfig.ObjectLockConfiguration.Rule.DefaultRetention != nil {
+				//assumption: retention period of bucket should always be in days, not years.
+				return true, objectConfig.ObjectLockConfiguration.Rule.DefaultRetention.Days, nil
+			}
+			// object lock is enabled but rules are not defined for bucket
+			return true, nil, nil
+		}
+		// object lock is not enabled for bucket
+		return false, nil, nil
+	}
+
+	return false, nil, fmt.Errorf("got nil object lock configuration")
 }
