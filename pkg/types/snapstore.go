@@ -58,6 +58,7 @@ const (
 	MinChunkSize int64 = 5 * (1 << 20) //5 MiB
 
 	// ExcludeSnapshotMetadataKey is the tag that is to be added on snapshots in the object store if they are not to be included in SnapStore's List output.
+	// Note: only applicable for storage provider: ABS and GCS.
 	ExcludeSnapshotMetadataKey = "x-etcd-snapshot-exclude"
 )
 
@@ -76,6 +77,7 @@ type SnapStore interface {
 	// List returns a sorted list (based on the last revision, ascending) of all snapshots in the store.
 	// includeAll specifies whether to include all snapshots while listing, including those with exclude tags.
 	// Snapshots with exclude tags are not listed unless includeAll is set to true.
+	// Note: "includeAll" boolean is only applicable for storage provider: ABS and GCS.
 	List(includeAll bool) (SnapList, error)
 	// Save will write the snapshot to store.
 	Save(Snapshot, io.ReadCloser) error
@@ -87,7 +89,7 @@ type SnapStore interface {
 type Snapshot struct {
 	Kind                   string    `json:"kind"` // incr:incremental, full:full
 	StartRevision          int64     `json:"startRevision"`
-	LastRevision           int64     `json:"lastRevision"` // latest revision on snapshot
+	LastRevision           int64     `json:"lastRevision"` // latest revision of snapshot
 	CreatedOn              time.Time `json:"createdOn"`
 	SnapDir                string    `json:"snapDir"`
 	SnapName               string    `json:"snapName"`
@@ -96,6 +98,8 @@ type Snapshot struct {
 	CompressionSuffix      string    `json:"compressionSuffix"` // CompressionSuffix depends on compression policy
 	IsFinal                bool      `json:"isFinal"`
 	ImmutabilityExpiryTime time.Time `json:"immutabilityExpriyTime"`
+	// It is used only for AWS S3 object lock immutability.
+	VersionID *string `json:"versionID"`
 }
 
 // IsDeletable determines if the snapshot can be deleted.

@@ -1,18 +1,28 @@
 # Enabling Immutable Snapshots in `etcd-backup-restore`
 
-This guide walks you through the process of enabling immutable snapshots in `etcd-backup-restore` by leveraging bucket-level immutability features provided by cloud storage providers like Google Cloud Storage (GCS) and Azure Blob Storage (ABS). Enabling immutability ensures that your backups are tamper-proof and comply with regulatory requirements.
+This guide walks you through the process of enabling immutable snapshots in `etcd-backup-restore` by leveraging bucket-level immutability features for various object storage providers:
+
+1. Google Cloud Storage (GCS)
+2. Azure Blob Storage (ABS)
+3. Amazon Simple Storage Service (AWS S3)
+
+> Note: Currently, Openstack object storage (swift) doesn't support immutability for objects: https://blueprints.launchpad.net/swift/+spec/immutability-middleware.
+
+Enabling immutability of your bucket will ensure that your backups are tamper-proof and comply with regulatory requirements.
+
+> Note: The consumer of `etcd-backup-restore` must have to enable the bucket lock with the appropriate settings on their buckets to consume this feature. This is because `etcd-backup-restore` doesn't manage or interfere with the bucket's (object store) lifecycle process.
 
 ---
 
 ## Terminology
 
-- **Bucket / Container**: A storage resource in cloud storage services where objects (such as snapshots) are stored. GCS uses the term **bucket**, while ABS uses **container**.
-
-- **Immutability Policy**: A configuration that specifies a minimum period during which objects in a bucket/container are protected from deletion or modification.
-
-- **Immutability Period**: The duration defined by the immutability policy during which objects remain immutable.
+- **Bucket / Container**: A storage resource in cloud storage services where objects (such as snapshots) are stored. GCS and S3 uses the term **bucket**, while ABS uses **container**.
 
 - **Immutability**: The property of an object being unmodifiable after creation, until the immutability period expires.
+
+- **Immutability Policy**: A configuration that specifies a minimum retention period during which objects in a bucket/container are protected from deletion or modification.
+
+- **Immutability Period**: The duration defined by the immutability policy during which objects remain immutable.
 
 - **Locking**: The action of making an immutability policy permanent, preventing any reduction or removal of the immutability period.
 
@@ -22,7 +32,9 @@ This guide walks you through the process of enabling immutable snapshots in `etc
 
 ## Overview
 
-Currently, `etcd-backup-restore` supports bucket-level immutability for GCS and ABS.
+Currently, `etcd-backup-restore` supports bucket-level immutability for GCS, ABS and S3.
+
+> Note: If immutability is not enabled then the objects i.e snapshots's immutability expiry time will be considered as zero, hence causing no effect on current functionality.
 
 - **Immutability Policy**: You can add an immutability policy to a bucket/container to specify an immutability period.
   - When an immutability policy is set, objects in the bucket/container can only be deleted or replaced once their age exceeds the immutability period.
@@ -37,14 +49,13 @@ Currently, `etcd-backup-restore` supports bucket-level immutability for GCS and 
   - You can increase the immutability period of a locked policy if needed.
   - A locked bucket/container can only be deleted once all objects present in the bucket/container are deleted.
 
-
 ---
 
 ## Configure Bucket-Level Immutability
 
 By configuring an immutability policy on your storage bucket/container, you ensure that all snapshots are stored in an immutable (Write Once, Read Many) state for a specified duration. This prevents snapshots from being modified or deleted until they reach the end of the immutability period.
 
-### Configure an Immutability Policy
+### Enabling Immutability on Bucket
 
 You can set a time-based immutability policy on your bucket/container. The immutability policy specifies the minimum duration for which the objects must remain immutable. This configuration can also be achieved using the cloud provider's respective console/portal.
 
@@ -99,6 +110,80 @@ To configure an immutability policy on an Azure Blob Storage container:
        --container-name my-container \
        --period 4
    ```
+
+#### AWS S3
+
+##### Enabling Object Lock on New S3 Buckets
+
+> Note: With S3 object lock, S3 versioning will automatically get enabled.
+
+  Create a new bucket with object lock enabled.
+
+```bash
+# create new bucket with object lock enabled
+aws s3api create-bucket --bucket [BUCKET_NAME] \
+--region [REGION] --create-bucket-configuration LocationConstraint=[REGION] \
+--object-lock-enabled-for-bucket
+```
+
+  Update the bucket with object lock configuration.
+
+```bash
+# update the bucket with object lock configuration
+aws s3api put-object-lock-configuration --bucket [BUCKET_NAME] \
+--object-lock-configuration='{ "ObjectLockEnabled": "Enabled", "Rule": { "DefaultRetention": { "Mode": [MODE] , "Days": [IMMUTABILITY_PERIOD] }}}'
+```
+
+  - Replace `[BUCKET_NAME]` and `[REGION]` with the name and region of your bucket.
+  - Replace `[MODE]` with either `COMPLIANCE` or `GOVERNANCE` mode.
+  - Replace `[IMMUTABILITY_PERIOD]` with the desired immutability period in days.
+
+  **Example:**
+
+  - To create a bucket with name `my-bucket` on region `eu-west-1` with mode: `COMPLIANCE` with immutability period of `2`days.
+
+```bash
+# create new bucket with object lock enabled
+aws s3api create-bucket --bucket my-bucket \
+--region eu-west-1 --create-bucket-configuration LocationConstraint=eu-west-1 \
+--object-lock-enabled-for-bucket
+
+# update the bucket with object lock configuration
+aws s3api put-object-lock-configuration --bucket my-bucket \
+--object-lock-configuration='{ "ObjectLockEnabled": "Enabled", "Rule": { "DefaultRetention": { "Mode": "COMPLIANCE" , "Days": 2 }}}'
+```
+
+##### Enabling Object Lock on Old/Existing S3 Buckets
+
+  To achieve that, first enable versioning on the existing bucket, as it's a prerequisite for enabling object lock.
+
+```bash
+# enable the object versioning on a existing bucket
+aws s3api put-bucket-versioning --bucket [BUCKET_NAME] \
+--versioning-configuration Status=Enabled
+```
+
+  Now enable the object lock on bucket with its configurations.
+
+```bash
+# now, enable the object lock on bucket with its configurations
+aws s3api put-object-lock-configuration --bucket [BUCKET_NAME] \
+--object-lock-configuration='{ "ObjectLockEnabled": "Enabled", "Rule": { "DefaultRetention": { "Mode": [MODE] , "Days": [IMMUTABILITY_PERIOD] }}}'
+```
+
+  **Example:**
+
+  - First, enable the bucket versioning on existing bucket `my-bucket` then enable the object lock with it's configuration of mode: `COMPLIANCE` with immutability period of `2` days.
+
+```bash
+# enable the object versioning on existing bucket
+aws s3api put-bucket-versioning --bucket my-bucket \
+--versioning-configuration Status=Enabled
+
+# now, enable the object lock on bucket with its configurations
+aws s3api put-object-lock-configuration --bucket my-bucket \
+--object-lock-configuration='{ "ObjectLockEnabled": "Enabled", "Rule": { "DefaultRetention": { "Mode": "COMPLIANCE" , "Days": 2 }}}'
+```
 
 ### Modify an Unlocked Immutability Policy
 
@@ -199,7 +284,6 @@ To lock the immutability policy:
        --lock-retention-period
    ```
 
-
 #### Azure Blob Storage (ABS)
 
 To lock the immutability policy:
@@ -240,11 +324,22 @@ To lock the immutability policy:
        --if-match $etag
    ```
 
+### S3 Object Lock and working with snapshots
+
+#### Working with snapshots
+
+- S3 Object Lock can be activated at either on the bucket or object level. Moreover, it can be enabled when creating a new buckets or on an already existing/old buckets.
+- For new buckets: These buckets will only contains the new snapshots, hence all the snapshots inside this bucket will be immutable versioned snapshots.
+- For existing/old buckets: These buckets can contain a mix of pre-existing non-versioned, non-immutable snapshots and newly uploaded snapshots which are immutable and versioned with retention period.
+The following diagram illustrates the working of snapshots with S3 for existing/old buckets as well as for new buckets.
+
+  ![Working with S3](../images/S3_immutability_working.png)
+
 ---
 
 ## Ignoring Snapshots During Restoration
 
-In certain scenarios, you might want `etcd-backup-restore` to ignore specific snapshots present in the object store during the restoration of etcd's data directory. When snapshots were mutable, operators could simply delete these snapshots, and subsequent restorations would not include them. However, once immutability is enabled, it is no longer possible to delete these snapshots.
+In certain scenarios, you might want `etcd-backup-restore` to ignore specific snapshots present in the object store during the restoration of etcd's data directory. When snapshots were mutable, operators could simply delete any snapshots present in the object store, and subsequent restorations would not include them. However, once immutability is enabled, it is no longer possible to delete these snapshots.
 
 Many cloud providers allow you to add custom annotations or tags to objects to store additional metadata. These annotations or tags are separate from the object's main data and do not affect the object itself. This feature is available for immutable objects as well.
 
@@ -319,6 +414,12 @@ To add the tag:
 
 After adding the annotation or tag, `etcd-backup-restore` will ignore these snapshots during the restoration process.
 
+#### AWS S3
+
+- The approach of tagging snapshot objects to exclude them during restoration is not supported for `AWS S3` buckets.
+
+> Note: With S3 object lock, S3 versioning will automatically get enabled, it only prevent locked object versions from being permanently deleted.
+
 ---
 
 ## Setting the Immutability Period
@@ -343,15 +444,15 @@ When configuring the immutability period, consider setting it to align with your
 
   Locking the immutability policy is irreversible, so it's crucial to confirm that your setup is fully functional.
 
-- **Use Exclusion Tags Wisely:** Apply exclusion tags to snapshots only when absolutely necessary. Overuse of exclusion tags can lead to unintentionally skipping important delta snapshots during the restoration process, potentially compromising data integrity.
+- **Use Exclusion Tags Wisely:** Apply exclusion tags to snapshots only when absolutely necessary. Overuse of exclusion tags can lead to unintentionally skipping important delta snapshots during the restoration process, potentially compromising data integrity and may result in restoration failure.
 
 ---
 
 ## Conclusion
 
-Enabling immutable snapshots in `etcd-backup-restore` significantly enhances the security and reliability of your backups by preventing unintended modifications or deletions. By leveraging bucket/container-level immutability features provided by GCS and ABS, you can meet compliance requirements and ensure data integrity.
+Enabling immutable snapshots in `etcd-backup-restore` significantly enhances the security and reliability of your backups by preventing unintended modifications or deletions. By leveraging bucket/container-level immutability features provided by storage providers, you can meet compliance requirements and ensure data integrity.
 
-It's essential to carefully plan your immutability periods and exercise caution when locking immutability policies, as these actions have long-term implications. Use the snapshot exclusion feature judiciously to maintain control over your restoration processes.
+It's essential to carefully plan your immutability periods and exercise caution when locking immutability policies (applicable only to ABS,GCS), as these actions have long-term implications. Use the snapshot exclusion feature judiciously to maintain control over your restoration processes.
 
 By following best practices and regularly reviewing your backup and immutability strategies, you can ensure that your data remains secure, compliant, and recoverable when needed.
 
@@ -369,5 +470,7 @@ By following best practices and regularly reviewing your backup and immutability
   - [Configure Immutability Policies](https://learn.microsoft.com/azure/storage/blobs/immutable-policy-configure-container-scope)
   - [Blob Index Tags](https://learn.microsoft.com/azure/storage/blobs/storage-index-tags-overview)
 
----
-
+- **AWS S3**
+  - [Object Lock Documentation](https://aws.amazon.com/s3/features/object-lock/)
+  - [Object Lock modes and best practices](https://docs.aws.amazon.com/AmazonS3/latest/userguide/object-lock.html)
+  - [Deletion of object](https://docs.aws.amazon.com/AmazonS3/latest/userguide/DeletingObjectVersions.html)

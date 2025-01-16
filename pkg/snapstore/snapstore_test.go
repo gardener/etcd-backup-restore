@@ -16,6 +16,8 @@ import (
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/container"
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/service/s3"
 	. "github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 	fake "github.com/gophercloud/gophercloud/testhelper/client"
@@ -30,8 +32,10 @@ const (
 )
 
 var (
-	bucket    string = "mock-bucket"
-	objectMap        = map[string]*[]byte{}
+	bucket                  string = "mock-bucket"
+	s3ObjectLockedBucket    string = "mock-S3ObjectLockedBucket"
+	s3NonObjectLockedBucket string = "mock-S3NonObjectLockedBucket"
+	objectMap                      = map[string]*[]byte{}
 )
 
 // testSnapStore embedds brtypes.Snapstore and contains the number of
@@ -51,14 +55,15 @@ type tagger interface {
 
 var _ = Describe("Save, List, Fetch, Delete from mock snapstore", func() {
 	var (
-		snap1      brtypes.Snapshot
-		snap2      brtypes.Snapshot
-		snap3      brtypes.Snapshot
-		snap4      brtypes.Snapshot
-		snap5      brtypes.Snapshot
-		snapstores map[string]testSnapStore
-		gcsClient  *mockGCSClient
-		absClient  *fakeABSContainerClient
+		snap1       brtypes.Snapshot
+		snap2       brtypes.Snapshot
+		snap3       brtypes.Snapshot
+		snap4       brtypes.Snapshot
+		snap5       brtypes.Snapshot
+		snapstores  map[string]testSnapStore
+		awsS3Client *mockS3Client
+		gcsClient   *mockGCSClient
+		absClient   *fakeABSContainerClient
 	)
 
 	BeforeEach(func() {
@@ -124,15 +129,13 @@ var _ = Describe("Save, List, Fetch, Delete from mock snapstore", func() {
 			objectTags:  make(map[string]map[string]string),
 		}
 
+		awsS3Client = &mockS3Client{
+			objects:          objectMap,
+			prefix:           prefixV2,
+			multiPartUploads: map[string]*[][]byte{},
+		}
+
 		snapstores = map[string]testSnapStore{
-			brtypes.SnapstoreProviderS3: {
-				SnapStore: NewS3FromClient(bucket, prefixV2, "/tmp", 5, brtypes.MinChunkSize, &mockS3Client{
-					objects:          objectMap,
-					prefix:           prefixV2,
-					multiPartUploads: map[string]*[][]byte{},
-				}, SSECredentials{}),
-				objectCountPerSnapshot: 1,
-			},
 			brtypes.SnapstoreProviderSwift: {
 				SnapStore:              NewSwiftSnapstoreFromClient(bucket, prefixV2, "/tmp", 5, brtypes.MinChunkSize, fake.ServiceClient()),
 				objectCountPerSnapshot: 3,
@@ -154,16 +157,25 @@ var _ = Describe("Save, List, Fetch, Delete from mock snapstore", func() {
 				}),
 				objectCountPerSnapshot: 1,
 			},
+			// Storage Provider S3 bucket with object lock enabled.
+			brtypes.SnapstoreProviderS3: {
+				SnapStore:              NewS3FromClient(s3ObjectLockedBucket, prefixV2, "/tmp", 5, brtypes.MinChunkSize, awsS3Client, SSECredentials{}),
+				objectCountPerSnapshot: 1,
+			},
+			// Storage Provider S3 bucket with object lock not enabled
+			// Note: Don't remove this test as it's require to test S3 functionality when S3 bucket versioning or object lock is not enabled.
 			brtypes.SnapstoreProviderECS: {
-				SnapStore: NewS3FromClient(bucket, prefixV2, "/tmp", 5, brtypes.MinChunkSize, &mockS3Client{
+				SnapStore: NewS3FromClient(s3NonObjectLockedBucket, prefixV2, "/tmp", 5, brtypes.MinChunkSize, &mockS3Client{
 					objects:          objectMap,
 					prefix:           prefixV2,
 					multiPartUploads: map[string]*[][]byte{},
 				}, SSECredentials{}),
 				objectCountPerSnapshot: 1,
 			},
+			// TODO: To be removed as storage provider OCS is using S3 compatible APIs,
+			// hence this test case is not adding much values.
 			brtypes.SnapstoreProviderOCS: {
-				SnapStore: NewS3FromClient(bucket, prefixV2, "/tmp", 5, brtypes.MinChunkSize, &mockS3Client{
+				SnapStore: NewS3FromClient(s3NonObjectLockedBucket, prefixV2, "/tmp", 5, brtypes.MinChunkSize, &mockS3Client{
 					objects:          objectMap,
 					prefix:           prefixV2,
 					multiPartUploads: map[string]*[][]byte{},
@@ -320,7 +332,6 @@ var _ = Describe("Save, List, Fetch, Delete from mock snapstore", func() {
 				Expect(snapList[secondSnapshotIndex].SnapName).To(Equal(snap5.SnapName))
 
 				// The List method implemented for SnapStores which support immutable objects is tested for tagged and untagged snapshots.
-				// TODO @renormalize: ABS, S3
 				var mockClient tagger
 				switch provider {
 				case brtypes.SnapstoreProviderGCS:
@@ -635,6 +646,69 @@ var _ = Describe("Server Side Encryption Customer Managed Key for S3", func() {
 			Expect(err).ShouldNot(HaveOccurred())
 			_, err = NewS3SnapStore(&s3SnapstoreConfig)
 			Expect(err).ShouldNot(HaveOccurred())
+		})
+	})
+})
+
+var _ = Describe("Get Bucket versioning status for S3 buckets", func() {
+	awsS3Client := &mockS3Client{
+		objects:          objectMap,
+		prefix:           prefixV2,
+		multiPartUploads: map[string]*[][]byte{},
+	}
+	Context("S3 bucket with object lock enabled", func() {
+		It("Should return enabled versioning status", func() {
+			versioningStatus, err := awsS3Client.GetBucketVersioning(&s3.GetBucketVersioningInput{
+				Bucket: &s3ObjectLockedBucket,
+			})
+			Expect(err).ShouldNot(HaveOccurred())
+			Expect(*versioningStatus.Status).Should(Equal(s3.BucketVersioningStatusEnabled))
+		})
+	})
+	Context("S3 bucket with object lock not enabled", func() {
+		It("Should return versioning status as nil", func() {
+			versioningStatus, err := awsS3Client.GetBucketVersioning(&s3.GetBucketVersioningInput{
+				Bucket: &s3NonObjectLockedBucket,
+			})
+			Expect(err).ShouldNot(HaveOccurred())
+			Expect(versioningStatus.Status).Should(BeNil())
+		})
+	})
+})
+
+var _ = Describe("Get Immutability time for S3 bucket", func() {
+	awsS3Client := &mockS3Client{
+		objects:          objectMap,
+		prefix:           prefixV2,
+		multiPartUploads: map[string]*[][]byte{},
+	}
+	var s3ObjectLockBucketButRulesNotDefined = "mock-s3ObjectLockBucketButRulesNotDefined"
+
+	Context("S3 bucket with object lock enabled and object lock config defined", func() {
+		It("Should return retention period", func() {
+			snapStore := NewS3FromClient(s3ObjectLockedBucket, prefixV2, "/tmp", 5, brtypes.MinChunkSize, awsS3Client, SSECredentials{})
+			isObjectLockEnabled, retentionPeriod, err := GetBucketImmutabilityTime(snapStore)
+			Expect(err).ShouldNot(HaveOccurred())
+			Expect(retentionPeriod).Should(Equal(aws.Int64(2)))
+			Expect(isObjectLockEnabled).Should(BeTrue())
+		})
+	})
+	Context("S3 bucket with object lock enabled but object lock config is not defined", func() {
+		It("Should return nil retention period", func() {
+			snapStore := NewS3FromClient(s3ObjectLockBucketButRulesNotDefined, prefixV2, "/tmp", 5, brtypes.MinChunkSize, awsS3Client, SSECredentials{})
+			isObjectLockEnabled, retentionPeriod, err := GetBucketImmutabilityTime(snapStore)
+			Expect(err).ShouldNot(HaveOccurred())
+			Expect(retentionPeriod).Should(BeNil())
+			Expect(isObjectLockEnabled).Should(BeTrue())
+		})
+	})
+	Context("S3 bucket with object lock not enabled", func() {
+		It("Should return an error", func() {
+			snapStore := NewS3FromClient(s3NonObjectLockedBucket, prefixV2, "/tmp", 5, brtypes.MinChunkSize, awsS3Client, SSECredentials{})
+			isObjectLockEnabled, retentionPeriod, err := GetBucketImmutabilityTime(snapStore)
+			Expect(err).Should(HaveOccurred())
+			Expect(retentionPeriod).Should(BeNil())
+			Expect(isObjectLockEnabled).Should(BeFalse())
 		})
 	})
 })
