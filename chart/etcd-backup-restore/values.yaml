@@ -10,10 +10,9 @@ images:
     tag: latest
     pullPolicy: IfNotPresent
   # etcd-backup-restore image to use
-  # TODO: @anveshreddy18: use the latest tag for etcd-backup-restore once the v0.33.0 is released
   etcdBackupRestore:
-    repository: europe-docker.pkg.dev/gardener-project/snapshots/gardener/etcdbrctl
-    tag: v0.33.0-dev-e1690dd6ea14ca889d357307018ba2e53ced5203
+    repository: europe-docker.pkg.dev/gardener-project/public/gardener/etcdbrctl
+    tag: latest
     pullPolicy: IfNotPresent
 
 resources:
