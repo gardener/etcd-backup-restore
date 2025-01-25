@@ -262,7 +262,11 @@ func GetEtcdEndPointsSorted(ctx context.Context, clientMaintenance client.Mainte
 	return leaderEtcdEndpoints, followerEtcdEndpoints, nil
 }
 
-// TakeAndSaveFullSnapshot takes full snapshot and save it to store
+// TakeAndSaveFullSnapshot does the following operations:
+//  1. takes the full snapshot of etcd database
+//  2. verify the full snapshot's integrity check
+//  3. compress the full snapshot(if compression is enabled)
+//  4. finally, save the full snapshot to object store(if configured).
 func TakeAndSaveFullSnapshot(ctx context.Context, client client.MaintenanceCloser, store brtypes.SnapStore, tempDir string, lastRevision int64, cc *compressor.CompressionConfig, suffix string, isFinal bool, logger *logrus.Entry) (*brtypes.Snapshot, error) {
 	startTime := time.Now()
 	rc, err := client.Snapshot(ctx)
@@ -274,40 +278,36 @@ func TakeAndSaveFullSnapshot(ctx context.Context, client client.MaintenanceClose
 	timeTaken := time.Since(startTime)
 	logger.Infof("Total time taken by Snapshot API: %f seconds.", timeTaken.Seconds())
 
-	var snapshotData io.ReadCloser
 	snapshotTempDBPath := filepath.Join(tempDir, "db")
-	if snapshotData, err = checkFullSnapshotIntegrity(rc, snapshotTempDBPath, logger); err != nil {
-		logger.Errorf("verification of full snapshot SHA256 hash has failed: %v", err)
-		return nil, err
-	}
-	logger.Info("full snapshot SHA256 hash has been successfully verified.")
-
 	defer func() {
+		if err := rc.Close(); err != nil {
+			logger.Warnf("failed to close snapshot data file: %v", err)
+		}
 		if err := os.Remove(snapshotTempDBPath); err != nil {
 			logger.Warnf("failed to remove temporary full snapshot file: %v", err)
 		}
 	}()
 
+	// check the integrity of full snapshot before compression and upload to object store.
+	// for more info: https://github.com/gardener/etcd-backup-restore/pull/779
+	if rc, err = checkFullSnapshotIntegrity(rc, snapshotTempDBPath, logger); err != nil {
+		logger.Errorf("verification of full snapshot SHA256 hash has failed: %v", err)
+		return nil, err
+	}
+	logger.Info("full snapshot SHA256 hash has been successfully verified.")
+
 	if cc.Enabled {
-		startTimeCompression := time.Now()
-		snapshotData, err = compressor.CompressSnapshot(snapshotData, cc.CompressionPolicy)
+		rc, err = compressor.CompressSnapshot(rc, cc.CompressionPolicy)
 		if err != nil {
 			return nil, fmt.Errorf("unable to obtain reader for compressed file: %v", err)
 		}
-		timeTakenCompression := time.Since(startTimeCompression)
-		logger.Infof("Total time taken in full snapshot compression: %f seconds.", timeTakenCompression.Seconds())
 	}
-	defer func() {
-		if err := snapshotData.Close(); err != nil {
-			logger.Warnf("failed to close snapshot data file: %v", err)
-		}
-	}()
 
 	logger.Infof("Successfully opened snapshot reader on etcd")
 
 	// Then save the snapshot to the store.
 	snapshot := snapstore.NewSnapshot(brtypes.SnapshotKindFull, 0, lastRevision, suffix, isFinal)
-	if err := store.Save(*snapshot, snapshotData); err != nil {
+	if err := store.Save(*snapshot, rc); err != nil {
 		timeTaken := time.Since(startTime)
 		metrics.SnapshotDurationSeconds.With(prometheus.Labels{metrics.LabelKind: brtypes.SnapshotKindFull, metrics.LabelSucceeded: metrics.ValueSucceededFalse}).Observe(timeTaken.Seconds())
 		return nil, &errors.SnapstoreError{
@@ -332,7 +332,8 @@ func checkFullSnapshotIntegrity(snapshotData io.ReadCloser, snapTempDBFilePath s
 		return nil, err
 	}
 
-	db, err := os.OpenFile(snapTempDBFilePath, os.O_RDWR|os.O_CREATE, 0600)
+	// Note: db file will be closed by caller function.
+	db, err := os.OpenFile(snapTempDBFilePath, os.O_RDWR|os.O_CREATE, 0600) // #nosec G304 -- this is a trusted file written to by etcdbr.
 	if err != nil {
 		return nil, err
 	}
@@ -345,9 +346,9 @@ func checkFullSnapshotIntegrity(snapshotData io.ReadCloser, snapTempDBFilePath s
 	if err != nil {
 		return nil, err
 	}
+
 	// 512 is chosen because it's a minimum disk sector size in most systems.
-	hasHash := (lastOffset % 512) == sha256.Size
-	if !hasHash {
+	if hasHash := (lastOffset % 512) == sha256.Size; !hasHash {
 		return nil, fmt.Errorf("SHA256 hash seems to be missing from snapshot data")
 	}
 
@@ -369,27 +370,14 @@ func checkFullSnapshotIntegrity(snapshotData io.ReadCloser, snapTempDBFilePath s
 	logger.Infof("Total no. of bytes received from snapshot api call without SHA: %d", totalSnapshotBytes)
 
 	// reset the file pointer back to starting
-	currentOffset, err := db.Seek(0, io.SeekStart)
-	if err != nil {
+	if _, err := db.Seek(0, io.SeekStart); err != nil {
 		return nil, err
 	}
 
-	for currentOffset+hashBufferSize <= totalSnapshotBytes {
-		offset, err := db.Read(buf)
-		if err != nil {
-			return nil, fmt.Errorf("unable to read snapshot data into buffer to calculate SHA256: %v", err)
-		}
+	snapshotDataReader := io.LimitReader(db, totalSnapshotBytes)
 
-		hash.Write(buf[:offset])
-		currentOffset += int64(offset)
-	}
-
-	if currentOffset < totalSnapshotBytes {
-		if _, err := db.Read(buf); err != nil {
-			return nil, fmt.Errorf("unable to read last chunk of snapshot data into buffer to calculate SHA256: %v", err)
-		}
-
-		hash.Write(buf[:totalSnapshotBytes-currentOffset])
+	if _, err := io.CopyBuffer(hash, snapshotDataReader, buf); err != nil {
+		return nil, fmt.Errorf("unable to calculate SHA256 for full snapshot: %v", err)
 	}
 
 	dbSha := hash.Sum(nil)
