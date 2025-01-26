@@ -305,19 +305,11 @@ func TakeAndSaveFullSnapshot(ctx context.Context, client client.MaintenanceClose
 
 	logger.Infof("Successfully opened snapshot reader on etcd")
 
-	// Then save the snapshot to the store.
-	snapshot := snapstore.NewSnapshot(brtypes.SnapshotKindFull, 0, lastRevision, suffix, isFinal)
-	if err := store.Save(*snapshot, rc); err != nil {
-		timeTaken := time.Since(startTime)
-		metrics.SnapshotDurationSeconds.With(prometheus.Labels{metrics.LabelKind: brtypes.SnapshotKindFull, metrics.LabelSucceeded: metrics.ValueSucceededFalse}).Observe(timeTaken.Seconds())
-		return nil, &errors.SnapstoreError{
-			Message: fmt.Sprintf("failed to save snapshot: %v", err),
-		}
+	// save the snapshot to the store.
+	snapshot, err := saveSnapshotToStore(store, rc, startTime, brtypes.SnapshotKindFull, lastRevision, suffix, isFinal, logger)
+	if err != nil {
+		return nil, err
 	}
-
-	timeTaken = time.Since(startTime)
-	metrics.SnapshotDurationSeconds.With(prometheus.Labels{metrics.LabelKind: brtypes.SnapshotKindFull, metrics.LabelSucceeded: metrics.ValueSucceededTrue}).Observe(timeTaken.Seconds())
-	logger.Infof("Total time to save full snapshot: %f seconds.", timeTaken.Seconds())
 
 	return snapshot, nil
 }
@@ -392,4 +384,23 @@ func checkFullSnapshotIntegrity(snapshotData io.ReadCloser, snapTempDBFilePath s
 
 	// full-snapshot of database has been successfully verified.
 	return db, nil
+}
+
+// saveSnapshotToStore save the snapshot to object store
+func saveSnapshotToStore(store brtypes.SnapStore, rc io.ReadCloser, startTime time.Time, snapshotKind string, lastRevision int64, suffix string, isFinal bool, logger *logrus.Entry) (*brtypes.Snapshot, error) {
+	snapshot := snapstore.NewSnapshot(snapshotKind, 0, lastRevision, suffix, isFinal)
+
+	// save the snapshot to object store
+	if err := store.Save(*snapshot, rc); err != nil {
+		timeTaken := time.Since(startTime)
+		metrics.SnapshotDurationSeconds.With(prometheus.Labels{metrics.LabelKind: snapshot.Kind, metrics.LabelSucceeded: metrics.ValueSucceededFalse}).Observe(timeTaken.Seconds())
+		return nil, &errors.SnapstoreError{
+			Message: fmt.Sprintf("failed to save snapshot: %v", err),
+		}
+	}
+
+	timeTaken := time.Since(startTime)
+	metrics.SnapshotDurationSeconds.With(prometheus.Labels{metrics.LabelKind: snapshot.Kind, metrics.LabelSucceeded: metrics.ValueSucceededTrue}).Observe(timeTaken.Seconds())
+	logger.Infof("Total time to save %s snapshot: %f seconds.", snapshot.Kind, timeTaken.Seconds())
+	return snapshot, nil
 }
