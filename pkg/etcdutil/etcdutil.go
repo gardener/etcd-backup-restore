@@ -280,16 +280,13 @@ func TakeAndSaveFullSnapshot(ctx context.Context, client client.MaintenanceClose
 
 	snapshotTempDBPath := filepath.Join(tempDir, "db")
 	defer func() {
-		if err := rc.Close(); err != nil {
-			logger.Warnf("failed to close snapshot data file: %v", err)
-		}
 		if err := os.Remove(snapshotTempDBPath); err != nil {
 			logger.Warnf("failed to remove temporary full snapshot file: %v", err)
 		}
 	}()
 
 	// check the integrity of full snapshot before compression and upload to object store.
-	// for more info: https://github.com/gardener/etcd-backup-restore/pull/779
+	// for more info: https://github.com/gardener/etcd-backup-restore/issues/778
 	if rc, err = checkFullSnapshotIntegrity(rc, snapshotTempDBPath, logger); err != nil {
 		logger.Errorf("verification of full snapshot SHA256 hash has failed: %v", err)
 		return nil, err
@@ -302,6 +299,12 @@ func TakeAndSaveFullSnapshot(ctx context.Context, client client.MaintenanceClose
 			return nil, fmt.Errorf("unable to obtain reader for compressed file: %v", err)
 		}
 	}
+
+	defer func() {
+		if err := rc.Close(); err != nil {
+			logger.Warnf("failed to close snapshot data file: %v", err)
+		}
+	}()
 
 	logger.Infof("Successfully opened snapshot reader on etcd")
 
@@ -325,7 +328,7 @@ func checkFullSnapshotIntegrity(snapshotData io.ReadCloser, snapTempDBFilePath s
 	}
 
 	// Note: db file will be closed by caller function.
-	db, err := os.OpenFile(snapTempDBFilePath, os.O_RDWR|os.O_CREATE, 0600) // #nosec G304 -- this is a trusted file written to by etcdbr.
+	db, err := os.OpenFile(snapTempDBFilePath, os.O_RDWR|os.O_CREATE, 0600) // #nosec G304 -- this is a trusted file written by etcdbr.
 	if err != nil {
 		return nil, err
 	}
