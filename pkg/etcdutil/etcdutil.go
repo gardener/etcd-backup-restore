@@ -275,6 +275,7 @@ func TakeAndSaveFullSnapshot(ctx context.Context, client client.MaintenanceClose
 			Message: fmt.Sprintf("failed to create etcd snapshot: %v", err),
 		}
 	}
+	defer rc.Close()
 	timeTaken := time.Since(startTime)
 	logger.Infof("Total time taken by Snapshot API: %f seconds.", timeTaken.Seconds())
 
@@ -285,23 +286,24 @@ func TakeAndSaveFullSnapshot(ctx context.Context, client client.MaintenanceClose
 		}
 	}()
 
+	var snapshotData io.ReadCloser
 	// check the integrity of full snapshot before compression and upload to object store.
 	// for more info: https://github.com/gardener/etcd-backup-restore/issues/778
-	if rc, err = checkFullSnapshotIntegrity(rc, snapshotTempDBPath, logger); err != nil {
+	if snapshotData, err = checkFullSnapshotIntegrity(rc, snapshotTempDBPath, logger); err != nil {
 		logger.Errorf("verification of full snapshot SHA256 hash has failed: %v", err)
 		return nil, err
 	}
 	logger.Info("full snapshot SHA256 hash has been successfully verified.")
 
 	if cc.Enabled {
-		rc, err = compressor.CompressSnapshot(rc, cc.CompressionPolicy)
+		snapshotData, err = compressor.CompressSnapshot(snapshotData, cc.CompressionPolicy)
 		if err != nil {
 			return nil, fmt.Errorf("unable to obtain reader for compressed file: %v", err)
 		}
 	}
 
 	defer func() {
-		if err := rc.Close(); err != nil {
+		if err := snapshotData.Close(); err != nil {
 			logger.Warnf("failed to close snapshot data file: %v", err)
 		}
 	}()
@@ -309,7 +311,7 @@ func TakeAndSaveFullSnapshot(ctx context.Context, client client.MaintenanceClose
 	logger.Infof("Successfully opened snapshot reader on etcd")
 
 	// save the snapshot to the store.
-	snapshot, err := saveSnapshotToStore(store, rc, startTime, brtypes.SnapshotKindFull, lastRevision, suffix, isFinal, logger)
+	snapshot, err := saveSnapshotToStore(store, snapshotData, startTime, brtypes.SnapshotKindFull, lastRevision, suffix, isFinal, logger)
 	if err != nil {
 		return nil, err
 	}
