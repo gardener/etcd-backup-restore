@@ -135,8 +135,10 @@ var _ = Describe("EtcdUtil Tests", func() {
 func getEtcdDBData(pathToEtcdDB string, withSHA bool) io.ReadCloser {
 	etcdSnapshotData, _ := os.ReadFile(pathToEtcdDB)
 	if withSHA {
-		hash := sha256.Sum256(etcdSnapshotData)
-		snapDataWithHash := append(etcdSnapshotData, hash[:]...)
+		hash := sha256.New()
+		hash.Write(etcdSnapshotData)
+		sha := hash.Sum(nil)
+		snapDataWithHash := append(etcdSnapshotData, sha[:]...)
 
 		// return data of snapshot with its SHA appended
 		return io.NopCloser(bytes.NewReader(snapDataWithHash))
@@ -149,16 +151,18 @@ func getEtcdDBData(pathToEtcdDB string, withSHA bool) io.ReadCloser {
 // getCorruptedEtcdDBData is a helper function, use to mock snapshot api call of etcd.
 func getCorruptedEtcdDBData(pathToEtcdDB string, withCorruptSHA bool) io.ReadCloser {
 	etcdSnapshotData, _ := os.ReadFile(pathToEtcdDB)
-	hash := sha256.Sum256(etcdSnapshotData)
+	hash := sha256.New()
+	hash.Write(etcdSnapshotData)
+	sha := hash.Sum(nil)
 
 	if withCorruptSHA {
-		// corrupted the SHA of snapshot
-		hash = [32]byte(bytes.Repeat([]byte("corrupt"), 32))
+		// corrupt the SHA of snapshot
+		sha = append([]byte("1"), sha[:len(sha)-1]...)
 	} else {
 		// corrupt the snapshot data
 		etcdSnapshotData = append([]byte("corrupt"), etcdSnapshotData[:]...)
 	}
 
-	snapDataWithHash := append(etcdSnapshotData, hash[:]...)
+	snapDataWithHash := append(etcdSnapshotData, sha[:]...)
 	return io.NopCloser(bytes.NewReader(snapDataWithHash))
 }

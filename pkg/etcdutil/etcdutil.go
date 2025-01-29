@@ -378,7 +378,7 @@ func checkFullSnapshotIntegrity(snapshotData io.ReadCloser, snapTempDBFilePath s
 
 	dbSha := hash.Sum(nil)
 	if !bytes.Equal(sha, dbSha) {
-		return nil, fmt.Errorf("expected SHA256 for full snapshot: %v, got %v", sha, dbSha)
+		return nil, fmt.Errorf("expected SHA256 for full snapshot: %x, got %x", sha, dbSha)
 	}
 
 	// reset the file pointer back to starting
