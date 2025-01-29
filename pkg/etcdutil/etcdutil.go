@@ -333,7 +333,9 @@ func checkFullSnapshotIntegrity(snapshotData io.ReadCloser, snapTempDBFilePath s
 		return nil, err
 	}
 
-	if _, err := io.Copy(db, snapshotData); err != nil {
+	buf := make([]byte, hashBufferSize)
+
+	if _, err := io.CopyBuffer(db, snapshotData, buf); err != nil {
 		return nil, err
 	}
 
@@ -358,7 +360,6 @@ func checkFullSnapshotIntegrity(snapshotData io.ReadCloser, snapTempDBFilePath s
 		return nil, fmt.Errorf("failed to read SHA256 from snapshot data %v", err)
 	}
 
-	buf := make([]byte, hashBufferSize)
 	hash := sha256.New()
 
 	logger.Infof("Total no. of bytes received from snapshot api call with SHA: %d", lastOffset)
