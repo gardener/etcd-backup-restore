@@ -26,11 +26,11 @@ import (
 
 var _ = Describe("EtcdUtil Tests", func() {
 	var (
-		etcdDBPath        string
 		factory           *mockfactory.MockFactory
 		ctrl              *gomock.Controller
 		cm                *mockfactory.MockMaintenanceCloser
 		store             brtypes.SnapStore
+		etcdDBPath        string
 		snapstoreConfig   *brtypes.SnapstoreConfig
 		compressionConfig *compressor.CompressionConfig
 	)
@@ -100,11 +100,12 @@ var _ = Describe("EtcdUtil Tests", func() {
 
 		Context("full snapshot data got corrupted and SHA is not corrupted", func() {
 			It("should return error", func() {
+				withCorruptSHA := false
 				client, err := factory.NewMaintenance()
 				Expect(err).ShouldNot(HaveOccurred())
 
 				cm.EXPECT().Snapshot(gomock.Any()).DoAndReturn(func(_ context.Context) (io.ReadCloser, error) {
-					return getCorruptedEtcdDBData(etcdDBPath, false), nil
+					return getCorruptedEtcdDBData(etcdDBPath, withCorruptSHA), nil
 				})
 
 				_, err = etcdutil.TakeAndSaveFullSnapshot(testCtx, client, store, snapstoreConfig.TempDir, dummyLastRevision, compressionConfig, compressor.UnCompressSnapshotExtension, false, logger)
@@ -114,11 +115,12 @@ var _ = Describe("EtcdUtil Tests", func() {
 
 		Context("full snapshot data is not corrupted but SHA got corrupted", func() {
 			It("should return error", func() {
+				withCorruptSHA := true
 				client, err := factory.NewMaintenance()
 				Expect(err).ShouldNot(HaveOccurred())
 
 				cm.EXPECT().Snapshot(gomock.Any()).DoAndReturn(func(_ context.Context) (io.ReadCloser, error) {
-					return getCorruptedEtcdDBData(etcdDBPath, true), nil
+					return getCorruptedEtcdDBData(etcdDBPath, withCorruptSHA), nil
 				})
 
 				_, err = etcdutil.TakeAndSaveFullSnapshot(testCtx, client, store, snapstoreConfig.TempDir, dummyLastRevision, compressionConfig, compressor.UnCompressSnapshotExtension, false, logger)
@@ -148,6 +150,7 @@ func getEtcdDBData(pathToEtcdDB string, withSHA bool) io.ReadCloser {
 func getCorruptedEtcdDBData(pathToEtcdDB string, withCorruptSHA bool) io.ReadCloser {
 	etcdSnapshotData, _ := os.ReadFile(pathToEtcdDB)
 	hash := sha256.Sum256(etcdSnapshotData)
+
 	if withCorruptSHA {
 		// corrupted the SHA of snapshot
 		hash = [32]byte(bytes.Repeat([]byte("corrupt"), 32))
