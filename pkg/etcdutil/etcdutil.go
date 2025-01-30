@@ -287,6 +287,16 @@ func TakeAndSaveFullSnapshot(ctx context.Context, client client.MaintenanceClose
 	}()
 
 	var snapshotData io.ReadCloser
+	defer func() {
+		// to avoid calling Close() on empty ReadCloser,
+		// it's important to check ReadCloser for nil before calling Close().
+		if snapshotData != nil {
+			if err := snapshotData.Close(); err != nil {
+				logger.Warnf("failed to close snapshot data file: %v", err)
+			}
+		}
+	}()
+
 	// check the integrity of full snapshot before compression and upload to object store.
 	// for more info: https://github.com/gardener/etcd-backup-restore/issues/778
 	if snapshotData, err = checkFullSnapshotIntegrity(rc, snapshotTempDBPath, logger); err != nil {
@@ -301,12 +311,6 @@ func TakeAndSaveFullSnapshot(ctx context.Context, client client.MaintenanceClose
 			return nil, fmt.Errorf("unable to obtain reader for compressed file: %v", err)
 		}
 	}
-
-	defer func() {
-		if err := snapshotData.Close(); err != nil {
-			logger.Warnf("failed to close snapshot data file: %v", err)
-		}
-	}()
 
 	logger.Infof("Successfully opened snapshot reader on etcd")
 
