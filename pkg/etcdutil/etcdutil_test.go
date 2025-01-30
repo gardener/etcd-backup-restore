@@ -71,16 +71,34 @@ var _ = Describe("EtcdUtil Tests", func() {
 		})
 
 		Context("Etcd returns snapshot data with snapshot's correct SHA appended", func() {
-			It("shouldn't return error", func() {
-				client, err := factory.NewMaintenance()
-				Expect(err).ShouldNot(HaveOccurred())
+			Context("with compression enabled", func() {
+				It("shouldn't return error", func() {
+					compressionConfig.Enabled = true
+					client, err := factory.NewMaintenance()
+					Expect(err).ShouldNot(HaveOccurred())
 
-				cm.EXPECT().Snapshot(gomock.Any()).DoAndReturn(func(_ context.Context) (io.ReadCloser, error) {
-					return getEtcdDBData(etcdDBPath, true), nil
+					cm.EXPECT().Snapshot(gomock.Any()).DoAndReturn(func(_ context.Context) (io.ReadCloser, error) {
+						return getEtcdDBData(etcdDBPath, true), nil
+					})
+
+					_, err = etcdutil.TakeAndSaveFullSnapshot(testCtx, client, store, snapstoreConfig.TempDir, dummyLastRevision, compressionConfig, compressor.GzipCompressionExtension, false, logger)
+					Expect(err).ShouldNot(HaveOccurred())
 				})
+			})
 
-				_, err = etcdutil.TakeAndSaveFullSnapshot(testCtx, client, store, snapstoreConfig.TempDir, dummyLastRevision, compressionConfig, compressor.UnCompressSnapshotExtension, false, logger)
-				Expect(err).ShouldNot(HaveOccurred())
+			Context("with compression not enabled", func() {
+				It("shouldn't return error", func() {
+					compressionConfig.Enabled = false
+					client, err := factory.NewMaintenance()
+					Expect(err).ShouldNot(HaveOccurred())
+
+					cm.EXPECT().Snapshot(gomock.Any()).DoAndReturn(func(_ context.Context) (io.ReadCloser, error) {
+						return getEtcdDBData(etcdDBPath, true), nil
+					})
+
+					_, err = etcdutil.TakeAndSaveFullSnapshot(testCtx, client, store, snapstoreConfig.TempDir, dummyLastRevision, compressionConfig, compressor.UnCompressSnapshotExtension, false, logger)
+					Expect(err).ShouldNot(HaveOccurred())
+				})
 			})
 		})
 
