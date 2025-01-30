@@ -59,6 +59,7 @@ func NewCompactCommand(ctx context.Context) *cobra.Command {
 			compactOptions := &brtypes.CompactOptions{
 				RestoreOptions:  options,
 				CompactorConfig: opts.compactorConfig,
+				TempDir:         opts.snapstoreConfig.TempDir,
 			}
 
 			snapshot, err := cp.Compact(ctx, compactOptions)

@@ -363,7 +363,7 @@ func (ssr *Snapshotter) takeFullSnapshot(isFinal bool) (*brtypes.Snapshot, error
 		}
 		defer clientMaintenance.Close()
 
-		s, err := etcdutil.TakeAndSaveFullSnapshot(ctx, clientMaintenance, ssr.store, lastRevision, ssr.compressionConfig, compressionSuffix, isFinal, ssr.logger)
+		s, err := etcdutil.TakeAndSaveFullSnapshot(ctx, clientMaintenance, ssr.store, ssr.snapstoreConfig.TempDir, lastRevision, ssr.compressionConfig, compressionSuffix, isFinal, ssr.logger)
 		if err != nil {
 			return nil, err
 		}

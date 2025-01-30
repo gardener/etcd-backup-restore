@@ -25,6 +25,7 @@ const (
 type CompactOptions struct {
 	*RestoreOptions
 	*CompactorConfig
+	TempDir string
 }
 
 // CompactorConfig holds all configuration options related to `compact` subcommand.

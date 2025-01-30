@@ -60,12 +60,18 @@ var _ = Describe("Running Compactor", func() {
 		var compactorConfig *brtypes.CompactorConfig
 		var compactOptions *brtypes.CompactOptions
 		var compactedSnapshot *brtypes.Snapshot
+		var snapstoreConfig *brtypes.SnapstoreConfig
 		var tempRestoreDir string
 		var tempDataDir string
 
 		BeforeEach(func() {
 			dir = fmt.Sprintf("%s/etcd/snapshotter.bkp", testSuiteDir)
-			store, err = snapstore.GetSnapstore(&brtypes.SnapstoreConfig{Container: dir, Provider: "Local"})
+			snapstoreConfig = &brtypes.SnapstoreConfig{
+				Container: dir,
+				Provider:  "Local",
+			}
+
+			store, err = snapstore.GetSnapstore(snapstoreConfig)
 			Expect(err).ShouldNot(HaveOccurred())
 			fmt.Println("The store where compaction will save snapshot is: ", store)
 
@@ -104,6 +110,7 @@ var _ = Describe("Running Compactor", func() {
 			compactOptions = &brtypes.CompactOptions{
 				RestoreOptions:  restoreOpts,
 				CompactorConfig: compactorConfig,
+				TempDir:         snapstoreConfig.TempDir,
 			}
 		})
 

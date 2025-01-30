@@ -5,9 +5,14 @@
 package etcdutil
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
 	"crypto/tls"
 	"fmt"
+	"io"
+	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/gardener/etcd-backup-restore/pkg/compressor"
@@ -21,6 +26,10 @@ import (
 	"github.com/sirupsen/logrus"
 	"go.etcd.io/etcd/clientv3"
 	"go.etcd.io/etcd/pkg/transport"
+)
+
+const (
+	hashBufferSize = 4 * 1024 * 1024 // 4 MB
 )
 
 // NewFactory returns a Factory that constructs new clients using the supplied ETCD client configuration.
@@ -232,7 +241,7 @@ func GetEtcdEndPointsSorted(ctx context.Context, clientMaintenance client.Mainte
 		endPoint = etcdEndpoints[0]
 	} else {
 		return nil, nil, &errors.EtcdError{
-			Message: fmt.Sprintf("etcd endpoints are not passed correctly"),
+			Message: "etcd endpoints are not passed correctly",
 		}
 	}
 
@@ -253,8 +262,12 @@ func GetEtcdEndPointsSorted(ctx context.Context, clientMaintenance client.Mainte
 	return leaderEtcdEndpoints, followerEtcdEndpoints, nil
 }
 
-// TakeAndSaveFullSnapshot takes full snapshot and save it to store
-func TakeAndSaveFullSnapshot(ctx context.Context, client client.MaintenanceCloser, store brtypes.SnapStore, lastRevision int64, cc *compressor.CompressionConfig, suffix string, isFinal bool, logger *logrus.Entry) (*brtypes.Snapshot, error) {
+// TakeAndSaveFullSnapshot does the following operations:
+//  1. takes the full snapshot of etcd database
+//  2. verify the full snapshot's integrity check
+//  3. compress the full snapshot(if compression is enabled)
+//  4. finally, save the full snapshot to object store(if configured).
+func TakeAndSaveFullSnapshot(ctx context.Context, client client.MaintenanceCloser, store brtypes.SnapStore, tempDir string, lastRevision int64, cc *compressor.CompressionConfig, suffix string, isFinal bool, logger *logrus.Entry) (*brtypes.Snapshot, error) {
 	startTime := time.Now()
 	rc, err := client.Snapshot(ctx)
 	if err != nil {
@@ -262,35 +275,142 @@ func TakeAndSaveFullSnapshot(ctx context.Context, client client.MaintenanceClose
 			Message: fmt.Sprintf("failed to create etcd snapshot: %v", err),
 		}
 	}
+	defer rc.Close()
 	timeTaken := time.Since(startTime)
 	logger.Infof("Total time taken by Snapshot API: %f seconds.", timeTaken.Seconds())
 
+	snapshotTempDBPath := filepath.Join(tempDir, "db")
+	defer func() {
+		if err := os.Remove(snapshotTempDBPath); err != nil {
+			logger.Warnf("failed to remove temporary full snapshot file: %v", err)
+		}
+	}()
+
+	var snapshotData io.ReadCloser
+	defer func() {
+		// to avoid calling Close() on empty ReadCloser,
+		// it's important to check ReadCloser for nil before calling Close().
+		if snapshotData != nil {
+			if err := snapshotData.Close(); err != nil {
+				logger.Warnf("failed to close snapshot data file: %v", err)
+			}
+		}
+	}()
+
+	// check the integrity of full snapshot before compression and upload to object store.
+	// for more info: https://github.com/gardener/etcd-backup-restore/issues/778
+	if snapshotData, err = checkFullSnapshotIntegrity(rc, snapshotTempDBPath, logger); err != nil {
+		logger.Errorf("verification of full snapshot SHA256 hash has failed: %v", err)
+		return nil, err
+	}
+	logger.Info("full snapshot SHA256 hash has been successfully verified.")
+
 	if cc.Enabled {
-		startTimeCompression := time.Now()
-		rc, err = compressor.CompressSnapshot(rc, cc.CompressionPolicy)
+		snapshotData, err = compressor.CompressSnapshot(snapshotData, cc.CompressionPolicy)
 		if err != nil {
 			return nil, fmt.Errorf("unable to obtain reader for compressed file: %v", err)
 		}
-		timeTakenCompression := time.Since(startTimeCompression)
-		logger.Infof("Total time taken in full snapshot compression: %f seconds.", timeTakenCompression.Seconds())
 	}
-	defer rc.Close()
 
 	logger.Infof("Successfully opened snapshot reader on etcd")
 
-	// Then save the snapshot to the store.
-	snapshot := snapstore.NewSnapshot(brtypes.SnapshotKindFull, 0, lastRevision, suffix, isFinal)
+	// save the snapshot to the store.
+	snapshot, err := saveSnapshotToStore(store, snapshotData, startTime, brtypes.SnapshotKindFull, lastRevision, suffix, isFinal, logger)
+	if err != nil {
+		return nil, err
+	}
+
+	return snapshot, nil
+}
+
+// checkFullSnapshotIntegrity verifies the integrity of the full snapshot by comparing
+// the appended SHA256 hash of the full snapshot with the calculated SHA256 hash of the full snapshot data.
+func checkFullSnapshotIntegrity(snapshotData io.ReadCloser, snapTempDBFilePath string, logger *logrus.Entry) (io.ReadCloser, error) {
+	logger.Info("checking the full snapshot integrity with the help of SHA256")
+
+	// If previous temp db file already exist then remove it.
+	if err := os.Remove(snapTempDBFilePath); err != nil && !os.IsNotExist(err) {
+		return nil, err
+	}
+
+	// Note: db file will be closed by caller function.
+	db, err := os.OpenFile(snapTempDBFilePath, os.O_RDWR|os.O_CREATE, 0600) // #nosec G304 -- this is a trusted file written by etcdbr.
+	if err != nil {
+		return nil, err
+	}
+
+	buf := make([]byte, hashBufferSize)
+
+	if _, err := io.CopyBuffer(db, snapshotData, buf); err != nil {
+		return nil, err
+	}
+
+	lastOffset, err := db.Seek(0, io.SeekEnd)
+	if err != nil {
+		return nil, err
+	}
+
+	// 512 is chosen because it's a minimum disk sector size in most systems.
+	if hasHash := (lastOffset % 512) == sha256.Size; !hasHash {
+		return nil, fmt.Errorf("SHA256 hash seems to be missing from snapshot data")
+	}
+
+	totalSnapshotBytes, err := db.Seek(-sha256.Size, io.SeekEnd)
+	if err != nil {
+		return nil, err
+	}
+
+	// get snapshot SHA256 hash
+	sha := make([]byte, sha256.Size)
+	if _, err := db.Read(sha); err != nil {
+		return nil, fmt.Errorf("failed to read SHA256 from snapshot data %v", err)
+	}
+
+	hash := sha256.New()
+
+	logger.Infof("Total no. of bytes received from snapshot api call with SHA: %d", lastOffset)
+	logger.Infof("Total no. of bytes received from snapshot api call without SHA: %d", totalSnapshotBytes)
+
+	// reset the file pointer back to starting
+	if _, err := db.Seek(0, io.SeekStart); err != nil {
+		return nil, err
+	}
+
+	snapshotDataReader := io.LimitReader(db, totalSnapshotBytes)
+
+	if _, err := io.CopyBuffer(hash, snapshotDataReader, buf); err != nil {
+		return nil, fmt.Errorf("unable to calculate SHA256 for full snapshot: %v", err)
+	}
+
+	dbSha := hash.Sum(nil)
+	if !bytes.Equal(sha, dbSha) {
+		return nil, fmt.Errorf("expected SHA256 for full snapshot: %x, got %x", sha, dbSha)
+	}
+
+	// reset the file pointer back to starting
+	if _, err := db.Seek(0, io.SeekStart); err != nil {
+		return nil, err
+	}
+
+	// full-snapshot of database has been successfully verified.
+	return db, nil
+}
+
+// saveSnapshotToStore save the snapshot to object store
+func saveSnapshotToStore(store brtypes.SnapStore, rc io.ReadCloser, startTime time.Time, snapshotKind string, lastRevision int64, suffix string, isFinal bool, logger *logrus.Entry) (*brtypes.Snapshot, error) {
+	snapshot := snapstore.NewSnapshot(snapshotKind, 0, lastRevision, suffix, isFinal)
+
+	// save the snapshot to object store
 	if err := store.Save(*snapshot, rc); err != nil {
 		timeTaken := time.Since(startTime)
-		metrics.SnapshotDurationSeconds.With(prometheus.Labels{metrics.LabelKind: brtypes.SnapshotKindFull, metrics.LabelSucceeded: metrics.ValueSucceededFalse}).Observe(timeTaken.Seconds())
+		metrics.SnapshotDurationSeconds.With(prometheus.Labels{metrics.LabelKind: snapshot.Kind, metrics.LabelSucceeded: metrics.ValueSucceededFalse}).Observe(timeTaken.Seconds())
 		return nil, &errors.SnapstoreError{
 			Message: fmt.Sprintf("failed to save snapshot: %v", err),
 		}
 	}
 
-	timeTaken = time.Since(startTime)
-	metrics.SnapshotDurationSeconds.With(prometheus.Labels{metrics.LabelKind: brtypes.SnapshotKindFull, metrics.LabelSucceeded: metrics.ValueSucceededTrue}).Observe(timeTaken.Seconds())
-	logger.Infof("Total time to save full snapshot: %f seconds.", timeTaken.Seconds())
-
+	timeTaken := time.Since(startTime)
+	metrics.SnapshotDurationSeconds.With(prometheus.Labels{metrics.LabelKind: snapshot.Kind, metrics.LabelSucceeded: metrics.ValueSucceededTrue}).Observe(timeTaken.Seconds())
+	logger.Infof("Total time to save %s snapshot: %f seconds.", snapshot.Kind, timeTaken.Seconds())
 	return snapshot, nil
 }
