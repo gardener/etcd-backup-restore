@@ -1,0 +1,29 @@
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+nodes:
+- role: control-plane
+  image: kindest/node:v1.27.1
+  extraPortMappings:
+  # For localstack
+    # port-forward the 4566 port from host machine to localstack svc running inside the kind cluster
+  - containerPort: 4566
+    hostPort: 4566
+    listenAddress: "127.0.0.1"
+    protocol: TCP
+  # For Fake-GCS
+    # port-forward the 8000 port from host machine to fake-gcs svc running inside the kind cluster
+  - containerPort: 8000
+    hostPort: 8000
+    listenAddress: "127.0.0.1"
+    protocol: TCP
+    # port-forward the 4443 port from host machine to fake-gcs svc running inside the kind cluster
+  - containerPort: 4443
+    hostPort: 4443
+    listenAddress: "127.0.0.1"
+    protocol: TCP
+  # For Azurite
+    # port-forward the 10000 port from host machine to azurite svc running inside the kind cluster
+  - containerPort: 10000
+    hostPort: 10000
+    listenAddress: "127.0.0.1"
+    protocol: TCP

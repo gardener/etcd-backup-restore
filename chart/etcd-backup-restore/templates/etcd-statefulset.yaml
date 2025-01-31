@@ -350,7 +350,7 @@ spec:
       - name: local-backup
         hostPath:
           path: {{ .Values.backup.local.path }}/{{ .Values.backup.storageContainer }}
-          type: Directory
+          type: DirectoryOrCreate
   {{- else }}
       - name: etcd-backup
         secret:
@@ -366,3 +366,4 @@ spec:
       resources:
         requests:
           storage: {{ .Values.storageCapacity }}
+          

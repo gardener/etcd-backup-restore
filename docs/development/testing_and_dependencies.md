@@ -33,24 +33,15 @@ By default, we run tests without computing code coverage. To get the code covera
 
 ### Integration tests
 
-You can also run integration tests for etcd-backup-restore on any given Kubernetes cluster. The test creates namespace `integration-test` on the cluster and deploys the [etcd-backup-restore helm chart](../../chart/etcd-backup-restore) which in turn deploys the required secrets, configmap, services and finally the statefulset which contains the pod that runs etcd and backup-restore as a sidecar.
+Integration tests are process based tests i.e spins up `etcd` and `etcdbr` as processes and runs the tests to check the functionality. The tests expect that the AWS credentials are present in the `$HOME/.aws` directory. Make sure to provide the correct credentials before running the tests.
 
 ```sh
-make integration-test-cluster
+make integration-test
 ```
 
-:warning: Prerequisite for this command is to set the following environment variables:
+### E2E tests
 
-- INTEGRATION_TEST_KUBECONFIG: kubeconfig to the cluster on which you wish to run the test
-<!-- TODO: change the etcd wrapper version to a newer version which spawns etcd v3.4.34 -->
-- ETCD_WRAPPER_VERSION: optional, defaults to `v0.2.0`
-- ETCDBR_VERSION: optional, defaults to `v0.12.1`
-- ACCESS_KEY_ID: S3 credentials
-- SECRET_ACCESS_KEY: S3 credentials
-- REGION: S3 credentials
-- STORAGE_CONTAINER: S3 bucket name
-
-If you have a working setup of [TestMachinery](https://github.com/gardener/test-infra), you can run the integration tests on a TM-generated cluster as well.
+The e2e tests for etcd-backup-restore are cluster-based tests located in the test/e2e package, run on Kubernetes clusters using both emulators and real cloud providers (AWS, GCP, Azure). These tests deploy the etcd-backup-restore helm chart to verify full functionality in various environments.
 
 ### Performance regression tests
 

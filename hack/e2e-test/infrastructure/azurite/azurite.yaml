@@ -1,0 +1,41 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: azurite
+  name: azurite
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: azurite
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: azurite
+    spec:
+      containers:
+      - name: azurite
+        image: mcr.microsoft.com/azure-storage/azurite:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+          - containerPort: 10000
+            hostPort: 10000
+        command: ["azurite-blob", "--blobHost", "0.0.0.0", "--blobPort", "10000", "--disableProductStyleUrl"]
+      restartPolicy: Always
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: azurite
+  name: azurite-service
+spec:
+  ports:
+  - name: storage-azurite-blobs
+    port: 10000
+    targetPort: 10000 
+  selector:
+    app: azurite

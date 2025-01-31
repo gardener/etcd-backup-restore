@@ -18,6 +18,7 @@
 
 # Build Binaries
 bin
+hack/tools/bin
 test/output
 test/e2e_test_data
 default.bkp*
@@ -27,6 +28,9 @@ compctedsnap.bkp*
 # IDE config
 .vscode
 .idea/
+
+# kubeconfig
+hack/e2e-test/infrastructure/kind/kubeconfig
 
 # developers workspace
 tmp
