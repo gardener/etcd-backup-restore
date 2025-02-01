@@ -18,6 +18,8 @@ import (
 	mockfactory "github.com/gardener/etcd-backup-restore/pkg/mock/etcdutil/client"
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
+	"go.etcd.io/etcd/clientv3"
+	"go.etcd.io/etcd/etcdserver/etcdserverpb"
 	"go.uber.org/mock/gomock"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -28,6 +30,7 @@ var _ = Describe("EtcdUtil Tests", func() {
 	var (
 		factory           *mockfactory.MockFactory
 		ctrl              *gomock.Controller
+		cl                *mockfactory.MockClusterCloser
 		cm                *mockfactory.MockMaintenanceCloser
 		store             brtypes.SnapStore
 		etcdDBPath        string
@@ -46,6 +49,7 @@ var _ = Describe("EtcdUtil Tests", func() {
 		ctrl = gomock.NewController(GinkgoT())
 		factory = mockfactory.NewMockFactory(ctrl)
 		cm = mockfactory.NewMockMaintenanceCloser(ctrl)
+		cl = mockfactory.NewMockClusterCloser(ctrl)
 	})
 
 	Describe("To take Full Snapshot of etcd", func() {
@@ -147,6 +151,159 @@ var _ = Describe("EtcdUtil Tests", func() {
 		})
 	})
 
+	Describe("With Etcd cluster", func() {
+		var (
+			dummyID              = uint64(1111)
+			dummyClientEndpoints = []string{"http://127.0.0.1:2379", "http://127.0.0.1:9090"}
+		)
+		BeforeEach(func() {
+			factory.EXPECT().NewMaintenance().Return(cm, nil).AnyTimes()
+			factory.EXPECT().NewCluster().Return(cl, nil).AnyTimes()
+		})
+
+		Context("MemberList API call fails", func() {
+			It("should return error", func() {
+				clientMaintenance, err := factory.NewMaintenance()
+				Expect(err).ShouldNot(HaveOccurred())
+
+				client, err := factory.NewCluster()
+				Expect(err).ShouldNot(HaveOccurred())
+
+				cl.EXPECT().MemberList(gomock.Any()).Return(nil, fmt.Errorf("failed to connect with the dummy etcd")).AnyTimes()
+
+				leaderEtcdEndpoints, followerEtcdEndpoints, err := etcdutil.GetEtcdEndPointsSorted(testCtx, clientMaintenance, client, dummyClientEndpoints, logger)
+				Expect(err).Should(HaveOccurred())
+				Expect(leaderEtcdEndpoints).Should(BeNil())
+				Expect(followerEtcdEndpoints).Should(BeNil())
+
+				err = etcdutil.DefragmentData(testCtx, clientMaintenance, client, dummyClientEndpoints, mockTimeout, logger)
+				Expect(err).Should(HaveOccurred())
+			})
+		})
+
+		Context("MemberList API call succeeds and Status API call fails", func() {
+			It("should return error", func() {
+				clientMaintenance, err := factory.NewMaintenance()
+				Expect(err).ShouldNot(HaveOccurred())
+
+				client, err := factory.NewCluster()
+				Expect(err).ShouldNot(HaveOccurred())
+
+				cl.EXPECT().MemberList(gomock.Any()).DoAndReturn(func(_ context.Context) (*clientv3.MemberListResponse, error) {
+					response := new(clientv3.MemberListResponse)
+					dummyMember1 := &etcdserverpb.Member{
+						ID:         dummyID,
+						ClientURLs: []string{dummyClientEndpoints[0]},
+					}
+					dummyMember2 := &etcdserverpb.Member{
+						ID:         dummyID + 1,
+						ClientURLs: []string{dummyClientEndpoints[1]},
+					}
+					response.Members = []*etcdserverpb.Member{dummyMember1, dummyMember2}
+					return response, nil
+				}).AnyTimes()
+
+				cm.EXPECT().Status(gomock.Any(), gomock.Any()).Return(nil, fmt.Errorf("failed to connect to the dummy etcd")).AnyTimes()
+
+				leaderEtcdEndpoints, followerEtcdEndpoints, err := etcdutil.GetEtcdEndPointsSorted(testCtx, clientMaintenance, client, dummyClientEndpoints, logger)
+				Expect(err).Should(HaveOccurred())
+				Expect(leaderEtcdEndpoints).Should(BeNil())
+				Expect(followerEtcdEndpoints).Should(BeNil())
+
+				err = etcdutil.DefragmentData(testCtx, clientMaintenance, client, dummyClientEndpoints, mockTimeout, logger)
+				Expect(err).Should(HaveOccurred())
+			})
+		})
+
+		Context("Only Defragment API call fails", func() {
+			It("should return error and fail to perform defragmentation", func() {
+				clientMaintenance, err := factory.NewMaintenance()
+				Expect(err).ShouldNot(HaveOccurred())
+
+				client, err := factory.NewCluster()
+				Expect(err).ShouldNot(HaveOccurred())
+
+				cl.EXPECT().MemberList(gomock.Any()).DoAndReturn(func(_ context.Context) (*clientv3.MemberListResponse, error) {
+					response := new(clientv3.MemberListResponse)
+					// dummy etcd cluster leader
+					dummyMember1 := &etcdserverpb.Member{
+						ID:         dummyID,
+						ClientURLs: []string{dummyClientEndpoints[0]},
+					}
+					// dummy etcd cluster follower
+					dummyMember2 := &etcdserverpb.Member{
+						ID:         dummyID + 1,
+						ClientURLs: []string{dummyClientEndpoints[1]},
+					}
+					response.Members = []*etcdserverpb.Member{dummyMember1, dummyMember2}
+					return response, nil
+				}).AnyTimes()
+
+				cm.EXPECT().Status(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, _ string) (*clientv3.StatusResponse, error) {
+					response := new(clientv3.StatusResponse)
+					response.Leader = dummyID
+					return response, nil
+				}).Times(2)
+
+				cm.EXPECT().Status(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, _ string) (*clientv3.StatusResponse, error) {
+					response := new(clientv3.StatusResponse)
+					response.DbSize = 1
+					return response, nil
+				}).Times(1)
+
+				cm.EXPECT().Defragment(gomock.Any(), gomock.Any()).Return(nil, fmt.Errorf("failed to defrag the etcd")).AnyTimes()
+
+				leaderEtcdEndpoints, followerEtcdEndpoints, err := etcdutil.GetEtcdEndPointsSorted(testCtx, clientMaintenance, client, dummyClientEndpoints, logger)
+				Expect(err).ShouldNot(HaveOccurred())
+				Expect(leaderEtcdEndpoints).Should(Equal([]string{dummyClientEndpoints[0]}))
+				Expect(followerEtcdEndpoints).Should(Equal([]string{dummyClientEndpoints[1]}))
+
+				err = etcdutil.DefragmentData(testCtx, clientMaintenance, client, dummyClientEndpoints, mockTimeout, logger)
+				Expect(err).Should(HaveOccurred())
+			})
+		})
+
+		Context("All etcd client API call succeeds", func() {
+			It("should able to perform the defragmentation on etcd follower as well as on etcd leader", func() {
+				clientMaintenance, err := factory.NewMaintenance()
+				Expect(err).ShouldNot(HaveOccurred())
+
+				client, err := factory.NewCluster()
+				Expect(err).ShouldNot(HaveOccurred())
+
+				cl.EXPECT().MemberList(gomock.Any()).DoAndReturn(func(_ context.Context) (*clientv3.MemberListResponse, error) {
+					response := new(clientv3.MemberListResponse)
+					// etcd cluster leader
+					dummyMember1 := &etcdserverpb.Member{
+						ID:         dummyID,
+						ClientURLs: []string{dummyClientEndpoints[0]},
+					}
+					// etcd cluster follower
+					dummyMember2 := &etcdserverpb.Member{
+						ID:         dummyID + 1,
+						ClientURLs: []string{dummyClientEndpoints[1]},
+					}
+					response.Members = []*etcdserverpb.Member{dummyMember1, dummyMember2}
+					return response, nil
+				}).AnyTimes()
+
+				cm.EXPECT().Status(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, _ string) (*clientv3.StatusResponse, error) {
+					response := new(clientv3.StatusResponse)
+					response.Leader = dummyID
+					response.DbSize = 10
+					return response, nil
+				}).AnyTimes()
+
+				cm.EXPECT().Defragment(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, _ string) (*clientv3.DefragmentResponse, error) {
+					response := new(clientv3.DefragmentResponse)
+					return response, nil
+				}).AnyTimes()
+
+				err = etcdutil.DefragmentData(testCtx, clientMaintenance, client, dummyClientEndpoints, mockTimeout, logger)
+				Expect(err).ShouldNot(HaveOccurred())
+			})
+		})
+	})
 })
 
 // getEtcdDBData is a helper function, use to mock snapshot api call of etcd.
