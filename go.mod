@@ -8,7 +8,7 @@ require (
 	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.11.1
 	github.com/Azure/azure-sdk-for-go/sdk/storage/azblob v1.3.2
 	github.com/aliyun/aliyun-oss-go-sdk v2.1.8+incompatible
-	github.com/aws/aws-sdk-go v1.55.5 // TODO: upgrade to v2
+	github.com/aws/aws-sdk-go v1.55.6 // TODO: upgrade to v2
 	github.com/gophercloud/gophercloud v0.17.0
 	github.com/gophercloud/utils v0.0.0-20200204043447-9864b6f1f12f
 	github.com/onsi/ginkgo/v2 v2.22.1
@@ -33,6 +33,8 @@ require (
 	sigs.k8s.io/yaml v1.4.0
 )
 
+require github.com/go-logr/logr v1.4.2
+
 require (
 	cloud.google.com/go v0.110.6 // indirect
 	cloud.google.com/go/compute/metadata v0.3.0 // indirect
@@ -54,7 +56,6 @@ require (
 	github.com/evanphx/json-patch v4.12.0+incompatible // indirect
 	github.com/evanphx/json-patch/v5 v5.8.0 // indirect
 	github.com/ghodss/yaml v1.0.0 // indirect
-	github.com/go-logr/logr v1.4.2 // indirect
 	github.com/go-openapi/jsonpointer v0.19.6 // indirect
 	github.com/go-openapi/jsonreference v0.20.2 // indirect
 	github.com/go-openapi/swag v0.22.3 // indirect
