@@ -8,6 +8,7 @@ import (
 	"context"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/gardener/etcd-backup-restore/test/utils"
 	. "github.com/onsi/ginkgo/v2"
@@ -23,10 +24,11 @@ const (
 )
 
 var (
-	logger  = logrus.New().WithField("suite", "etcdutil")
-	err     error
-	testCtx = context.Background()
-	etcd    *embed.Etcd
+	logger      = logrus.New().WithField("suite", "etcdutil")
+	err         error
+	testCtx     = context.Background()
+	etcd        *embed.Etcd
+	mockTimeout = time.Second * 5
 )
 
 func TestEtcdUtil(t *testing.T) {
