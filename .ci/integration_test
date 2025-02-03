@@ -276,7 +276,7 @@ function run_test_as_processes() {
   setup_test_cluster
 
   echo "Starting integration tests..."
-  cd test/e2e/integration
+  cd test/integration
 
   set +e
   ginkgo -r -mod=vendor
@@ -308,10 +308,10 @@ function run_test_on_cluster() {
   fi
 
   # TODO: change the etcd wrapper version to a newer version which spawns etcd v3.4.34
-  export ETCD_WRAPPER_VERSION=${ETCD_WRAPPER_VERSION:-"v0.2.0"}
+  export ETCD_WRAPPER_VERSION=${ETCD_WRAPPER_VERSION:-"latest"}
   echo "etcd-wrapper version: ${ETCD_WRAPPER_VERSION}"
 
-  export ETCDBR_VERSION=${ETCDBR_VERSION:-${ETCDBR_VER:-"v0.12.1"}}
+  export ETCDBR_VERSION=${ETCDBR_VERSION:-${ETCDBR_VER:-"latest"}}
   echo "etcd-backup-restore version: ${ETCDBR_VERSION}"
 
   echo "Starting integration tests on k8s cluster."
@@ -319,7 +319,7 @@ function run_test_on_cluster() {
   set +e
 
   if [ -r "$INTEGRATION_TEST_KUBECONFIG" ]; then
-    KUBECONFIG=$INTEGRATION_TEST_KUBECONFIG STORAGE_CONTAINER=$TEST_ID ginkgo -v -timeout=15m -mod=vendor test/e2e/integrationcluster
+    KUBECONFIG=$INTEGRATION_TEST_KUBECONFIG STORAGE_CONTAINER=$TEST_ID ginkgo -v -timeout=30m -mod=vendor test/e2e
     TEST_RESULT=$?
     echo "Successfully completed all tests."
   else

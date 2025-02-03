@@ -13,37 +13,17 @@ import (
 //
 // Some samples.
 //
-//	"some_words"      => "someWords"
-//	"http_server"     => "httpServer"
-//	"no_https"        => "noHttps"
-//	"_complex__case_" => "_complex_Case_"
-//	"some words"      => "someWords"
-//	"GOLANG_IS_GREAT" => "golangIsGreat"
-func ToCamelCase(str string) string {
-	return toCamelCase(str, false)
-}
-
-// ToPascalCase is to convert words separated by space, underscore and hyphen to pascal case.
-//
-// Some samples.
-//
 //	"some_words"      => "SomeWords"
 //	"http_server"     => "HttpServer"
 //	"no_https"        => "NoHttps"
 //	"_complex__case_" => "_Complex_Case_"
 //	"some words"      => "SomeWords"
-//	"GOLANG_IS_GREAT" => "GolangIsGreat"
-func ToPascalCase(str string) string {
-	return toCamelCase(str, true)
-}
-
-func toCamelCase(str string, isBig bool) string {
+func ToCamelCase(str string) string {
 	if len(str) == 0 {
 		return ""
 	}
 
 	buf := &stringBuilder{}
-	var isFirstRuneUpper bool
 	var r0, r1 rune
 	var size int
 
@@ -53,14 +33,7 @@ func toCamelCase(str string, isBig bool) string {
 		str = str[size:]
 
 		if !isConnector(r0) {
-			isFirstRuneUpper = unicode.IsUpper(r0)
-
-			if isBig {
-				r0 = unicode.ToUpper(r0)
-			} else {
-				r0 = unicode.ToLower(r0)
-			}
-
+			r0 = unicode.ToUpper(r0)
 			break
 		}
 
@@ -87,23 +60,10 @@ func toCamelCase(str string, isBig bool) string {
 		}
 
 		if isConnector(r1) {
-			isFirstRuneUpper = unicode.IsUpper(r0)
 			r0 = unicode.ToUpper(r0)
 		} else {
-			if isFirstRuneUpper {
-				if unicode.IsUpper(r0) {
-					r0 = unicode.ToLower(r0)
-				} else {
-					isFirstRuneUpper = false
-				}
-			}
-
 			buf.WriteRune(r1)
 		}
-	}
-
-	if isFirstRuneUpper && !isBig {
-		r0 = unicode.ToLower(r0)
 	}
 
 	buf.WriteRune(r0)
