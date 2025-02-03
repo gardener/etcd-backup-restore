@@ -151,7 +151,7 @@ var _ = Describe("EtcdUtil Tests", func() {
 		})
 	})
 
-	Describe("With Etcd cluster", func() {
+	Describe("To defragment the Etcd cluster", func() {
 		var (
 			dummyID              = uint64(1111)
 			dummyClientEndpoints = []string{"http://127.0.0.1:2379", "http://127.0.0.1:9090"}
