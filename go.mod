@@ -22,7 +22,7 @@ require (
 	go.etcd.io/bbolt v1.3.11
 	// Etcd 3.4.x vendoring issue Ref: https://github.com/etcd-io/etcd/issues/11154#issuecomment-677940701
 	go.etcd.io/etcd v0.0.0-20240911181550-c123b3ea3db3 // etcd v3.4.34 pseudoversion
-	go.uber.org/mock v0.4.0
+	go.uber.org/mock v0.5.0
 	go.uber.org/zap v1.27.0
 	google.golang.org/api v0.126.0
 	k8s.io/api v0.29.2
