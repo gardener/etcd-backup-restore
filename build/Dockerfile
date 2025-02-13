@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-FROM golang:1.23.5 as builder
+FROM golang:1.23.6 as builder
 
 WORKDIR /go/src/github.com/gardener/backup-restore
 COPY . .
