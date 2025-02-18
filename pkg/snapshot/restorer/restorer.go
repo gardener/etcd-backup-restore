@@ -509,6 +509,15 @@ func (r *Restorer) applyFirstDeltaSnapshot(clientKV client.KVCloser, snap *brtyp
 	}
 	lastRevision := resp.Header.Revision
 
+	if lastRevision == snap.LastRevision {
+		// there is no need to apply this fist delta snapshot
+		// as it's completely overlaps with full snapshot data.
+		// please refer: https://github.com/gardener/etcd-backup-restore/issues/844
+		r.logger.Infof("First delta snapshot %s found to be completely overlap with full snapshot with db revisions: %d", path.Join(snap.SnapDir, snap.SnapName), lastRevision)
+		r.logger.Info("Skipping this delta snapshot...")
+		return nil
+	}
+
 	var newRevisionIndex int
 	for index, event := range events {
 		if event.EtcdEvent.Kv.ModRevision > lastRevision {
