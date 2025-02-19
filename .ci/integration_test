@@ -276,7 +276,7 @@ function run_test_as_processes() {
   setup_test_cluster
 
   echo "Starting integration tests..."
-  cd test/e2e/integration
+  cd test/integration
 
   set +e
   ginkgo -r -mod=vendor
@@ -295,81 +295,6 @@ function run_test_as_processes() {
   fi
 }
 
-function run_test_on_cluster() {
-  if ! [ -x "$(command -v ginkgo)" ]; then
-    setup_ginkgo
-  fi
-
-  export TEST_ID=${STORAGE_CONTAINER}
-  if [ "$STORAGE_CONTAINER" == "" ]; then
-    setup_awscli
-    get_test_id
-    setup-aws-infrastructure
-  fi
-
-  # TODO: change the etcd wrapper version to a newer version which spawns etcd v3.4.34
-  export ETCD_WRAPPER_VERSION=${ETCD_WRAPPER_VERSION:-"v0.2.0"}
-  echo "etcd-wrapper version: ${ETCD_WRAPPER_VERSION}"
-
-  export ETCDBR_VERSION=${ETCDBR_VERSION:-${ETCDBR_VER:-"v0.12.1"}}
-  echo "etcd-backup-restore version: ${ETCDBR_VERSION}"
-
-  echo "Starting integration tests on k8s cluster."
-
-  set +e
-
-  if [ -r "$INTEGRATION_TEST_KUBECONFIG" ]; then
-    KUBECONFIG=$INTEGRATION_TEST_KUBECONFIG STORAGE_CONTAINER=$TEST_ID ginkgo -v -timeout=15m -mod=vendor test/e2e/integrationcluster
-    TEST_RESULT=$?
-    echo "Successfully completed all tests."
-  else
-    echo "Invalid kubeconfig for integration test $INTEGRATION_TEST_KUBECONFIG"
-    TEST_RESULT=255
-  fi
-
-  set -e
-
-  echo "Done with integration test on k8s cluster."
-
-  if [ "$STORAGE_CONTAINER" == "" ]; then
-    echo "Deleting test bucket..."
-    cleanup-aws-infrastructure
-  fi
-}
-
-function run_test_on_tm() {
-  if [ "$ACCESS_KEY_ID" == "" ] || [ "$SECRET_ACCESS_KEY_B64" == "" ] || [ "$AWS_REGION" == "" ] ; then
-    echo "AWS S3 credentials unavailable. Exiting."
-    exit 1
-  fi
-  export SECRET_ACCESS_KEY=`echo $SECRET_ACCESS_KEY_B64 | base64 -d`
-  export REGION=$AWS_REGION
-
-  get_tm_test_id
-  export STORAGE_CONTAINER=$TEST_ID
-  export ETCDBR_VER=$EFFECTIVE_VERSION
-
-  setup_awscli
-  write_aws_secret "${ACCESS_KEY_ID}" "${SECRET_ACCESS_KEY}" "${REGION}"
-  create_s3_bucket
-
-  export INTEGRATION_TEST_KUBECONFIG=$TM_KUBECONFIG_PATH/shoot.config
-  echo "Starting integration tests on TM cluster $PROJECT_NAMESPACE/$SHOOT_NAME."
-  run_test_on_cluster
-  echo "Done with integration test on TM cluster."
-  cleanup-aws-infrastructure
-}
-
-case $1 in
-  tm)
-    run_test_on_tm
-    ;;
-  cluster)
-    run_test_on_cluster
-    ;;
-  *)
-    run_test_as_processes
-    ;;
-esac
+run_test_as_processes
 
 exit $TEST_RESULT
