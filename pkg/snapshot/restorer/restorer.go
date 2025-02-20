@@ -522,80 +522,6 @@ func (r *Restorer) applyFirstDeltaSnapshot(clientKV client.KVCloser, snap *brtyp
 	return applyEventsToEtcd(clientKV, events[newRevisionIndex:])
 }
 
-// getEventsFromDeltaSnapshot returns the events from delta snapshot from snap store.
-func (r *Restorer) getEventsFromDeltaSnapshot(snap brtypes.Snapshot) ([]brtypes.Event, error) {
-	data, err := r.getEventsDataFromDeltaSnapshot(snap)
-	if err != nil {
-		return nil, err
-	}
-
-	events := []brtypes.Event{}
-	if err := json.Unmarshal(data, &events); err != nil {
-		return nil, err
-	}
-
-	return events, nil
-}
-
-// getEventsDataFromDeltaSnapshot fetches the events data from delta snapshot from snap store.
-func (r *Restorer) getEventsDataFromDeltaSnapshot(snap brtypes.Snapshot) ([]byte, error) {
-	rc, err := r.store.Fetch(snap)
-	if err != nil {
-		return nil, err
-	}
-
-	startTime := time.Now()
-	isCompressed, compressionPolicy, err := compressor.IsSnapshotCompressed(snap.CompressionSuffix)
-	if err != nil {
-		return nil, err
-	}
-	if isCompressed {
-		// decompress the snapshot
-		rc, err = compressor.DecompressSnapshot(rc, compressionPolicy)
-		if err != nil {
-			return nil, fmt.Errorf("unable to decompress the snapshot: %v", err)
-		}
-	}
-	defer func(rc io.ReadCloser) {
-		if err := rc.Close(); err != nil {
-			r.logger.Errorf("failed to close the delta snapshot reader: %v", err)
-		}
-	}(rc)
-
-	buf := new(bytes.Buffer)
-	bufSize, err := buf.ReadFrom(rc)
-	if err != nil {
-		return nil, err
-	}
-	totalTime := time.Now().Sub(startTime).Seconds()
-
-	if isCompressed {
-		r.logger.Infof("successfully fetched data of delta snapshot in %v seconds [CompressionPolicy:%v]", totalTime, compressionPolicy)
-	} else {
-		r.logger.Infof("successfully fetched data of delta snapshot in %v seconds", totalTime)
-	}
-	sha := buf.Bytes()
-
-	if bufSize <= sha256.Size {
-		return nil, fmt.Errorf("delta snapshot is missing hash")
-	}
-	data := sha[:bufSize-sha256.Size]
-	snapHash := sha[bufSize-sha256.Size:]
-
-	// check for match
-	h := sha256.New()
-	if _, err := h.Write(data); err != nil {
-		return nil, err
-	}
-
-	computedSha := h.Sum(nil)
-	if !reflect.DeepEqual(snapHash, computedSha) {
-		return nil, fmt.Errorf("expected sha256 %v, got %v", snapHash, computedSha)
-	}
-
-	return data, nil
-}
-
 func persistRawDeltaSnapshot(rc io.ReadCloser, tempFilePath string) error {
 	tempFile, err := os.Create(tempFilePath) // #nosec G304 -- this is a trusted filepath for persisting delta snapshots for restoration.
 	if err != nil {
@@ -695,7 +621,7 @@ func (r *Restorer) readSnapshotContentsFromReadCloser(rc io.ReadCloser, snap *br
 		return nil, fmt.Errorf("failed to parse contents from delta snapshot %s : %v", snap.SnapName, err)
 	}
 
-	totalTime := time.Now().Sub(startTime).Seconds()
+	totalTime := time.Since(startTime)
 	if wasCompressed {
 		r.logger.Infof("successfully decompressed data of delta snapshot in %v seconds [CompressionPolicy:%v]", totalTime, compressionPolicy)
 	} else {
@@ -784,7 +710,7 @@ func (r *Restorer) MakeEtcdLeanAndCheckAlarm(revision int64, endPoints []string,
 	ctx, cancel := context.WithTimeout(context.Background(), etcdCompactTimeout)
 	defer cancel()
 	if _, err := clientKV.Compact(ctx, revision, clientv3.WithCompactPhysical()); err != nil {
-		return fmt.Errorf("Compact API call failed: %v", err)
+		return fmt.Errorf("compact API call failed: %v", err)
 	}
 	r.logger.Infof("Successfully compacted embedded etcd till revision: %v", revision)
 
