@@ -52,8 +52,6 @@ Please move to respective storage providers for configurations:
 
 - **Locking**: The action of making an immutability policy permanent, preventing any reduction or removal of the immutability period.
 
-- **ETag**: An identifier representing a specific version of a policy or object, used for concurrency control.
-
 #### Configure an immutability policy on a GCS bucket
 
 1. **Set the Immutability Policy**
