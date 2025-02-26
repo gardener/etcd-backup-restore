@@ -621,7 +621,7 @@ func (r *Restorer) readSnapshotContentsFromReadCloser(rc io.ReadCloser, snap *br
 		return nil, fmt.Errorf("failed to parse contents from delta snapshot %s : %v", snap.SnapName, err)
 	}
 
-	totalTime := time.Since(startTime)
+	totalTime := time.Since(startTime).Seconds()
 	if wasCompressed {
 		r.logger.Infof("successfully decompressed data of delta snapshot in %v seconds [CompressionPolicy:%v]", totalTime, compressionPolicy)
 	} else {
@@ -710,7 +710,7 @@ func (r *Restorer) MakeEtcdLeanAndCheckAlarm(revision int64, endPoints []string,
 	ctx, cancel := context.WithTimeout(context.Background(), etcdCompactTimeout)
 	defer cancel()
 	if _, err := clientKV.Compact(ctx, revision, clientv3.WithCompactPhysical()); err != nil {
-		return fmt.Errorf("compact API call failed: %v", err)
+		return fmt.Errorf("compact API call failed: %w", err)
 	}
 	r.logger.Infof("Successfully compacted embedded etcd till revision: %v", revision)
 
