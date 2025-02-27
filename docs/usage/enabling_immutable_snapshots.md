@@ -6,17 +6,43 @@ This guide walks you through the process of enabling immutable snapshots in `etc
 2. Azure Blob Storage (ABS)
 3. Amazon Simple Storage Service (AWS S3)
 
-> Note: Currently, Openstack object storage (swift) doesn't support immutability for objects: https://blueprints.launchpad.net/swift/+spec/immutability-middleware.
-
-Enabling immutability of your bucket will ensure that your backups are tamper-proof and comply with regulatory requirements.
-
-> Note: The consumer of `etcd-backup-restore` must have to enable the bucket lock with the appropriate settings on their buckets to consume this feature. This is because `etcd-backup-restore` doesn't manage or interfere with the bucket's (object store) lifecycle process.
+> [!Note]
+> Currently, Openstack object storage (swift) doesn't support immutability for objects: https://blueprints.launchpad.net/swift/+spec/immutability-middleware.
 
 ---
 
-## Terminology
+## Overview
 
-- **Bucket / Container**: A storage resource in cloud storage services where objects (such as snapshots) are stored. GCS and S3 uses the term **bucket**, while ABS uses **container**.
+Enabling immutability of your bucket will ensure that your backups are tamper-proof and comply with regulatory requirements.
+Currently, `etcd-backup-restore` supports bucket-level immutability for GCS, ABS and S3.
+
+> [!Note]
+> If immutability is not enabled then the objects i.e snapshots's immutability expiry time will be considered as zero, hence causing no effect on current functionality.
+
+The consumer of `etcd-backup-restore` must have to enable the bucket lock with the appropriate settings on their buckets to consume this feature. This is because `etcd-backup-restore` doesn't manage or interfere with the bucket's (object store) lifecycle process.
+
+> [!CAUTION]
+> Locking an immutability policy is an irreversible action.
+
+## Configure Bucket-Level Immutability
+
+By configuring an immutability policy on your storage bucket/container, you ensure that all snapshots are stored in an immutable (Write Once, Read Many) state for a specified duration. This prevents snapshots from being modified or deleted until their immutability period expires.
+
+### Enabling Immutability on Bucket
+
+You can set a time-based immutability policy on your bucket/container. The immutability policy specifies the minimum duration for which the objects must remain immutable. This configuration can also be achieved using the cloud provider's respective console/portal. Here, we have just mentioned the CLI commands to configure it.
+
+Please move to respective storage providers for configurations:
+
+- [Google Cloud Storage](#google-cloud-storage-gcs)
+- [Azure Blob Storage](#azure-blob-storage-abs)
+- [AWS Simple Storage Service](#aws-simple-storage-service-aws-s3)
+
+## Google Cloud Storage (GCS)
+
+### GCS Terminology
+
+- **Bucket**: A storage resource in cloud storage services where objects (such as snapshots) are stored. GCS uses the term **bucket**.
 
 - **Immutability**: The property of an object being unmodifiable after creation, until the immutability period expires.
 
@@ -26,42 +52,7 @@ Enabling immutability of your bucket will ensure that your backups are tamper-pr
 
 - **Locking**: The action of making an immutability policy permanent, preventing any reduction or removal of the immutability period.
 
-- **ETag**: An identifier representing a specific version of a policy or object, used for concurrency control.
-
----
-
-## Overview
-
-Currently, `etcd-backup-restore` supports bucket-level immutability for GCS, ABS and S3.
-
-> Note: If immutability is not enabled then the objects i.e snapshots's immutability expiry time will be considered as zero, hence causing no effect on current functionality.
-
-- **Immutability Policy**: You can add an immutability policy to a bucket/container to specify an immutability period.
-  - When an immutability policy is set, objects in the bucket/container can only be deleted or replaced once their age exceeds the immutability period.
-  - The policy retroactively applies to existing objects as well as new objects added to the bucket/container.
-
-> [!CAUTION]
-> Locking an immutability policy is an irreversible action.
-
-- **Locking an Immutability Policy**: You can lock a bucket's/container's immutability policy to permanently enforce it.
-  - Once locked, you cannot remove the immutability policy or reduce its immutability period.
-  - You cannot delete a bucket/container with a locked immutability policy unless every object's age crosses the immutability period, and thus expiring.
-  - You can increase the immutability period of a locked policy if needed.
-  - A locked bucket/container can only be deleted once all objects present in the bucket/container are deleted.
-
----
-
-## Configure Bucket-Level Immutability
-
-By configuring an immutability policy on your storage bucket/container, you ensure that all snapshots are stored in an immutable (Write Once, Read Many) state for a specified duration. This prevents snapshots from being modified or deleted until they reach the end of the immutability period.
-
-### Enabling Immutability on Bucket
-
-You can set a time-based immutability policy on your bucket/container. The immutability policy specifies the minimum duration for which the objects must remain immutable. This configuration can also be achieved using the cloud provider's respective console/portal.
-
-#### Google Cloud Storage (GCS)
-
-To configure an immutability policy on a GCS bucket:
+#### Configure an immutability policy on a GCS bucket
 
 1. **Set the Immutability Policy**
 
@@ -82,9 +73,69 @@ To configure an immutability policy on a GCS bucket:
        --retention-period 4d
    ```
 
-#### Azure Blob Storage (ABS)
+#### Modify the immutability policy
 
-To configure an immutability policy on an Azure Blob Storage container:
+You can modify an unlocked immutability policy to adjust the immutability period or to allow additional writes to the bucket.
+
+1. **Set a New Immutability Period**
+
+   ```bash
+   gcloud storage buckets update gs://[BUCKET_NAME] \
+       --retention-period [NEW_IMMUTABILITY_PERIOD]
+   ```
+
+   **Example:**
+
+   ```bash
+   gcloud storage buckets update gs://my-bucket \
+       --retention-period 7d
+   ```
+
+2. **Remove the Immutability Policy**
+
+   ```bash
+   gcloud storage buckets update gs://[BUCKET_NAME] \
+       --clear-retention-period
+   ```
+
+#### Lock the immutability policy
+
+Locking the immutability policy makes it irreversible and ensures that the policy cannot be reduced or removed. This provides compliance with regulatory requirements.
+
+> [!CAUTION]
+> Locking an immutability policy is an irreversible action.
+
+1. **Lock the Policy**
+
+   ```bash
+   gcloud storage buckets update gs://[BUCKET_NAME] \
+       --lock-retention-period
+   ```
+
+   **Example:**
+
+   ```bash
+   gcloud storage buckets update gs://my-bucket \
+       --lock-retention-period
+   ```
+
+## Azure Blob Storage (ABS)
+
+### ABS Terminology
+
+- **Container**: A storage resource in cloud storage services where objects (such as snapshots) are stored. ABS uses the term **container**.
+
+- **Immutability**: The property of an object being unmodifiable after creation, until the immutability period expires.
+
+- **Immutability Policy**: A configuration that specifies a minimum retention period during which objects in a bucket/container are protected from deletion or modification.
+
+- **Immutability Period**: The duration defined by the immutability policy during which objects remain immutable.
+
+- **Locking**: The action of making an immutability policy permanent, preventing any reduction or removal of the immutability period.
+
+- **ETag**: An identifier representing a specific version of a policy or object, used for concurrency control.
+
+#### Configure an immutability policy on an Azure Blob Storage container
 
 1. **Create the Immutability Policy**
 
@@ -111,112 +162,9 @@ To configure an immutability policy on an Azure Blob Storage container:
        --period 4
    ```
 
-#### AWS S3
+#### Modify an unlocked immutability policy
 
-##### Enabling Object Lock on New S3 Buckets
-
-> Note: With S3 object lock, S3 versioning will automatically get enabled.
-
-  Create a new bucket with object lock enabled.
-
-```bash
-# create new bucket with object lock enabled
-aws s3api create-bucket --bucket [BUCKET_NAME] \
---region [REGION] --create-bucket-configuration LocationConstraint=[REGION] \
---object-lock-enabled-for-bucket
-```
-
-  Update the bucket with object lock configuration.
-
-```bash
-# update the bucket with object lock configuration
-aws s3api put-object-lock-configuration --bucket [BUCKET_NAME] \
---object-lock-configuration='{ "ObjectLockEnabled": "Enabled", "Rule": { "DefaultRetention": { "Mode": [MODE] , "Days": [IMMUTABILITY_PERIOD] }}}'
-```
-
-  - Replace `[BUCKET_NAME]` and `[REGION]` with the name and region of your bucket.
-  - Replace `[MODE]` with either `COMPLIANCE` or `GOVERNANCE` mode.
-  - Replace `[IMMUTABILITY_PERIOD]` with the desired immutability period in days.
-
-  **Example:**
-
-  - To create a bucket with name `my-bucket` on region `eu-west-1` with mode: `COMPLIANCE` with immutability period of `2`days.
-
-```bash
-# create new bucket with object lock enabled
-aws s3api create-bucket --bucket my-bucket \
---region eu-west-1 --create-bucket-configuration LocationConstraint=eu-west-1 \
---object-lock-enabled-for-bucket
-
-# update the bucket with object lock configuration
-aws s3api put-object-lock-configuration --bucket my-bucket \
---object-lock-configuration='{ "ObjectLockEnabled": "Enabled", "Rule": { "DefaultRetention": { "Mode": "COMPLIANCE" , "Days": 2 }}}'
-```
-
-##### Enabling Object Lock on Old/Existing S3 Buckets
-
-  To achieve that, first enable versioning on the existing bucket, as it's a prerequisite for enabling object lock.
-
-```bash
-# enable the object versioning on a existing bucket
-aws s3api put-bucket-versioning --bucket [BUCKET_NAME] \
---versioning-configuration Status=Enabled
-```
-
-  Now enable the object lock on bucket with its configurations.
-
-```bash
-# now, enable the object lock on bucket with its configurations
-aws s3api put-object-lock-configuration --bucket [BUCKET_NAME] \
---object-lock-configuration='{ "ObjectLockEnabled": "Enabled", "Rule": { "DefaultRetention": { "Mode": [MODE] , "Days": [IMMUTABILITY_PERIOD] }}}'
-```
-
-  **Example:**
-
-  - First, enable the bucket versioning on existing bucket `my-bucket` then enable the object lock with it's configuration of mode: `COMPLIANCE` with immutability period of `2` days.
-
-```bash
-# enable the object versioning on existing bucket
-aws s3api put-bucket-versioning --bucket my-bucket \
---versioning-configuration Status=Enabled
-
-# now, enable the object lock on bucket with its configurations
-aws s3api put-object-lock-configuration --bucket my-bucket \
---object-lock-configuration='{ "ObjectLockEnabled": "Enabled", "Rule": { "DefaultRetention": { "Mode": "COMPLIANCE" , "Days": 2 }}}'
-```
-
-### Modify an Unlocked Immutability Policy
-
-You can modify an unlocked immutability policy to adjust the immutability period or to allow additional writes to the bucket/container.
-
-#### Google Cloud Storage (GCS)
-
-To modify the immutability policy:
-
-1. **Set a New Immutability Period**
-
-   ```bash
-   gcloud storage buckets update gs://[BUCKET_NAME] \
-       --retention-period [NEW_IMMUTABILITY_PERIOD]
-   ```
-
-   **Example:**
-
-   ```bash
-   gcloud storage buckets update gs://my-bucket \
-       --retention-period 7d
-   ```
-
-2. **Remove the Immutability Policy**
-
-   ```bash
-   gcloud storage buckets update gs://[BUCKET_NAME] \
-       --clear-retention-period
-   ```
-
-#### Azure Blob Storage (ABS)
-
-To modify an unlocked immutability policy:
+You can modify an unlocked immutability policy to adjust the immutability period or to allow additional writes to the container.
 
 1. **Retrieve the Policy's ETag**
 
@@ -259,32 +207,9 @@ To modify an unlocked immutability policy:
        --if-match $etag
    ```
 
-### Lock the Immutability Policy
+#### Lock the Immutability Policy
 
 Locking the immutability policy makes it irreversible and ensures that the policy cannot be reduced or removed. This provides compliance with regulatory requirements.
-
-#### Google Cloud Storage (GCS)
-
-To lock the immutability policy:
-
-> [!CAUTION]
-> Locking an immutability policy is an irreversible action.
-
-1. **Lock the Policy**
-
-   ```bash
-   gcloud storage buckets update gs://[BUCKET_NAME] \
-       --lock-retention-period
-   ```
-
-   **Example:**
-
-   ```bash
-   gcloud storage buckets update gs://my-bucket \
-       --lock-retention-period
-   ```
-
-#### Azure Blob Storage (ABS)
 
 To lock the immutability policy:
 
@@ -324,6 +249,92 @@ To lock the immutability policy:
        --if-match $etag
    ```
 
+## AWS Simple Storage Service (AWS S3)
+
+### S3 Terminology
+
+- **Bucket**: A storage resource in cloud storage services where objects (such as snapshots) are stored. S3 uses the term **bucket**.
+
+- **Immutability**: The property of an object version being unmodifiable after creation, until the immutability period expires.
+
+- **Retention Period**: The duration defined in object lock settings, during which objects remain immutable.
+
+- **Retention Modes**: S3 provides two retention modes that apply different levels of protection to your objects:
+    1. **Governance mode**: Only users with special permissions can overwrite, delete or alter object lock settings.
+    2. **Compliance mode**: No users(including root user) can overwrite, delete or alter object lock settings.
+
+#### Create S3 Buckets with object lock enabled
+
+> Note: With S3 object lock, S3 versioning will automatically get enabled.
+
+  Create a new bucket with object lock enabled.
+
+```bash
+# create new bucket with object lock enabled
+aws s3api create-bucket --bucket [BUCKET_NAME] \
+--region [REGION] --create-bucket-configuration LocationConstraint=[REGION] \
+--object-lock-enabled-for-bucket
+```
+
+  Update the bucket with object lock configuration.
+
+```bash
+# update the bucket with object lock configuration
+aws s3api put-object-lock-configuration --bucket [BUCKET_NAME] \
+--object-lock-configuration='{ "ObjectLockEnabled": "Enabled", "Rule": { "DefaultRetention": { "Mode": [MODE] , "Days": [IMMUTABILITY_PERIOD] }}}'
+```
+
+  - Replace `[BUCKET_NAME]` and `[REGION]` with the name and region of your bucket.
+  - Replace `[MODE]` with either `COMPLIANCE` or `GOVERNANCE` mode.
+  - Replace `[IMMUTABILITY_PERIOD]` with the desired immutability period in days.
+
+  **Example:**
+
+  - To create a bucket with name `my-bucket` on region `eu-west-1` with mode: `COMPLIANCE` with immutability period of `2`days.
+
+```bash
+# create new bucket with object lock enabled
+aws s3api create-bucket --bucket my-bucket \
+--region eu-west-1 --create-bucket-configuration LocationConstraint=eu-west-1 \
+--object-lock-enabled-for-bucket
+
+# update the bucket with object lock configuration
+aws s3api put-object-lock-configuration --bucket my-bucket \
+--object-lock-configuration='{ "ObjectLockEnabled": "Enabled", "Rule": { "DefaultRetention": { "Mode": "COMPLIANCE" , "Days": 2 }}}'
+```
+
+#### Enabling Object Lock on Old/Existing S3 Buckets
+
+  To achieve that, first enable versioning on the existing bucket, as it's a prerequisite for enabling object lock.
+
+```bash
+# enable the object versioning on a existing bucket
+aws s3api put-bucket-versioning --bucket [BUCKET_NAME] \
+--versioning-configuration Status=Enabled
+```
+
+  Now enable the object lock on bucket with its configurations.
+
+```bash
+# now, enable the object lock on bucket with its configurations
+aws s3api put-object-lock-configuration --bucket [BUCKET_NAME] \
+--object-lock-configuration='{ "ObjectLockEnabled": "Enabled", "Rule": { "DefaultRetention": { "Mode": [MODE] , "Days": [IMMUTABILITY_PERIOD] }}}'
+```
+
+  **Example:**
+
+  - First, enable the bucket versioning on existing bucket `my-bucket` then enable the object lock with it's configuration of mode: `COMPLIANCE` with immutability period of `2` days.
+
+```bash
+# enable the object versioning on existing bucket
+aws s3api put-bucket-versioning --bucket my-bucket \
+--versioning-configuration Status=Enabled
+
+# now, enable the object lock on bucket with its configurations
+aws s3api put-object-lock-configuration --bucket my-bucket \
+--object-lock-configuration='{ "ObjectLockEnabled": "Enabled", "Rule": { "DefaultRetention": { "Mode": "COMPLIANCE" , "Days": 2 }}}'
+```
+
 ### S3 Object Lock and working with snapshots
 
 #### Working with snapshots
@@ -334,8 +345,6 @@ To lock the immutability policy:
 The following diagram illustrates the working of snapshots with S3 for existing/old buckets as well as for new buckets.
 
   ![Working with S3](../images/S3_immutability_working.png)
-
----
 
 ## Ignoring Snapshots During Restoration
 

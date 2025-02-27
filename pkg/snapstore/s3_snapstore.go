@@ -586,6 +586,12 @@ func (s *S3SnapStore) List(_ bool) (brtypes.SnapList, error) {
 					//   - or if the incoming version of snapshot key is older
 					//     than already seen version of snapshot key.
 					if value, isKeyPresent := allSnapKeyMapToSnapshotInfo[*version.Key]; !isKeyPresent || (*version.LastModified).Before(value.creationTime) {
+
+						if isKeyPresent && (*version.LastModified).Before(value.creationTime) {
+							logrus.Infof("Key: [%s] already present in map with versionID: [%s]\n", *version.Key, value.versionID)
+							logrus.Infof("Updating the map with key: [%s] in map with versionID: [%s]\n", *version.Key, *version.VersionId)
+						}
+
 						// update the map.
 						allSnapKeyMapToSnapshotInfo[*version.Key] = &snapshotMetaInfo{
 							creationTime: *version.LastModified,
