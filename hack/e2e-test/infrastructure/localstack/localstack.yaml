@@ -1,0 +1,47 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: localstack
+  name: localstack
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: localstack
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: localstack
+    spec:
+      containers:
+        - env:
+            - name: DATA_DIR
+              value: /tmp
+            - name: DEBUG
+              value: "1"
+            - name: SERVICES
+              value: s3
+          image: localstack/localstack:s3-latest
+          imagePullPolicy: IfNotPresent
+          name: localstack-service
+          ports:
+            - containerPort: 4566
+              hostPort: 4566
+      restartPolicy: Always
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: localstack
+  name: localstack
+spec:
+  ports:
+    - name: "4566"
+      port: 4566
+      targetPort: 4566
+  selector:
+    app: localstack

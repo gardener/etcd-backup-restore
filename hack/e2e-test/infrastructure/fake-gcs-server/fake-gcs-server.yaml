@@ -1,0 +1,46 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: fake-gcs
+  name: fake-gcs
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: fake-gcs
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: fake-gcs
+    spec:
+      containers:
+        - name: fake-gcs-server
+          image: fsouza/fake-gcs-server:1.47
+          imagePullPolicy: IfNotPresent
+          args: ["-scheme", "both", "-public-host" , "fake-gcs.default:8000"]
+          ports:
+            - containerPort: 4443
+              hostPort: 4443
+            - containerPort: 8000
+              hostPort: 8000
+      restartPolicy: Always
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: fake-gcs
+  name: fake-gcs
+spec:
+  ports:
+    - name: "4443-https"
+      port: 4443
+      targetPort: 4443
+    - name: "8000-http"
+      port: 8000
+      targetPort: 8000
+  selector:
+    app: fake-gcs

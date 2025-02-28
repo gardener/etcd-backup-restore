@@ -3,6 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 VERSION             ?= $(shell cat VERSION)
+REPO_ROOT           := $(shell dirname "$(realpath $(lastword $(MAKEFILE_LIST)))")
 REGISTRY            ?= europe-docker.pkg.dev/gardener-project/snapshots
 IMAGE_REPOSITORY    := $(REGISTRY)/gardener/etcdbrctl
 IMAGE_TAG           := $(VERSION)
@@ -11,10 +12,11 @@ PLATFORM            ?= $(shell docker info --format '{{.OSType}}/{{.Architecture
 BIN_DIR             := bin
 COVERPROFILE        := test/output/coverprofile.out
 IMG                 ?= ${IMAGE_REPOSITORY}:${IMAGE_TAG}
+KUBECONFIG_PATH     :=$(REPO_ROOT)/hack/e2e-test/infrastructure/kind/kubeconfig
 
 .DEFAULT_GOAL := build-local
 
-include hack/tools.mk
+include $(REPO_ROOT)/hack/tools.mk
 
 .PHONY: revendor
 revendor:
@@ -25,6 +27,8 @@ revendor:
 update-dependencies:
 	@env go get -u
 	@make revendor
+
+kind-up kind-down ci-e2e-kind ci-e2e-kind-aws ci-e2e-kind-azure ci-e2e-kind-gcp: export KUBECONFIG = $(KUBECONFIG_PATH)
 
 .PHONY: build
 build:
@@ -74,11 +78,47 @@ perf-regression-test:
 integration-test:
 	@.ci/integration_test
 
-.PHONY: integration-test-cluster
-integration-test-cluster:
-	@.ci/integration_test cluster
-
 .PHONY: show-coverage
 show-coverage:
 	@if [ ! -f $(COVERPROFILE) ]; then echo "$(COVERPROFILE) is not yet built. Please run 'COVER=true make test'"; false; fi
 	@go tool cover -html $(COVERPROFILE)
+
+.PHONY: test-e2e
+test-e2e: $(KIND) $(HELM) $(GINKGO) $(KUBECTL)
+	@"$(REPO_ROOT)/hack/e2e-test/run-e2e-test.sh" $(PROVIDERS) $(KUBECONFIG)
+
+.PHONY: kind-up
+kind-up: $(KIND)
+	./hack/kind-up.sh
+
+.PHONY: kind-down
+kind-down: $(KIND)
+	kind delete cluster --name etcdbr-e2e
+
+.PHONY: deploy-localstack
+deploy-localstack: $(KUBECTL)
+	./hack/deploy-localstack.sh $(KUBECONFIG)
+
+.PHONY: deploy-fakegcs
+deploy-fakegcs: $(KUBECTL)
+	./hack/deploy-fakegcs.sh $(KUBECONFIG)
+
+.PHONY: deploy-azurite
+deploy-azurite: $(KUBECTL)
+	./hack/deploy-azurite.sh $(KUBECONFIG)
+
+.PHONY: ci-e2e-kind
+ci-e2e-kind:
+	./hack/ci-e2e-kind.sh $(PROVIDERS)
+
+.PHONY: ci-e2e-kind-aws
+ci-e2e-kind-aws:
+	./hack/ci-e2e-kind.sh aws
+
+.PHONY: ci-e2e-kind-azure
+ci-e2e-kind-azure:
+	./hack/ci-e2e-kind.sh azure
+
+.PHONY: ci-e2e-kind-gcp
+ci-e2e-kind-gcp:
+	./hack/ci-e2e-kind.sh gcp
