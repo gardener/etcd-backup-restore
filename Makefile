@@ -67,8 +67,8 @@ sast-report: $(GOSEC)
 	@./hack/sast.sh --gosec-report true
 
 .PHONY: test
-test:
-	.ci/unit_test
+test: $(GINGKO)
+	@.ci/unit_test
 
 .PHONY: perf-regression-test
 perf-regression-test:
