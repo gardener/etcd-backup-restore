@@ -55,7 +55,7 @@ clean:
 verify: check test
 
 .PHONY: check
-check:
+check: $(HELM)
 	@.ci/check
 
 .PHONY: sast

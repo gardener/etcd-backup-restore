@@ -27,15 +27,6 @@ cd "${SOURCE_PATH}"
 # Install Golint (linting tool).
 go install golang.org/x/lint/golint@latest
 
-# Install Helm from binary.
-curl -fsSL -o get_helm.sh https://raw.githubusercontent.com/helm/helm/master/scripts/get-helm-3
-chmod 700 get_helm.sh
-if [ $(id -u) = 0 ]; then
-   ./get_helm.sh --no-sudo
-fi
-./get_helm.sh 
-rm get_helm.sh
-
 ###############################################################################
 
 PACKAGES="$(go list -mod=vendor -e ./...)"
