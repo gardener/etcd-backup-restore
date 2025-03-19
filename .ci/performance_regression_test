@@ -32,7 +32,7 @@ if [ "$PERF_TEST_KUBECONFIG" == "" ]; then
 fi
 
 # TODO: change the etcd wrapper version to a newer version which spawns etcd v3.4.34
-ETCD_WRAPPER_VERSION=${ETCD_WRAPPER_VERSION:-"v0.2.0"}
+ETCD_WRAPPER_VERSION=${ETCD_WRAPPER_VERSION:-"v0.4.2"}
 if [ "$ETCD_WRAPPER_VERSION" != "" ]; then
   ETCD_IMAGE=${ETCD_IMAGE:-"europe-docker.pkg.dev/gardener-project/public/gardener/etcd-wrapper:$ETCD_WRAPPER_VERSION"}
 fi
