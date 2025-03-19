@@ -75,7 +75,7 @@ perf-regression-test:
 	@.ci/performance_regression_test
 
 .PHONY: integration-test
-integration-test:
+integration-test: $(GINKGO)
 	@.ci/integration_test
 
 .PHONY: show-coverage
