@@ -87,12 +87,7 @@ function setup_etcd(){
 
 function setup_etcdbrctl(){
     echo "Installing etcdbrctl..."
-    go build \
-    -v \
-    -o ${GOBIN}/etcdbrctl \
-    -ldflags "-w -X ${REPOSITORY}/pkg/version.Version=${VERSION}" \
-    -mod=vendor \
-    main.go > /dev/null 2>&1
+    make build
     chmod +x ${GOBIN}/etcdbrctl
     echo "Successfully installed etcdbrctl."
 }
