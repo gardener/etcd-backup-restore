@@ -14,7 +14,7 @@ COVERPROFILE        := test/output/coverprofile.out
 IMG                 ?= ${IMAGE_REPOSITORY}:${IMAGE_TAG}
 KUBECONFIG_PATH     :=$(REPO_ROOT)/hack/e2e-test/infrastructure/kind/kubeconfig
 
-.DEFAULT_GOAL := build-local
+.DEFAULT_GOAL := build
 
 include $(REPO_ROOT)/hack/tools.mk
 
@@ -33,10 +33,6 @@ kind-up kind-down ci-e2e-kind ci-e2e-kind-aws ci-e2e-kind-azure ci-e2e-kind-gcp:
 .PHONY: build
 build:
 	@.ci/build
-
-.PHONY: build-local
-build-local:
-	@env LOCAL_BUILD=1 .ci/build
 
 .PHONY: docker-build
 docker-build:
