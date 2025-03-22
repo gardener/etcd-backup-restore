@@ -524,7 +524,7 @@ func (s *S3SnapStore) partUploader(wg *sync.WaitGroup, stopCh <-chan struct{}, s
 // If Bucket versioning or object lock is enabled for S3 bucket:
 //   - It returns a sorted list of all firstCreated/oldest snapshot files present in the object store.
 //   - It also captures the "ImmutabilityExpiryTime" and "VersionID" of corresponding versioned snapshot.
-func (s *S3SnapStore) List(_ bool) (brtypes.SnapList, error) {
+func (s *S3SnapStore) List(includeAll bool) (brtypes.SnapList, error) {
 	var snapList brtypes.SnapList
 	prefixTokens := strings.Split(s.prefix, "/")
 	// Last element of the tokens is backup version
@@ -577,6 +577,9 @@ func (s *S3SnapStore) List(_ bool) (brtypes.SnapList, error) {
 		// allSnapKeysMapToCreationTime contains oldest snapshots keys mapped to their versionID and creation timestamp.
 		allSnapKeyMapToSnapshotInfo := make(map[string]*snapshotMetaInfo)
 
+		// allDeleteMarkersInfo contains versionID of all delete markers present(if any) in the S3 bucket.
+		allDeleteMarkersInfo := make(map[string]int)
+
 		if err := s.client.ListObjectVersionsPages(in, func(page *s3.ListObjectVersionsOutput, lastPage bool) bool {
 			for _, version := range page.Versions {
 				snapKey := (*version.Key)[len(*page.Prefix):]
@@ -605,7 +608,29 @@ func (s *S3SnapStore) List(_ bool) (brtypes.SnapList, error) {
 			return nil, err
 		}
 
+		// traverse all the deletion markers present(if any) in the bucket
+		if err := s.client.ListObjectVersionsPages(in, func(page *s3.ListObjectVersionsOutput, lastPage bool) bool {
+			for _, deletionMarker := range page.DeleteMarkers {
+				deletionKey := (*deletionMarker.Key)[len(*page.Prefix):]
+				if strings.Contains(deletionKey, backupVersionV1) || strings.Contains(deletionKey, backupVersionV2) {
+					allDeleteMarkersInfo[*deletionMarker.Key]++
+				}
+			}
+			return !lastPage
+		}); err != nil {
+			return nil, err
+		}
+
 		for key, val := range allSnapKeyMapToSnapshotInfo {
+			// If a snapshot key has a delete marker present in the bucket,
+			// check whether that snapshot object is marked to be ignored.
+			if _, isDeleteMarkerPresent := allDeleteMarkersInfo[key]; isDeleteMarkerPresent && !includeAll {
+				if isSnapshotMarkToBeIgnored(s.client, s.bucket, key, val.versionID) {
+					logrus.Infof("Snapshot: %s with versionID: %s is marked to be ignored", key, val.versionID)
+					continue
+				}
+			}
+
 			snap, err := ParseSnapshot(key)
 			if err != nil {
 				// Warning
@@ -765,4 +790,23 @@ func GetBucketImmutabilityTime(s *S3SnapStore) (bool, *int64, error) {
 	}
 
 	return false, nil, fmt.Errorf("got nil object lock configuration")
+}
+
+func isSnapshotMarkToBeIgnored(client s3iface.S3API, bucketName, key, versionID string) bool {
+	out, err := client.GetObjectTagging(&s3.GetObjectTaggingInput{
+		Bucket:    &bucketName,
+		Key:       aws.String(key),
+		VersionId: aws.String(versionID),
+	})
+	if err != nil {
+		return false
+	}
+
+	for _, tagOnSnap := range out.TagSet {
+		if *tagOnSnap.Key == brtypes.ExcludeSnapshotMetadataKey && *tagOnSnap.Value == "true" {
+			return true
+		}
+	}
+
+	return false
 }
