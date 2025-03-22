@@ -792,9 +792,10 @@ func GetBucketImmutabilityTime(s *S3SnapStore) (bool, *int64, error) {
 	return false, nil, fmt.Errorf("got nil object lock configuration")
 }
 
+// isSnapshotMarkToBeIgnored checks whether snapshot object key with given versionID is marked to be ignored or not.
 func isSnapshotMarkToBeIgnored(client s3iface.S3API, bucketName, key, versionID string) bool {
 	out, err := client.GetObjectTagging(&s3.GetObjectTaggingInput{
-		Bucket:    &bucketName,
+		Bucket:    aws.String(bucketName),
 		Key:       aws.String(key),
 		VersionId: aws.String(versionID),
 	})
@@ -803,7 +804,7 @@ func isSnapshotMarkToBeIgnored(client s3iface.S3API, bucketName, key, versionID 
 	}
 
 	for _, tagOnSnap := range out.TagSet {
-		if *tagOnSnap.Key == brtypes.ExcludeSnapshotMetadataKey && *tagOnSnap.Value == "true" {
+		if tagOnSnap.Key != nil && *tagOnSnap.Key == brtypes.ExcludeSnapshotMetadataKey && tagOnSnap.Value != nil && *tagOnSnap.Value == "true" {
 			return true
 		}
 	}
