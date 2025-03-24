@@ -37,20 +37,20 @@ const (
 
 // GCSSnapStore is snapstore with GCS object store as backend.
 type GCSSnapStore struct {
-	client stiface.Client
-	prefix string
-	bucket string
+	client         stiface.Client
+	prefix         string
+	bucket         string
+	tempDir        string
+	chunkDirSuffix string
 	// maxParallelChunkUploads hold the maximum number of parallel chunk uploads allowed.
 	maxParallelChunkUploads uint
 	minChunkSize            int64
-	tempDir                 string
-	chunkDirSuffix          string
 }
 
 // gcsEmulatorConfig holds the configuration for the fake GCS emulator
 type gcsEmulatorConfig struct {
-	enabled  bool   // whether the fake GCS emulator is enabled
-	endpoint string // the endpoint of the fake GCS emulator
+	endpoint string
+	enabled  bool
 }
 
 const (

@@ -72,33 +72,33 @@ func NewSnapshotterConfig() *brtypes.SnapshotterConfig {
 
 // Snapshotter is a struct for etcd snapshot taker
 type Snapshotter struct {
-	logger                       *logrus.Entry
-	etcdConnectionConfig         *brtypes.EtcdConnectionConfig
-	store                        brtypes.SnapStore
-	config                       *brtypes.SnapshotterConfig
-	compressionConfig            *compressor.CompressionConfig
-	HealthConfig                 *brtypes.HealthConfig
+	lastSecretModifiedTime       time.Time
 	schedule                     cron.Schedule
+	store                        brtypes.SnapStore
+	K8sClientset                 client.Client
+	FullSnapshotLeaseUpdateTimer *time.Timer
+	fullSnapshotTimer            *time.Timer
+	compressionConfig            *compressor.CompressionConfig
 	PrevSnapshot                 *brtypes.Snapshot
 	PrevFullSnapshot             *brtypes.Snapshot
-	PrevDeltaSnapshots           brtypes.SnapList
+	etcdConnectionConfig         *brtypes.EtcdConnectionConfig
 	fullSnapshotReqCh            chan bool
 	deltaSnapshotReqCh           chan struct{}
 	fullSnapshotAckCh            chan result
 	deltaSnapshotAckCh           chan result
-	FullSnapshotLeaseUpdateTimer *time.Timer
-	fullSnapshotTimer            *time.Timer
+	logger                       *logrus.Entry
+	HealthConfig                 *brtypes.HealthConfig
 	deltaSnapshotTimer           *time.Timer
-	events                       []byte
+	snapstoreConfig              *brtypes.SnapstoreConfig
 	watchCh                      clientv3.WatchChan
 	etcdWatchClient              *clientv3.Watcher
 	cancelWatch                  context.CancelFunc
 	SsrStateMutex                *sync.Mutex
-	SsrState                     brtypes.SnapshotterState
+	config                       *brtypes.SnapshotterConfig
+	events                       []byte
+	PrevDeltaSnapshots           brtypes.SnapList
 	lastEventRevision            int64
-	K8sClientset                 client.Client
-	snapstoreConfig              *brtypes.SnapstoreConfig
-	lastSecretModifiedTime       time.Time
+	SsrState                     brtypes.SnapshotterState
 	PrevFullSnapshotSucceeded    bool
 }
 

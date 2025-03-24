@@ -45,16 +45,16 @@ const (
 )
 
 type awsCredentials struct {
-	AccessKeyID          string  `json:"accessKeyID"`
-	Region               string  `json:"region"`
-	SecretAccessKey      string  `json:"secretAccessKey"`
 	SSECustomerAlgorithm *string `json:"sseCustomerAlgorithm,omitempty"`
 	SSECustomerKey       *string `json:"sseCustomerKey,omitempty"`
-	BucketName           string  `json:"bucketName"`
 	Endpoint             *string `json:"endpoint,omitempty"`
 	S3ForcePathStyle     *bool   `json:"s3ForcePathStyle,omitempty"`
 	InsecureSkipVerify   *bool   `json:"insecureSkipVerify,omitempty"`
 	TrustedCaCert        *string `json:"trustedCaCert,omitempty"`
+	AccessKeyID          string  `json:"accessKeyID"`
+	Region               string  `json:"region"`
+	SecretAccessKey      string  `json:"secretAccessKey"`
+	BucketName           string  `json:"bucketName"`
 }
 
 // SSECredentials to hold fields for server-side encryption in I/O operations
@@ -66,14 +66,14 @@ type SSECredentials struct {
 
 // S3SnapStore is snapstore with AWS S3 object store as backend
 type S3SnapStore struct {
-	prefix string
 	client s3iface.S3API
-	bucket string
+	SSECredentials
+	prefix  string
+	bucket  string
+	tempDir string
 	// maxParallelChunkUploads hold the maximum number of parallel chunk uploads allowed.
 	maxParallelChunkUploads uint
 	minChunkSize            int64
-	tempDir                 string
-	SSECredentials
 }
 
 // NewS3SnapStore create new S3SnapStore from shared configuration with specified bucket

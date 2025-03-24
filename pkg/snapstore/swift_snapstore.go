@@ -40,13 +40,13 @@ const (
 
 // SwiftSnapStore is snapstore with Openstack Swift as backend
 type SwiftSnapStore struct {
-	prefix string
-	client *gophercloud.ServiceClient
-	bucket string
+	client  *gophercloud.ServiceClient
+	prefix  string
+	bucket  string
+	tempDir string
 	// maxParallelChunkUploads hold the maximum number of parallel chunk uploads allowed.
 	maxParallelChunkUploads uint
 	minChunkSize            int64
-	tempDir                 string
 }
 
 type applicationCredential struct {

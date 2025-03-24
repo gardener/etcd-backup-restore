@@ -51,11 +51,11 @@ type authOptions struct {
 
 // OSSSnapStore is snapstore with Alicloud OSS object store as backend
 type OSSSnapStore struct {
-	prefix                  string
 	bucket                  OSSBucket
+	prefix                  string
+	tempDir                 string
 	maxParallelChunkUploads uint
 	minChunkSize            int64
-	tempDir                 string
 }
 
 // NewOSSSnapStore create new OSSSnapStore from shared configuration with specified bucket

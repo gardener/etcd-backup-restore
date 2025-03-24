@@ -29,21 +29,21 @@ const (
 
 // EtcdConnectionConfig holds the etcd connection config.
 type EtcdConnectionConfig struct {
+	CertFile         string   `json:"certFile,omitempty"`
+	Username         string   `json:"username,omitempty"`
+	Password         string   `json:"password,omitempty"`
+	KeyFile          string   `json:"keyFile,omitempty"`
+	CaFile           string   `json:"caFile,omitempty"`
+	ServiceEndpoints []string `json:"serviceEndpoints,omitempty"`
 	// Endpoints are the endpoints from which the backup will be take or defragmentation will be called.
 	// This need not be necessary match the entire etcd cluster.
 	Endpoints          []string          `json:"endpoints"`
-	ServiceEndpoints   []string          `json:"serviceEndpoints,omitempty"`
-	Username           string            `json:"username,omitempty"`
-	Password           string            `json:"password,omitempty"`
 	ConnectionTimeout  wrappers.Duration `json:"connectionTimeout,omitempty"`
 	SnapshotTimeout    wrappers.Duration `json:"snapshotTimeout,omitempty"`
 	DefragTimeout      wrappers.Duration `json:"defragTimeout,omitempty"`
+	MaxCallSendMsgSize int               `json:"maxCallSendMsgSize,omitempty"`
 	InsecureTransport  bool              `json:"insecureTransport,omitempty"`
 	InsecureSkipVerify bool              `json:"insecureSkipVerify,omitempty"`
-	CertFile           string            `json:"certFile,omitempty"`
-	KeyFile            string            `json:"keyFile,omitempty"`
-	CaFile             string            `json:"caFile,omitempty"`
-	MaxCallSendMsgSize int               `json:"maxCallSendMsgSize,omitempty"`
 }
 
 // NewEtcdConnectionConfig returns etcd connection config.

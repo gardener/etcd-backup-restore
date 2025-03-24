@@ -76,23 +76,23 @@ type HTTPHandler struct {
 	Initializer               initializer.Initializer
 	Snapshotter               *snapshotter.Snapshotter
 	EtcdConnectionConfig      *brtypes.EtcdConnectionConfig
-	StorageProvider           string
-	Port                      uint
+	AckCh                     chan struct{}
+	SnapstoreConfig           *brtypes.SnapstoreConfig
 	server                    *http.Server
 	Logger                    *logrus.Entry
-	initializationStatusMutex sync.Mutex
-	AckState                  uint32
-	initializationStatus      string
-	status                    int
-	StopCh                    chan struct{}
-	EnableProfiling           bool
+	HTTPHandlerMutex          *sync.Mutex
 	ReqCh                     chan struct{}
-	AckCh                     chan struct{}
-	EnableTLS                 bool
+	StopCh                    chan struct{}
+	StorageProvider           string
+	initializationStatus      string
 	ServerTLSCertFile         string
 	ServerTLSKeyFile          string
-	HTTPHandlerMutex          *sync.Mutex
-	SnapstoreConfig           *brtypes.SnapstoreConfig
+	status                    int
+	Port                      uint
+	initializationStatusMutex sync.Mutex
+	AckState                  uint32
+	EnableTLS                 bool
+	EnableProfiling           bool
 }
 
 // healthCheck contains the HealthStatus of backup restore.

@@ -81,20 +81,20 @@ func (a *AzureContainerClient) NewBlockBlobClient(blobName string) AzureBlockBlo
 
 // ABSSnapStore is an ABS backed snapstore.
 type ABSSnapStore struct {
-	container string
 	client    azureContainerClientI
+	container string
 	prefix    string
+	tempDir   string
 	// maxParallelChunkUploads hold the maximum number of parallel chunk uploads allowed.
 	maxParallelChunkUploads uint
 	minChunkSize            int64
-	tempDir                 string
 }
 
 type absCredentials struct {
+	Domain          *string `json:"domain,omitempty"`
 	BucketName      string  `json:"bucketName"`
 	StorageAccount  string  `json:"storageAccount"`
 	StorageKey      string  `json:"storageKey"`
-	Domain          *string `json:"domain,omitempty"`
 	EmulatorEnabled bool    `json:"emulatorEnabled,omitempty"`
 }
 
@@ -266,12 +266,12 @@ func readABSCredentialFiles(dirname string) (*absCredentials, error) {
 // NewABSSnapStoreFromClient returns a new ABS object for a given container using the supplied storageClient
 func NewABSSnapStoreFromClient(container, prefix, tempDir string, maxParallelChunkUploads uint, minChunkSize int64, client azureContainerClientI) *ABSSnapStore {
 	return &ABSSnapStore{
-		container,
 		client,
+		container,
 		prefix,
+		tempDir,
 		maxParallelChunkUploads,
 		minChunkSize,
-		tempDir,
 	}
 }
 
