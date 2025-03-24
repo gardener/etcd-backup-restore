@@ -166,11 +166,10 @@ func EtcdMemberStatus(ctx context.Context, etcdConnectionConfig *brtypes.EtcdCon
 	}
 	defer client.Close()
 
-	if len(etcdConnectionConfig.Endpoints) > 0 {
-		endPoint = etcdConnectionConfig.Endpoints[0]
-	} else {
+	if len(etcdConnectionConfig.Endpoints) == 0 {
 		return false, false, fmt.Errorf("etcd endpoints are not passed correctly")
 	}
+	endPoint = etcdConnectionConfig.Endpoints[0]
 
 	ctx, cancel := context.WithTimeout(ctx, etcdConnectionTimeout)
 	defer cancel()

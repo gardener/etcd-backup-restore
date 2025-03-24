@@ -291,17 +291,18 @@ func FullSnapshotCaseLeaseUpdate(ctx context.Context, logger *logrus.Entry, full
 // DeltaSnapshotCaseLeaseUpdate Updates the deltasnapshot lease as needed when a delta snapshot is taken
 func DeltaSnapshotCaseLeaseUpdate(ctx context.Context, logger *logrus.Entry, k8sClientset client.Client, deltaSnapshotLeaseName string, store brtypes.SnapStore) error {
 	_, latestDeltaSnapshotList, err := miscellaneous.GetLatestFullSnapshotAndDeltaSnapList(store)
-	if err == nil {
-		if err = UpdateDeltaSnapshotLease(ctx, logger, latestDeltaSnapshotList, k8sClientset, deltaSnapshotLeaseName); err != nil {
-			return &errors.EtcdError{
-				Message: fmt.Sprintf("Failed to update delta snapshot lease with error: %v", err),
-			}
-		}
-	} else {
+	if err != nil {
 		return &errors.EtcdError{
 			Message: fmt.Sprintf("failed to get latest snapshots from store with error: %v", err),
 		}
 	}
+
+	if err = UpdateDeltaSnapshotLease(ctx, logger, latestDeltaSnapshotList, k8sClientset, deltaSnapshotLeaseName); err != nil {
+		return &errors.EtcdError{
+			Message: fmt.Sprintf("Failed to update delta snapshot lease with error: %v", err),
+		}
+	}
+
 	return nil
 }
 

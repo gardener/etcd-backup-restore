@@ -322,11 +322,11 @@ func (m *memberControl) IsClusterScaledUp(ctx context.Context, clientSet client.
 	// In case of failure in checking the presence of member in a cluster then
 	// check for `ScaledToMultiNodeAnnotationKey` annotation in etcd statefulset.
 
-	if isEtcdMemberPresent, err := m.IsMemberInCluster(ctx); err != nil {
-		m.logger.Errorf("unable to check presence of member in cluster: %v", err)
-	} else {
+	var err error
+	if isEtcdMemberPresent, err := m.IsMemberInCluster(ctx); err == nil {
 		return !isEtcdMemberPresent, nil
 	}
+	m.logger.Errorf("unable to check presence of member in cluster: %v", err)
 
 	etcdsts, err := miscellaneous.GetStatefulSet(ctx, clientSet, m.podNamespace, m.podName)
 	if err != nil {
@@ -368,12 +368,11 @@ func (m *memberControl) GetPeerURLs(ctx context.Context, closer etcdClient.Clust
 
 // WasMemberInCluster checks the whether etcd member was part of etcd cluster.
 func (m *memberControl) WasMemberInCluster(ctx context.Context, clientSet client.Client) bool {
-
-	if etcdMemberPresent, err := m.IsMemberInCluster(ctx); err != nil {
-		m.logger.Errorf("unable to check member presence via api call: %v", err)
-	} else {
+	etcdMemberPresent, err := m.IsMemberInCluster(ctx)
+	if err == nil {
 		return etcdMemberPresent
 	}
+	m.logger.Errorf("unable to check member presence via api call: %v", err)
 
 	m.logger.Info("fetching the member lease associated with etcd member")
 	memberLease := &v1.Lease{}

@@ -83,7 +83,8 @@ func NewGCSSnapStore(config *brtypes.SnapstoreConfig) (*GCSSnapStore, error) {
 
 	var chunkDirSuffix string
 	if emulatorConfig.enabled {
-		err := emulatorConfig.configureClient(opts)
+		var err error
+		opts, err = emulatorConfig.configureClient(opts)
 		if err != nil {
 			return nil, err
 		}
@@ -152,13 +153,12 @@ func NewGCSSnapStoreFromClient(bucket, prefix, tempDir string, maxParallelChunkU
 }
 
 // configureClient configures the fake gcs emulator
-func (e *gcsEmulatorConfig) configureClient(opts []option.ClientOption) error {
+func (e *gcsEmulatorConfig) configureClient(opts []option.ClientOption) ([]option.ClientOption, error) {
 	err := os.Setenv("STORAGE_EMULATOR_HOST", strings.TrimPrefix(e.endpoint, "http://"))
 	if err != nil {
-		return fmt.Errorf("failed to set the environment variable for the fake GCS emulator: %v", err)
+		return nil, fmt.Errorf("failed to set the environment variable for the fake GCS emulator: %v", err)
 	}
-	opts = append(opts, option.WithoutAuthentication())
-	return nil
+	return append(opts, option.WithoutAuthentication()), nil
 }
 
 // Fetch should open reader for the snapshot file from store.
@@ -278,15 +278,15 @@ func (s *GCSSnapStore) componentUploader(wg *sync.WaitGroup, stopCh <-chan struc
 		select {
 		case <-stopCh:
 			return
-		case chunk, ok := <-chunkUploadCh:
+		case uploadChunk, ok := <-chunkUploadCh:
 			if !ok {
 				return
 			}
-			logrus.Infof("Uploading chunk with offset : %d, attempt: %d", chunk.offset, chunk.attempt)
-			err := s.uploadComponent(snap, file, chunk.offset, chunk.size)
+			logrus.Infof("Uploading chunk with offset : %d, attempt: %d", uploadChunk.offset, uploadChunk.attempt)
+			err := s.uploadComponent(snap, file, uploadChunk.offset, uploadChunk.size)
 			errCh <- chunkUploadResult{
 				err:   err,
-				chunk: &chunk,
+				chunk: &uploadChunk,
 			}
 		}
 	}

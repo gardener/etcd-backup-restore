@@ -742,19 +742,19 @@ func (r *Restorer) MakeEtcdLeanAndCheckAlarm(revision int64, endPoints []string,
 			// send endpoint to alarm channel to raise an db size alarm
 			dbSizeAlarmCh <- endPoint
 
-			if <-dbSizeAlarmDisarmCh {
-				r.logger.Info("Successfully disalarm the embedded etcd dbSize alarm")
-				ctx, cancel := context.WithTimeout(context.Background(), etcdConnectionTimeout)
-				defer cancel()
-				if afterDefragStatus, err := clientMaintenance.Status(ctx, endPoint); err != nil {
-					r.logger.Warnf("failed to get status of embedded etcd with error: %v", err)
-				} else {
-					dbSizeBeforeDefrag := status.DbSize
-					dbSizeAfterDefrag := afterDefragStatus.DbSize
-					r.logger.Infof("Probable DB size change for embedded etcd: %dB -> %dB after defragmentation call", dbSizeBeforeDefrag, dbSizeAfterDefrag)
-				}
-			} else {
+			if !<-dbSizeAlarmDisarmCh {
 				return fmt.Errorf("failed to disalarm the embedded etcd dbSize alarm")
+			}
+
+			r.logger.Info("Successfully disalarm the embedded etcd dbSize alarm")
+			ctx, cancel := context.WithTimeout(context.Background(), etcdConnectionTimeout)
+			defer cancel()
+			if afterDefragStatus, err := clientMaintenance.Status(ctx, endPoint); err != nil {
+				r.logger.Warnf("failed to get status of embedded etcd with error: %v", err)
+			} else {
+				dbSizeBeforeDefrag := status.DbSize
+				dbSizeAfterDefrag := afterDefragStatus.DbSize
+				r.logger.Infof("Probable DB size change for embedded etcd: %dB -> %dB after defragmentation call", dbSizeBeforeDefrag, dbSizeAfterDefrag)
 			}
 		}
 	} else {

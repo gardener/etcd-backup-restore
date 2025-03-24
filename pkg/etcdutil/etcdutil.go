@@ -237,13 +237,12 @@ func GetEtcdEndPointsSorted(ctx context.Context, clientMaintenance client.Mainte
 		return leaderEtcdEndpoints, nil, nil
 	}
 
-	if len(etcdEndpoints) > 0 {
-		endPoint = etcdEndpoints[0]
-	} else {
+	if len(etcdEndpoints) == 0 {
 		return nil, nil, &errors.EtcdError{
 			Message: "etcd endpoints are not passed correctly",
 		}
 	}
+	endPoint = etcdEndpoints[0]
 
 	response, err := clientMaintenance.Status(ctx, endPoint)
 	if err != nil {

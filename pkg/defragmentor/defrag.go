@@ -79,18 +79,17 @@ waitLoop:
 				err = etcdutil.DefragmentData(d.ctx, clientMaintenance, client, etcdEndpoints, d.etcdConnectionConfig.DefragTimeout.Duration, d.logger)
 				if err != nil {
 					d.logger.Warnf("failed to defrag data with error: %v", err)
-				} else {
-					if d.callback != nil {
-						if _, err = d.callback(d.ctx, false); err != nil {
-							d.logger.Warnf("defragmentation callback failed with error: %v", err)
-						}
-					}
-					break waitLoop
+					continue
 				}
+				if d.callback != nil {
+					if _, err = d.callback(d.ctx, false); err != nil {
+						d.logger.Warnf("defragmentation callback failed with error: %v", err)
+					}
+				}
+				break waitLoop
 			}
 		}
 	}
-
 }
 
 // DefragDataPeriodically defragments the data directory of each etcd member.

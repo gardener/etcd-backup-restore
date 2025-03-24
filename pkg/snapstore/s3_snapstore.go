@@ -366,8 +366,7 @@ func (s *S3SnapStore) Save(snap brtypes.Snapshot, rc io.ReadCloser) (err error) 
 		return err
 	}
 	// Initiate multi part upload
-	ctx := context.TODO()
-	ctx, cancel := context.WithTimeout(ctx, chunkUploadTimeout)
+	ctx, cancel := context.WithTimeout(context.TODO(), chunkUploadTimeout)
 	defer cancel()
 	prefix := adaptPrefix(&snap, s.prefix)
 
@@ -423,8 +422,7 @@ func (s *S3SnapStore) Save(snap brtypes.Snapshot, rc io.ReadCloser) (err error) 
 	wg.Wait()
 
 	if snapshotErr != nil {
-		ctx := context.TODO()
-		ctx, cancel := context.WithTimeout(ctx, chunkUploadTimeout)
+		ctx, cancel = context.WithTimeout(context.TODO(), chunkUploadTimeout)
 		defer cancel()
 		logrus.Infof("Aborting the multipart upload with upload ID : %s", *uploadOutput.UploadId)
 		_, err = s.client.AbortMultipartUploadWithContext(ctx, &s3.AbortMultipartUploadInput{
@@ -503,15 +501,15 @@ func (s *S3SnapStore) partUploader(wg *sync.WaitGroup, stopCh <-chan struct{}, s
 		select {
 		case <-stopCh:
 			return
-		case chunk, ok := <-chunkUploadCh:
+		case uploadChunk, ok := <-chunkUploadCh:
 			if !ok {
 				return
 			}
-			logrus.Infof("Uploading chunk with id: %d, offset: %d, attempt: %d", chunk.id, chunk.offset, chunk.attempt)
-			err := s.uploadPart(snap, file, uploadID, completedParts, chunk.offset, chunk.size)
+			logrus.Infof("Uploading chunk with id: %d, offset: %d, attempt: %d", uploadChunk.id, uploadChunk.offset, uploadChunk.attempt)
+			err := s.uploadPart(snap, file, uploadID, completedParts, uploadChunk.offset, uploadChunk.size)
 			errCh <- chunkUploadResult{
 				err:   err,
-				chunk: &chunk,
+				chunk: &uploadChunk,
 			}
 		}
 	}

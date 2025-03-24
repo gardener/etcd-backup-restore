@@ -525,11 +525,10 @@ func (b *BackupRestoreServer) probeEtcd(ctx context.Context) error {
 	ctx, cancel := context.WithTimeout(ctx, brtypes.DefaultEtcdStatusConnecTimeout)
 	defer cancel()
 
-	if len(b.config.EtcdConnectionConfig.Endpoints) > 0 {
-		endPoint = b.config.EtcdConnectionConfig.Endpoints[0]
-	} else {
+	if len(b.config.EtcdConnectionConfig.Endpoints) == 0 {
 		return fmt.Errorf("etcd endpoints are not passed correctly")
 	}
+	endPoint = b.config.EtcdConnectionConfig.Endpoints[0]
 
 	if _, err := client.Status(ctx, endPoint); err != nil {
 		b.logger.Errorf("failed to get status of etcd endPoint: %v with error: %v", endPoint, err)

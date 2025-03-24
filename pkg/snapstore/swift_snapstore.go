@@ -440,15 +440,15 @@ func (s *SwiftSnapStore) chunkUploader(wg *sync.WaitGroup, stopCh <-chan struct{
 		select {
 		case <-stopCh:
 			return
-		case chunk, ok := <-chunkUploadCh:
+		case uploadChunk, ok := <-chunkUploadCh:
 			if !ok {
 				return
 			}
-			logrus.Infof("Uploading chunk with offset : %d, attempt: %d", chunk.offset, chunk.attempt)
-			err := s.uploadChunk(snap, file, chunk.offset, chunk.size)
+			logrus.Infof("Uploading chunk with offset : %d, attempt: %d", uploadChunk.offset, uploadChunk.attempt)
+			err := s.uploadChunk(snap, file, uploadChunk.offset, uploadChunk.size)
 			errCh <- chunkUploadResult{
 				err:   err,
-				chunk: &chunk,
+				chunk: &uploadChunk,
 			}
 		}
 	}
