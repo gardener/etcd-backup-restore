@@ -18,9 +18,11 @@ import (
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 	"github.com/gardener/etcd-backup-restore/pkg/wrappers"
 	"github.com/gardener/etcd-backup-restore/test/utils"
+
+	"go.etcd.io/etcd/pkg/types"
+
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"go.etcd.io/etcd/pkg/types"
 )
 
 var _ = Describe("Running Compactor", func() {

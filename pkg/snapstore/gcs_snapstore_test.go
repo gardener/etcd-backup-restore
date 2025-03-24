@@ -12,8 +12,9 @@ import (
 	"sort"
 	"sync"
 
-	"cloud.google.com/go/storage"
 	stiface "github.com/gardener/etcd-backup-restore/pkg/snapstore/gcs"
+
+	"cloud.google.com/go/storage"
 	"google.golang.org/api/iterator"
 )
 

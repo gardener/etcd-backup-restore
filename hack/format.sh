@@ -13,6 +13,9 @@ echo "> Format"
 for p in "$@" ; do
   goimports-reviser -rm-unused \
    -imports-order "std,company,project,general,blanked,dotted" \
-   -format \
+   -project-name "github.com/gardener/etcd-backup-restore" \
+   -company-prefixes "github.com/gardener" \
+   -excludes vendor \
+   -rm-unused \
    -recursive $p
 done

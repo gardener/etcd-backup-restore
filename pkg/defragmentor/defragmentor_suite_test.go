@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/gardener/etcd-backup-restore/test/utils"
+
 	"github.com/sirupsen/logrus"
 	"go.etcd.io/etcd/embed"
 

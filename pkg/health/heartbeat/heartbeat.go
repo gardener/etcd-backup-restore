@@ -15,10 +15,10 @@ import (
 	"github.com/gardener/etcd-backup-restore/pkg/miscellaneous"
 	utils "github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
+
 	"github.com/sirupsen/logrus"
 	v1 "k8s.io/api/coordination/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
 	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )

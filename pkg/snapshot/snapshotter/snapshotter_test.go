@@ -11,25 +11,24 @@ import (
 	"os"
 	"path"
 	"strconv"
-	"sync"
-
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gardener/etcd-backup-restore/pkg/compressor"
-	. "github.com/gardener/etcd-backup-restore/pkg/snapshot/snapshotter"
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 	"github.com/gardener/etcd-backup-restore/pkg/wrappers"
+	"github.com/gardener/etcd-backup-restore/test/utils"
+
 	v1 "k8s.io/api/coordination/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
-	"github.com/gardener/etcd-backup-restore/test/utils"
-	. "github.com/onsi/ginkgo/v2"
-	. "github.com/onsi/gomega"
-
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+
+	. "github.com/gardener/etcd-backup-restore/pkg/snapshot/snapshotter"
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
 )
 
 const (

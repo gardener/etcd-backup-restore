@@ -25,6 +25,8 @@ import (
 	"sync"
 	"time"
 
+	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
+
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
@@ -33,8 +35,6 @@ import (
 	"github.com/sirupsen/logrus"
 	"k8s.io/client-go/util/retry"
 	"k8s.io/utils/ptr"
-
-	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 )
 
 const (

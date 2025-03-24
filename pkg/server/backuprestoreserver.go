@@ -12,13 +12,11 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/gardener/etcd-backup-restore/pkg/etcdutil/client"
-	"k8s.io/apimachinery/pkg/util/sets"
-
 	"github.com/gardener/etcd-backup-restore/pkg/backoff"
 	"github.com/gardener/etcd-backup-restore/pkg/defragmentor"
 	"github.com/gardener/etcd-backup-restore/pkg/errors"
 	"github.com/gardener/etcd-backup-restore/pkg/etcdutil"
+	"github.com/gardener/etcd-backup-restore/pkg/etcdutil/client"
 	"github.com/gardener/etcd-backup-restore/pkg/health/heartbeat"
 	"github.com/gardener/etcd-backup-restore/pkg/health/membergarbagecollector"
 	"github.com/gardener/etcd-backup-restore/pkg/initializer"
@@ -34,6 +32,7 @@ import (
 	"github.com/robfig/cron/v3"
 	"github.com/sirupsen/logrus"
 	"go.etcd.io/etcd/pkg/types"
+	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/client-go/util/retry"
 )
 

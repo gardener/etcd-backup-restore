@@ -9,10 +9,11 @@ import (
 	"fmt"
 	"time"
 
+	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
+
 	"github.com/sirupsen/logrus"
 
 	. "github.com/gardener/etcd-backup-restore/pkg/leaderelection"
-	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )

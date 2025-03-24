@@ -12,8 +12,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/aliyun/aliyun-oss-go-sdk/oss"
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
+
+	"github.com/aliyun/aliyun-oss-go-sdk/oss"
 )
 
 type uploadParts []oss.UploadPart

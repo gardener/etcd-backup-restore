@@ -18,13 +18,13 @@ import (
 	"sync"
 	"time"
 
-	"cloud.google.com/go/storage"
 	stiface "github.com/gardener/etcd-backup-restore/pkg/snapstore/gcs"
+	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
+
+	"cloud.google.com/go/storage"
 	"github.com/sirupsen/logrus"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
-
-	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 )
 
 const (

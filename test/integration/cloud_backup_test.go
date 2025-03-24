@@ -17,12 +17,13 @@ import (
 	"github.com/gardener/etcd-backup-restore/pkg/initializer/validator"
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
-	. "github.com/gardener/etcd-backup-restore/test/integration"
 
-	. "github.com/onsi/ginkgo/v2"
-	. "github.com/onsi/gomega"
 	"github.com/sirupsen/logrus"
 	"go.uber.org/zap"
+
+	. "github.com/gardener/etcd-backup-restore/test/integration"
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
 )
 
 func startEtcd() (*Cmd, *chan error) {

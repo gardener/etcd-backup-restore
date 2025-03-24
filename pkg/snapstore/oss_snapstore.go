@@ -18,10 +18,10 @@ import (
 	"sync"
 	"time"
 
+	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
+
 	"github.com/aliyun/aliyun-oss-go-sdk/oss"
 	"github.com/sirupsen/logrus"
-
-	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 )
 
 // OSSBucket is an interface for oss.Bucket used in snapstore

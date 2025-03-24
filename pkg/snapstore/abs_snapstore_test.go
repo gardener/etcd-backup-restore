@@ -14,11 +14,12 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
+
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blob"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blockblob"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/container"
-	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	"k8s.io/utils/ptr"
 )
 

@@ -20,6 +20,8 @@ import (
 	"sync"
 	"time"
 
+	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
+
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
@@ -30,8 +32,6 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/container"
 	"github.com/sirupsen/logrus"
 	"k8s.io/utils/ptr"
-
-	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 )
 
 const (

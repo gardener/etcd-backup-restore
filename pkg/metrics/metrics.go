@@ -7,9 +7,9 @@ package metrics
 import (
 	"sort"
 
-	"github.com/prometheus/client_golang/prometheus"
-
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
+
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 const (

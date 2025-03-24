@@ -21,13 +21,13 @@ import (
 	"time"
 
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
-	"github.com/sirupsen/logrus"
 
 	"github.com/gophercloud/gophercloud"
 	"github.com/gophercloud/gophercloud/openstack"
 	"github.com/gophercloud/gophercloud/openstack/objectstorage/v1/objects"
 	"github.com/gophercloud/gophercloud/pagination"
 	"github.com/gophercloud/utils/openstack/clientconfig"
+	"github.com/sirupsen/logrus"
 )
 
 const (

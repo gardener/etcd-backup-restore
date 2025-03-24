@@ -7,9 +7,8 @@ package cmd
 import (
 	"context"
 
-	"sigs.k8s.io/yaml"
-
 	"github.com/spf13/cobra"
+	"sigs.k8s.io/yaml"
 )
 
 // NewServerCommand create cobra command for snapshot
