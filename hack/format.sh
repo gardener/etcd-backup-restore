@@ -10,6 +10,10 @@ set -o pipefail
 
 echo "> Format"
 
+# Execute automatic code formatting directive.
+PACKAGES="$(go list -mod=vendor -e ./...)"
+go fmt ${PACKAGES}
+
 for p in "$@" ; do
   goimports-reviser -rm-unused \
    -imports-order "std,company,project,general,blanked,dotted" \
