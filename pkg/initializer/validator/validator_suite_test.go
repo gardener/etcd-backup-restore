@@ -83,10 +83,10 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 	Expect(err).ShouldNot(HaveOccurred())
 
 	return data
-}, func(data []byte) {})
+}, func(_ []byte) {})
 
 // runSnapshotter creates a snapshotter object and runs it for a duration specified by 'snapshotterDurationSeconds'
-func runSnapshotter(logger *logrus.Entry, deltaSnapshotPeriod time.Duration, endpoints []string, stopCh <-chan struct{}) error {
+func runSnapshotter(logger *logrus.Entry, _ time.Duration, endpoints []string, stopCh <-chan struct{}) error {
 	snapstoreConfig := &brtypes.SnapstoreConfig{Container: snapstoreDir, Provider: "Local"}
 	store, err := snapstore.GetSnapstore(snapstoreConfig)
 	if err != nil {
@@ -155,8 +155,8 @@ func copyDir(sourceDirPath, destinationDirPath string) error {
 		}
 
 		if fileInfo.Mode().IsDir() {
-			os.Mkdir(destPath, fileInfo.Mode())
-			copyDir(sourcePath, destPath)
+			_ = os.Mkdir(destPath, fileInfo.Mode())
+			_ = copyDir(sourcePath, destPath)
 		} else if fileInfo.Mode().IsRegular() {
 			if err := copyFile(sourcePath, destPath, fileInfo.Mode()); err != nil {
 				return err

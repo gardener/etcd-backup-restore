@@ -78,7 +78,7 @@ var _ = Describe("Miscellaneous Tests", func() {
 			Expect(err).ToNot(HaveOccurred())
 			Expect(len(snaps)).To(Equal(n * 2))
 			expectedSnapID := 0
-			for i := 0; i < n; i++ {
+			for i := range n {
 				if reflect.DeepEqual(snaps[i].Kind, brtypes.SnapshotKindFull) {
 					Expect(snaps[i].SnapName).To(Equal(fmt.Sprintf("%s-%d", brtypes.SnapshotKindFull, expectedSnapID)))
 					Expect(snaps[i+1].SnapName).To(Equal(fmt.Sprintf("%s-%d", brtypes.SnapshotKindDelta, expectedSnapID)))
@@ -93,9 +93,9 @@ var _ = Describe("Miscellaneous Tests", func() {
 			})
 			Expect(err).ToNot(HaveOccurred())
 			Expect(len(backups)).To(Equal(n * 2))
-			for i := 0; i < n; i++ {
+			for i := range n {
 				if reflect.DeepEqual(backups[i].Kind, brtypes.SnapshotKindFull) {
-					backups[i].CreatedOn.After(time.Now().UTC().AddDate(0, 0, -n))
+					Expect(backups[i].CreatedOn.After(time.Now().UTC().AddDate(0, 0, -n))).To(BeTrue())
 				}
 			}
 		})
@@ -594,7 +594,7 @@ var _ = Describe("Miscellaneous Tests", func() {
 		)
 		Context("When POD_NAME environment variable is not set", func() {
 			DescribeTable("should return an error",
-				func(field string, function func(string) ([]string, error)) {
+				func(_ string, function func(string) ([]string, error)) {
 					_, err := function(configFile)
 					Expect(err).To(HaveOccurred())
 				},
@@ -614,7 +614,7 @@ var _ = Describe("Miscellaneous Tests", func() {
 
 			Context("When the config file cannot be read", func() {
 				DescribeTable("should return an error",
-					func(field string, function func(string) ([]string, error)) {
+					func(_ string, function func(string) ([]string, error)) {
 						_, err := function(configFile)
 						Expect(err).To(HaveOccurred())
 					},
@@ -635,7 +635,7 @@ var _ = Describe("Miscellaneous Tests", func() {
 				})
 
 				DescribeTable("should return an error",
-					func(field string, function func(string) ([]string, error)) {
+					func(_ string, function func(string) ([]string, error)) {
 						writeConfigToFile(configFile, config)
 
 						_, err := function(configFile)
@@ -963,7 +963,7 @@ func emptyStatefulSet(name, namespace string) *appsv1.StatefulSet {
 
 func generateSnapshotList(n int) brtypes.SnapList {
 	snapList := brtypes.SnapList{}
-	for i := 0; i < n; i++ {
+	for i := range n {
 		fullSnap := &brtypes.Snapshot{
 			SnapName:  fmt.Sprintf("%s-%d", brtypes.SnapshotKindFull, i),
 			Kind:      brtypes.SnapshotKindFull,
@@ -991,15 +991,15 @@ func (ds *DummyStore) List(_ bool) (brtypes.SnapList, error) {
 	return ds.SnapList, nil
 }
 
-func (ds *DummyStore) Delete(s brtypes.Snapshot) error {
+func (ds *DummyStore) Delete(_ brtypes.Snapshot) error {
 	return nil
 }
 
-func (ds *DummyStore) Save(snap brtypes.Snapshot, rc io.ReadCloser) error {
+func (ds *DummyStore) Save(_ brtypes.Snapshot, _ io.ReadCloser) error {
 	return nil
 }
 
-func (ds *DummyStore) Fetch(snap brtypes.Snapshot) (io.ReadCloser, error) {
+func (ds *DummyStore) Fetch(_ brtypes.Snapshot) (io.ReadCloser, error) {
 	return nil, nil
 }
 

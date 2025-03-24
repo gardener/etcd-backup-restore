@@ -177,7 +177,7 @@ func (e *EtcdInitializer) restoreCorruptData() (bool, error) {
 		logger.Errorf("failed to get latest set of snapshot: %v", err)
 		return false, err
 	}
-	if baseSnap == nil && (deltaSnapList == nil || len(deltaSnapList) == 0) {
+	if baseSnap == nil && len(deltaSnapList) == 0 {
 		// Snapstore is considered to be the source of truth. Thus, if
 		// snapstore exists but is empty, data directory should be cleared.
 		logger.Infof("No snapshot found. Will remove the data directory.")

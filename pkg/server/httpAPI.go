@@ -201,7 +201,7 @@ func (h *HTTPHandler) Stop() error {
 }
 
 // serveHealthz serves the health status of the server
-func (h *HTTPHandler) serveHealthz(rw http.ResponseWriter, req *http.Request) {
+func (h *HTTPHandler) serveHealthz(rw http.ResponseWriter, _ *http.Request) {
 	h.checkAndSetSecurityHeaders(rw)
 	rw.WriteHeader(h.GetStatus())
 	healthCheck := &healthCheck{
@@ -272,7 +272,7 @@ func (h *HTTPHandler) serveInitialize(rw http.ResponseWriter, req *http.Request)
 }
 
 // serveInitializationStatus serves the etcd initialization progress status
-func (h *HTTPHandler) serveInitializationStatus(rw http.ResponseWriter, req *http.Request) {
+func (h *HTTPHandler) serveInitializationStatus(rw http.ResponseWriter, _ *http.Request) {
 	h.checkAndSetSecurityHeaders(rw)
 	h.initializationStatusMutex.Lock()
 	defer h.initializationStatusMutex.Unlock()

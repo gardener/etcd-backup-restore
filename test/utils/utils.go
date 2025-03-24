@@ -120,9 +120,9 @@ func getClientPortNo(port string) string {
 
 // EtcdDataPopulationResponse is response about etcd data population
 type EtcdDataPopulationResponse struct {
+	Err         error
 	KeyTo       int
 	EndRevision int64
-	Err         error
 }
 
 // PopulateEtcd sequentially puts key-value pairs into the embedded etcd, from key <keyFrom> (including) to <keyTo> (excluding). Every key divisible by 10 will be

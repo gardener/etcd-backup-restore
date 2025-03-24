@@ -32,13 +32,13 @@ const (
 
 // Heartbeat contains information to perform regular heart beats in a Kubernetes cluster.
 type Heartbeat struct {
+	k8sClient      client.Client
 	logger         *logrus.Entry
 	heartbeatTimer *time.Timer
 	etcdConfig     *brtypes.EtcdConnectionConfig
-	k8sClient      client.Client
+	metadata       map[string]string // metadata is currently added as annotations to the k8s lease object
 	podName        string
 	podNamespace   string
-	metadata       map[string]string // metadata is currently added as annotations to the k8s lease object
 }
 
 // NewHeartbeat returns the heartbeat object.

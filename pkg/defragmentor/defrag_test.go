@@ -48,12 +48,14 @@ var _ = Describe("Defrag", func() {
 			logger.Infof("etcdConnectionConfig %v, Endpoint %v", etcdConnectionConfig, endpoints)
 			for index := 0; index <= 1000; index++ {
 				ctx, cancel := context.WithTimeout(testCtx, etcdConnectionConfig.ConnectionTimeout.Duration)
-				clientKV.Put(ctx, fmt.Sprintf("%s%d%d", keyPrefix, now, index), valuePrefix)
+				_, err = clientKV.Put(ctx, fmt.Sprintf("%s%d%d", keyPrefix, now, index), valuePrefix)
+				Expect(err).ShouldNot(HaveOccurred())
 				cancel()
 			}
 			for index := 0; index <= 500; index++ {
 				ctx, cancel := context.WithTimeout(testCtx, etcdConnectionConfig.ConnectionTimeout.Duration)
-				clientKV.Delete(ctx, fmt.Sprintf("%s%d%d", keyPrefix, now, index))
+				_, err = clientKV.Delete(ctx, fmt.Sprintf("%s%d%d", keyPrefix, now, index))
+				Expect(err).ShouldNot(HaveOccurred())
 				cancel()
 			}
 		})

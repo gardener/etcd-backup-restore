@@ -26,10 +26,10 @@ import (
 type fakeABSContainerClient struct {
 	objects    map[string]*[]byte
 	objectTags map[string]map[string]string
-	prefix     string
-	mutex      sync.Mutex
 	// a map of blobClients so new clients created to a particular blob refer to the same blob
 	blobClients map[string]*fakeBlockBlobClient
+	prefix      string
+	mutex       sync.Mutex
 }
 
 // NewListBlobsFlatPager will directly return a usable instance of *runtime.Pager[azcontainer.ListBlobsFlatResponse]. Returns one page per snapshot.
@@ -60,7 +60,7 @@ func (c *fakeABSContainerClient) NewListBlobsFlatPager(o *container.ListBlobsFla
 			return index < count
 		},
 		// Return one page for each blob
-		Fetcher: func(_ context.Context, page *container.ListBlobsFlatResponse) (container.ListBlobsFlatResponse, error) {
+		Fetcher: func(_ context.Context, _ *container.ListBlobsFlatResponse) (container.ListBlobsFlatResponse, error) {
 			blobItems := []*container.BlobItem{
 				{
 					Name:       &names[index],
@@ -129,17 +129,17 @@ func (c *fakeABSContainerClient) deleteTags(taggedSnapshotName string) {
 }
 
 type fakeBlockBlobClient struct {
-	name             string
 	staging          map[string][]byte
-	mutex            sync.Mutex
 	deleteFn         func()
 	checkExistenceFn func() bool
 	commitFn         func(*[]byte)
 	getContentFn     func() *[]byte
+	name             string
+	mutex            sync.Mutex
 }
 
 // DownloadStream returns the only field that is accessed from the response, which is the io.ReadCloser to the data
-func (c *fakeBlockBlobClient) DownloadStream(ctx context.Context, o *blob.DownloadStreamOptions) (blob.DownloadStreamResponse, error) {
+func (c *fakeBlockBlobClient) DownloadStream(_ context.Context, _ *blob.DownloadStreamOptions) (blob.DownloadStreamResponse, error) {
 	if ok := c.checkExistenceFn(); !ok {
 		return blob.DownloadStreamResponse{}, fmt.Errorf("the blob does not exist")
 	}
@@ -152,18 +152,18 @@ func (c *fakeBlockBlobClient) DownloadStream(ctx context.Context, o *blob.Downlo
 }
 
 // Delete deletes the blobs from the objectMap
-func (c *fakeBlockBlobClient) Delete(ctx context.Context, o *blob.DeleteOptions) (blob.DeleteResponse, error) {
-	if ok := c.checkExistenceFn(); ok {
-		c.deleteFn()
-	} else {
+func (c *fakeBlockBlobClient) Delete(_ context.Context, _ *blob.DeleteOptions) (blob.DeleteResponse, error) {
+	if ok := c.checkExistenceFn(); !ok {
 		return blob.DeleteResponse{}, fmt.Errorf("object with name %s not found", c.name)
 	}
+
+	c.deleteFn()
 
 	return blob.DeleteResponse{}, nil
 }
 
 // CommitBlockList "commits" the blocks in the "staging" area
-func (c *fakeBlockBlobClient) CommitBlockList(ctx context.Context, base64BlockIDs []string, options *blockblob.CommitBlockListOptions) (blockblob.CommitBlockListResponse, error) {
+func (c *fakeBlockBlobClient) CommitBlockList(_ context.Context, _ []string, _ *blockblob.CommitBlockListOptions) (blockblob.CommitBlockListResponse, error) {
 	keys := []string{}
 	for key := range c.staging {
 		keys = append(keys, key)
@@ -182,7 +182,7 @@ func (c *fakeBlockBlobClient) CommitBlockList(ctx context.Context, base64BlockID
 }
 
 // StageBlock "uploads" to the "staging" area for the blobs
-func (c *fakeBlockBlobClient) StageBlock(ctx context.Context, base64BlockID string, body io.ReadSeekCloser, options *blockblob.StageBlockOptions) (blockblob.StageBlockResponse, error) {
+func (c *fakeBlockBlobClient) StageBlock(_ context.Context, base64BlockID string, body io.ReadSeekCloser, _ *blockblob.StageBlockOptions) (blockblob.StageBlockResponse, error) {
 	contents := bytes.NewBuffer([]byte{})
 	if _, err := io.Copy(contents, body); err != nil {
 		return blockblob.StageBlockResponse{}, fmt.Errorf("error while staging the block: %w", err)

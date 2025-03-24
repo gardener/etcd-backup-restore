@@ -27,7 +27,7 @@ func NewSnapshotCommand(ctx context.Context) *cobra.Command {
 		Short: "takes the snapshot of etcd periodically.",
 		Long: `Snapshot utility will backup the etcd at regular interval. It supports
 storing snapshots on various cloud storage providers as well as local disk location.`,
-		Run: func(cmd *cobra.Command, args []string) {
+		Run: func(_ *cobra.Command, _ []string) {
 			printVersionInfo()
 			logger := logrus.NewEntry(logrus.New())
 			runtimelog.SetLogger(logr.New(runtimelog.NullLogSink{}))

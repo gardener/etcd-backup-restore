@@ -22,7 +22,7 @@ func NewCopyCommand(ctx context.Context) *cobra.Command {
 		Use:   "copy",
 		Short: "copy data between buckets",
 		Long:  `Copy data between buckets`,
-		Run: func(cmd *cobra.Command, args []string) {
+		Run: func(_ *cobra.Command, _ []string) {
 			printVersionInfo()
 			logger := logrus.NewEntry(logrus.New())
 			runtimelog.SetLogger(logr.New(runtimelog.NullLogSink{}))

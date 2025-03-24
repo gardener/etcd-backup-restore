@@ -20,14 +20,14 @@ import (
 
 // NewInitializeCommand returns the command to initialize etcd by validating the data
 // directory and restoring from cloud store if needed.
-func NewInitializeCommand(ctx context.Context) *cobra.Command {
+func NewInitializeCommand(_ context.Context) *cobra.Command {
 	opts := newInitializerOptions()
 	// restoreCmd represents the restore command
 	initializeCmd := &cobra.Command{
 		Use:   "initialize",
 		Short: "initialize an etcd instance.",
 		Long:  `Initializes an etcd instance. Data directory is checked for corruption and restored in case of corruption.`,
-		Run: func(cmd *cobra.Command, args []string) {
+		Run: func(_ *cobra.Command, _ []string) {
 			logger := logrus.New()
 			runtimelog.SetLogger(logr.New(runtimelog.NullLogSink{}))
 			if err := opts.validate(); err != nil {

@@ -26,4 +26,4 @@ func TestMembergarbagecollector(t *testing.T) {
 var _ = SynchronizedBeforeSuite(func() []byte {
 	logger.Logger.Out = io.Discard
 	return nil
-}, func(data []byte) {})
+}, func(_ []byte) {})

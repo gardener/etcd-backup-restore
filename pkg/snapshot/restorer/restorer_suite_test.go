@@ -79,7 +79,7 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 
 	keyTo = resp.KeyTo
 	return data
-}, func(data []byte) {})
+}, func(_ []byte) {})
 
 var _ = SynchronizedAfterSuite(func() {}, cleanUp)
 

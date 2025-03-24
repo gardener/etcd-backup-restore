@@ -48,7 +48,7 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 	etcd.Server.Stop()
 	etcd.Close()
 	return data
-}, func(data []byte) {})
+}, func(_ []byte) {})
 
 var _ = SynchronizedAfterSuite(func() {}, func() {
 	err = os.RemoveAll(outputDir)

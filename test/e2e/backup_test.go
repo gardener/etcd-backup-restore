@@ -275,6 +275,7 @@ var _ = Describe("Backup", func() {
 			cmd := fmt.Sprintf("curl http://localhost:%d/initialization/status -s", backupClientPort)
 			stdout, stderr, err := executeContainerCommand(kubeconfigPath, releaseNamespace, podName, debugContainerName, cmd)
 			Expect(err).ShouldNot(HaveOccurred())
+			Expect(stderr).Should(BeEmpty())
 			Expect(stdout).Should(Equal("New"))
 
 			cmd = "ETCDCTL_API=3 ./nonroot/hacks/etcdctl get init-1"

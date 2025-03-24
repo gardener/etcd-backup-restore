@@ -50,7 +50,7 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 	logger.Infof("endpoints: %s", endpoints)
 	var data []byte
 	return data
-}, func(data []byte) {})
+}, func(_ []byte) {})
 
 var _ = SynchronizedAfterSuite(func() {}, func() {
 	etcd.Server.Stop()

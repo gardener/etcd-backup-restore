@@ -126,7 +126,7 @@ var _ = Describe("Running Compactor", func() {
 				if err == nil {
 					os.RemoveAll(tempDataDir)
 				}
-				store.Delete(*compactedSnapshot)
+				_ = store.Delete(*compactedSnapshot)
 			})
 
 			It("should create a snapshot", func() {
@@ -204,7 +204,7 @@ var _ = Describe("Running Compactor", func() {
 				if err == nil {
 					os.RemoveAll(tempDataDir)
 				}
-				store.Delete(*compactedSnapshot)
+				_ = store.Delete(*compactedSnapshot)
 			})
 			It("should create a snapshot", func() {
 				restoreOpts.Config.MaxFetchers = 4

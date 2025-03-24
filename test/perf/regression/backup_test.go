@@ -27,7 +27,7 @@ const (
 	resourcesBasePath            = "test/perf/regression/resources"
 )
 
-func newLogger(purpose string) *logrus.Logger {
+func newLogger(_ string) *logrus.Logger {
 	logger := logrus.New()
 	logger.SetOutput(GinkgoWriter)
 	return logger
@@ -58,6 +58,7 @@ var _ = Describe("Backup", func() {
 		Expect(err).To(BeNil())
 
 		timeout, err = time.ParseDuration(getEnvOrFallback(envTargetTimeoutDuration, defaultTargetTimeoutDuration))
+		Expect(err).ShouldNot(HaveOccurred())
 
 		sourcePath := getEnvOrFallback(envSourcePath, ".")
 		resourcePaths := []string{
@@ -97,7 +98,9 @@ var _ = Describe("Backup", func() {
 			defer cancelContext()
 
 			readyCh := make(chan interface{})
-			go t.watchForJob(ctx, "name=loadtest", readyCh)
+			go func() {
+				_ = t.watchForJob(ctx, "name=loadtest", readyCh)
+			}()
 			Eventually(readyCh, 10*time.Minute).Should(BeClosed())
 
 			running, err := t.isPodRunning("name=etcd")

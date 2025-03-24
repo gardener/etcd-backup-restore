@@ -75,19 +75,19 @@ var _ = Describe("Membergarbagecollector", func() {
 		Context("With three member pods present", func() {
 			BeforeEach(func() {
 				//Create three pods
-				k8sClientset.Create(context.TODO(), getPodWithName("test-etcd-0"))
-				k8sClientset.Create(context.TODO(), getPodWithName("test-etcd-1"))
-				k8sClientset.Create(context.TODO(), getPodWithName("test-etcd-2"))
+				Expect(k8sClientset.Create(context.TODO(), getPodWithName("test-etcd-0"))).ShouldNot(HaveOccurred())
+				Expect(k8sClientset.Create(context.TODO(), getPodWithName("test-etcd-1"))).ShouldNot(HaveOccurred())
+				Expect(k8sClientset.Create(context.TODO(), getPodWithName("test-etcd-2"))).ShouldNot(HaveOccurred())
 			})
 			AfterEach(func() {
-				k8sClientset.Delete(context.TODO(), getPodWithName("test-etcd-0"))
-				k8sClientset.Delete(context.TODO(), getPodWithName("test-etcd-1"))
-				k8sClientset.Delete(context.TODO(), getPodWithName("test-etcd-2"))
+				Expect(k8sClientset.Delete(context.TODO(), getPodWithName("test-etcd-0"))).ShouldNot(HaveOccurred())
+				Expect(k8sClientset.Delete(context.TODO(), getPodWithName("test-etcd-1"))).ShouldNot(HaveOccurred())
+				Expect(k8sClientset.Delete(context.TODO(), getPodWithName("test-etcd-2"))).ShouldNot(HaveOccurred())
 			})
 
 			It("Should not remove any members if equal members in statefulset and etcd cluster", func() {
 				//Create sts object
-				k8sClientset.Create(context.TODO(), getStsWithName("test-etcd", 3))
+				Expect(k8sClientset.Create(context.TODO(), getStsWithName("test-etcd", 3))).ShouldNot(HaveOccurred())
 
 				//Create mocks
 				etcdutilchecker := mocketcdutil.NewMockClusterCloser(ctrl)
@@ -100,12 +100,12 @@ var _ = Describe("Membergarbagecollector", func() {
 				Expect(err).To(BeNil())
 
 				//Cleanup
-				k8sClientset.Delete(context.TODO(), getStsWithName("test-etcd", 3))
+				Expect(k8sClientset.Delete(context.TODO(), getStsWithName("test-etcd", 3))).ShouldNot(HaveOccurred())
 			})
 
 			It("Should not remove any member missing from replicas but with its pod present", func() {
 				//Create sts object
-				k8sClientset.Create(context.TODO(), getStsWithName("test-etcd", 2))
+				Expect(k8sClientset.Create(context.TODO(), getStsWithName("test-etcd", 2))).ShouldNot(HaveOccurred())
 
 				//Create mocks
 				etcdutilchecker := mocketcdutil.NewMockClusterCloser(ctrl)
@@ -118,27 +118,27 @@ var _ = Describe("Membergarbagecollector", func() {
 				Expect(err).To(BeNil())
 
 				//Cleanup
-				k8sClientset.Delete(context.TODO(), getStsWithName("test-etcd", 2))
+				Expect(k8sClientset.Delete(context.TODO(), getStsWithName("test-etcd", 2))).ShouldNot(HaveOccurred())
 			})
 		})
 
 		Context("With two member pods present", func() {
 			BeforeEach(func() {
 				//Create two pods
-				k8sClientset.Create(context.TODO(), getPodWithName("test-etcd-0"))
-				k8sClientset.Create(context.TODO(), getPodWithName("test-etcd-1"))
+				Expect(k8sClientset.Create(context.TODO(), getPodWithName("test-etcd-0"))).ShouldNot(HaveOccurred())
+				Expect(k8sClientset.Create(context.TODO(), getPodWithName("test-etcd-1"))).ShouldNot(HaveOccurred())
 			})
 			AfterEach(func() {
-				k8sClientset.Delete(context.TODO(), getPodWithName("test-etcd-0"))
-				k8sClientset.Delete(context.TODO(), getPodWithName("test-etcd-1"))
+				Expect(k8sClientset.Delete(context.TODO(), getPodWithName("test-etcd-0"))).ShouldNot(HaveOccurred())
+				Expect(k8sClientset.Delete(context.TODO(), getPodWithName("test-etcd-1"))).ShouldNot(HaveOccurred())
 			})
 
 			It("Should not remove the member with the missing pod if it has a lease present", func() {
 				//Create sts object
-				k8sClientset.Create(context.TODO(), getStsWithName("test-etcd", 3))
+				Expect(k8sClientset.Create(context.TODO(), getStsWithName("test-etcd", 3))).ShouldNot(HaveOccurred())
 
 				//Create lease
-				k8sClientset.Create(context.TODO(), getLeaseWithName("test-etcd-2"))
+				Expect(k8sClientset.Create(context.TODO(), getLeaseWithName("test-etcd-2"))).ShouldNot(HaveOccurred())
 
 				//Create mocks
 				etcdutilchecker := mocketcdutil.NewMockClusterCloser(ctrl)
@@ -151,13 +151,13 @@ var _ = Describe("Membergarbagecollector", func() {
 				Expect(err).To(BeNil())
 
 				//Cleanup
-				k8sClientset.Delete(context.TODO(), getStsWithName("test-etcd", 3))
-				k8sClientset.Delete(context.TODO(), getLeaseWithName("test-etcd-2"))
+				Expect(k8sClientset.Delete(context.TODO(), getStsWithName("test-etcd", 3))).ShouldNot(HaveOccurred())
+				Expect(k8sClientset.Delete(context.TODO(), getLeaseWithName("test-etcd-2"))).ShouldNot(HaveOccurred())
 			})
 
 			It("Should remove the member with the missing pod if it has no lease present", func() {
 				//Create sts object
-				k8sClientset.Create(context.TODO(), getStsWithName("test-etcd", 2))
+				Expect(k8sClientset.Create(context.TODO(), getStsWithName("test-etcd", 2))).ShouldNot(HaveOccurred())
 
 				//Create mocks
 				etcdutilchecker := mocketcdutil.NewMockClusterCloser(ctrl)
@@ -170,7 +170,7 @@ var _ = Describe("Membergarbagecollector", func() {
 				Expect(err).To(BeNil())
 
 				//Cleanup
-				k8sClientset.Delete(context.TODO(), getStsWithName("test-etcd", 2))
+				Expect(k8sClientset.Delete(context.TODO(), getStsWithName("test-etcd", 2))).ShouldNot(HaveOccurred())
 			})
 		})
 	})

@@ -34,14 +34,14 @@ func (slice uploadParts) Swap(i, j int) {
 type mockOSSBucket struct {
 	snapstore.OSSBucket
 	objects               map[string]*[]byte
-	prefix                string
 	multiPartUploads      map[string]*[][]byte
-	multiPartUploadsMutex sync.Mutex
+	prefix                string
 	bucketName            string
+	multiPartUploadsMutex sync.Mutex
 }
 
 // GetObject returns the object from map for mock test
-func (m *mockOSSBucket) GetObject(objectKey string, options ...oss.Option) (io.ReadCloser, error) {
+func (m *mockOSSBucket) GetObject(objectKey string, _ ...oss.Option) (io.ReadCloser, error) {
 	if m.objects[objectKey] == nil {
 		return nil, fmt.Errorf("object not found")
 	}
@@ -50,7 +50,7 @@ func (m *mockOSSBucket) GetObject(objectKey string, options ...oss.Option) (io.R
 }
 
 // InitiateMultipartUpload returns the multi-parts needed to upload for mock test
-func (m *mockOSSBucket) InitiateMultipartUpload(objectKey string, options ...oss.Option) (oss.InitiateMultipartUploadResult, error) {
+func (m *mockOSSBucket) InitiateMultipartUpload(objectKey string, _ ...oss.Option) (oss.InitiateMultipartUploadResult, error) {
 	uploadID := time.Now().String()
 	var parts [][]byte
 	m.multiPartUploads[uploadID] = &parts
@@ -62,7 +62,7 @@ func (m *mockOSSBucket) InitiateMultipartUpload(objectKey string, options ...oss
 }
 
 // UploadPart returns part uploaded for mock test
-func (m *mockOSSBucket) UploadPart(imur oss.InitiateMultipartUploadResult, reader io.Reader, partSize int64, partNumber int, options ...oss.Option) (oss.UploadPart, error) {
+func (m *mockOSSBucket) UploadPart(imur oss.InitiateMultipartUploadResult, reader io.Reader, partSize int64, partNumber int, _ ...oss.Option) (oss.UploadPart, error) {
 	if partNumber < 0 {
 		return oss.UploadPart{}, fmt.Errorf("part number should be positive integer")
 	}
@@ -97,7 +97,7 @@ func (m *mockOSSBucket) UploadPart(imur oss.InitiateMultipartUploadResult, reade
 }
 
 // CompleteMultipartUpload returns parts uploaded result for mock test
-func (m *mockOSSBucket) CompleteMultipartUpload(imur oss.InitiateMultipartUploadResult, parts []oss.UploadPart, options ...oss.Option) (oss.CompleteMultipartUploadResult, error) {
+func (m *mockOSSBucket) CompleteMultipartUpload(imur oss.InitiateMultipartUploadResult, parts []oss.UploadPart, _ ...oss.Option) (oss.CompleteMultipartUploadResult, error) {
 	if m.multiPartUploads[imur.UploadID] == nil {
 		return oss.CompleteMultipartUploadResult{}, fmt.Errorf("multipart upload not initiated")
 	}
@@ -125,13 +125,13 @@ func (m *mockOSSBucket) CompleteMultipartUpload(imur oss.InitiateMultipartUpload
 }
 
 // AbortMultipartUpload returns the result of aborting upload.
-func (m *mockOSSBucket) AbortMultipartUpload(imur oss.InitiateMultipartUploadResult, options ...oss.Option) error {
+func (m *mockOSSBucket) AbortMultipartUpload(imur oss.InitiateMultipartUploadResult, _ ...oss.Option) error {
 	delete(m.multiPartUploads, imur.UploadID)
 	return nil
 }
 
 // ListObject returns the objects from map for mock test
-func (m *mockOSSBucket) ListObjects(options ...oss.Option) (oss.ListObjectsResult, error) {
+func (m *mockOSSBucket) ListObjects(_ ...oss.Option) (oss.ListObjectsResult, error) {
 	var contents []oss.ObjectProperties
 	for key := range m.objects {
 		tempObj := oss.ObjectProperties{
@@ -147,7 +147,7 @@ func (m *mockOSSBucket) ListObjects(options ...oss.Option) (oss.ListObjectsResul
 }
 
 // DeleteObject deletes the object from map for mock test
-func (m *mockOSSBucket) DeleteObject(objectKey string, options ...oss.Option) error {
+func (m *mockOSSBucket) DeleteObject(objectKey string, _ ...oss.Option) error {
 	delete(m.objects, objectKey)
 	return nil
 }

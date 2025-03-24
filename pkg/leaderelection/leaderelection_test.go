@@ -35,7 +35,7 @@ var _ = Describe("Etcd Cluster", func() {
 		etcdConnectionConfig = brtypes.NewEtcdConnectionConfig()
 
 		leaderCallbacks := &brtypes.LeaderCallbacks{
-			OnStartedLeading: func(ctx context.Context) {
+			OnStartedLeading: func(_ context.Context) {
 				logger.Info("starting snapshotter...")
 				startSnapshotterCount++
 			},
@@ -57,7 +57,7 @@ var _ = Describe("Etcd Cluster", func() {
 		}
 
 		promoteCallback := &brtypes.PromoteLearnerCallback{
-			Promote: func(ctx context.Context, logger *logrus.Entry) {
+			Promote: func(_ context.Context, logger *logrus.Entry) {
 				logger.Info("promote a learner to voting member...")
 				learnerToVotingMember++
 				promoteLearnerCount++

@@ -18,7 +18,7 @@ func NewServerCommand(ctx context.Context) *cobra.Command {
 		Use:   "server",
 		Short: "start the http server with backup scheduler.",
 		Long:  `Server will keep listening for http request to deliver its functionality through http endpoints.`,
-		Run: func(cmd *cobra.Command, args []string) {
+		Run: func(_ *cobra.Command, _ []string) {
 			printVersionInfo()
 
 			if err := opts.loadConfigFromFile(); err != nil {

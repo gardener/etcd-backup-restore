@@ -37,8 +37,6 @@ const (
 
 // LeaderElector holds the all configuration necessary to elect backup-restore Leader.
 type LeaderElector struct {
-	// CurrentState defines currentState of backup-restore for LeaderElection.
-	CurrentState         string
 	Config               *brtypes.Config
 	EtcdConnectionConfig *brtypes.EtcdConnectionConfig
 	logger               *logrus.Entry
@@ -46,6 +44,8 @@ type LeaderElector struct {
 	LeaseCallbacks       *brtypes.MemberLeaseCallbacks
 	PromoteCallback      *brtypes.PromoteLearnerCallback
 	CheckMemberStatus    brtypes.EtcdMemberStatusCallbackFunc
+	// CurrentState defines currentState of backup-restore for LeaderElection.
+	CurrentState string
 }
 
 // NewLeaderElector returns LeaderElector configurations.
@@ -185,7 +185,7 @@ func EtcdMemberStatus(ctx context.Context, etcdConnectionConfig *brtypes.EtcdCon
 		return true, false, nil
 	} else if response.Leader == NoLeaderState {
 		return false, false, &errors.EtcdError{
-			Message: fmt.Sprintf("currently there is no etcd leader present may be due to etcd quorum loss or election is being held"),
+			Message: "currently there is no etcd leader present may be due to etcd quorum loss or election is being held",
 		}
 	} else if response.IsLearner {
 		return false, true, nil

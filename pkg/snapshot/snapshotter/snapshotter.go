@@ -203,7 +203,7 @@ func (ssr *Snapshotter) Run(stopCh <-chan struct{}, startWithFullSnapshot bool) 
 
 // TriggerFullSnapshot sends the events to take full snapshot. This is to
 // trigger full snapshot externally out of regular schedule.
-func (ssr *Snapshotter) TriggerFullSnapshot(ctx context.Context, isFinal bool) (*brtypes.Snapshot, error) {
+func (ssr *Snapshotter) TriggerFullSnapshot(_ context.Context, isFinal bool) (*brtypes.Snapshot, error) {
 	ssr.SsrStateMutex.Lock()
 	defer ssr.SsrStateMutex.Unlock()
 

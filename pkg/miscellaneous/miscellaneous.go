@@ -278,7 +278,7 @@ func GetLeader(ctx context.Context, clientMaintenance etcdClient.MaintenanceClos
 
 	if response.Leader == NoLeaderState {
 		return NoLeaderState, nil, &errors.EtcdError{
-			Message: fmt.Sprintf("currently there is no Etcd Leader present may be due to etcd quorum loss."),
+			Message: "currently there is no Etcd Leader present may be due to etcd quorum loss.",
 		}
 	}
 
@@ -411,7 +411,7 @@ func ContainsBackup(store brtypes.SnapStore, logger *logrus.Logger) bool {
 		return false
 	}
 
-	if baseSnap == nil && (deltaSnapList == nil || len(deltaSnapList) == 0) {
+	if baseSnap == nil && len(deltaSnapList) == 0 {
 		logger.Infof("No snapshot found. BackupBucket is empty")
 		return false
 	}

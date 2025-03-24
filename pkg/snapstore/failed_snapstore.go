@@ -27,7 +27,7 @@ func (f *FailedSnapStore) Fetch(snap brtypes.Snapshot) (io.ReadCloser, error) {
 }
 
 // Save will write the snapshot to store
-func (f *FailedSnapStore) Save(snap brtypes.Snapshot, rc io.ReadCloser) error {
+func (f *FailedSnapStore) Save(snap brtypes.Snapshot, _ io.ReadCloser) error {
 	return fmt.Errorf("failed to save snapshot %s", snap.SnapName)
 }
 

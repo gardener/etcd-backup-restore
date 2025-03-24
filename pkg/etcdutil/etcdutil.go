@@ -49,8 +49,8 @@ func NewFactory(cfg brtypes.EtcdConnectionConfig, opts ...client.Option) client.
 
 // factoryImpl implements the client.Factory interface by constructing new client objects.
 type factoryImpl struct {
-	brtypes.EtcdConnectionConfig
 	options *client.Options
+	brtypes.EtcdConnectionConfig
 }
 
 func (f *factoryImpl) NewClient() (*clientv3.Client, error) {
