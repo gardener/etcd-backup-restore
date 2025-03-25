@@ -426,8 +426,8 @@ After adding the annotation or tag, `etcd-backup-restore` will ignore these snap
 #### AWS S3
 
 - Ignoring or skipping any snapshot object(s) present in AWS S3 bucket is a two-step process:
-  1. Put a delete marker on the top of object. Please refer [here](https://docs.aws.amazon.com/AmazonS3/latest/userguide/DeletingObjectVersions.html) for more information regarding deletion in versioning enabled S3 bucket.
-  2. Then add a tag to snapshot object which you wish to be skipped/ignored during restoration:
+  1. Put a delete marker on the top of snapshot object. Please refer [here](https://docs.aws.amazon.com/AmazonS3/latest/userguide/DeletingObjectVersions.html) for more information regarding deletion in versioning enabled S3 bucket.
+  2. Then tag the snapshot object which you wish to skip or ignore during restoration with following key and value:
   - **Key:** `x-etcd-snapshot-exclude`
   - **Value:** `true`
 
