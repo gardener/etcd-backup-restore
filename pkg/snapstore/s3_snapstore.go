@@ -577,8 +577,8 @@ func (s *S3SnapStore) List(includeAll bool) (brtypes.SnapList, error) {
 		// allSnapKeysMapToCreationTime contains oldest snapshots keys mapped to their versionID and creation timestamp.
 		allSnapKeyMapToSnapshotInfo := make(map[string]*snapshotMetaInfo)
 
-		// allDeleteMarkersInfo contains versionID of all delete markers present(if any) in the S3 bucket.
-		allDeleteMarkersInfo := make(map[string]int)
+		// allDeleteMarkersInfo contains key of all delete markers present(if any) in the S3 bucket.
+		allDeleteMarkersInfo := make(map[string]struct{})
 
 		if err := s.client.ListObjectVersionsPages(in, func(page *s3.ListObjectVersionsOutput, lastPage bool) bool {
 			for _, version := range page.Versions {
@@ -603,17 +603,12 @@ func (s *S3SnapStore) List(includeAll bool) (brtypes.SnapList, error) {
 					}
 				}
 			}
-			return !lastPage
-		}); err != nil {
-			return nil, err
-		}
 
-		// traverse all the deletion markers present(if any) in the bucket
-		if err := s.client.ListObjectVersionsPages(in, func(page *s3.ListObjectVersionsOutput, lastPage bool) bool {
+			// traverse all the deletion markers present(if any) in the bucket
 			for _, deletionMarker := range page.DeleteMarkers {
 				deletionKey := (*deletionMarker.Key)[len(*page.Prefix):]
 				if strings.Contains(deletionKey, backupVersionV1) || strings.Contains(deletionKey, backupVersionV2) {
-					allDeleteMarkersInfo[*deletionMarker.Key]++
+					allDeleteMarkersInfo[*deletionMarker.Key] = struct{}{}
 				}
 			}
 			return !lastPage
