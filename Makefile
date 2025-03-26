@@ -3,16 +3,18 @@
 # SPDX-License-Identifier: Apache-2.0
 
 VERSION             ?= $(shell cat VERSION)
+GIT_SHA             := $(shell git rev-parse --short HEAD || echo "GitNotFound")
 REPO_ROOT           := $(shell dirname "$(realpath $(lastword $(MAKEFILE_LIST)))")
 REGISTRY            ?= europe-docker.pkg.dev/gardener-project/snapshots
 IMAGE_REPOSITORY    := $(REGISTRY)/gardener/etcdbrctl
+REPOSITORY          ?= "github.com/gardener/etcd-backup-restore"
 IMAGE_TAG           := $(VERSION)
 BUILD_DIR           := build
 PLATFORM            ?= $(shell docker info --format '{{.OSType}}/{{.Architecture}}')
-BIN_DIR             := bin
+BINARY_DIR          ?= bin
 COVERPROFILE        := test/output/coverprofile.out
 IMG                 ?= ${IMAGE_REPOSITORY}:${IMAGE_TAG}
-KUBECONFIG_PATH     :=$(REPO_ROOT)/hack/e2e-test/infrastructure/kind/kubeconfig
+KUBECONFIG_PATH     := $(REPO_ROOT)/hack/e2e-test/infrastructure/kind/kubeconfig
 
 .DEFAULT_GOAL := build
 
@@ -60,22 +62,22 @@ verify: check test
 
 .PHONY: clean
 clean:
-	@rm -rf $(BIN_DIR)/
+	@rm -rf $(BINARY_DIR)/
 
 # Rules for testing (unit, integration and end-2-end)
 # -------------------------------------------------------------------------
 # Run tests
-.PHONY: test
-test: $(GINGKO)
-	@.ci/unit_test
+.PHONY: test-unit
+test-unit: $(GINKGO)
+	@./hack/test-unit.sh
 
 .PHONY: perf-regression-test
 perf-regression-test:
 	@.ci/performance_regression_test
 
-.PHONY: integration-test
-integration-test: $(GINKGO)
-	@.ci/integration_test
+.PHONY: test-integration
+test-integration: $(GINKGO)
+	@./hack/test-integration.sh
 
 .PHONY: show-coverage
 show-coverage:
@@ -106,7 +108,12 @@ ci-e2e-kind-gcp:
 # -------------------------------------------------------------------------
 .PHONY: build
 build:
-	@.ci/build
+	@CGO_ENABLED=0  go build \
+	  -v \
+	  -mod vendor \
+	  -o "${BINARY_DIR}/etcdbrctl" \
+	  -ldflags "-w -X ${REPOSITORY}/pkg/version.Version=${VERSION} -X ${REPOSITORY}/pkg/version.GitSHA=${GIT_SHA}" \
+	  main.go
 
 .PHONY: docker-build
 docker-build:

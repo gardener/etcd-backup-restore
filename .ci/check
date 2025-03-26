@@ -1,33 +1,26 @@
 #!/usr/bin/env bash
+#
 # SPDX-FileCopyrightText: 2024 SAP SE or an SAP affiliate company and Gardener contributors
 #
 # SPDX-License-Identifier: Apache-2.0
-set -e
+set -o errexit
+set -o nounset
+set -o pipefail
 
-# For the check step concourse will set the following environment variables:
+# For all steps, concourse will set the following environment variables:
 # SOURCE_PATH - path to component repository root directory.
-if [[ $(uname) == 'Darwin' ]]; then
-  READLINK_BIN="greadlink"
-else
-  READLINK_BIN="readlink"
-fi
-
 if [[ -z "${SOURCE_PATH}" ]]; then
-  export SOURCE_PATH="$(${READLINK_BIN} -f "$(dirname ${0})/..")"
+  SOURCE_PATH="$(readlink -f "$(dirname "${BASH_SOURCE[0]}")/..")"
 else
-  export SOURCE_PATH="$(${READLINK_BIN} -f ${SOURCE_PATH})"
+  SOURCE_PATH="$(readlink -f "${SOURCE_PATH}")"
 fi
+export SOURCE_PATH
 
-VCS="github.com"
-ORGANIZATION="gardener"
-PROJECT="etcd-backup-restore"
-REPOSITORY=${VCS}/${ORGANIZATION}/${PROJECT}
-cd "${SOURCE_PATH}"
+source "${SOURCE_PATH}/.ci/common.sh"
 
 ###############################################################################
 
-# PACKAGES="$(go list -mod=vendor -e ./...)"
-# LINT_FOLDERS="$(echo ${PACKAGES} | sed "s|github.com/gardener/etcd-backup-restore|.|g")"
+cd "${SOURCE_PATH}"
 
 echo "> Running check..."
 make check
