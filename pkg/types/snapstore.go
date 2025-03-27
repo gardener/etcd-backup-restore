@@ -87,19 +87,18 @@ type SnapStore interface {
 
 // Snapshot structure represents the metadata of snapshot.
 type Snapshot struct {
-	Kind                   string    `json:"kind"` // incr:incremental, full:full
-	StartRevision          int64     `json:"startRevision"`
-	LastRevision           int64     `json:"lastRevision"` // latest revision of snapshot
 	CreatedOn              time.Time `json:"createdOn"`
+	ImmutabilityExpiryTime time.Time `json:"immutabilityExpriyTime"`
+	VersionID              *string   `json:"versionID"` // It is used only for AWS S3 object lock immutability.
+	Kind                   string    `json:"kind"`      // incr:incremental, full:full
 	SnapDir                string    `json:"snapDir"`
 	SnapName               string    `json:"snapName"`
-	IsChunk                bool      `json:"isChunk"`
 	Prefix                 string    `json:"prefix"`            // Points to correct prefix of a snapshot in snapstore (Required for Backward Compatibility)
 	CompressionSuffix      string    `json:"compressionSuffix"` // CompressionSuffix depends on compression policy
+	StartRevision          int64     `json:"startRevision"`
+	LastRevision           int64     `json:"lastRevision"` // latest revision of snapshot
+	IsChunk                bool      `json:"isChunk"`
 	IsFinal                bool      `json:"isFinal"`
-	ImmutabilityExpiryTime time.Time `json:"immutabilityExpriyTime"`
-	// It is used only for AWS S3 object lock immutability.
-	VersionID *string `json:"versionID"`
 }
 
 // IsDeletable determines if the snapshot can be deleted.
@@ -190,12 +189,12 @@ type SnapstoreConfig struct {
 	Container string `json:"container"`
 	// Prefix holds the prefix or directory under StorageContainer under which snapshot will be stored.
 	Prefix string `json:"prefix,omitempty"`
+	// Temporary Directory
+	TempDir string `json:"tempDir,omitempty"`
 	// MaxParallelChunkUploads holds the maximum number of parallel chunk uploads allowed.
 	MaxParallelChunkUploads uint `json:"maxParallelChunkUploads,omitempty"`
 	// MinChunkSize holds the minimum size for a multi-part chunk upload.
 	MinChunkSize int64 `json:"minChunkSize,omitempty"`
-	// Temporary Directory
-	TempDir string `json:"tempDir,omitempty"`
 	// IsSource determines if this SnapStore is the source for a copy operation
 	IsSource bool `json:"isSource,omitempty"`
 	// IsEmulatorEnabled indicates whether a storage emulator is being used for the snapstore.

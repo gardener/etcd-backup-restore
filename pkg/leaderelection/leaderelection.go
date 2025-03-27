@@ -13,6 +13,7 @@ import (
 	"github.com/gardener/etcd-backup-restore/pkg/etcdutil"
 	"github.com/gardener/etcd-backup-restore/pkg/metrics"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
+
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/sirupsen/logrus"
 )
@@ -36,8 +37,6 @@ const (
 
 // LeaderElector holds the all configuration necessary to elect backup-restore Leader.
 type LeaderElector struct {
-	// CurrentState defines currentState of backup-restore for LeaderElection.
-	CurrentState         string
 	Config               *brtypes.Config
 	EtcdConnectionConfig *brtypes.EtcdConnectionConfig
 	logger               *logrus.Entry
@@ -45,6 +44,8 @@ type LeaderElector struct {
 	LeaseCallbacks       *brtypes.MemberLeaseCallbacks
 	PromoteCallback      *brtypes.PromoteLearnerCallback
 	CheckMemberStatus    brtypes.EtcdMemberStatusCallbackFunc
+	// CurrentState defines currentState of backup-restore for LeaderElection.
+	CurrentState string
 }
 
 // NewLeaderElector returns LeaderElector configurations.
@@ -165,11 +166,10 @@ func EtcdMemberStatus(ctx context.Context, etcdConnectionConfig *brtypes.EtcdCon
 	}
 	defer client.Close()
 
-	if len(etcdConnectionConfig.Endpoints) > 0 {
-		endPoint = etcdConnectionConfig.Endpoints[0]
-	} else {
+	if len(etcdConnectionConfig.Endpoints) == 0 {
 		return false, false, fmt.Errorf("etcd endpoints are not passed correctly")
 	}
+	endPoint = etcdConnectionConfig.Endpoints[0]
 
 	ctx, cancel := context.WithTimeout(ctx, etcdConnectionTimeout)
 	defer cancel()
@@ -184,7 +184,7 @@ func EtcdMemberStatus(ctx context.Context, etcdConnectionConfig *brtypes.EtcdCon
 		return true, false, nil
 	} else if response.Leader == NoLeaderState {
 		return false, false, &errors.EtcdError{
-			Message: fmt.Sprintf("currently there is no etcd leader present may be due to etcd quorum loss or election is being held"),
+			Message: "currently there is no etcd leader present may be due to etcd quorum loss or election is being held",
 		}
 	} else if response.IsLearner {
 		return false, true, nil

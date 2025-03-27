@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/gardener/etcd-backup-restore/pkg/wrappers"
+
 	flag "github.com/spf13/pflag"
 )
 
@@ -30,14 +31,14 @@ type CompactOptions struct {
 
 // CompactorConfig holds all configuration options related to `compact` subcommand.
 type CompactorConfig struct {
-	NeedDefragmentation    bool              `json:"needDefrag,omitempty"`
-	SnapshotTimeout        wrappers.Duration `json:"snapshotTimeout,omitempty"`
-	DefragTimeout          wrappers.Duration `json:"defragTimeout,omitempty"`
-	FullSnapshotLeaseName  string            `json:"fullSnapshotLeaseName,omitempty"`
-	DeltaSnapshotLeaseName string            `json:"deltaSnapshotLeaseName,omitempty"`
-	EnabledLeaseRenewal    bool              `json:"enabledLeaseRenewal"`
-	// see https://github.com/gardener/etcd-druid/issues/648
+	FullSnapshotLeaseName     string            `json:"fullSnapshotLeaseName,omitempty"`
+	DeltaSnapshotLeaseName    string            `json:"deltaSnapshotLeaseName,omitempty"`
+	SnapshotTimeout           wrappers.Duration `json:"snapshotTimeout,omitempty"`
+	DefragTimeout             wrappers.Duration `json:"defragTimeout,omitempty"`
 	MetricsScrapeWaitDuration wrappers.Duration `json:"metricsScrapeWaitDuration,omitempty"`
+	NeedDefragmentation       bool              `json:"needDefrag,omitempty"`
+	EnabledLeaseRenewal       bool              `json:"enabledLeaseRenewal"`
+	// see https://github.com/gardener/etcd-druid/issues/648
 }
 
 // NewCompactorConfig returns the CompactorConfig.

@@ -12,10 +12,12 @@ import (
 
 	"github.com/gardener/etcd-backup-restore/pkg/miscellaneous"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	. "github.com/onsi/gomega/gstruct"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 var _ = Describe("Backup", func() {
@@ -273,6 +275,7 @@ var _ = Describe("Backup", func() {
 			cmd := fmt.Sprintf("curl http://localhost:%d/initialization/status -s", backupClientPort)
 			stdout, stderr, err := executeContainerCommand(kubeconfigPath, releaseNamespace, podName, debugContainerName, cmd)
 			Expect(err).ShouldNot(HaveOccurred())
+			Expect(stderr).Should(BeEmpty())
 			Expect(stdout).Should(Equal("New"))
 
 			cmd = "ETCDCTL_API=3 ./nonroot/hacks/etcdctl get init-1"

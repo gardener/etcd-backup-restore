@@ -94,7 +94,7 @@ func handleCreateTextObject(w http.ResponseWriter, r *http.Request) {
 	}
 
 	hash := md5.New()
-	io.WriteString(hash, string(content))
+	_, _ = hash.Write(content)
 	localChecksum := hash.Sum(nil)
 	w.Header().Set("ETag", fmt.Sprintf("%x", localChecksum))
 	w.WriteHeader(http.StatusCreated)
@@ -122,7 +122,7 @@ func handleDownloadObject(w http.ResponseWriter, r *http.Request) {
 		contents = append(contents, data...)
 	}
 
-	w.Write(contents)
+	_, _ = w.Write(contents)
 }
 
 // handleListObjectNames creates an HTTP handler at `/testContainer` on the test handler mux that
@@ -147,7 +147,7 @@ func handleListObjectNames(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("X-Container-Object-Count", fmt.Sprint(len(contents)))
 	w.Header().Set("Content-Type", "text/plain")
 	list := strings.Join(contents, "\n")
-	w.Write([]byte(list))
+	_, _ = w.Write([]byte(list))
 }
 
 // handleDeleteObject creates an HTTP handler at `/testContainer/testObject` on the test handler mux that
@@ -179,11 +179,11 @@ func handleBulkDeleteObject(w http.ResponseWriter, r *http.Request) {
 		bulkDeleteResponse.Errors = append(bulkDeleteResponse.Errors, []string{errorMessage})
 		marshalledResponse, _ := json.Marshal(bulkDeleteResponse)
 		w.WriteHeader(http.StatusOK)
-		w.Write(marshalledResponse)
+		_, _ = w.Write(marshalledResponse)
 		return
 	}
 
-	segmentObjects := strings.Split(strings.TrimSpace(string(buf.Bytes())), "\n")
+	segmentObjects := strings.Split(strings.TrimSpace(buf.String()), "\n")
 	for _, segmentObject := range segmentObjects {
 		segmentObject = "/" + segmentObject
 		// objects.BulkDelete() internally calls url.QueryEscape
@@ -211,5 +211,5 @@ func handleBulkDeleteObject(w http.ResponseWriter, r *http.Request) {
 
 	marshalledResponse, _ := json.Marshal(bulkDeleteResponse)
 	w.WriteHeader(http.StatusOK)
-	w.Write(marshalledResponse)
+	_, _ = w.Write(marshalledResponse)
 }

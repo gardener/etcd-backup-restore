@@ -21,13 +21,13 @@ import (
 	"time"
 
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
-	"github.com/sirupsen/logrus"
 
 	"github.com/gophercloud/gophercloud"
 	"github.com/gophercloud/gophercloud/openstack"
 	"github.com/gophercloud/gophercloud/openstack/objectstorage/v1/objects"
 	"github.com/gophercloud/gophercloud/pagination"
 	"github.com/gophercloud/utils/openstack/clientconfig"
+	"github.com/sirupsen/logrus"
 )
 
 const (
@@ -40,13 +40,13 @@ const (
 
 // SwiftSnapStore is snapstore with Openstack Swift as backend
 type SwiftSnapStore struct {
-	prefix string
-	client *gophercloud.ServiceClient
-	bucket string
+	client  *gophercloud.ServiceClient
+	prefix  string
+	bucket  string
+	tempDir string
 	// maxParallelChunkUploads hold the maximum number of parallel chunk uploads allowed.
 	maxParallelChunkUploads uint
 	minChunkSize            int64
-	tempDir                 string
 }
 
 type applicationCredential struct {
@@ -440,15 +440,15 @@ func (s *SwiftSnapStore) chunkUploader(wg *sync.WaitGroup, stopCh <-chan struct{
 		select {
 		case <-stopCh:
 			return
-		case chunk, ok := <-chunkUploadCh:
+		case uploadChunk, ok := <-chunkUploadCh:
 			if !ok {
 				return
 			}
-			logrus.Infof("Uploading chunk with offset : %d, attempt: %d", chunk.offset, chunk.attempt)
-			err := s.uploadChunk(snap, file, chunk.offset, chunk.size)
+			logrus.Infof("Uploading chunk with offset : %d, attempt: %d", uploadChunk.offset, uploadChunk.attempt)
+			err := s.uploadChunk(snap, file, uploadChunk.offset, uploadChunk.size)
 			errCh <- chunkUploadResult{
 				err:   err,
-				chunk: &chunk,
+				chunk: &uploadChunk,
 			}
 		}
 	}

@@ -17,12 +17,13 @@ import (
 	"github.com/gardener/etcd-backup-restore/pkg/initializer/validator"
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
-	. "github.com/gardener/etcd-backup-restore/test/integration"
 
-	. "github.com/onsi/ginkgo/v2"
-	. "github.com/onsi/gomega"
 	"github.com/sirupsen/logrus"
 	"go.uber.org/zap"
+
+	. "github.com/gardener/etcd-backup-restore/test/integration"
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
 )
 
 func startEtcd() (*Cmd, *chan error) {
@@ -266,7 +267,8 @@ auto-compaction-retention: 30m`
 				Expect(err).ShouldNot(HaveOccurred())
 				defer file.Close()
 				fileWriter := bufio.NewWriter(file)
-				fileWriter.Write([]byte("corrupt file.."))
+				_, err = fileWriter.Write([]byte("corrupt file.."))
+				Expect(err).ShouldNot(HaveOccurred())
 				fileWriter.Flush()
 				zapLogger, _ := zap.NewProduction()
 				dataValidator := validator.DataValidator{
@@ -305,10 +307,12 @@ auto-compaction-retention: 30m`
 				dataDir := os.Getenv("ETCD_DATA_DIR")
 				dbFilePath := filepath.Join(dataDir, "member", "snap", "db")
 				file, err := os.Create(dbFilePath)
+				Expect(err).ShouldNot(HaveOccurred())
 				defer file.Close()
 				fileWriter := bufio.NewWriter(file)
 				Expect(err).ShouldNot(HaveOccurred())
-				fileWriter.WriteString("corrupt file..")
+				_, err = fileWriter.WriteString("corrupt file..")
+				Expect(err).ShouldNot(HaveOccurred())
 				fileWriter.Flush()
 				logger.Info("Successfully corrupted db file.")
 				etcdbrctlArgs := []string{
@@ -389,7 +393,8 @@ auto-compaction-retention: 30m`
 					Expect(err).ShouldNot(HaveOccurred())
 					defer file.Close()
 					fileWriter := bufio.NewWriter(file)
-					fileWriter.Write([]byte("corrupt file.."))
+					_, err = fileWriter.Write([]byte("corrupt file.."))
+					Expect(err).ShouldNot(HaveOccurred())
 					fileWriter.Flush()
 					status, err = getEtcdBrServerStatus()
 					Expect(err).ShouldNot(HaveOccurred())

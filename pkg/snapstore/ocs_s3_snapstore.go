@@ -23,10 +23,10 @@ const (
 type ocsAuthOptions struct {
 	Endpoint           string `json:"endpoint"`
 	Region             string `json:"region"`
-	DisableSSL         bool   `json:"disableSSL"`
-	InsecureSkipVerify bool   `json:"insecureSkipVerify"`
 	AccessKeyID        string `json:"accessKeyID"`
 	SecretAccessKey    string `json:"secretAccessKey"`
+	DisableSSL         bool   `json:"disableSSL"`
+	InsecureSkipVerify bool   `json:"insecureSkipVerify"`
 }
 
 // NewOCSSnapStore creates a new S3SnapStore from shared configuration with the specified bucket.

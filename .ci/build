@@ -1,47 +1,34 @@
 #!/usr/bin/env bash
+#
 # SPDX-FileCopyrightText: 2024 SAP SE or an SAP affiliate company and Gardener contributors
 #
 # SPDX-License-Identifier: Apache-2.0
 
 set -e
 
-# For the build step concourse will set the following environment variables:
+# For all steps, concourse will set the following environment variables:
 # SOURCE_PATH - path to component repository root directory.
 # BINARY_PATH - path to an existing (empty) directory to place build results into.
-if [[ $(uname) == 'Darwin' ]]; then
-  READLINK_BIN="greadlink"
-else
-  READLINK_BIN="readlink"
-fi
-
 if [[ -z "${SOURCE_PATH}" ]]; then
-  export SOURCE_PATH="$(${READLINK_BIN} -f $(dirname ${0})/..)"
+  SOURCE_PATH="$(readlink -f "$(dirname "${BASH_SOURCE[0]}")/..")"
 else
-  export SOURCE_PATH="$(${READLINK_BIN} -f "${SOURCE_PATH}")"
+  SOURCE_PATH="$(readlink -f "${SOURCE_PATH}")"
 fi
+export SOURCE_PATH
+
+source "${SOURCE_PATH}/.ci/common.sh"
 
 if [[ -z "${BINARY_PATH}" ]]; then
-  export BINARY_PATH="${SOURCE_PATH}/bin"
+  export BINARY_DIR="${SOURCE_PATH}/bin"
 else
-  export BINARY_PATH="$(${READLINK_BIN} -f "${BINARY_PATH}")/bin"
+  export BINARY_DIR="$(readlink -f "${BINARY_PATH}")/bin"
 fi
-
-VCS="github.com"
-ORGANIZATION="gardener"
-PROJECT="etcd-backup-restore"
-REPOSITORY=${VCS}/${ORGANIZATION}/${PROJECT}
-cd "${SOURCE_PATH}"
-
 
 ###############################################################################
 
-VERSION_FILE="$(${READLINK_BIN}  -f "${SOURCE_PATH}/VERSION")"
-VERSION="${VERSION:-"$(cat "${VERSION_FILE}")"}"
-GIT_SHA="${GIT_SHA:-$(git rev-parse --short HEAD || echo "GitNotFound")}"
+cd "${SOURCE_PATH}"
 
-CGO_ENABLED=0  go build \
-  -v \
-  -mod vendor \
-  -o "${BINARY_PATH}/etcdbrctl" \
-  -ldflags "-w -X ${REPOSITORY}/pkg/version.Version=${VERSION} -X ${REPOSITORY}/pkg/version.GitSHA=${GIT_SHA}" \
-  main.go
+echo "> Building etcd-backup-restore."
+BINARY_DIR="${BINARY_DIR}" \
+make build
+echo "> Finished build."

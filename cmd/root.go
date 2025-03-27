@@ -19,7 +19,7 @@ func NewBackupRestoreCommand(ctx context.Context) *cobra.Command {
 related functionality. Sub-command for this root command will support features
 like scheduled snapshot of etcd, etcd data directory validation and restore etcd
 from previously taken snapshot.`,
-		Run: func(cmd *cobra.Command, args []string) {
+		Run: func(_ *cobra.Command, _ []string) {
 			if version {
 				printVersionInfo()
 			}

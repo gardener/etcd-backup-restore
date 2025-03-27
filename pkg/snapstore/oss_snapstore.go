@@ -18,10 +18,10 @@ import (
 	"sync"
 	"time"
 
+	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
+
 	"github.com/aliyun/aliyun-oss-go-sdk/oss"
 	"github.com/sirupsen/logrus"
-
-	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 )
 
 // OSSBucket is an interface for oss.Bucket used in snapstore
@@ -51,11 +51,11 @@ type authOptions struct {
 
 // OSSSnapStore is snapstore with Alicloud OSS object store as backend
 type OSSSnapStore struct {
-	prefix                  string
 	bucket                  OSSBucket
+	prefix                  string
+	tempDir                 string
 	maxParallelChunkUploads uint
 	minChunkSize            int64
-	tempDir                 string
 }
 
 // NewOSSSnapStore create new OSSSnapStore from shared configuration with specified bucket
@@ -192,15 +192,15 @@ func (s *OSSSnapStore) partUploader(wg *sync.WaitGroup, imur oss.InitiateMultipa
 		select {
 		case <-stopCh:
 			return
-		case chunk, ok := <-chunkUploadCh:
+		case uploadChunk, ok := <-chunkUploadCh:
 			if !ok {
 				return
 			}
-			logrus.Infof("Uploading chunk with id: %d, offset: %d, size: %d", chunk.id, chunk.offset, chunk.size)
-			err := s.uploadPart(imur, file, completedParts, chunk.offset, chunk.size, chunk.id)
+			logrus.Infof("Uploading chunk with id: %d, offset: %d, size: %d", uploadChunk.id, uploadChunk.offset, uploadChunk.size)
+			err := s.uploadPart(imur, file, completedParts, uploadChunk.offset, uploadChunk.size, uploadChunk.id)
 			errCh <- chunkUploadResult{
 				err:   err,
-				chunk: &chunk,
+				chunk: &uploadChunk,
 			}
 		}
 	}
@@ -242,11 +242,10 @@ func (s *OSSSnapStore) List(_ bool) (brtypes.SnapList, error) {
 				}
 			}
 		}
-		if lsRes.IsTruncated {
-			marker = lsRes.NextMarker
-		} else {
+		if !lsRes.IsTruncated {
 			break
 		}
+		marker = lsRes.NextMarker
 	}
 	sort.Sort(snapList)
 

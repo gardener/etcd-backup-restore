@@ -54,5 +54,5 @@ make perf-regression-test
 :warning: Prerequisite for this command is to set the following environment variables:
 
 - PERF_TEST_KUBECONFIG: kubeconfig to the cluster on which you wish to run the test
-- ETCD_VERSION: optional, defaults to `v3.3.17`
+- ETCD_VERSION: optional, defaults to `v3.4.34`
 - ETCDBR_VERSION: etcd-backup-restore version to test against

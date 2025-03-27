@@ -11,10 +11,12 @@ import (
 	"time"
 
 	"github.com/gardener/etcd-backup-restore/test/utils"
-	. "github.com/onsi/ginkgo/v2"
-	. "github.com/onsi/gomega"
+
 	"github.com/sirupsen/logrus"
 	"go.etcd.io/etcd/embed"
+
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
 )
 
 const (
@@ -46,7 +48,7 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 	etcd.Server.Stop()
 	etcd.Close()
 	return data
-}, func(data []byte) {})
+}, func(_ []byte) {})
 
 var _ = SynchronizedAfterSuite(func() {}, func() {
 	err = os.RemoveAll(outputDir)

@@ -23,8 +23,8 @@ import (
 type mockS3Client struct {
 	s3iface.S3API
 	objects               map[string]*[]byte
-	prefix                string
 	multiPartUploads      map[string]*[][]byte
+	prefix                string
 	multiPartUploadsMutex sync.Mutex
 }
 
@@ -58,7 +58,7 @@ func (m *mockS3Client) PutObject(in *s3.PutObjectInput) (*s3.PutObjectOutput, er
 	return &out, nil
 }
 
-func (m *mockS3Client) CreateMultipartUploadWithContext(ctx aws.Context, in *s3.CreateMultipartUploadInput, opts ...request.Option) (*s3.CreateMultipartUploadOutput, error) {
+func (m *mockS3Client) CreateMultipartUploadWithContext(_ aws.Context, in *s3.CreateMultipartUploadInput, _ ...request.Option) (*s3.CreateMultipartUploadOutput, error) {
 	uploadID := time.Now().String()
 	var parts [][]byte
 	m.multiPartUploads[uploadID] = &parts
@@ -69,7 +69,7 @@ func (m *mockS3Client) CreateMultipartUploadWithContext(ctx aws.Context, in *s3.
 	return out, nil
 }
 
-func (m *mockS3Client) UploadPartWithContext(ctx aws.Context, in *s3.UploadPartInput, opts ...request.Option) (*s3.UploadPartOutput, error) {
+func (m *mockS3Client) UploadPartWithContext(_ aws.Context, in *s3.UploadPartInput, _ ...request.Option) (*s3.UploadPartOutput, error) {
 	if *in.PartNumber < 0 {
 		return nil, fmt.Errorf("part number should be positive integer")
 	}
@@ -109,7 +109,7 @@ func (m *mockS3Client) UploadPartWithContext(ctx aws.Context, in *s3.UploadPartI
 	return out, nil
 }
 
-func (m *mockS3Client) CompleteMultipartUploadWithContext(ctx aws.Context, in *s3.CompleteMultipartUploadInput, opts ...request.Option) (*s3.CompleteMultipartUploadOutput, error) {
+func (m *mockS3Client) CompleteMultipartUploadWithContext(_ aws.Context, in *s3.CompleteMultipartUploadInput, _ ...request.Option) (*s3.CompleteMultipartUploadOutput, error) {
 	if m.multiPartUploads[*in.UploadId] == nil {
 		return nil, fmt.Errorf("multipart upload not initiated")
 	}
@@ -133,7 +133,7 @@ func (m *mockS3Client) CompleteMultipartUploadWithContext(ctx aws.Context, in *s
 	return &out, nil
 }
 
-func (m *mockS3Client) AbortMultipartUploadWithContext(ctx aws.Context, in *s3.AbortMultipartUploadInput, opts ...request.Option) (*s3.AbortMultipartUploadOutput, error) {
+func (m *mockS3Client) AbortMultipartUploadWithContext(_ aws.Context, in *s3.AbortMultipartUploadInput, _ ...request.Option) (*s3.AbortMultipartUploadOutput, error) {
 	delete(m.multiPartUploads, *in.UploadId)
 	out := &s3.AbortMultipartUploadOutput{}
 	return out, nil

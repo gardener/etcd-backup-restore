@@ -11,25 +11,24 @@ import (
 	"os"
 	"path"
 	"strconv"
-	"sync"
-
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gardener/etcd-backup-restore/pkg/compressor"
-	. "github.com/gardener/etcd-backup-restore/pkg/snapshot/snapshotter"
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 	"github.com/gardener/etcd-backup-restore/pkg/wrappers"
+	"github.com/gardener/etcd-backup-restore/test/utils"
+
 	v1 "k8s.io/api/coordination/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
-	"github.com/gardener/etcd-backup-restore/test/utils"
-	. "github.com/onsi/ginkgo/v2"
-	. "github.com/onsi/gomega"
-
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+
+	. "github.com/gardener/etcd-backup-restore/pkg/snapshot/snapshotter"
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
 )
 
 const (
@@ -187,8 +186,6 @@ var _ = Describe("Snapshotter", func() {
 			Context("with valid schedule", func() {
 				var (
 					ssr                   *Snapshotter
-					schedule              string
-					maxBackups            uint
 					testTimeout           time.Duration
 					deltaSnapshotInterval time.Duration
 				)
@@ -206,7 +203,7 @@ var _ = Describe("Snapshotter", func() {
 					})
 
 					It("should take periodic backups without delta snapshots", func() {
-						snapstoreConfig := &brtypes.SnapstoreConfig{Container: path.Join(outputDir, "snapshotter_4.bkp")}
+						snapstoreConfig = &brtypes.SnapstoreConfig{Container: path.Join(outputDir, "snapshotter_4.bkp")}
 						store, err = snapstore.GetSnapstore(snapstoreConfig)
 						Expect(err).ShouldNot(HaveOccurred())
 						snapshotterConfig := &brtypes.SnapshotterConfig{
@@ -347,12 +344,13 @@ var _ = Describe("Snapshotter", func() {
 			It("should garbage collect exponentially", func() {
 				logger.Infoln("creating expected output")
 
-				// Prepare expected resultant snapshot list
 				var (
-					store, snapstoreConfig = prepareStoreForGarbageCollection(now, "garbagecollector_exponential.bkp", "v2")
-					snapTime               = time.Date(now.Year(), now.Month(), now.Day()-35, 0, -30, 0, 0, now.Location())
-					expectedSnapList       = brtypes.SnapList{}
+					snapTime         = time.Date(now.Year(), now.Month(), now.Day()-35, 0, -30, 0, 0, now.Location())
+					expectedSnapList = brtypes.SnapList{}
 				)
+
+				// Prepare expected resultant snapshot list
+				store, snapstoreConfig = prepareStoreForGarbageCollection(now, "garbagecollector_exponential.bkp", "v2")
 
 				expectedSnapList = prepareExpectedSnapshotsList(snapTime, now, expectedSnapList, snapsInV2)
 
@@ -386,7 +384,7 @@ var _ = Describe("Snapshotter", func() {
 
 			It("should garbage collect limitBased", func() {
 				now := time.Now().UTC()
-				store, snapstoreConfig := prepareStoreForGarbageCollection(now, "garbagecollector_limit_based.bkp", "v2")
+				store, snapstoreConfig = prepareStoreForGarbageCollection(now, "garbagecollector_limit_based.bkp", "v2")
 				snapshotterConfig := &brtypes.SnapshotterConfig{
 					FullSnapshotSchedule:     schedule,
 					DeltaSnapshotPeriod:      wrappers.Duration{Duration: 10 * time.Second},
@@ -448,7 +446,7 @@ var _ = Describe("Snapshotter", func() {
 
 				Context("with all delta snapshots older than retention period", func() {
 					It("should delete all delta snapshots", func() {
-						store := prepareStoreWithDeltaSnapshots(testDir, deltaSnapshotCount)
+						store = prepareStoreWithDeltaSnapshots(testDir, deltaSnapshotCount)
 						list, err := store.List(false)
 						Expect(err).ShouldNot(HaveOccurred())
 						Expect(len(list)).Should(Equal(deltaSnapshotCount))
@@ -468,7 +466,7 @@ var _ = Describe("Snapshotter", func() {
 
 				Context("with no delta snapshots", func() {
 					It("should not delete any snapshots", func() {
-						store := prepareStoreWithDeltaSnapshots(testDir, 0)
+						store = prepareStoreWithDeltaSnapshots(testDir, 0)
 						list, err := store.List(false)
 						Expect(err).ShouldNot(HaveOccurred())
 						Expect(len(list)).Should(BeZero())
@@ -489,7 +487,7 @@ var _ = Describe("Snapshotter", func() {
 
 				Context("with all delta snapshots younger than retention period", func() {
 					It("should not delete any snapshots", func() {
-						store := prepareStoreWithDeltaSnapshots(testDir, deltaSnapshotCount)
+						store = prepareStoreWithDeltaSnapshots(testDir, deltaSnapshotCount)
 						list, err := store.List(false)
 						Expect(err).ShouldNot(HaveOccurred())
 						Expect(len(list)).Should(Equal(6))
@@ -510,7 +508,7 @@ var _ = Describe("Snapshotter", func() {
 
 				Context("with a mix of delta snapshots, some older and some younger than retention period", func() {
 					It("should delete only the delta snapshots older than the retention period", func() {
-						store := prepareStoreWithDeltaSnapshots(testDir, deltaSnapshotCount)
+						store = prepareStoreWithDeltaSnapshots(testDir, deltaSnapshotCount)
 						list, err := store.List(false)
 						Expect(err).ShouldNot(HaveOccurred())
 						Expect(len(list)).Should(Equal(6))
@@ -530,7 +528,7 @@ var _ = Describe("Snapshotter", func() {
 				})
 				Context("When no error occurs while deletion of delta snapshots", func() {
 					It("Should have no errors and all the snapshots should get deleted", func() {
-						store := prepareStoreWithDeltaSnapshots(testDir, 10)
+						store = prepareStoreWithDeltaSnapshots(testDir, 10)
 						list, err := store.List(false)
 						Expect(err).ShouldNot(HaveOccurred())
 						Expect(len(list)).Should(Equal(10))
@@ -545,7 +543,7 @@ var _ = Describe("Snapshotter", func() {
 				})
 				Context("When an error occurs while deletion of delta snapshot and number of errors are lesser than the threshold(5)", func() {
 					It("should continue with the deletion while joining the errors", func() {
-						store := prepareStoreWithDeltaSnapshots(testDir, 10)
+						store = prepareStoreWithDeltaSnapshots(testDir, 10)
 						list, err := store.List(false)
 						Expect(err).ShouldNot(HaveOccurred())
 						Expect(len(list)).Should(Equal(10))
@@ -567,7 +565,7 @@ var _ = Describe("Snapshotter", func() {
 				})
 				Context("When the number of errors while deleting are greater than or equal to the threshold", func() {
 					It("Should halt the process and return", func() {
-						store := prepareStoreWithDeltaSnapshots(testDir, 15)
+						store = prepareStoreWithDeltaSnapshots(testDir, 15)
 						list, err := store.List(false)
 						Expect(err).ShouldNot(HaveOccurred())
 						Expect(len(list)).Should(Equal(15))
@@ -594,7 +592,6 @@ var _ = Describe("Snapshotter", func() {
 				const (
 					testDir = "garbagecollector_chunksnapshots.bkp"
 				)
-				var store brtypes.SnapStore
 				var ssr *Snapshotter
 				var snapshotterConfig *brtypes.SnapshotterConfig
 

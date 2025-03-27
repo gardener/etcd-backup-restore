@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/gardener/etcd-backup-restore/pkg/etcdutil/client"
+
 	flag "github.com/spf13/pflag"
 	"go.etcd.io/etcd/clientv3"
 	"go.etcd.io/etcd/pkg/types"
@@ -37,13 +38,13 @@ type NewClientFactoryFunc func(cfg EtcdConnectionConfig, opts ...client.Option) 
 type RestoreOptions struct {
 	Config      *RestorationConfig
 	ClusterURLs types.URLsMap
-	// OriginalClusterSize indicates the actual cluster size from the ETCD config
-	OriginalClusterSize int
-	PeerURLs            types.URLs
 	// Base full snapshot + delta snapshots to restore from
 	BaseSnapshot     *Snapshot
-	DeltaSnapList    SnapList
 	NewClientFactory NewClientFactoryFunc
+	PeerURLs         types.URLs
+	DeltaSnapList    SnapList
+	// OriginalClusterSize indicates the actual cluster size from the ETCD config
+	OriginalClusterSize int
 }
 
 // RestorationConfig holds the restoration configuration.
@@ -53,16 +54,16 @@ type RestorationConfig struct {
 	InitialClusterToken      string   `json:"initialClusterToken,omitempty"`
 	DataDir                  string   `json:"dataDir,omitempty"`
 	TempSnapshotsDir         string   `json:"tempDir,omitempty"`
-	InitialAdvertisePeerURLs []string `json:"initialAdvertisePeerURLs"`
 	Name                     string   `json:"name"`
-	SkipHashCheck            bool     `json:"skipHashCheck,omitempty"`
-	MaxFetchers              uint     `json:"maxFetchers,omitempty"`
-	MaxRequestBytes          uint     `json:"MaxRequestBytes,omitempty"`
+	AutoCompactionRetention  string   `json:"autoCompactionRetention,omitempty"`
+	AutoCompactionMode       string   `json:"autoCompactionMode,omitempty"`
+	InitialAdvertisePeerURLs []string `json:"initialAdvertisePeerURLs"`
 	MaxTxnOps                uint     `json:"MaxTxnOps,omitempty"`
+	MaxRequestBytes          uint     `json:"MaxRequestBytes,omitempty"`
 	MaxCallSendMsgSize       int      `json:"maxCallSendMsgSize,omitempty"`
 	EmbeddedEtcdQuotaBytes   int64    `json:"embeddedEtcdQuotaBytes,omitempty"`
-	AutoCompactionMode       string   `json:"autoCompactionMode,omitempty"`
-	AutoCompactionRetention  string   `json:"autoCompactionRetention,omitempty"`
+	MaxFetchers              uint     `json:"maxFetchers,omitempty"`
+	SkipHashCheck            bool     `json:"skipHashCheck,omitempty"`
 }
 
 // NewRestorationConfig returns the restoration config.
@@ -134,9 +135,7 @@ func (c *RestorationConfig) DeepCopyInto(out *RestorationConfig) {
 	if c.InitialAdvertisePeerURLs != nil {
 		c, out := &c.InitialAdvertisePeerURLs, &out.InitialAdvertisePeerURLs
 		*out = make([]string, len(*c))
-		for i, v := range *c {
-			(*out)[i] = v
-		}
+		copy(*out, *c)
 	}
 }
 
@@ -248,8 +247,7 @@ func DeepCopySnapList(in SnapList) SnapList {
 
 // DeepCopyNewClientFactory returns a deep copy
 func DeepCopyNewClientFactory(in NewClientFactoryFunc) NewClientFactoryFunc {
-	var out NewClientFactoryFunc
-	out = in
+	var out NewClientFactoryFunc = in
 	return out
 }
 
