@@ -295,6 +295,35 @@ func (m *mockS3Client) GetObjectLockConfiguration(in *s3.GetObjectLockConfigurat
 	return nil, fmt.Errorf("unable to check object lock configuration for given bucket")
 }
 
+// GetObjectTagging returns the tag for S3's mock bucket object.
+func (m *mockS3Client) GetObjectTagging(input *s3.GetObjectTaggingInput) (*s3.GetObjectTaggingOutput, error) {
+	if *input.Bucket == "mock-s3Bucket" {
+		return nil, fmt.Errorf("unable to check tag for given object input")
+	}
+
+	objectTag := []*s3.Tag{}
+
+	if *input.Key == "mock/v2/Full-000000xx-000000yy-yyxxzz.gz" && *input.VersionId == "mockVersion1" {
+		return &s3.GetObjectTaggingOutput{
+			TagSet: append(objectTag, &s3.Tag{
+				Key:   aws.String("x-etcd-snapshot-exclude"),
+				Value: aws.String("true"),
+			}),
+		}, nil
+	} else if *input.Key == "mock/v2/Full-000000xx-000000yy-yyxxzz.gz" && *input.VersionId == "mockVersion2" {
+		return &s3.GetObjectTaggingOutput{
+			TagSet: append(objectTag, &s3.Tag{
+				Key:   aws.String("x-etcd-snapshot-exclude"),
+				Value: aws.String("false"),
+			}),
+		}, nil
+	}
+
+	return &s3.GetObjectTaggingOutput{
+		TagSet: objectTag,
+	}, nil
+}
+
 // DeleteObject deletes the object from map for mock test
 func (m *mockS3Client) DeleteObject(in *s3.DeleteObjectInput) (*s3.DeleteObjectOutput, error) {
 	delete(m.objects, *in.Key)

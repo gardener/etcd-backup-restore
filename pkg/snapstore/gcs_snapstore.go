@@ -6,6 +6,7 @@ package snapstore
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -33,6 +34,8 @@ const (
 
 	fileNameEmulatorEnabled    = "emulatorEnabled"
 	fileNameStorageAPIEndpoint = "storageAPIEndpoint"
+	// serviceAccountCredentialType is the type of the credentials contained in the serviceaccount.json file.
+	serviceAccountCredentialType = "service_account"
 )
 
 // GCSSnapStore is snapstore with GCS object store as backend.
@@ -45,6 +48,11 @@ type GCSSnapStore struct {
 	minChunkSize            int64
 	tempDir                 string
 	chunkDirSuffix          string
+}
+
+type credConfig struct {
+	ProjectID string `json:"project_id"`
+	Type      string `json:"type"`
 }
 
 // gcsEmulatorConfig holds the configuration for the fake GCS emulator
@@ -62,6 +70,9 @@ const (
 func NewGCSSnapStore(config *brtypes.SnapstoreConfig) (*GCSSnapStore, error) {
 	ctx := context.TODO()
 
+	if err := validateGCSCredential(config); err != nil {
+		return nil, err
+	}
 	var opts []option.ClientOption // no need to explicitly set store credentials here since the Google SDK picks it up from the standard environment variable
 	var emulatorConfig gcsEmulatorConfig
 	emulatorConfig.enabled = config.IsEmulatorEnabled || isEmulatorEnabled(config)
@@ -355,4 +366,39 @@ func GetGCSCredentialsLastModifiedTime() (time.Time, error) {
 	}
 
 	return time.Time{}, fmt.Errorf("no environment variable set for the GCS credential file")
+}
+
+func validateGCSCredential(config *brtypes.SnapstoreConfig) error {
+	if gcsApplicationCredentialFilePath, isSet := os.LookupEnv(getEnvPrefixString(config.IsSource) + envStoreCredentials); isSet {
+		data, err := os.ReadFile(gcsApplicationCredentialFilePath) // #nosec G304 -- this is a trusted file, obtained from mounted secret.
+		if err != nil {
+			return fmt.Errorf("unable to read credential file %w", err)
+		}
+
+		sa, err := getGCSCredentialsConfigFromJSON(data)
+		if err != nil {
+			return err
+		}
+
+		if sa.Type != serviceAccountCredentialType {
+			return fmt.Errorf("forbidden credential type %v used. Only %v is allowed", sa.Type, serviceAccountCredentialType)
+		}
+
+		if sa.Type == serviceAccountCredentialType && sa.ProjectID == "" {
+			return fmt.Errorf("no project id specified")
+		}
+	}
+
+	return nil
+}
+
+// getCredentialsConfigFromJSON returns a credentials config from the given data.
+func getGCSCredentialsConfigFromJSON(data []byte) (*credConfig, error) {
+	credentialsConfig := &credConfig{}
+
+	if err := json.Unmarshal(data, credentialsConfig); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal json object: %w", err)
+	}
+
+	return credentialsConfig, nil
 }

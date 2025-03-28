@@ -58,7 +58,7 @@ const (
 	MinChunkSize int64 = 5 * (1 << 20) //5 MiB
 
 	// ExcludeSnapshotMetadataKey is the tag that is to be added on snapshots in the object store if they are not to be included in SnapStore's List output.
-	// Note: only applicable for storage provider: ABS and GCS.
+	// Note: applicable for storage provider: ABS, GCS and S3.
 	ExcludeSnapshotMetadataKey = "x-etcd-snapshot-exclude"
 )
 
