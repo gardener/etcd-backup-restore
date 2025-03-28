@@ -263,6 +263,8 @@ To lock the immutability policy:
     1. **Governance mode**: Only users with special permissions can overwrite, delete or alter object lock settings.
     2. **Compliance mode**: No users(including root user) can overwrite, delete or alter object lock settings.
 
+> Note: With S3 object lock, S3 versioning will automatically get enabled, it only prevent locked object versions from being permanently deleted.
+
 #### Create S3 Buckets with object lock enabled
 
 > Note: With S3 object lock, S3 versioning will automatically get enabled.
@@ -454,8 +456,6 @@ To add the tag:
       - **Key:** `x-etcd-snapshot-exclude`
       - **Value:** `true`
    - Save the changes.
-
-> Note: With S3 object lock, S3 versioning will automatically get enabled, it only prevent locked object versions from being permanently deleted.
 
 ---
 

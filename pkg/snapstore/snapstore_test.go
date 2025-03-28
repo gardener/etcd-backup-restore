@@ -713,7 +713,7 @@ var _ = Describe("Get Immutability time for S3 bucket", func() {
 	})
 })
 
-var _ = Describe("S3 snapshot object mark to be ignored/skipped", func() {
+var _ = Describe("S3 snapshot object is marked to be ignored/skipped", func() {
 	awsS3Client := &mockS3Client{
 		objects: objectMap,
 		prefix:  prefixV2,
@@ -724,28 +724,28 @@ var _ = Describe("S3 snapshot object mark to be ignored/skipped", func() {
 
 	Context("Snapshot object is correctly tagged to be ignored", func() {
 		It("Should return true", func() {
-			isMarkedToIgnore := IsSnapshotMarkToBeIgnored(awsS3Client, mockS3BucketName, mockSnapshotKey, "mockVersion1")
+			isMarkedToIgnore := IsSnapshotMarkedToBeIgnored(awsS3Client, mockS3BucketName, mockSnapshotKey, "mockVersion1")
 			Expect(isMarkedToIgnore).Should(BeTrue())
 		})
 	})
 
 	Context("Snapshot object is incorrectly tagged to be ignored", func() {
 		It("Should return false", func() {
-			isMarkedToIgnore := IsSnapshotMarkToBeIgnored(awsS3Client, mockS3BucketName, mockSnapshotKey, "mockVersion2")
+			isMarkedToIgnore := IsSnapshotMarkedToBeIgnored(awsS3Client, mockS3BucketName, mockSnapshotKey, "mockVersion2")
 			Expect(isMarkedToIgnore).Should(BeFalse())
 		})
 	})
 
 	Context("No tag is present for given snapshot", func() {
 		It("Should return false", func() {
-			isMarkedToIgnore := IsSnapshotMarkToBeIgnored(awsS3Client, mockS3BucketName, mockSnapshotKey, "mockVersion3")
+			isMarkedToIgnore := IsSnapshotMarkedToBeIgnored(awsS3Client, mockS3BucketName, mockSnapshotKey, "mockVersion3")
 			Expect(isMarkedToIgnore).Should(BeFalse())
 		})
 	})
 
 	Context("S3's GetObjectTagging API call fails", func() {
 		It("Should return false", func() {
-			isMarkedToIgnore := IsSnapshotMarkToBeIgnored(awsS3Client, "mock-s3Bucket", mockSnapshotKey, "mockVersion1")
+			isMarkedToIgnore := IsSnapshotMarkedToBeIgnored(awsS3Client, "mock-s3Bucket", mockSnapshotKey, "mockVersion1")
 			Expect(isMarkedToIgnore).Should(BeFalse())
 		})
 	})
