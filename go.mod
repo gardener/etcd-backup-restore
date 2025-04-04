@@ -2,6 +2,8 @@ module github.com/gardener/etcd-backup-restore
 
 go 1.23.0
 
+toolchain go1.24.1
+
 require (
 	cloud.google.com/go/iam v1.2.2
 	cloud.google.com/go/storage v1.50.0
@@ -17,7 +19,7 @@ require (
 	github.com/prometheus/client_golang v1.20.5
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/sirupsen/logrus v1.9.3 // replace this completely with zap
-	github.com/spf13/cobra v1.8.1
+	github.com/spf13/cobra v1.9.1
 	github.com/spf13/pflag v1.0.6
 	go.etcd.io/bbolt v1.3.11
 	// Etcd 3.4.x vendoring issue Ref: https://github.com/etcd-io/etcd/issues/11154#issuecomment-677940701
