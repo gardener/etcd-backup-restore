@@ -263,6 +263,8 @@ To lock the immutability policy:
     1. **Governance mode**: Only users with special permissions can overwrite, delete or alter object lock settings.
     2. **Compliance mode**: No users(including root user) can overwrite, delete or alter object lock settings.
 
+> Note: With S3 object lock, S3 versioning will automatically get enabled, it only prevent locked object versions from being permanently deleted.
+
 #### Create S3 Buckets with object lock enabled
 
 > Note: With S3 object lock, S3 versioning will automatically get enabled.
@@ -425,9 +427,35 @@ After adding the annotation or tag, `etcd-backup-restore` will ignore these snap
 
 #### AWS S3
 
-- The approach of tagging snapshot objects to exclude them during restoration is not supported for `AWS S3` buckets.
+- Ignoring or skipping any snapshot object(s) present in AWS S3 bucket is a two-step process:
+  1. Put a delete marker on the top of snapshot object. Please refer [here](https://docs.aws.amazon.com/AmazonS3/latest/userguide/DeletingObjectVersions.html) for more information regarding deletion in versioning enabled S3 bucket.
+  2. Then tag the snapshot object which you wish to skip or ignore during restoration with following key and value:
+  - **Key:** `x-etcd-snapshot-exclude`
+  - **Value:** `true`
 
-> Note: With S3 object lock, S3 versioning will automatically get enabled, it only prevent locked object versions from being permanently deleted.
+To add the tag:
+
+1. **Using the `aws` CLI**
+
+  ```bash
+  aws s3api put-object-tagging --bucket [BUCKET_NAME] --key [SNAPSHOT_PATH] --version-id [SNAPSHOT_VERSION_ID] --tagging '{"TagSet": [{ "Key": "x-etcd-snapshot-exclude", "Value": "true" }]}'
+  ```
+
+  **Example:**
+
+  ```bash
+  aws s3api put-object-tagging --bucket --key shoot1/etcd-main/v2/Incr-000000xx-000000yy-xxyyy.gz --version-id abcdefgh --tagging '{"TagSet": [{ "Key": "x-etcd-snapshot-exclude", "Value": "true" }]}'
+  ```
+
+2. **Using the AWS S3 Portal**
+
+   - Navigate to the bucket
+   - Locate the object which need to be skipped/ignored.
+   - Click on the object to view its details.
+   - Scroll down to **Tags** section, then add tag:
+      - **Key:** `x-etcd-snapshot-exclude`
+      - **Value:** `true`
+   - Save the changes.
 
 ---
 
