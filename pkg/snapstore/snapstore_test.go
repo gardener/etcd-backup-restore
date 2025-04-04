@@ -713,6 +713,44 @@ var _ = Describe("Get Immutability time for S3 bucket", func() {
 	})
 })
 
+var _ = Describe("S3 snapshot object is marked to be ignored/skipped", func() {
+	awsS3Client := &mockS3Client{
+		objects: objectMap,
+		prefix:  prefixV2,
+	}
+
+	mockS3BucketName := "mock-s3ObjectLockedBucket"
+	mockSnapshotKey := "mock/v2/Full-000000xx-000000yy-yyxxzz.gz"
+
+	Context("Snapshot object is correctly tagged to be ignored", func() {
+		It("Should return true", func() {
+			isMarkedToIgnore := IsSnapshotMarkedToBeIgnored(awsS3Client, mockS3BucketName, mockSnapshotKey, "mockVersion1")
+			Expect(isMarkedToIgnore).Should(BeTrue())
+		})
+	})
+
+	Context("Snapshot object is incorrectly tagged to be ignored", func() {
+		It("Should return false", func() {
+			isMarkedToIgnore := IsSnapshotMarkedToBeIgnored(awsS3Client, mockS3BucketName, mockSnapshotKey, "mockVersion2")
+			Expect(isMarkedToIgnore).Should(BeFalse())
+		})
+	})
+
+	Context("No tag is present for given snapshot", func() {
+		It("Should return false", func() {
+			isMarkedToIgnore := IsSnapshotMarkedToBeIgnored(awsS3Client, mockS3BucketName, mockSnapshotKey, "mockVersion3")
+			Expect(isMarkedToIgnore).Should(BeFalse())
+		})
+	})
+
+	Context("S3's GetObjectTagging API call fails", func() {
+		It("Should return false", func() {
+			isMarkedToIgnore := IsSnapshotMarkedToBeIgnored(awsS3Client, "mock-s3Bucket", mockSnapshotKey, "mockVersion1")
+			Expect(isMarkedToIgnore).Should(BeFalse())
+		})
+	})
+})
+
 // createCredentialFilesInDirectory creates access credential files in the
 // specified directory and returns the timestamp of the last modified file.
 func createCredentialFilesInDirectory(directory string, filenames []string) (time.Time, error) {
