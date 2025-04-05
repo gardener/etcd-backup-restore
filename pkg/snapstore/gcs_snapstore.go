@@ -83,7 +83,6 @@ func NewGCSSnapStore(config *brtypes.SnapstoreConfig) (*GCSSnapStore, error) {
 
 	var chunkDirSuffix string
 	if emulatorConfig.enabled {
-		var err error
 		opts, err = emulatorConfig.configureClient(opts)
 		if err != nil {
 			return nil, err
