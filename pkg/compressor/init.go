@@ -29,7 +29,7 @@ func (c *CompressionConfig) AddFlags(fs *flag.FlagSet) {
 func (c *CompressionConfig) Validate() error {
 
 	// if compression is not enabled then to check CompressionPolicy becomes irrelevant
-	if c.Enabled == false {
+	if !c.Enabled {
 		return nil
 	}
 

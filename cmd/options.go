@@ -25,16 +25,15 @@ import (
 )
 
 type serverOptions struct {
-	ConfigFile string
-	Version    bool
-	LogLevel   uint32
 	Logger     *logrus.Logger
 	Config     *server.BackupRestoreComponentConfig
+	ConfigFile string
+	LogLevel   uint32
+	Version    bool
 }
 
 // newServerOptions returns a new Options object.
 func newServerOptions() *serverOptions {
-	logger := logrus.New()
 	logger.SetLevel(logrus.InfoLevel)
 	runtimelog.SetLogger(logr.New(runtimelog.NullLogSink{}))
 
@@ -214,8 +213,8 @@ type snapshotterOptions struct {
 	compressionConfig        *compressor.CompressionConfig
 	snapstoreConfig          *brtypes.SnapstoreConfig
 	snapshotterConfig        *brtypes.SnapshotterConfig
-	defragmentationSchedule  string
 	exponentialBackoffConfig *brtypes.ExponentialBackoffConfig
+	defragmentationSchedule  string
 }
 
 // newSnapshotterOptions returns the snapshotter options.

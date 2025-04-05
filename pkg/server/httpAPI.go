@@ -32,6 +32,7 @@ import (
 	"github.com/gardener/etcd-backup-restore/pkg/snapshot/snapshotter"
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
+
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/sirupsen/logrus"
 	"go.etcd.io/etcd/clientv3"
@@ -75,23 +76,23 @@ type HTTPHandler struct {
 	Initializer               initializer.Initializer
 	Snapshotter               *snapshotter.Snapshotter
 	EtcdConnectionConfig      *brtypes.EtcdConnectionConfig
-	StorageProvider           string
-	Port                      uint
+	AckCh                     chan struct{}
+	SnapstoreConfig           *brtypes.SnapstoreConfig
 	server                    *http.Server
 	Logger                    *logrus.Entry
-	initializationStatusMutex sync.Mutex
-	AckState                  uint32
-	initializationStatus      string
-	status                    int
-	StopCh                    chan struct{}
-	EnableProfiling           bool
+	HTTPHandlerMutex          *sync.Mutex
 	ReqCh                     chan struct{}
-	AckCh                     chan struct{}
-	EnableTLS                 bool
+	StopCh                    chan struct{}
+	StorageProvider           string
+	initializationStatus      string
 	ServerTLSCertFile         string
 	ServerTLSKeyFile          string
-	HTTPHandlerMutex          *sync.Mutex
-	SnapstoreConfig           *brtypes.SnapstoreConfig
+	status                    int
+	Port                      uint
+	initializationStatusMutex sync.Mutex
+	AckState                  uint32
+	EnableTLS                 bool
+	EnableProfiling           bool
 }
 
 // healthCheck contains the HealthStatus of backup restore.
@@ -200,7 +201,7 @@ func (h *HTTPHandler) Stop() error {
 }
 
 // serveHealthz serves the health status of the server
-func (h *HTTPHandler) serveHealthz(rw http.ResponseWriter, req *http.Request) {
+func (h *HTTPHandler) serveHealthz(rw http.ResponseWriter, _ *http.Request) {
 	h.checkAndSetSecurityHeaders(rw)
 	rw.WriteHeader(h.GetStatus())
 	healthCheck := &healthCheck{
@@ -271,7 +272,7 @@ func (h *HTTPHandler) serveInitialize(rw http.ResponseWriter, req *http.Request)
 }
 
 // serveInitializationStatus serves the etcd initialization progress status
-func (h *HTTPHandler) serveInitializationStatus(rw http.ResponseWriter, req *http.Request) {
+func (h *HTTPHandler) serveInitializationStatus(rw http.ResponseWriter, _ *http.Request) {
 	h.checkAndSetSecurityHeaders(rw)
 	h.initializationStatusMutex.Lock()
 	defer h.initializationStatusMutex.Unlock()

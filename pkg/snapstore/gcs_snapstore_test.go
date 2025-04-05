@@ -12,8 +12,9 @@ import (
 	"sort"
 	"sync"
 
-	"cloud.google.com/go/storage"
 	stiface "github.com/gardener/etcd-backup-restore/pkg/snapstore/gcs"
+
+	"cloud.google.com/go/storage"
 	"google.golang.org/api/iterator"
 )
 
@@ -21,8 +22,8 @@ import (
 type mockGCSClient struct {
 	stiface.Client
 	objects     map[string]*[]byte
-	prefix      string
 	objectTags  map[string]map[string]string
+	prefix      string
 	objectMutex sync.Mutex
 }
 
@@ -40,8 +41,8 @@ func (m *mockGCSClient) deleteTags(taggedSnapshotName string) {
 
 type mockBucketHandle struct {
 	stiface.BucketHandle
-	bucket string
 	client *mockGCSClient
+	bucket string
 }
 
 func (m *mockBucketHandle) Object(name string) stiface.ObjectHandle {
@@ -61,11 +62,11 @@ func (m *mockBucketHandle) Objects(context.Context, *storage.Query) stiface.Obje
 
 type mockObjectHandle struct {
 	stiface.ObjectHandle
-	object string
 	client *mockGCSClient
+	object string
 }
 
-func (m *mockObjectHandle) NewReader(ctx context.Context) (stiface.Reader, error) {
+func (m *mockObjectHandle) NewReader(_ context.Context) (stiface.Reader, error) {
 	m.client.objectMutex.Lock()
 	defer m.client.objectMutex.Unlock()
 	if value, ok := m.client.objects[m.object]; ok {
@@ -99,9 +100,9 @@ func (m *mockObjectHandle) Delete(context.Context) error {
 
 type mockObjectIterator struct {
 	stiface.ObjectIterator
-	currentIndex int
-	keys         []string
 	tags         map[string]map[string]string
+	keys         []string
+	currentIndex int
 }
 
 func (m *mockObjectIterator) Next() (*storage.ObjectAttrs, error) {
@@ -119,9 +120,9 @@ func (m *mockObjectIterator) Next() (*storage.ObjectAttrs, error) {
 
 type mockComposer struct {
 	stiface.Composer
-	objectHandles []stiface.ObjectHandle
 	client        *mockGCSClient
 	dst           *mockObjectHandle
+	objectHandles []stiface.ObjectHandle
 }
 
 func (m *mockComposer) Run(ctx context.Context) (*storage.ObjectAttrs, error) {
@@ -156,9 +157,9 @@ func (m *mockObjectReader) Close() error {
 
 type mockObjectWriter struct {
 	stiface.Writer
+	client *mockGCSClient
 	object string
 	data   []byte
-	client *mockGCSClient
 }
 
 func (m *mockObjectWriter) Write(p []byte) (n int, err error) {

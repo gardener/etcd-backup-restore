@@ -7,6 +7,7 @@ package initializer
 import (
 	"github.com/gardener/etcd-backup-restore/pkg/initializer/validator"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
+
 	"github.com/sirupsen/logrus"
 )
 

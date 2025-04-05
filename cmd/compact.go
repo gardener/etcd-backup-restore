@@ -28,7 +28,7 @@ func NewCompactCommand(ctx context.Context) *cobra.Command {
 		Use:   "compact",
 		Short: "compacts multiple incremental snapshots in etcd backup into a single full snapshot",
 		Long:  "Compacts an existing backup stored in snapshot store.",
-		Run: func(cmd *cobra.Command, args []string) {
+		Run: func(_ *cobra.Command, _ []string) {
 			/* Compact operation
 			- Restore from all the latest snapshots (Base + Delta).
 			- Compact the newly created embedded ETCD instance.

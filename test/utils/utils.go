@@ -19,6 +19,7 @@ import (
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 	"github.com/gardener/etcd-backup-restore/pkg/wrappers"
+
 	"github.com/sirupsen/logrus"
 	"go.etcd.io/etcd/clientv3"
 	"go.etcd.io/etcd/embed"
@@ -119,9 +120,9 @@ func getClientPortNo(port string) string {
 
 // EtcdDataPopulationResponse is response about etcd data population
 type EtcdDataPopulationResponse struct {
+	Err         error
 	KeyTo       int
 	EndRevision int64
-	Err         error
 }
 
 // PopulateEtcd sequentially puts key-value pairs into the embedded etcd, from key <keyFrom> (including) to <keyTo> (excluding). Every key divisible by 10 will be

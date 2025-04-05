@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/gardener/etcd-backup-restore/test/utils"
+
 	"github.com/sirupsen/logrus"
 	"go.etcd.io/etcd/embed"
 
@@ -49,7 +50,7 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 	logger.Infof("endpoints: %s", endpoints)
 	var data []byte
 	return data
-}, func(data []byte) {})
+}, func(_ []byte) {})
 
 var _ = SynchronizedAfterSuite(func() {}, func() {
 	etcd.Server.Stop()

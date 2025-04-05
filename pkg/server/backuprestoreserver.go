@@ -12,13 +12,11 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/gardener/etcd-backup-restore/pkg/etcdutil/client"
-	"k8s.io/apimachinery/pkg/util/sets"
-
 	"github.com/gardener/etcd-backup-restore/pkg/backoff"
 	"github.com/gardener/etcd-backup-restore/pkg/defragmentor"
 	"github.com/gardener/etcd-backup-restore/pkg/errors"
 	"github.com/gardener/etcd-backup-restore/pkg/etcdutil"
+	"github.com/gardener/etcd-backup-restore/pkg/etcdutil/client"
 	"github.com/gardener/etcd-backup-restore/pkg/health/heartbeat"
 	"github.com/gardener/etcd-backup-restore/pkg/health/membergarbagecollector"
 	"github.com/gardener/etcd-backup-restore/pkg/initializer"
@@ -34,6 +32,7 @@ import (
 	"github.com/robfig/cron/v3"
 	"github.com/sirupsen/logrus"
 	"go.etcd.io/etcd/pkg/types"
+	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/client-go/util/retry"
 )
 
@@ -526,11 +525,10 @@ func (b *BackupRestoreServer) probeEtcd(ctx context.Context) error {
 	ctx, cancel := context.WithTimeout(ctx, brtypes.DefaultEtcdStatusConnecTimeout)
 	defer cancel()
 
-	if len(b.config.EtcdConnectionConfig.Endpoints) > 0 {
-		endPoint = b.config.EtcdConnectionConfig.Endpoints[0]
-	} else {
+	if len(b.config.EtcdConnectionConfig.Endpoints) == 0 {
 		return fmt.Errorf("etcd endpoints are not passed correctly")
 	}
+	endPoint = b.config.EtcdConnectionConfig.Endpoints[0]
 
 	if _, err := client.Status(ctx, endPoint); err != nil {
 		b.logger.Errorf("failed to get status of etcd endPoint: %v with error: %v", endPoint, err)

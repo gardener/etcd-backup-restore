@@ -1,66 +1,29 @@
 #!/usr/bin/env bash
+#
 # SPDX-FileCopyrightText: 2024 SAP SE or an SAP affiliate company and Gardener contributors
 #
 # SPDX-License-Identifier: Apache-2.0
-set -e
+set -o errexit
+set -o nounset
+set -o pipefail
 
-# For the check step concourse will set the following environment variables:
+# For all steps, concourse will set the following environment variables:
 # SOURCE_PATH - path to component repository root directory.
-if [[ $(uname) == 'Darwin' ]]; then
-  READLINK_BIN="greadlink"
-else
-  READLINK_BIN="readlink"
-fi
-
 if [[ -z "${SOURCE_PATH}" ]]; then
-  export SOURCE_PATH="$(${READLINK_BIN} -f "$(dirname ${0})/..")"
+  SOURCE_PATH="$(readlink -f "$(dirname "${BASH_SOURCE[0]}")/..")"
 else
-  export SOURCE_PATH="$(${READLINK_BIN} -f ${SOURCE_PATH})"
+  SOURCE_PATH="$(readlink -f "${SOURCE_PATH}")"
 fi
+export SOURCE_PATH
 
-VCS="github.com"
-ORGANIZATION="gardener"
-PROJECT="etcd-backup-restore"
-REPOSITORY=${VCS}/${ORGANIZATION}/${PROJECT}
-cd "${SOURCE_PATH}"
-
-# Install Golint (linting tool).
-go install golang.org/x/lint/golint@latest
-
-# Install Helm from binary.
-curl -fsSL -o get_helm.sh https://raw.githubusercontent.com/helm/helm/master/scripts/get-helm-3
-chmod 700 get_helm.sh
-if [ $(id -u) = 0 ]; then
-   ./get_helm.sh --no-sudo
-fi
-./get_helm.sh 
-rm get_helm.sh
+source "${SOURCE_PATH}/.ci/common.sh"
 
 ###############################################################################
 
-PACKAGES="$(go list -mod=vendor -e ./...)"
-LINT_FOLDERS="$(echo ${PACKAGES} | sed "s|github.com/gardener/etcd-backup-restore|.|g")"
-HELM_CHART_PATH="${SOURCE_PATH}/chart/etcd-backup-restore"
+cd "${SOURCE_PATH}"
 
-# Execute static code checks.
-go vet -mod vendor ${PACKAGES}
-
-# Execute automatic code formatting directive.
-go fmt ${PACKAGES}
-
-# Execute lint checks.
-golint -set_exit_status ${LINT_FOLDERS}
-
-# Execute lint checks on helm chart.
-helm lint "${HELM_CHART_PATH}"
-
-echo "> Checking Go version"
-GOVERSION=$(go list -f {{.GoVersion}} -m)
-if [[ ! $GOVERSION =~ ^[0-9]+\.[0-9]+\.0$ ]]; then
-  echo "Go version is invalid, please adhere to x.y.0 version"
-  echo "See https://github.com/gardener/etcd-backup-restore/pull/801"
-  exit 1
-fi
+echo "> Running check..."
+make check
 
 # Run Static Application Security Testing (SAST) using gosec
 echo "> Running SAST checks..."

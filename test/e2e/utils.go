@@ -35,8 +35,8 @@ import (
 
 // SnapListResult stores the snaplist and any associated error
 type SnapListResult struct {
-	Snapshots brtypes.SnapList `json:"snapshots"`
 	Error     error            `json:"error"`
+	Snapshots brtypes.SnapList `json:"snapshots"`
 }
 
 // LatestSnapshots stores the result from output of /snapshot/latest http call
@@ -67,13 +67,13 @@ const (
 )
 
 type storage struct {
-	provider   string
 	secretData map[string]interface{}
+	provider   string
 }
 
 type testProvider struct {
-	name    string
 	storage *storage
+	name    string
 }
 
 func getProvider(providerName string) (testProvider, error) {
@@ -208,7 +208,7 @@ func helmDeployChart(logger *logrus.Logger, timeout time.Duration, kubeconfigPat
 	}
 
 	actionConfig := new(helmaction.Configuration)
-	if err = actionConfig.Init(helmkube.GetConfig(kubeconfigPath, "", releaseNamespace), releaseNamespace, "configmap", func(format string, v ...interface{}) {}); err != nil {
+	if err = actionConfig.Init(helmkube.GetConfig(kubeconfigPath, "", releaseNamespace), releaseNamespace, "configmap", func(_ string, _ ...interface{}) {}); err != nil {
 		return err
 	}
 
@@ -317,7 +317,7 @@ OuterLoop:
 			}
 		}
 		for _, isFound := range portsMap {
-			if isFound == false {
+			if !isFound {
 				continue OuterLoop
 			}
 		}

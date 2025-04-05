@@ -28,12 +28,12 @@ type target struct {
 	typedClient     kubernetes.Interface
 	discoveryClient discovery.DiscoveryInterface
 	untypedClient   dynamic.Interface
-	namespacePrefix string
 	logger          *logrus.Logger
-	resourcePaths   []string
+	namespacePrefix string
 	etcdImage       string
 	etcdbrImage     string
 	namespace       string
+	resourcePaths   []string
 }
 
 func (t *target) setup() error {

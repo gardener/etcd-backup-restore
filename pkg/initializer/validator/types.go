@@ -8,6 +8,7 @@ import (
 	"time"
 
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
+
 	"github.com/sirupsen/logrus"
 	"go.uber.org/zap"
 )
@@ -61,17 +62,17 @@ const (
 
 // Config store configuration for DataValidator.
 type Config struct {
+	SnapstoreConfig        *brtypes.SnapstoreConfig
 	DataDir                string
 	EmbeddedEtcdQuotaBytes int64
-	SnapstoreConfig        *brtypes.SnapstoreConfig
 }
 
 // DataValidator contains implements Validator interface to perform data validation.
 type DataValidator struct {
 	Config              *Config
-	OriginalClusterSize int
 	Logger              *logrus.Logger
 	ZapLogger           *zap.Logger
+	OriginalClusterSize int
 }
 
 // Validator is the interface for data validation actions.

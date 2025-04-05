@@ -17,6 +17,7 @@ import (
 	"github.com/gardener/etcd-backup-restore/pkg/metrics"
 	"github.com/gardener/etcd-backup-restore/pkg/miscellaneous"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
+
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/sirupsen/logrus"
 	"go.etcd.io/etcd/clientv3"
@@ -152,12 +153,12 @@ func (m *memberControl) AddMemberAsLearner(ctx context.Context) error {
 }
 
 // IsMemberInCluster checks is the current members peer URL is already part of the etcd cluster
-func (m *memberControl) IsMemberInCluster(ctx context.Context) (bool, error) {
+func (m *memberControl) IsMemberInCluster(_ context.Context) (_ bool, err error) {
 	m.logger.Infof("Checking if member %s is part of a running cluster", m.podName)
 	// Check if an etcd is already available
 
 	backoff := miscellaneous.CreateBackoff(RetryPeriod, RetrySteps)
-	err := retry.OnError(backoff, func(err error) bool {
+	err = retry.OnError(backoff, func(err error) bool {
 		return err != nil
 	}, func() error {
 		etcdProbeCtx, cancel := context.WithTimeout(context.TODO(), EtcdTimeout)
@@ -321,11 +322,11 @@ func (m *memberControl) IsClusterScaledUp(ctx context.Context, clientSet client.
 	// In case of failure in checking the presence of member in a cluster then
 	// check for `ScaledToMultiNodeAnnotationKey` annotation in etcd statefulset.
 
-	if isEtcdMemberPresent, err := m.IsMemberInCluster(ctx); err != nil {
-		m.logger.Errorf("unable to check presence of member in cluster: %v", err)
-	} else {
+	var err error
+	if isEtcdMemberPresent, err := m.IsMemberInCluster(ctx); err == nil {
 		return !isEtcdMemberPresent, nil
 	}
+	m.logger.Errorf("unable to check presence of member in cluster: %v", err)
 
 	etcdsts, err := miscellaneous.GetStatefulSet(ctx, clientSet, m.podNamespace, m.podName)
 	if err != nil {
@@ -367,12 +368,11 @@ func (m *memberControl) GetPeerURLs(ctx context.Context, closer etcdClient.Clust
 
 // WasMemberInCluster checks the whether etcd member was part of etcd cluster.
 func (m *memberControl) WasMemberInCluster(ctx context.Context, clientSet client.Client) bool {
-
-	if etcdMemberPresent, err := m.IsMemberInCluster(ctx); err != nil {
-		m.logger.Errorf("unable to check member presence via api call: %v", err)
-	} else {
+	etcdMemberPresent, err := m.IsMemberInCluster(ctx)
+	if err == nil {
 		return etcdMemberPresent
 	}
+	m.logger.Errorf("unable to check member presence via api call: %v", err)
 
 	m.logger.Info("fetching the member lease associated with etcd member")
 	memberLease := &v1.Lease{}

@@ -14,6 +14,7 @@ import (
 
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 	"github.com/gardener/etcd-backup-restore/test/utils"
+
 	"go.uber.org/zap"
 
 	. "github.com/gardener/etcd-backup-restore/pkg/initializer/validator"

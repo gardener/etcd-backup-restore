@@ -7,9 +7,9 @@ package snapstore_test
 import (
 	"testing"
 
+	th "github.com/gophercloud/gophercloud/testhelper"
 	"github.com/sirupsen/logrus"
 
-	th "github.com/gophercloud/gophercloud/testhelper"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )

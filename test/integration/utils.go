@@ -17,11 +17,11 @@ import (
 
 // Cmd holds the information needed to run a process
 type Cmd struct {
-	Task    string
-	Flags   []string
 	process *exec.Cmd
-	Logfile string
 	Logger  *logrus.Logger
+	Task    string
+	Logfile string
+	Flags   []string
 }
 
 // StopProcess is used to signal SIGTERM to the running process.

@@ -20,6 +20,8 @@ import (
 	"sync"
 	"time"
 
+	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
+
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
@@ -30,8 +32,6 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/container"
 	"github.com/sirupsen/logrus"
 	"k8s.io/utils/ptr"
-
-	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 )
 
 const (
@@ -81,20 +81,20 @@ func (a *AzureContainerClient) NewBlockBlobClient(blobName string) AzureBlockBlo
 
 // ABSSnapStore is an ABS backed snapstore.
 type ABSSnapStore struct {
-	container string
 	client    azureContainerClientI
+	container string
 	prefix    string
+	tempDir   string
 	// maxParallelChunkUploads hold the maximum number of parallel chunk uploads allowed.
 	maxParallelChunkUploads uint
 	minChunkSize            int64
-	tempDir                 string
 }
 
 type absCredentials struct {
+	Domain          *string `json:"domain,omitempty"`
 	BucketName      string  `json:"bucketName"`
 	StorageAccount  string  `json:"storageAccount"`
 	StorageKey      string  `json:"storageKey"`
-	Domain          *string `json:"domain,omitempty"`
 	EmulatorEnabled bool    `json:"emulatorEnabled,omitempty"`
 }
 
@@ -266,12 +266,12 @@ func readABSCredentialFiles(dirname string) (*absCredentials, error) {
 // NewABSSnapStoreFromClient returns a new ABS object for a given container using the supplied storageClient
 func NewABSSnapStoreFromClient(container, prefix, tempDir string, maxParallelChunkUploads uint, minChunkSize int64, client azureContainerClientI) *ABSSnapStore {
 	return &ABSSnapStore{
-		container,
 		client,
+		container,
 		prefix,
+		tempDir,
 		maxParallelChunkUploads,
 		minChunkSize,
-		tempDir,
 	}
 }
 
@@ -450,15 +450,15 @@ func (a *ABSSnapStore) blockUploader(wg *sync.WaitGroup, stopCh <-chan struct{},
 		select {
 		case <-stopCh:
 			return
-		case chunk, ok := <-chunkUploadCh:
+		case uploadChunk, ok := <-chunkUploadCh:
 			if !ok {
 				return
 			}
-			logrus.Infof("Uploading chunk with offset : %d, attempt: %d", chunk.offset, chunk.attempt)
-			err := a.uploadBlock(snap, file, chunk.offset, chunk.size)
+			logrus.Infof("Uploading chunk with offset : %d, attempt: %d", uploadChunk.offset, uploadChunk.attempt)
+			err := a.uploadBlock(snap, file, uploadChunk.offset, uploadChunk.size)
 			errCh <- chunkUploadResult{
 				err:   err,
-				chunk: &chunk,
+				chunk: &uploadChunk,
 			}
 		}
 	}
