@@ -187,17 +187,6 @@ function setup_aws_e2e() {
     setup_awscli
 }
 
-# setup_gsutil installs the gsutil
-function setup_gsutil() {
-  if ! $(which gsutil > /dev/null); then
-    echo "Installing gsutil..."
-    pip3 install gsutil
-    echo "Successfully installed gsutil."
-  else
-    echo "gsutil is already installed."
-  fi
-}
-
 # create_gcp_container creates the container for the GCP provider
 function create_gcp_container() {
   echo "Setting up GCS infrastructure..."
@@ -229,6 +218,24 @@ EOM
   return 1
 }
 
+# setup_gcloud installs the gcloud sdk
+function setup_gcloud() {
+  if $(which gcloud > /dev/null); then
+    return
+  fi
+  echo "Installing gcloud..."
+  cd $HOME
+  apt update
+  apt install -y curl
+  apt install -y python3
+  curl -Lo "google-cloud-sdk.tar.gz" https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-cli-503.0.0-$(uname -s | tr '[:upper:]' '[:lower:]')-$(uname -m | sed 's/aarch64/arm/').tar.gz
+  tar -xzf google-cloud-sdk.tar.gz
+  ./google-cloud-sdk/install.sh -q
+  export PATH=$PATH:${HOME}/google-cloud-sdk/bin
+  cd "${SOURCE_PATH}"
+  echo "Successfully installed gcloud."
+}
+
 # authorize_gcloud authorizes access to Gcloud
 function authorize_gcloud() {
   if ! $(which gcloud > /dev/null); then
@@ -244,8 +251,9 @@ function authorize_gcloud() {
   fi
 }
 
-# setup_gcp_e2e sets up the GCP infrastructure for the e2e tests including deploying fake-gcs and/or installing the gsutil
+# setup_gcp_e2e sets up the GCP infrastructure for the e2e tests including deploying installing the gcloud sdk and/or fake-gcs
 function setup_gcp_e2e() {
+  setup_gcloud
   if [[ -n ${GOOGLE_EMULATOR_HOST:-""} ]]; then
     make deploy-fakegcs $KUBECONFIG
   else
@@ -255,7 +263,6 @@ function setup_gcp_e2e() {
     fi
     authorize_gcloud
   fi
-  setup_gsutil
 }
 
 # create_azure_container creates the container for the Azure provider
