@@ -300,7 +300,7 @@ var _ = Describe("Backup", func() {
 		Context("when data is corrupt", func() {
 			It("should restore data from latest snapshot", func() {
 				testDataCorruptionRestoration := func() {
-					cmd := "export ETCD_PID=$(pgrep etcd-wrapper) && rm -r proc/${ETCD_PID}/root/var/etcd/data/new.etcd/member"
+					cmd := "export ETCD_PID=$(ps -A | grep 'etcd-wrapper' | awk '{print $1}') && rm -r proc/${ETCD_PID}/root/var/etcd/data/new.etcd/member"
 					stdout, stderr, err := executeContainerCommand(kubeconfigPath, releaseNamespace, podName, debugContainerName, cmd)
 					Expect(err).ShouldNot(HaveOccurred())
 					Expect(stderr).Should(BeEmpty())
