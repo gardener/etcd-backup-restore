@@ -108,17 +108,18 @@ function cleanup_azure_container() {
 
 # setup_awscli installs the awscli
 function setup_awscli() {
-    if ! $(which aws > /dev/null); then
-      echo "Installing awscli..."
-      if pip3 install --break-system-packages awscli; then
-        echo "Successfully installed awscli."
-      else
-        echo "Failed to install awscli."
-        return 1
-      fi
-    else
-      echo "awscli is already installed."
+    if $(which aws > /dev/null); then
+      return
     fi
+    echo "Installing awscli..."
+    apt update
+    apt install -y curl
+    apt install -y unzip
+    cd $HOME
+    curl -Lo "awscliv2.zip" "https://awscli.amazonaws.com/awscli-exe-$(uname -s | tr '[:upper:]' '[:lower:]')-$(uname -m).zip"
+    unzip awscliv2.zip > /dev/null
+    ./aws/install -i /usr/local/aws-cli -b /usr/local/bin
+    echo "Successfully installed awscli."
 }
 
 # create_aws_container creates the container for the AWS provider
