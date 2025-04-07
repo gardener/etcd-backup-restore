@@ -10,10 +10,12 @@ import (
 	"testing"
 
 	"github.com/gardener/etcd-backup-restore/test/utils"
-	. "github.com/onsi/ginkgo/v2"
-	. "github.com/onsi/gomega"
+
 	"github.com/sirupsen/logrus"
 	"go.etcd.io/etcd/embed"
+
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
 )
 
 var (
@@ -41,7 +43,7 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 	Expect(err).ShouldNot(HaveOccurred())
 	var data []byte
 	return data
-}, func(data []byte) {})
+}, func(_ []byte) {})
 
 var _ = SynchronizedAfterSuite(func() {}, func() {
 	etcd.Server.Stop()

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/gardener/etcd-backup-restore/pkg/wrappers"
+
 	"github.com/robfig/cron/v3"
 	"github.com/sirupsen/logrus"
 	flag "github.com/spf13/pflag"
@@ -48,10 +49,10 @@ type SnapshotterState int
 // SnapshotterConfig holds the snapshotter config.
 type SnapshotterConfig struct {
 	FullSnapshotSchedule         string            `json:"schedule,omitempty"`
+	GarbageCollectionPolicy      string            `json:"garbageCollectionPolicy,omitempty"`
 	DeltaSnapshotPeriod          wrappers.Duration `json:"deltaSnapshotPeriod,omitempty"`
 	DeltaSnapshotMemoryLimit     uint              `json:"deltaSnapshotMemoryLimit,omitempty"`
 	GarbageCollectionPeriod      wrappers.Duration `json:"garbageCollectionPeriod,omitempty"`
-	GarbageCollectionPolicy      string            `json:"garbageCollectionPolicy,omitempty"`
 	MaxBackups                   uint              `json:"maxBackups,omitempty"`
 	DeltaSnapshotRetentionPeriod wrappers.Duration `json:"deltaSnapshotRetentionPeriod,omitempty"`
 }

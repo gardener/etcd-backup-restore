@@ -10,4 +10,5 @@ package tools
 
 import (
 	_ "go.uber.org/mock/mockgen/model"
+	_ "golang.org/x/tools/cmd/goimports"
 )

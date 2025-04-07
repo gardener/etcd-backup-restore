@@ -9,11 +9,14 @@ import (
 	"net/url"
 	"time"
 
-	_ "github.com/gardener/etcd-backup-restore/pkg/snapshot/restorer"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
+
+	"go.etcd.io/etcd/pkg/types"
+
+	_ "github.com/gardener/etcd-backup-restore/pkg/snapshot/restorer"
+
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"go.etcd.io/etcd/pkg/types"
 )
 
 var _ = Describe("restorer types", func() {

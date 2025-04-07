@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2025 SAP SE or an SAP affiliate company and Gardener contributors
+//
+// SPDX-License-Identifier: Apache-2.0
+
 package validator_test
 
 import (
@@ -14,6 +18,7 @@ import (
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 	"github.com/gardener/etcd-backup-restore/test/utils"
+
 	"github.com/sirupsen/logrus"
 	"go.etcd.io/etcd/embed"
 
@@ -78,10 +83,10 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 	Expect(err).ShouldNot(HaveOccurred())
 
 	return data
-}, func(data []byte) {})
+}, func(_ []byte) {})
 
 // runSnapshotter creates a snapshotter object and runs it for a duration specified by 'snapshotterDurationSeconds'
-func runSnapshotter(logger *logrus.Entry, deltaSnapshotPeriod time.Duration, endpoints []string, stopCh <-chan struct{}) error {
+func runSnapshotter(logger *logrus.Entry, _ time.Duration, endpoints []string, stopCh <-chan struct{}) error {
 	snapstoreConfig := &brtypes.SnapstoreConfig{Container: snapstoreDir, Provider: "Local"}
 	store, err := snapstore.GetSnapstore(snapstoreConfig)
 	if err != nil {
@@ -150,8 +155,8 @@ func copyDir(sourceDirPath, destinationDirPath string) error {
 		}
 
 		if fileInfo.Mode().IsDir() {
-			os.Mkdir(destPath, fileInfo.Mode())
-			copyDir(sourcePath, destPath)
+			_ = os.Mkdir(destPath, fileInfo.Mode())
+			_ = copyDir(sourcePath, destPath)
 		} else if fileInfo.Mode().IsRegular() {
 			if err := copyFile(sourcePath, destPath, fileInfo.Mode()); err != nil {
 				return err

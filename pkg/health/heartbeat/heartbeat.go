@@ -15,10 +15,10 @@ import (
 	"github.com/gardener/etcd-backup-restore/pkg/miscellaneous"
 	utils "github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
+
 	"github.com/sirupsen/logrus"
 	v1 "k8s.io/api/coordination/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
 	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -32,13 +32,13 @@ const (
 
 // Heartbeat contains information to perform regular heart beats in a Kubernetes cluster.
 type Heartbeat struct {
+	k8sClient      client.Client
 	logger         *logrus.Entry
 	heartbeatTimer *time.Timer
 	etcdConfig     *brtypes.EtcdConnectionConfig
-	k8sClient      client.Client
+	metadata       map[string]string // metadata is currently added as annotations to the k8s lease object
 	podName        string
 	podNamespace   string
-	metadata       map[string]string // metadata is currently added as annotations to the k8s lease object
 }
 
 // NewHeartbeat returns the heartbeat object.
@@ -291,17 +291,18 @@ func FullSnapshotCaseLeaseUpdate(ctx context.Context, logger *logrus.Entry, full
 // DeltaSnapshotCaseLeaseUpdate Updates the deltasnapshot lease as needed when a delta snapshot is taken
 func DeltaSnapshotCaseLeaseUpdate(ctx context.Context, logger *logrus.Entry, k8sClientset client.Client, deltaSnapshotLeaseName string, store brtypes.SnapStore) error {
 	_, latestDeltaSnapshotList, err := miscellaneous.GetLatestFullSnapshotAndDeltaSnapList(store)
-	if err == nil {
-		if err = UpdateDeltaSnapshotLease(ctx, logger, latestDeltaSnapshotList, k8sClientset, deltaSnapshotLeaseName); err != nil {
-			return &errors.EtcdError{
-				Message: fmt.Sprintf("Failed to update delta snapshot lease with error: %v", err),
-			}
-		}
-	} else {
+	if err != nil {
 		return &errors.EtcdError{
 			Message: fmt.Sprintf("failed to get latest snapshots from store with error: %v", err),
 		}
 	}
+
+	if err = UpdateDeltaSnapshotLease(ctx, logger, latestDeltaSnapshotList, k8sClientset, deltaSnapshotLeaseName); err != nil {
+		return &errors.EtcdError{
+			Message: fmt.Sprintf("Failed to update delta snapshot lease with error: %v", err),
+		}
+	}
+
 	return nil
 }
 

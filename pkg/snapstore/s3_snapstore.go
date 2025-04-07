@@ -25,6 +25,8 @@ import (
 	"sync"
 	"time"
 
+	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
+
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
@@ -33,8 +35,6 @@ import (
 	"github.com/sirupsen/logrus"
 	"k8s.io/client-go/util/retry"
 	"k8s.io/utils/ptr"
-
-	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 )
 
 const (
@@ -45,16 +45,16 @@ const (
 )
 
 type awsCredentials struct {
-	AccessKeyID          string  `json:"accessKeyID"`
-	Region               string  `json:"region"`
-	SecretAccessKey      string  `json:"secretAccessKey"`
 	SSECustomerAlgorithm *string `json:"sseCustomerAlgorithm,omitempty"`
 	SSECustomerKey       *string `json:"sseCustomerKey,omitempty"`
-	BucketName           string  `json:"bucketName"`
 	Endpoint             *string `json:"endpoint,omitempty"`
 	S3ForcePathStyle     *bool   `json:"s3ForcePathStyle,omitempty"`
 	InsecureSkipVerify   *bool   `json:"insecureSkipVerify,omitempty"`
 	TrustedCaCert        *string `json:"trustedCaCert,omitempty"`
+	AccessKeyID          string  `json:"accessKeyID"`
+	Region               string  `json:"region"`
+	SecretAccessKey      string  `json:"secretAccessKey"`
+	BucketName           string  `json:"bucketName"`
 }
 
 // SSECredentials to hold fields for server-side encryption in I/O operations
@@ -66,14 +66,14 @@ type SSECredentials struct {
 
 // S3SnapStore is snapstore with AWS S3 object store as backend
 type S3SnapStore struct {
-	prefix string
 	client s3iface.S3API
-	bucket string
+	SSECredentials
+	prefix  string
+	bucket  string
+	tempDir string
 	// maxParallelChunkUploads hold the maximum number of parallel chunk uploads allowed.
 	maxParallelChunkUploads uint
 	minChunkSize            int64
-	tempDir                 string
-	SSECredentials
 }
 
 // NewS3SnapStore create new S3SnapStore from shared configuration with specified bucket
@@ -366,8 +366,7 @@ func (s *S3SnapStore) Save(snap brtypes.Snapshot, rc io.ReadCloser) (err error) 
 		return err
 	}
 	// Initiate multi part upload
-	ctx := context.TODO()
-	ctx, cancel := context.WithTimeout(ctx, chunkUploadTimeout)
+	ctx, cancel := context.WithTimeout(context.TODO(), chunkUploadTimeout)
 	defer cancel()
 	prefix := adaptPrefix(&snap, s.prefix)
 
@@ -423,8 +422,7 @@ func (s *S3SnapStore) Save(snap brtypes.Snapshot, rc io.ReadCloser) (err error) 
 	wg.Wait()
 
 	if snapshotErr != nil {
-		ctx := context.TODO()
-		ctx, cancel := context.WithTimeout(ctx, chunkUploadTimeout)
+		ctx, cancel = context.WithTimeout(context.TODO(), chunkUploadTimeout)
 		defer cancel()
 		logrus.Infof("Aborting the multipart upload with upload ID : %s", *uploadOutput.UploadId)
 		_, err = s.client.AbortMultipartUploadWithContext(ctx, &s3.AbortMultipartUploadInput{
@@ -503,15 +501,15 @@ func (s *S3SnapStore) partUploader(wg *sync.WaitGroup, stopCh <-chan struct{}, s
 		select {
 		case <-stopCh:
 			return
-		case chunk, ok := <-chunkUploadCh:
+		case uploadChunk, ok := <-chunkUploadCh:
 			if !ok {
 				return
 			}
-			logrus.Infof("Uploading chunk with id: %d, offset: %d, attempt: %d", chunk.id, chunk.offset, chunk.attempt)
-			err := s.uploadPart(snap, file, uploadID, completedParts, chunk.offset, chunk.size)
+			logrus.Infof("Uploading chunk with id: %d, offset: %d, attempt: %d", uploadChunk.id, uploadChunk.offset, uploadChunk.attempt)
+			err := s.uploadPart(snap, file, uploadID, completedParts, uploadChunk.offset, uploadChunk.size)
 			errCh <- chunkUploadResult{
 				err:   err,
-				chunk: &chunk,
+				chunk: &uploadChunk,
 			}
 		}
 	}

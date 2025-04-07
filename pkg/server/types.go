@@ -24,10 +24,10 @@ type BackupRestoreComponentConfig struct {
 	SnapstoreConfig          *brtypes.SnapstoreConfig          `json:"snapstoreConfig,omitempty"`
 	CompressionConfig        *compressor.CompressionConfig     `json:"compressionConfig,omitempty"`
 	RestorationConfig        *brtypes.RestorationConfig        `json:"restorationConfig,omitempty"`
-	DefragmentationSchedule  string                            `json:"defragmentationSchedule"`
 	HealthConfig             *brtypes.HealthConfig             `json:"healthConfig,omitempty"`
 	LeaderElectionConfig     *brtypes.Config                   `json:"leaderElectionConfig,omitempty"`
 	ExponentialBackoffConfig *brtypes.ExponentialBackoffConfig `json:"exponentialBackoffConfig,omitempty"`
+	DefragmentationSchedule  string                            `json:"defragmentationSchedule"`
 	UseEtcdWrapper           bool                              `json:"useEtcdWrapper,omitempty"`
 }
 

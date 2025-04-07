@@ -19,13 +19,13 @@ import (
 	"sync"
 	"time"
 
-	"cloud.google.com/go/storage"
 	stiface "github.com/gardener/etcd-backup-restore/pkg/snapstore/gcs"
+	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
+
+	"cloud.google.com/go/storage"
 	"github.com/sirupsen/logrus"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
-
-	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 )
 
 const (
@@ -40,14 +40,14 @@ const (
 
 // GCSSnapStore is snapstore with GCS object store as backend.
 type GCSSnapStore struct {
-	client stiface.Client
-	prefix string
-	bucket string
+	client         stiface.Client
+	prefix         string
+	bucket         string
+	tempDir        string
+	chunkDirSuffix string
 	// maxParallelChunkUploads hold the maximum number of parallel chunk uploads allowed.
 	maxParallelChunkUploads uint
 	minChunkSize            int64
-	tempDir                 string
-	chunkDirSuffix          string
 }
 
 type credConfig struct {
@@ -57,8 +57,8 @@ type credConfig struct {
 
 // gcsEmulatorConfig holds the configuration for the fake GCS emulator
 type gcsEmulatorConfig struct {
-	enabled  bool   // whether the fake GCS emulator is enabled
-	endpoint string // the endpoint of the fake GCS emulator
+	endpoint string
+	enabled  bool
 }
 
 const (
@@ -94,7 +94,7 @@ func NewGCSSnapStore(config *brtypes.SnapstoreConfig) (*GCSSnapStore, error) {
 
 	var chunkDirSuffix string
 	if emulatorConfig.enabled {
-		err := emulatorConfig.configureClient(opts)
+		opts, err = emulatorConfig.configureClient(opts)
 		if err != nil {
 			return nil, err
 		}
@@ -163,13 +163,12 @@ func NewGCSSnapStoreFromClient(bucket, prefix, tempDir string, maxParallelChunkU
 }
 
 // configureClient configures the fake gcs emulator
-func (e *gcsEmulatorConfig) configureClient(opts []option.ClientOption) error {
+func (e *gcsEmulatorConfig) configureClient(opts []option.ClientOption) ([]option.ClientOption, error) {
 	err := os.Setenv("STORAGE_EMULATOR_HOST", strings.TrimPrefix(e.endpoint, "http://"))
 	if err != nil {
-		return fmt.Errorf("failed to set the environment variable for the fake GCS emulator: %v", err)
+		return nil, fmt.Errorf("failed to set the environment variable for the fake GCS emulator: %v", err)
 	}
-	opts = append(opts, option.WithoutAuthentication())
-	return nil
+	return append(opts, option.WithoutAuthentication()), nil
 }
 
 // Fetch should open reader for the snapshot file from store.
@@ -289,15 +288,15 @@ func (s *GCSSnapStore) componentUploader(wg *sync.WaitGroup, stopCh <-chan struc
 		select {
 		case <-stopCh:
 			return
-		case chunk, ok := <-chunkUploadCh:
+		case uploadChunk, ok := <-chunkUploadCh:
 			if !ok {
 				return
 			}
-			logrus.Infof("Uploading chunk with offset : %d, attempt: %d", chunk.offset, chunk.attempt)
-			err := s.uploadComponent(snap, file, chunk.offset, chunk.size)
+			logrus.Infof("Uploading chunk with offset : %d, attempt: %d", uploadChunk.offset, uploadChunk.attempt)
+			err := s.uploadComponent(snap, file, uploadChunk.offset, uploadChunk.size)
 			errCh <- chunkUploadResult{
 				err:   err,
-				chunk: &chunk,
+				chunk: &uploadChunk,
 			}
 		}
 	}
