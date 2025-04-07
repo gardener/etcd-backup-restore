@@ -175,7 +175,7 @@ func handleBulkDeleteObject(w http.ResponseWriter, r *http.Request) {
 	buf := new(bytes.Buffer)
 	if _, err := io.Copy(buf, r.Body); err != nil {
 		errorMessage := fmt.Sprintf("failed to read content %v", err)
-		logrus.Errorf(errorMessage)
+		logrus.Errorln(errorMessage)
 		bulkDeleteResponse.Errors = append(bulkDeleteResponse.Errors, []string{errorMessage})
 		marshalledResponse, _ := json.Marshal(bulkDeleteResponse)
 		w.WriteHeader(http.StatusOK)
@@ -192,7 +192,7 @@ func handleBulkDeleteObject(w http.ResponseWriter, r *http.Request) {
 		var errorStrings []string
 		if err != nil {
 			errorMessage := fmt.Sprintf("failed to unescape url %v", err)
-			logrus.Errorf(errorMessage)
+			logrus.Errorln(errorMessage)
 			errorStrings = append(errorStrings, errorMessage)
 		}
 
@@ -202,7 +202,7 @@ func handleBulkDeleteObject(w http.ResponseWriter, r *http.Request) {
 			bulkDeleteResponse.NumberDeleted++
 		} else {
 			errorMessage := fmt.Sprintf("Resource not found: %s", segmentObject)
-			logrus.Errorf(errorMessage)
+			logrus.Errorln(errorMessage)
 			bulkDeleteResponse.NumberNotFound++
 			errorStrings = append(errorStrings, errorMessage)
 		}

@@ -67,7 +67,7 @@ $(KIND): $(call tool_version_file,$(KIND),$(KIND_VERSION))
 	chmod +x $(KIND)
 
 $(GOIMPORTS):
-	go build -o $(GOIMPORTS) golang.org/x/tools/cmd/goimports
+	GOBIN=$(abspath $(TOOLS_BIN_DIR)) go install golang.org/x/tools/cmd/goimports@latest
 
 $(GOIMPORTS_REVISER):
 	GOBIN=$(abspath $(TOOLS_BIN_DIR)) go install github.com/incu6us/goimports-reviser/v3@$(GOIMPORTS_REVISER_VERSION)
