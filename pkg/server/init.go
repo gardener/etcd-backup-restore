@@ -93,10 +93,10 @@ func (c *BackupRestoreComponentConfig) Complete() {
 
 // HTTPServerConfig holds the server config.
 type HTTPServerConfig struct {
-	Port            uint   `json:"port,omitempty"`
-	EnableProfiling bool   `json:"enableProfiling,omitempty"`
 	TLSCertFile     string `json:"server-cert,omitempty"`
 	TLSKeyFile      string `json:"server-key,omitempty"`
+	Port            uint   `json:"port,omitempty"`
+	EnableProfiling bool   `json:"enableProfiling,omitempty"`
 }
 
 // NewHTTPServerConfig returns the config for http server

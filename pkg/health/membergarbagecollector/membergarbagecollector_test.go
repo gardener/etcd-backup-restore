@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2025 SAP SE or an SAP affiliate company and Gardener contributors
+//
+// SPDX-License-Identifier: Apache-2.0
+
 package membergarbagecollector_test
 
 import (
@@ -10,19 +14,19 @@ import (
 	"github.com/gardener/etcd-backup-restore/pkg/miscellaneous"
 	mocketcdutil "github.com/gardener/etcd-backup-restore/pkg/mock/etcdutil/client"
 	"github.com/gardener/etcd-backup-restore/pkg/wrappers"
+
 	"go.etcd.io/etcd/clientv3"
 	"go.etcd.io/etcd/etcdserver/etcdserverpb"
-	"sigs.k8s.io/controller-runtime/pkg/client"
-
-	. "github.com/onsi/ginkgo/v2"
-	. "github.com/onsi/gomega"
 	"go.uber.org/mock/gomock"
-
 	appsv1 "k8s.io/api/apps/v1"
 	coordv1 "k8s.io/api/coordination/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/ptr"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
 )
 
 var _ = Describe("Membergarbagecollector", func() {
@@ -71,19 +75,19 @@ var _ = Describe("Membergarbagecollector", func() {
 		Context("With three member pods present", func() {
 			BeforeEach(func() {
 				//Create three pods
-				k8sClientset.Create(context.TODO(), getPodWithName("test-etcd-0"))
-				k8sClientset.Create(context.TODO(), getPodWithName("test-etcd-1"))
-				k8sClientset.Create(context.TODO(), getPodWithName("test-etcd-2"))
+				Expect(k8sClientset.Create(context.TODO(), getPodWithName("test-etcd-0"))).ShouldNot(HaveOccurred())
+				Expect(k8sClientset.Create(context.TODO(), getPodWithName("test-etcd-1"))).ShouldNot(HaveOccurred())
+				Expect(k8sClientset.Create(context.TODO(), getPodWithName("test-etcd-2"))).ShouldNot(HaveOccurred())
 			})
 			AfterEach(func() {
-				k8sClientset.Delete(context.TODO(), getPodWithName("test-etcd-0"))
-				k8sClientset.Delete(context.TODO(), getPodWithName("test-etcd-1"))
-				k8sClientset.Delete(context.TODO(), getPodWithName("test-etcd-2"))
+				Expect(k8sClientset.Delete(context.TODO(), getPodWithName("test-etcd-0"))).ShouldNot(HaveOccurred())
+				Expect(k8sClientset.Delete(context.TODO(), getPodWithName("test-etcd-1"))).ShouldNot(HaveOccurred())
+				Expect(k8sClientset.Delete(context.TODO(), getPodWithName("test-etcd-2"))).ShouldNot(HaveOccurred())
 			})
 
 			It("Should not remove any members if equal members in statefulset and etcd cluster", func() {
 				//Create sts object
-				k8sClientset.Create(context.TODO(), getStsWithName("test-etcd", 3))
+				Expect(k8sClientset.Create(context.TODO(), getStsWithName("test-etcd", 3))).ShouldNot(HaveOccurred())
 
 				//Create mocks
 				etcdutilchecker := mocketcdutil.NewMockClusterCloser(ctrl)
@@ -96,12 +100,12 @@ var _ = Describe("Membergarbagecollector", func() {
 				Expect(err).To(BeNil())
 
 				//Cleanup
-				k8sClientset.Delete(context.TODO(), getStsWithName("test-etcd", 3))
+				Expect(k8sClientset.Delete(context.TODO(), getStsWithName("test-etcd", 3))).ShouldNot(HaveOccurred())
 			})
 
 			It("Should not remove any member missing from replicas but with its pod present", func() {
 				//Create sts object
-				k8sClientset.Create(context.TODO(), getStsWithName("test-etcd", 2))
+				Expect(k8sClientset.Create(context.TODO(), getStsWithName("test-etcd", 2))).ShouldNot(HaveOccurred())
 
 				//Create mocks
 				etcdutilchecker := mocketcdutil.NewMockClusterCloser(ctrl)
@@ -114,27 +118,27 @@ var _ = Describe("Membergarbagecollector", func() {
 				Expect(err).To(BeNil())
 
 				//Cleanup
-				k8sClientset.Delete(context.TODO(), getStsWithName("test-etcd", 2))
+				Expect(k8sClientset.Delete(context.TODO(), getStsWithName("test-etcd", 2))).ShouldNot(HaveOccurred())
 			})
 		})
 
 		Context("With two member pods present", func() {
 			BeforeEach(func() {
 				//Create two pods
-				k8sClientset.Create(context.TODO(), getPodWithName("test-etcd-0"))
-				k8sClientset.Create(context.TODO(), getPodWithName("test-etcd-1"))
+				Expect(k8sClientset.Create(context.TODO(), getPodWithName("test-etcd-0"))).ShouldNot(HaveOccurred())
+				Expect(k8sClientset.Create(context.TODO(), getPodWithName("test-etcd-1"))).ShouldNot(HaveOccurred())
 			})
 			AfterEach(func() {
-				k8sClientset.Delete(context.TODO(), getPodWithName("test-etcd-0"))
-				k8sClientset.Delete(context.TODO(), getPodWithName("test-etcd-1"))
+				Expect(k8sClientset.Delete(context.TODO(), getPodWithName("test-etcd-0"))).ShouldNot(HaveOccurred())
+				Expect(k8sClientset.Delete(context.TODO(), getPodWithName("test-etcd-1"))).ShouldNot(HaveOccurred())
 			})
 
 			It("Should not remove the member with the missing pod if it has a lease present", func() {
 				//Create sts object
-				k8sClientset.Create(context.TODO(), getStsWithName("test-etcd", 3))
+				Expect(k8sClientset.Create(context.TODO(), getStsWithName("test-etcd", 3))).ShouldNot(HaveOccurred())
 
 				//Create lease
-				k8sClientset.Create(context.TODO(), getLeaseWithName("test-etcd-2"))
+				Expect(k8sClientset.Create(context.TODO(), getLeaseWithName("test-etcd-2"))).ShouldNot(HaveOccurred())
 
 				//Create mocks
 				etcdutilchecker := mocketcdutil.NewMockClusterCloser(ctrl)
@@ -147,13 +151,13 @@ var _ = Describe("Membergarbagecollector", func() {
 				Expect(err).To(BeNil())
 
 				//Cleanup
-				k8sClientset.Delete(context.TODO(), getStsWithName("test-etcd", 3))
-				k8sClientset.Delete(context.TODO(), getLeaseWithName("test-etcd-2"))
+				Expect(k8sClientset.Delete(context.TODO(), getStsWithName("test-etcd", 3))).ShouldNot(HaveOccurred())
+				Expect(k8sClientset.Delete(context.TODO(), getLeaseWithName("test-etcd-2"))).ShouldNot(HaveOccurred())
 			})
 
 			It("Should remove the member with the missing pod if it has no lease present", func() {
 				//Create sts object
-				k8sClientset.Create(context.TODO(), getStsWithName("test-etcd", 2))
+				Expect(k8sClientset.Create(context.TODO(), getStsWithName("test-etcd", 2))).ShouldNot(HaveOccurred())
 
 				//Create mocks
 				etcdutilchecker := mocketcdutil.NewMockClusterCloser(ctrl)
@@ -166,7 +170,7 @@ var _ = Describe("Membergarbagecollector", func() {
 				Expect(err).To(BeNil())
 
 				//Cleanup
-				k8sClientset.Delete(context.TODO(), getStsWithName("test-etcd", 2))
+				Expect(k8sClientset.Delete(context.TODO(), getStsWithName("test-etcd", 2))).ShouldNot(HaveOccurred())
 			})
 		})
 	})

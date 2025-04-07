@@ -19,6 +19,7 @@ import (
 	"github.com/gardener/etcd-backup-restore/pkg/snapshot/restorer"
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
+
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/sirupsen/logrus"
 	"go.uber.org/zap"
@@ -176,7 +177,7 @@ func (e *EtcdInitializer) restoreCorruptData() (bool, error) {
 		logger.Errorf("failed to get latest set of snapshot: %v", err)
 		return false, err
 	}
-	if baseSnap == nil && (deltaSnapList == nil || len(deltaSnapList) == 0) {
+	if baseSnap == nil && len(deltaSnapList) == 0 {
 		// Snapstore is considered to be the source of truth. Thus, if
 		// snapstore exists but is empty, data directory should be cleared.
 		logger.Infof("No snapshot found. Will remove the data directory.")

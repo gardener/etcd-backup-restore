@@ -19,10 +19,10 @@ import (
 type s3AuthOptions struct {
 	endpoint           string
 	region             string
-	disableSSL         bool
-	insecureSkipVerify bool
 	accessKeyID        string
 	secretAccessKey    string
+	disableSSL         bool
+	insecureSkipVerify bool
 }
 
 // newGenericS3FromAuthOpt creates a new S3 snapstore object from the specified authentication options.

@@ -21,6 +21,7 @@ import (
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 	"github.com/gardener/etcd-backup-restore/test/utils"
+
 	"github.com/sirupsen/logrus"
 	"go.etcd.io/etcd/clientv3"
 	"go.etcd.io/etcd/pkg/types"
@@ -240,7 +241,6 @@ var _ = Describe("Running Restorer", func() {
 
 	Describe("NEGATIVE:For Dynamic Loads and Negative Scenarios", func() {
 		var (
-			store               brtypes.SnapStore
 			deltaSnapshotPeriod time.Duration
 			endpoints           []string
 			restorationConfig   *brtypes.RestorationConfig
@@ -1231,7 +1231,7 @@ func takeInvalidV1Snaps(container string) error {
 		LastRevision:  100,
 	}
 	snap.GenerateSnapshotName()
-	store.Save(snap, io.NopCloser(strings.NewReader(fmt.Sprintf("dummy-snapshot-content for snap created on %s", snap.CreatedOn))))
+	err = store.Save(snap, io.NopCloser(strings.NewReader(fmt.Sprintf("dummy-snapshot-content for snap created on %s", snap.CreatedOn))))
 	Expect(err).ShouldNot(HaveOccurred())
 
 	//Create v1/Backup-xxxxxx dir

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/gardener/etcd-backup-restore/pkg/wrappers"
+
 	flag "github.com/spf13/pflag"
 )
 
@@ -35,13 +36,13 @@ const (
 
 // HealthConfig holds the health configuration.
 type HealthConfig struct {
+	FullSnapshotLeaseName       string            `json:"fullSnapshotLeaseName,omitempty"`
+	DeltaSnapshotLeaseName      string            `json:"deltaSnapshotLeaseName,omitempty"`
+	HeartbeatDuration           wrappers.Duration `json:"heartbeatDuration,omitempty"`
+	MemberGCDuration            wrappers.Duration `json:"memberGCDuration,omitempty"`
 	SnapshotLeaseRenewalEnabled bool              `json:"snapshotLeaseRenewalEnabled,omitempty"`
 	MemberLeaseRenewalEnabled   bool              `json:"memberLeaseRenewalEnabled,omitempty"`
 	EtcdMemberGCEnabled         bool              `json:"etcdMemberGCEnabled,omitempty"`
-	HeartbeatDuration           wrappers.Duration `json:"heartbeatDuration,omitempty"`
-	MemberGCDuration            wrappers.Duration `json:"memberGCDuration,omitempty"`
-	FullSnapshotLeaseName       string            `json:"fullSnapshotLeaseName,omitempty"`
-	DeltaSnapshotLeaseName      string            `json:"deltaSnapshotLeaseName,omitempty"`
 }
 
 // NewHealthConfig returns the health config.

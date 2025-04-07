@@ -34,6 +34,6 @@ const (
 
 // CompressionConfig holds the compression configuration.
 type CompressionConfig struct {
-	Enabled           bool   `json:"enabled"`
 	CompressionPolicy string `json:"policy,omitempty"`
+	Enabled           bool   `json:"enabled"`
 }

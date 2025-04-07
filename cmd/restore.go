@@ -16,19 +16,18 @@ import (
 )
 
 // NewRestoreCommand returns the command to restore
-func NewRestoreCommand(ctx context.Context) *cobra.Command {
+func NewRestoreCommand(_ context.Context) *cobra.Command {
 	opts := newRestorerOptions()
 	// restoreCmd represents the restore command
 	restoreCmd := &cobra.Command{
 		Use:   "restore",
 		Short: "restores an etcd member data directory from snapshots",
 		Long:  "Restores an etcd member data directory from existing backup stored in snapshot store.",
-		Run: func(cmd *cobra.Command, args []string) {
+		Run: func(_ *cobra.Command, _ []string) {
 			/* Restore operation
 			- Find the latest snapshot.
 			- Restore etcd data diretory from full snapshot.
 			*/
-			logger := logrus.New()
 			runtimelog.SetLogger(logr.New(runtimelog.NullLogSink{}))
 
 			options, store, err := BuildRestoreOptionsAndStore(opts)

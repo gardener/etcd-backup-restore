@@ -7,9 +7,9 @@ package metrics
 import (
 	"sort"
 
-	"github.com/prometheus/client_golang/prometheus"
-
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
+
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 const (
@@ -250,9 +250,7 @@ func generateLabelCombinations(labelValues map[string][]string) []map[string]str
 	sort.Strings(labels)
 	for i, label := range labels {
 		values := make([]string, len(labelValues[label]))
-		for j := range labelValues[label] {
-			values[j] = labelValues[label][j]
-		}
+		copy(values, labelValues[label])
 		valuesList[i] = values
 		valueCounts[i] = len(values)
 	}

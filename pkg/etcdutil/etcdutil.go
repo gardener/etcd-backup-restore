@@ -49,8 +49,8 @@ func NewFactory(cfg brtypes.EtcdConnectionConfig, opts ...client.Option) client.
 
 // factoryImpl implements the client.Factory interface by constructing new client objects.
 type factoryImpl struct {
-	brtypes.EtcdConnectionConfig
 	options *client.Options
+	brtypes.EtcdConnectionConfig
 }
 
 func (f *factoryImpl) NewClient() (*clientv3.Client, error) {
@@ -237,13 +237,12 @@ func GetEtcdEndPointsSorted(ctx context.Context, clientMaintenance client.Mainte
 		return leaderEtcdEndpoints, nil, nil
 	}
 
-	if len(etcdEndpoints) > 0 {
-		endPoint = etcdEndpoints[0]
-	} else {
+	if len(etcdEndpoints) == 0 {
 		return nil, nil, &errors.EtcdError{
 			Message: "etcd endpoints are not passed correctly",
 		}
 	}
+	endPoint = etcdEndpoints[0]
 
 	response, err := clientMaintenance.Status(ctx, endPoint)
 	if err != nil {

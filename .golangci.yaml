@@ -1,0 +1,49 @@
+run:
+  concurrency: 4
+  timeout: 10m
+linters:
+  disable:
+    - unused
+  enable:
+    - govet
+    - revive
+    - loggercheck
+issues:
+  exclude-use-default: false
+  exclude-dirs:
+    - vendor
+  exclude:
+    # errcheck: Almost all programs ignore errors on these functions and in most cases it's ok
+    - Error return value of .((os\.)?std(out|err)\..*|.*Close|.*Flush|os\.Remove(All)?|.*printf?|os\.(Un)?Setenv). is not checked
+    # revive:
+    - var-naming # ((var|const|struct field|func) .* should be .*
+    - dot-imports # should not use dot imports
+    - package-comments # package comment should be of the form
+    - unexported-return # exported func .* returns unexported type .*, which can be annoying to use
+    - indent-error-flow # if block ends with a return statement, so drop this else and outdent its block
+    - "exported: (type|func) name will be used as .* by other packages, and that stutters;"
+    # typecheck:
+    - "undeclared name: `.*`"
+    - "\".*\" imported but not used"
+    # allow non-capitalized messages if they start with technical terms
+    - "structured logging message should be capitalized: \"garden(er-apiserver|er-controller-manager|er-admission-controller|er-operator|er-resource-manager|let)"
+    - 'declaration of "(err|ctx)" shadows declaration at'
+  exclude-rules:
+    - linters:
+        - staticcheck
+      text: "SA1019:" # Excludes messages where deprecated variables are used
+linters-settings:
+  govet:
+    enable-all: true
+  revive:
+    rules:
+      - name: duplicated-imports
+      - name: unused-parameter
+      - name: unreachable-code
+      - name: context-as-argument
+      - name: early-return
+      - name: exported
+  loggercheck:
+    no-printf-like: true
+    logr: true
+    zap: true
