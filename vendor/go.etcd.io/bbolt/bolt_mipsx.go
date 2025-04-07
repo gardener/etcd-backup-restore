@@ -1,4 +1,5 @@
 //go:build mips || mipsle
+// +build mips mipsle
 
 package bbolt
 
