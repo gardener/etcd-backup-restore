@@ -37,7 +37,7 @@ format: $(GOIMPORTS_REVISER)
 # Check packages
 .PHONY: check
 check: $(GOLANGCI_LINT) $(GOIMPORTS) $(HELM) format
-	@./hack/check.sh --golangci-lint-config=./.golangci.yaml ./pkg/... ./cmd/... ./test/...
+	@./hack/check.sh --golangci-lint-config=./.golangci.yaml ./cmd/... ./pkg/... ./test/...
 
 .PHONY: sast
 sast: $(GOSEC)
