@@ -24,5 +24,12 @@ if [[ "${USE_FAKEGCS}" == "true" ]]; then
   mkdir -p /tmp/.gcp
   echo -n "${FAKEGCS_LOCAL_URL}"         > /tmp/.gcp/storageAPIEndpoint
   echo -n "true"                         > /tmp/.gcp/emulatorEnabled
+  # Create a dummy service account JSON file
+  cat <<EOF > /tmp/.gcp/service-account.json
+  {
+    "project_id": "dummy-project-id",
+    "type": "service_account"
+  }
+EOF
   export GOOGLE_APPLICATION_CREDENTIALS="/tmp/.gcp/service-account.json"
 fi
