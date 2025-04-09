@@ -117,7 +117,10 @@ func getProvider(providerName string) (testProvider, error) {
 		} else {
 			secretData["emulatorEnabled"] = "true"
 			secretData["storageAPIEndpoint"] = fmt.Sprintf("http://%s/storage/v1/", fakeGCSHost)
-			secretData["serviceAccountJson"] = "dummy-service-account-json"
+			secretData["serviceAccountJson"] = `{
+				"project_id": "dummy-project-id",
+				"type": "service_account"
+			}`
 		}
 		provider = testProvider{
 			name: "gcp",
