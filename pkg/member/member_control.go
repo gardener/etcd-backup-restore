@@ -300,7 +300,7 @@ func (m *memberControl) RemoveMember(ctx context.Context) error {
 
 // IsLearnerPresent checks for the learner(non-voting) member in a cluster.
 func (m *memberControl) IsLearnerPresent(ctx context.Context) (bool, error) {
-	m.logger.Infof("checking the presence of a learner in a cluster...")
+	m.logger.Infof("checking the presence of a learner in the cluster...")
 
 	cli, err := m.clientFactory.NewCluster()
 	if err != nil {
@@ -366,7 +366,7 @@ func (m *memberControl) GetPeerURLs(ctx context.Context, closer etcdClient.Clust
 	return []string{}, nil
 }
 
-// WasMemberInCluster checks the whether etcd member was part of etcd cluster.
+// WasMemberInCluster checks whether etcd member was part of etcd cluster.
 func (m *memberControl) WasMemberInCluster(ctx context.Context, clientSet client.Client) bool {
 	etcdMemberPresent, err := m.IsMemberInCluster(ctx)
 	if err == nil {

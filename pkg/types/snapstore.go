@@ -234,6 +234,10 @@ func (c *SnapstoreConfig) Validate() error {
 // Complete completes the config.
 func (c *SnapstoreConfig) Complete() {
 	c.Prefix = path.Join(c.Prefix, backupFormatVersion)
+
+	if c.TempDir == "" {
+		c.TempDir = "/tmp"
+	}
 }
 
 // MergeWith completes the config based on other config
