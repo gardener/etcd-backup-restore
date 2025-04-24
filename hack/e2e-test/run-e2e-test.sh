@@ -108,17 +108,18 @@ function cleanup_azure_container() {
 
 # setup_awscli installs the awscli
 function setup_awscli() {
-    if ! $(which aws > /dev/null); then
-      echo "Installing awscli..."
-      if pip3 install --break-system-packages awscli; then
-        echo "Successfully installed awscli."
-      else
-        echo "Failed to install awscli."
-        return 1
-      fi
-    else
-      echo "awscli is already installed."
+    if $(which aws > /dev/null); then
+      return
     fi
+    echo "Installing awscli..."
+    apt update
+    apt install -y curl
+    apt install -y unzip
+    cd $HOME
+    curl -Lo "awscliv2.zip" "https://awscli.amazonaws.com/awscli-exe-$(uname -s | tr '[:upper:]' '[:lower:]')-$(uname -m).zip"
+    unzip awscliv2.zip > /dev/null
+    ./aws/install -i /usr/local/aws-cli -b /usr/local/bin
+    echo "Successfully installed awscli."
 }
 
 # create_aws_container creates the container for the AWS provider
@@ -186,25 +187,20 @@ function setup_aws_e2e() {
     setup_awscli
 }
 
-# setup_gsutil installs the gsutil
-function setup_gsutil() {
-  if ! $(which gsutil > /dev/null); then
-    echo "Installing gsutil..."
-    pip3 install gsutil
-    echo "Successfully installed gsutil."
-  else
-    echo "gsutil is already installed."
-  fi
-}
-
 # create_gcp_container creates the container for the GCP provider
 function create_gcp_container() {
   echo "Setting up GCS infrastructure..."
   echo "Creating test bucket..."
   if [[ -z ${GOOGLE_EMULATOR_HOST:-""} ]]; then
-    gsutil mb "gs://${TEST_ID}"
+    if ! gsutil mb "gs://${TEST_ID}"; then
+      echo "Failed to create GCS bucket ${TEST_ID}."
+      return 1
+    fi
   else 
-    gsutil -o "Credentials:gs_json_host=127.0.0.1" -o "Credentials:gs_json_port=4443" -o "Boto:https_validate_certificates=False" mb "gs://${TEST_ID}"
+    if ! gsutil -o "Credentials:gs_json_host=127.0.0.1" -o "Credentials:gs_json_port=4443" -o "Boto:https_validate_certificates=False" mb "gs://${TEST_ID}"; then
+      echo "Failed to create GCS bucket ${TEST_ID}."
+      return 1
+    fi
   fi
   echo "Successfully created test bucket."
   echo "Setting up GCS infrastructure completed."
@@ -228,11 +224,33 @@ EOM
   return 1
 }
 
+# setup_gcloud installs the gcloud sdk
+function setup_gcloud() {
+  if $(which gcloud > /dev/null); then
+    return
+  fi
+  echo "Installing gcloud..."
+  cd $HOME
+  apt update
+  apt install -y curl
+  apt install -y python3
+  curl -Lo "google-cloud-sdk.tar.gz" https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-cli-503.0.0-$(uname -s | tr '[:upper:]' '[:lower:]')-$(uname -m | sed 's/aarch64/arm/').tar.gz
+  tar -xzf google-cloud-sdk.tar.gz
+  ./google-cloud-sdk/install.sh -q
+  export PATH=$PATH:${HOME}/google-cloud-sdk/bin
+  cd "${SOURCE_PATH}"
+  echo "Successfully installed gcloud."
+}
+
 # authorize_gcloud authorizes access to Gcloud
 function authorize_gcloud() {
   if ! $(which gcloud > /dev/null); then
     echo "gcloud is not installed. Please install gcloud and try again."
     return 1
+  fi
+  if [[ -n ${GOOGLE_EMULATOR_HOST:-""} ]]; then
+    gcloud config set project "dummy-project"
+    return 0
   fi
   echo "Authorizing access to Gcloud..."
   if gcloud auth activate-service-account --key-file="${GOOGLE_APPLICATION_CREDENTIALS}" --project="${GCP_PROJECT_ID}"; then
@@ -243,8 +261,10 @@ function authorize_gcloud() {
   fi
 }
 
-# setup_gcp_e2e sets up the GCP infrastructure for the e2e tests including deploying fake-gcs and/or installing the gsutil
+# setup_gcp_e2e sets up the GCP infrastructure for the e2e tests including deploying installing the gcloud sdk and/or fake-gcs
 function setup_gcp_e2e() {
+  setup_gcloud
+  authorize_gcloud
   if [[ -n ${GOOGLE_EMULATOR_HOST:-""} ]]; then
     make deploy-fakegcs $KUBECONFIG
   else
@@ -252,9 +272,7 @@ function setup_gcp_e2e() {
     if [[ -z ${GCP_PROJECT_ID:-""} ]] || [[ -z ${GOOGLE_APPLICATION_CREDENTIALS} ]]; then
         usage_gcp
     fi
-    authorize_gcloud
   fi
-  setup_gsutil
 }
 
 # create_azure_container creates the container for the Azure provider
@@ -262,9 +280,15 @@ function create_azure_container() {
   echo "Setting up Azure infrastructure..."
   echo "Creating test bucket..."
   if [[ -n ${AZURITE_DOMAIN:-""} ]]; then
-    az storage container create --connection-string "${AZURE_STORAGE_CONNECTION_STRING}" --name "${TEST_ID}"
+    if ! az storage container create --connection-string "${AZURE_STORAGE_CONNECTION_STRING}" --name "${TEST_ID}"; then
+      echo "Failed to create Azure test bucket."
+      return 1
+    fi
   else
-    az storage container create --account-name "${STORAGE_ACCOUNT}" --account-key "${STORAGE_KEY}" --name "${TEST_ID}"
+    if ! az storage container create --account-name "${STORAGE_ACCOUNT}" --account-key "${STORAGE_KEY}" --name "${TEST_ID}"; then
+      echo "Failed to create Azure test bucket."
+      return 1
+    fi
   fi
   echo "Successfully created test bucket."
   echo "Setting up Azure infrastructure completed."
