@@ -464,7 +464,7 @@ func (h *HTTPHandler) serveConfig(rw http.ResponseWriter, req *http.Request) {
 		rw.WriteHeader(http.StatusInternalServerError)
 		return
 	}
-	state, err := h.GetClusterState(req.Context(), clusterSize, podName, podNS)
+	state, err := h.getClusterState(req.Context(), clusterSize, podName, podNS)
 	if err != nil {
 		h.Logger.Warnf("failed to get cluster state %v", err)
 		rw.WriteHeader(http.StatusInternalServerError)
@@ -490,8 +490,8 @@ func (h *HTTPHandler) serveConfig(rw http.ResponseWriter, req *http.Request) {
 	h.Logger.Info("Served config for ETCD instance.")
 }
 
-// GetClusterState returns the Cluster state either `new` or `existing`.
-func (h *HTTPHandler) GetClusterState(ctx context.Context, clusterSize int, podName string, podNS string) (string, error) {
+// getClusterState returns the Cluster state either `new` or `existing`.
+func (h *HTTPHandler) getClusterState(ctx context.Context, clusterSize int, podName string, podNS string) (string, error) {
 	if clusterSize == 1 {
 		return miscellaneous.ClusterStateNew, nil
 	}
