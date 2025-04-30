@@ -12,8 +12,11 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
+	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
+	"github.com/aws/aws-sdk-go-v2/credentials/stscreds"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/service/sts"
 )
 
 // s3AuthOptions contains all needed options to authenticate against a S3-compatible store.
@@ -24,6 +27,8 @@ type s3AuthOptions struct {
 	secretAccessKey    string
 	disableSSL         bool
 	insecureSkipVerify bool
+	roleARN            string
+	tokenPath          string
 }
 
 // newGenericS3FromAuthOpt creates a new S3 snapstore object from the specified authentication options.
@@ -35,13 +40,23 @@ func newGenericS3FromAuthOpt(bucket, prefix, tempDir string, maxParallelChunkUpl
 		}
 	}
 
-	cfg, err := config.LoadDefaultConfig(
-		context.TODO(),
-		config.WithCredentialsProvider(aws.NewCredentialsCache(credentials.NewStaticCredentialsProvider(ao.accessKeyID, ao.secretAccessKey, ""))),
-		config.WithBaseEndpoint(ao.endpoint),
-		config.WithRegion(ao.region),
-		config.WithHTTPClient(httpClient),
+	var (
+		cfgOpts = []func(*awsconfig.LoadOptions) error{
+			awsconfig.WithRegion(ao.region),
+			awsconfig.WithHTTPClient(httpClient),
+			config.WithBaseEndpoint(ao.endpoint),
+		}
+		credentialsProvider aws.CredentialsProvider
 	)
+
+	if ao.accessKeyID != "" {
+		credentialsProvider = credentials.NewStaticCredentialsProvider(ao.accessKeyID, ao.secretAccessKey, "")
+	} else {
+		credentialsProvider = stscreds.NewWebIdentityRoleProvider(sts.NewFromConfig(aws.Config{Region: ao.region}), ao.roleARN, stscreds.IdentityTokenFile(ao.tokenPath))
+	}
+	cfgOpts = append(cfgOpts, awsconfig.WithCredentialsProvider(aws.NewCredentialsCache(credentialsProvider)))
+
+	cfg, err := config.LoadDefaultConfig(context.TODO(), cfgOpts...)
 	if err != nil {
 		return nil, fmt.Errorf("could not create S3 session: %w", err)
 	}

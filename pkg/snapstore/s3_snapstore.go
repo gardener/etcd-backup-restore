@@ -31,8 +31,10 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
+	"github.com/aws/aws-sdk-go-v2/credentials/stscreds"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	s3types "github.com/aws/aws-sdk-go-v2/service/s3/types"
+	"github.com/aws/aws-sdk-go-v2/service/sts"
 	"github.com/sirupsen/logrus"
 	"k8s.io/client-go/util/retry"
 	"k8s.io/utils/ptr"
@@ -56,6 +58,8 @@ type awsCredentials struct {
 	Region               string  `json:"region"`
 	SecretAccessKey      string  `json:"secretAccessKey"`
 	BucketName           string  `json:"bucketName"`
+	RoleARN              string  `json:"roleARN"`
+	TokenPath            string  `json:"tokenPath"`
 }
 
 // SSECredentials to hold fields for server-side encryption in I/O operations
@@ -162,12 +166,19 @@ func readAWSCredentialsJSONFile(filename string) ([]func(*awsconfig.LoadOptions)
 
 	var (
 		cfgOpts = []func(*awsconfig.LoadOptions) error{
-			awsconfig.WithCredentialsProvider(aws.NewCredentialsCache(credentials.NewStaticCredentialsProvider(awsConfig.AccessKeyID, awsConfig.SecretAccessKey, ""))),
 			awsconfig.WithRegion(awsConfig.Region),
 			awsconfig.WithHTTPClient(httpClient),
 		}
-		cliOpts = []func(*s3.Options){}
+		cliOpts             = []func(*s3.Options){}
+		credentialsProvider aws.CredentialsProvider
 	)
+
+	if awsConfig.AccessKeyID != "" {
+		credentialsProvider = credentials.NewStaticCredentialsProvider(awsConfig.AccessKeyID, awsConfig.SecretAccessKey, "")
+	} else {
+		credentialsProvider = stscreds.NewWebIdentityRoleProvider(sts.NewFromConfig(aws.Config{Region: awsConfig.Region}), awsConfig.RoleARN, stscreds.IdentityTokenFile(awsConfig.TokenPath))
+	}
+	cfgOpts = append(cfgOpts, awsconfig.WithCredentialsProvider(aws.NewCredentialsCache(credentialsProvider)))
 
 	if awsConfig.Endpoint != nil {
 		cfgOpts = append(cfgOpts, awsconfig.WithBaseEndpoint(*awsConfig.Endpoint))
@@ -226,12 +237,19 @@ func readAWSCredentialFiles(dirname string) ([]func(*awsconfig.LoadOptions) erro
 
 	var (
 		cfgOpts = []func(*awsconfig.LoadOptions) error{
-			awsconfig.WithCredentialsProvider(aws.NewCredentialsCache(credentials.NewStaticCredentialsProvider(awsConfig.AccessKeyID, awsConfig.SecretAccessKey, ""))),
 			awsconfig.WithRegion(awsConfig.Region),
 			awsconfig.WithHTTPClient(httpClient),
 		}
-		cliOpts = []func(*s3.Options){}
+		cliOpts             = []func(*s3.Options){}
+		credentialsProvider aws.CredentialsProvider
 	)
+
+	if awsConfig.AccessKeyID != "" {
+		credentialsProvider = credentials.NewStaticCredentialsProvider(awsConfig.AccessKeyID, awsConfig.SecretAccessKey, "")
+	} else {
+		credentialsProvider = stscreds.NewWebIdentityRoleProvider(sts.NewFromConfig(aws.Config{Region: awsConfig.Region}), awsConfig.RoleARN, stscreds.IdentityTokenFile(awsConfig.TokenPath))
+	}
+	cfgOpts = append(cfgOpts, awsconfig.WithCredentialsProvider(aws.NewCredentialsCache(credentialsProvider)))
 
 	if awsConfig.Endpoint != nil {
 		cfgOpts = append(cfgOpts, awsconfig.WithBaseEndpoint(*awsConfig.Endpoint))
@@ -318,6 +336,14 @@ func readAWSCredentialFromDir(dirname string) (*awsCredentials, error) {
 				return nil, err
 			}
 			awsConfig.SSECustomerAlgorithm = ptr.To(string(data))
+		case "roleARN":
+			roleARN, err := os.ReadFile(dirname + "/roleARN")
+			if err != nil {
+				return nil, err
+			}
+			awsConfig.RoleARN = string(roleARN)
+		case "token":
+			awsConfig.TokenPath = dirname + "/token"
 		}
 	}
 
@@ -733,15 +759,23 @@ func GetS3CredentialsLastModifiedTime() (time.Time, error) {
 
 	if dir, isSet := os.LookupEnv(awsCredentialDirectory); isSet {
 		// credential files which are essential for creating the S3 snapstore
-		credentialFiles := []string{"accessKeyID", "region", "secretAccessKey"}
-		for i := range credentialFiles {
-			credentialFiles[i] = filepath.Join(dir, credentialFiles[i])
+		// either static or web identity credential files should be set
+		var (
+			staticCredentialsFiles      = []string{filepath.Join(dir, "region"), filepath.Join(dir, "accessKeyID"), filepath.Join(dir, "secretAccessKey")}
+			webIdentityCredentialsFiles = []string{filepath.Join(dir, "region"), filepath.Join(dir, "roleARN"), filepath.Join(dir, "token")}
+		)
+
+		awsTimestamp, err := getLatestCredentialsModifiedTime(staticCredentialsFiles)
+		if err == nil {
+			return awsTimestamp, nil
 		}
-		awsTimeStamp, err := getLatestCredentialsModifiedTime(credentialFiles)
-		if err != nil {
-			return time.Time{}, fmt.Errorf("failed to get AWS credential timestamp from the directory %v with error: %w", dir, err)
+
+		awsTimestamp, err2 := getLatestCredentialsModifiedTime(webIdentityCredentialsFiles)
+		if err2 == nil {
+			return awsTimestamp, nil
 		}
-		return awsTimeStamp, nil
+
+		return time.Time{}, fmt.Errorf("failed to get AWS credential timestamp from the directory %v with error: %w, %w", dir, err, err2)
 	}
 
 	if filename, isSet := os.LookupEnv(awsCredentialJSONFile); isSet {
@@ -757,10 +791,12 @@ func GetS3CredentialsLastModifiedTime() (time.Time, error) {
 }
 
 func isAWSConfigEmpty(config *awsCredentials) error {
-	if len(config.AccessKeyID) != 0 && len(config.Region) != 0 && len(config.SecretAccessKey) != 0 {
+	if len(config.Region) != 0 &&
+		(len(config.AccessKeyID) != 0 && len(config.SecretAccessKey) != 0 ||
+			len(config.RoleARN) != 0 && len(config.TokenPath) != 0) {
 		return nil
 	}
-	return fmt.Errorf("aws s3 credentials: region, secretAccessKey or accessKeyID is missing")
+	return fmt.Errorf("aws s3 credentials: region, and secretAccessKey and accessKeyID, or roleARN and token are missing")
 }
 
 // Creates SSE Credentials that are included in the S3 API calls for customer managed SSE
