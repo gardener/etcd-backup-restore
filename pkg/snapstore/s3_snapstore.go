@@ -488,7 +488,7 @@ func (s *S3SnapStore) uploadPart(snap *brtypes.Snapshot, file *os.File, uploadID
 	sr := io.NewSectionReader(file, offset, size)
 	ctx, cancel := context.WithTimeout(context.TODO(), chunkUploadTimeout)
 	defer cancel()
-	partNumber := int32((offset / chunkSize) + 1)
+	partNumber := int32((offset / chunkSize) + 1) // #nosec G115 -- partNumber is positive integer between 1 and 10000.
 
 	uploadPartInput := &s3.UploadPartInput{
 		Bucket:     aws.String(s.bucket),
