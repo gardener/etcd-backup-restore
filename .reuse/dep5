@@ -178,8 +178,8 @@ Files: vendor/github.com/munnerz/goautoneg/*
 Copyright: 2024 github.com/munnerz/goautoneg contributors.
 License: BSD-3-Clause
 
-Files: vendor/github.com/aws/aws-sdk-go/internal/sync/singleflight/*
-Copyright: 2024 github.com/aws/aws-sdk-go/internal/sync/singleflight contributors.
+Files: vendor/github.com/aws/aws-sdk-go-v2/internal/sync/singleflight/*
+Copyright: 2024 github.com/aws/aws-sdk-go-v2/internal/sync/singleflight contributors.
 License: BSD-3-Clause
 
 Files: vendor/sigs.k8s.io/structured-merge-diff/v4/*
@@ -242,8 +242,8 @@ Files: vendor/github.com/prometheus/procfs/*
 Copyright: 2024 github.com/prometheus/procfs contributors.
 License: Apache-2.0
 
-Files: vendor/github.com/aws/aws-sdk-go/*
-Copyright: 2024 github.com/aws/aws-sdk-go contributors.
+Files: vendor/github.com/aws/aws-sdk-go-v2/*
+Copyright: 2024 github.com/aws/aws-sdk-go-v2 contributors.
 License: Apache-2.0
 
 Files: vendor/sigs.k8s.io/json/*
