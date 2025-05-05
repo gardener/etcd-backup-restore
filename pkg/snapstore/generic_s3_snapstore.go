@@ -5,14 +5,15 @@
 package snapstore
 
 import (
+	"context"
 	"crypto/tls"
 	"fmt"
 	"net/http"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/credentials"
-	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/aws/aws-sdk-go/service/s3"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/credentials"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
 )
 
 // s3AuthOptions contains all needed options to authenticate against a S3-compatible store.
@@ -34,17 +35,22 @@ func newGenericS3FromAuthOpt(bucket, prefix, tempDir string, maxParallelChunkUpl
 		}
 	}
 
-	sess, err := session.NewSession(&aws.Config{
-		Credentials:      credentials.NewStaticCredentials(ao.accessKeyID, ao.secretAccessKey, ""),
-		Endpoint:         aws.String(ao.endpoint),
-		Region:           aws.String(ao.region),
-		DisableSSL:       aws.Bool(ao.disableSSL),
-		S3ForcePathStyle: aws.Bool(true),
-		HTTPClient:       httpClient,
-	})
+	cfg, err := config.LoadDefaultConfig(
+		context.TODO(),
+		config.WithCredentialsProvider(aws.NewCredentialsCache(credentials.NewStaticCredentialsProvider(ao.accessKeyID, ao.secretAccessKey, ""))),
+		config.WithBaseEndpoint(ao.endpoint),
+		config.WithRegion(ao.region),
+		config.WithHTTPClient(httpClient),
+	)
 	if err != nil {
-		return nil, fmt.Errorf("could not create S3 session: %v", err)
+		return nil, fmt.Errorf("could not create S3 session: %w", err)
 	}
-	cli := s3.New(sess)
+
+	cli := s3.NewFromConfig(cfg,
+		func(o *s3.Options) {
+			o.EndpointOptions.DisableHTTPS = ao.disableSSL
+			o.UsePathStyle = true
+		},
+	)
 	return NewS3FromClient(bucket, prefix, tempDir, maxParallelChunkUploads, minChunkSize, cli, SSECredentials{}), nil
 }
