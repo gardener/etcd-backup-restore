@@ -46,6 +46,20 @@ func GetSnapstore(config *brtypes.SnapstoreConfig) (brtypes.SnapStore, error) {
 		return nil, fmt.Errorf("storage container name not specified")
 	}
 
+	if len(config.TempDir) == 0 {
+		config.TempDir = path.Join("/tmp")
+	}
+	if _, err := os.Stat(config.TempDir); err != nil {
+		if !os.IsNotExist(err) {
+			return nil, fmt.Errorf("failed to get file info of temporary directory %s: %v", config.TempDir, err)
+		}
+
+		logrus.Infof("Temporary directory %s does not exist. Creating it...", config.TempDir)
+		if err := os.MkdirAll(config.TempDir, 0700); err != nil {
+			return nil, fmt.Errorf("failed to create temporary directory %s: %v", config.TempDir, err)
+		}
+	}
+
 	switch config.Provider {
 	case brtypes.SnapstoreProviderLocal, "":
 		if config.Container == "" {
