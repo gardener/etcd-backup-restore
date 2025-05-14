@@ -27,7 +27,7 @@ test_with_coverage() {
 
 ################################################################################
 
-# To run a specific package, run TEST_PACKAGES=<PATH_TO_PACKAGE> make test
+# To run a specific package, run TEST_PACKAGES=<PATH_TO_PACKAGE> make test-unit
 # If the TEST_PACKAGES is not set, then define a list of packages to run.
 TEST_PACKAGES="${TEST_PACKAGES:-"
 ./pkg/backoff \
