@@ -8,7 +8,7 @@ require (
 	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.18.0
 	github.com/Azure/azure-sdk-for-go/sdk/storage/azblob v1.6.0
 	github.com/aliyun/aliyun-oss-go-sdk v2.1.8+incompatible
-	github.com/aws/aws-sdk-go v1.55.6 // TODO: upgrade to v2
+	github.com/aws/aws-sdk-go v1.55.7 // TODO: upgrade to v2
 	github.com/go-logr/logr v1.4.2
 	github.com/gophercloud/gophercloud v0.17.0
 	github.com/gophercloud/utils v0.0.0-20200204043447-9864b6f1f12f
