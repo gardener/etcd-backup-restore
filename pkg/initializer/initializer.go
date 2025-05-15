@@ -128,13 +128,20 @@ func (e *EtcdInitializer) Initialize(mode validator.Mode, failBelowRevision int6
 	// clean up snapshot temp directory and recreate it, since this can be considered part of initializing
 	// the data directory for future snapshotting, if snapshot TempDir is specified.
 	// This also allows cleaning up a previously created temp directory files with wider file permissions.
+
+	if e.Config.SnapstoreConfig == nil {
+		logger.Infof("Will not clean up temporary snapshot directory since no snapstore configured. Continuing.")
+		return nil
+	}
+
 	if e.Config.SnapstoreConfig.TempDir != "" && e.Config.SnapstoreConfig.TempDir != "/tmp" {
 		if err = e.removeDir(e.Config.SnapstoreConfig.TempDir); err != nil {
 			return fmt.Errorf("failed to remove directory %s with err: %v", e.Config.SnapstoreConfig.TempDir, err)
 		}
-		if err = os.MkdirAll(e.Config.SnapstoreConfig.TempDir, 0700); err != nil {
-			return fmt.Errorf("failed to create temporary directory %s: %v", e.Config.SnapstoreConfig.TempDir, err)
-		}
+	}
+	logger.Infof("Creating temporary directory %s if it does not exist.", e.Config.SnapstoreConfig.TempDir)
+	if err = os.MkdirAll(e.Config.SnapstoreConfig.TempDir, 0700); err != nil {
+		return fmt.Errorf("failed to create temporary directory %s: %w", e.Config.SnapstoreConfig.TempDir, err)
 	}
 
 	return nil
