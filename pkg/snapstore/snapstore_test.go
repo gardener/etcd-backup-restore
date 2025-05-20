@@ -655,14 +655,23 @@ var _ = Describe("Server Side Encryption Customer Managed Key for S3", func() {
 })
 
 var _ = Describe("Get Bucket versioning status for S3 buckets", func() {
-	awsS3Client := &mockS3Client{
-		objects:          objectMap,
-		prefix:           prefixV2,
-		multiPartUploads: map[string]*[][]byte{},
-	}
+	var (
+		awsS3Client *mockS3Client
+		ctx         context.Context
+	)
+
+	BeforeEach(func() {
+		awsS3Client = &mockS3Client{
+			objects:          objectMap,
+			prefix:           prefixV2,
+			multiPartUploads: map[string]*[][]byte{},
+		}
+		ctx = context.TODO()
+	})
+
 	Context("S3 bucket with object lock enabled", func() {
 		It("Should return enabled versioning status", func() {
-			versioningStatus, err := awsS3Client.GetBucketVersioning(context.TODO(), &s3.GetBucketVersioningInput{
+			versioningStatus, err := awsS3Client.GetBucketVersioning(ctx, &s3.GetBucketVersioningInput{
 				Bucket: &s3ObjectLockedBucket,
 			})
 			Expect(err).ShouldNot(HaveOccurred())
@@ -671,7 +680,7 @@ var _ = Describe("Get Bucket versioning status for S3 buckets", func() {
 	})
 	Context("S3 bucket with object lock not enabled", func() {
 		It("Should return versioning status as nil", func() {
-			versioningStatus, err := awsS3Client.GetBucketVersioning(context.TODO(), &s3.GetBucketVersioningInput{
+			versioningStatus, err := awsS3Client.GetBucketVersioning(ctx, &s3.GetBucketVersioningInput{
 				Bucket: &s3NonObjectLockedBucket,
 			})
 			Expect(err).ShouldNot(HaveOccurred())

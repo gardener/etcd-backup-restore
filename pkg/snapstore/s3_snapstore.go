@@ -559,7 +559,7 @@ func (s *S3SnapStore) List(includeAll bool) (brtypes.SnapList, error) {
 		return nil, err
 	}
 
-	if versioningStatus.Status == s3types.BucketVersioningStatusEnabled {
+	if versioningStatus != nil && versioningStatus.Status == s3types.BucketVersioningStatusEnabled {
 		// versioning is found to be enabled on given bucket.
 		logrus.Info("Bucket versioning is found to be enabled.")
 
