@@ -6,6 +6,7 @@ package snapstore_test
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"net/url"
@@ -18,8 +19,9 @@ import (
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/container"
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/service/s3"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
+	s3types "github.com/aws/aws-sdk-go-v2/service/s3/types"
 	fake "github.com/gophercloud/gophercloud/testhelper/client"
 	"github.com/sirupsen/logrus"
 
@@ -653,27 +655,36 @@ var _ = Describe("Server Side Encryption Customer Managed Key for S3", func() {
 })
 
 var _ = Describe("Get Bucket versioning status for S3 buckets", func() {
-	awsS3Client := &mockS3Client{
-		objects:          objectMap,
-		prefix:           prefixV2,
-		multiPartUploads: map[string]*[][]byte{},
-	}
+	var (
+		awsS3Client *mockS3Client
+		ctx         context.Context
+	)
+
+	BeforeEach(func() {
+		awsS3Client = &mockS3Client{
+			objects:          objectMap,
+			prefix:           prefixV2,
+			multiPartUploads: map[string]*[][]byte{},
+		}
+		ctx = context.TODO()
+	})
+
 	Context("S3 bucket with object lock enabled", func() {
 		It("Should return enabled versioning status", func() {
-			versioningStatus, err := awsS3Client.GetBucketVersioning(&s3.GetBucketVersioningInput{
+			versioningStatus, err := awsS3Client.GetBucketVersioning(ctx, &s3.GetBucketVersioningInput{
 				Bucket: &s3ObjectLockedBucket,
 			})
 			Expect(err).ShouldNot(HaveOccurred())
-			Expect(*versioningStatus.Status).Should(Equal(s3.BucketVersioningStatusEnabled))
+			Expect(versioningStatus.Status).Should(Equal(s3types.BucketVersioningStatusEnabled))
 		})
 	})
 	Context("S3 bucket with object lock not enabled", func() {
 		It("Should return versioning status as nil", func() {
-			versioningStatus, err := awsS3Client.GetBucketVersioning(&s3.GetBucketVersioningInput{
+			versioningStatus, err := awsS3Client.GetBucketVersioning(ctx, &s3.GetBucketVersioningInput{
 				Bucket: &s3NonObjectLockedBucket,
 			})
 			Expect(err).ShouldNot(HaveOccurred())
-			Expect(versioningStatus.Status).Should(BeNil())
+			Expect(versioningStatus.Status).Should(BeEmpty())
 		})
 	})
 })
@@ -691,7 +702,7 @@ var _ = Describe("Get Immutability time for S3 bucket", func() {
 			snapStore := NewS3FromClient(s3ObjectLockedBucket, prefixV2, "/tmp", 5, brtypes.MinChunkSize, awsS3Client, SSECredentials{})
 			isObjectLockEnabled, retentionPeriod, err := GetBucketImmutabilityTime(snapStore)
 			Expect(err).ShouldNot(HaveOccurred())
-			Expect(retentionPeriod).Should(Equal(aws.Int64(2)))
+			Expect(retentionPeriod).Should(Equal(aws.Int32(2)))
 			Expect(isObjectLockEnabled).Should(BeTrue())
 		})
 	})

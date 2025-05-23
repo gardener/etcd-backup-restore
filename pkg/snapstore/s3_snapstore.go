@@ -25,13 +25,14 @@ import (
 	"sync"
 	"time"
 
+	"github.com/gardener/etcd-backup-restore/pkg/snapstore/internal/s3api"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/credentials"
-	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/aws/aws-sdk-go/service/s3"
-	"github.com/aws/aws-sdk-go/service/s3/s3iface"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	awsconfig "github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/credentials"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
+	s3types "github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/sirupsen/logrus"
 	"k8s.io/client-go/util/retry"
 	"k8s.io/utils/ptr"
@@ -66,7 +67,7 @@ type SSECredentials struct {
 
 // S3SnapStore is snapstore with AWS S3 object store as backend
 type S3SnapStore struct {
-	client s3iface.S3API
+	client s3api.Client
 	SSECredentials
 	prefix  string
 	bucket  string
@@ -78,25 +79,27 @@ type S3SnapStore struct {
 
 // NewS3SnapStore create new S3SnapStore from shared configuration with specified bucket
 func NewS3SnapStore(config *brtypes.SnapstoreConfig) (*S3SnapStore, error) {
-	sessionOpts, sseCreds, err := getSessionOptions(getEnvPrefixString(config.IsSource))
+	cfgOpts, cliOpts, sseCreds, err := getConfigOpts(getEnvPrefixString(config.IsSource))
 	if err != nil {
 		return nil, err
 	}
-	sess, err := session.NewSessionWithOptions(sessionOpts)
+
+	cfg, err := awsconfig.LoadDefaultConfig(context.TODO(), cfgOpts...)
 	if err != nil {
-		return nil, fmt.Errorf("new AWS session failed: %v", err)
+		return nil, fmt.Errorf("new AWS config failed: %w", err)
 	}
-	cli := s3.New(sess)
+
+	cli := s3.NewFromConfig(cfg, cliOpts...)
 	return NewS3FromClient(config.Container, config.Prefix, config.TempDir, config.MaxParallelChunkUploads, config.MinChunkSize, cli, sseCreds), nil
 }
 
-func getSessionOptions(prefixString string) (session.Options, SSECredentials, error) {
+func getConfigOpts(prefixString string) ([]func(*awsconfig.LoadOptions) error, []func(*s3.Options), SSECredentials, error) {
 	if filename, isSet := os.LookupEnv(prefixString + awsCredentialJSONFile); isSet {
-		creds, sseCreds, err := readAWSCredentialsJSONFile(filename)
+		creds, cliOpts, sseCreds, err := readAWSCredentialsJSONFile(filename)
 		if err != nil {
-			return session.Options{}, SSECredentials{}, fmt.Errorf("error getting credentials using %v file with error %w", filename, err)
+			return nil, nil, SSECredentials{}, fmt.Errorf("error getting credentials using %v file with error %w", filename, err)
 		}
-		return creds, sseCreds, nil
+		return creds, cliOpts, sseCreds, nil
 	}
 
 	// TODO: @renormalize Remove this extra handling in v0.31.0
@@ -104,37 +107,33 @@ func getSessionOptions(prefixString string) (session.Options, SSECredentials, er
 	if dir, isSet := os.LookupEnv(prefixString + awsCredentialDirectory); isSet {
 		jsonCredentialFile, err := findFileWithExtensionInDir(dir, ".json")
 		if err != nil {
-			return session.Options{}, SSECredentials{}, fmt.Errorf("error while finding a JSON credential file in %v directory with error: %w", dir, err)
+			return nil, nil, SSECredentials{}, fmt.Errorf("error while finding a JSON credential file in %v directory with error: %w", dir, err)
 		}
 		if jsonCredentialFile != "" {
-			creds, sseCreds, err := readAWSCredentialsJSONFile(jsonCredentialFile)
+			creds, cliOpts, sseCreds, err := readAWSCredentialsJSONFile(jsonCredentialFile)
 			if err != nil {
-				return session.Options{}, SSECredentials{}, fmt.Errorf("error getting credentials using %v JSON file in a directory with error: %w", jsonCredentialFile, err)
+				return nil, nil, SSECredentials{}, fmt.Errorf("error getting credentials using %v JSON file in a directory with error: %w", jsonCredentialFile, err)
 			}
-			return creds, sseCreds, nil
+			return creds, cliOpts, sseCreds, nil
 		}
 		// Non JSON credential files might exist in the credential directory, do not return
 	}
 
 	if dir, isSet := os.LookupEnv(prefixString + awsCredentialDirectory); isSet {
-		creds, sseCreds, err := readAWSCredentialFiles(dir)
+		creds, cliOpts, sseCreds, err := readAWSCredentialFiles(dir)
 		if err != nil {
-			return session.Options{}, SSECredentials{}, fmt.Errorf("error getting credentials from %v directory with error %w", dir, err)
+			return nil, nil, SSECredentials{}, fmt.Errorf("error getting credentials from %v directory with error %w", dir, err)
 		}
-		return creds, sseCreds, nil
+		return creds, cliOpts, sseCreds, nil
 	}
 
-	return session.Options{
-		// Setting this is equal to the AWS_SDK_LOAD_CONFIG environment variable was set.
-		// We want to save the work to set AWS_SDK_LOAD_CONFIG=1 outside.
-		SharedConfigState: session.SharedConfigEnable,
-	}, SSECredentials{}, nil
+	return nil, nil, SSECredentials{}, nil
 }
 
-func readAWSCredentialsJSONFile(filename string) (session.Options, SSECredentials, error) {
+func readAWSCredentialsJSONFile(filename string) ([]func(*awsconfig.LoadOptions) error, []func(*s3.Options), SSECredentials, error) {
 	awsConfig, err := credentialsFromJSON(filename)
 	if err != nil {
-		return session.Options{}, SSECredentials{}, err
+		return nil, nil, SSECredentials{}, err
 	}
 
 	httpClient := http.DefaultClient
@@ -158,18 +157,29 @@ func readAWSCredentialsJSONFile(filename string) (session.Options, SSECredential
 
 	sseCreds, err := getSSECreds(awsConfig.SSECustomerKey, awsConfig.SSECustomerAlgorithm)
 	if err != nil {
-		return session.Options{}, SSECredentials{}, err
+		return nil, nil, SSECredentials{}, err
 	}
 
-	return session.Options{
-		Config: aws.Config{
-			Credentials:      credentials.NewStaticCredentials(awsConfig.AccessKeyID, awsConfig.SecretAccessKey, ""),
-			Region:           ptr.To(awsConfig.Region),
-			Endpoint:         awsConfig.Endpoint,
-			S3ForcePathStyle: awsConfig.S3ForcePathStyle,
-			HTTPClient:       httpClient,
-		},
-	}, sseCreds, nil
+	var (
+		cfgOpts = []func(*awsconfig.LoadOptions) error{
+			awsconfig.WithCredentialsProvider(aws.NewCredentialsCache(credentials.NewStaticCredentialsProvider(awsConfig.AccessKeyID, awsConfig.SecretAccessKey, ""))),
+			awsconfig.WithRegion(awsConfig.Region),
+			awsconfig.WithHTTPClient(httpClient),
+		}
+		cliOpts = []func(*s3.Options){}
+	)
+
+	if awsConfig.Endpoint != nil {
+		cfgOpts = append(cfgOpts, awsconfig.WithBaseEndpoint(*awsConfig.Endpoint))
+	}
+
+	if awsConfig.S3ForcePathStyle != nil {
+		cliOpts = append(cliOpts, func(o *s3.Options) {
+			o.UsePathStyle = *awsConfig.S3ForcePathStyle
+		})
+	}
+
+	return cfgOpts, cliOpts, sseCreds, nil
 }
 
 // credentialsFromJSON obtains AWS credentials from a JSON value.
@@ -185,10 +195,10 @@ func credentialsFromJSON(filename string) (*awsCredentials, error) {
 	return awsConfig, nil
 }
 
-func readAWSCredentialFiles(dirname string) (session.Options, SSECredentials, error) {
+func readAWSCredentialFiles(dirname string) ([]func(*awsconfig.LoadOptions) error, []func(*s3.Options), SSECredentials, error) {
 	awsConfig, err := readAWSCredentialFromDir(dirname)
 	if err != nil {
-		return session.Options{}, SSECredentials{}, err
+		return nil, nil, SSECredentials{}, err
 	}
 
 	httpClient := http.DefaultClient
@@ -211,18 +221,29 @@ func readAWSCredentialFiles(dirname string) (session.Options, SSECredentials, er
 	}
 	sseCreds, err := getSSECreds(awsConfig.SSECustomerKey, awsConfig.SSECustomerAlgorithm)
 	if err != nil {
-		return session.Options{}, SSECredentials{}, err
+		return nil, nil, SSECredentials{}, err
 	}
 
-	return session.Options{
-		Config: aws.Config{
-			Credentials:      credentials.NewStaticCredentials(awsConfig.AccessKeyID, awsConfig.SecretAccessKey, ""),
-			Region:           ptr.To(awsConfig.Region),
-			Endpoint:         awsConfig.Endpoint,
-			S3ForcePathStyle: awsConfig.S3ForcePathStyle,
-			HTTPClient:       httpClient,
-		},
-	}, sseCreds, nil
+	var (
+		cfgOpts = []func(*awsconfig.LoadOptions) error{
+			awsconfig.WithCredentialsProvider(aws.NewCredentialsCache(credentials.NewStaticCredentialsProvider(awsConfig.AccessKeyID, awsConfig.SecretAccessKey, ""))),
+			awsconfig.WithRegion(awsConfig.Region),
+			awsconfig.WithHTTPClient(httpClient),
+		}
+		cliOpts = []func(*s3.Options){}
+	)
+
+	if awsConfig.Endpoint != nil {
+		cfgOpts = append(cfgOpts, awsconfig.WithBaseEndpoint(*awsConfig.Endpoint))
+	}
+
+	if awsConfig.S3ForcePathStyle != nil {
+		cliOpts = append(cliOpts, func(o *s3.Options) {
+			o.UsePathStyle = *awsConfig.S3ForcePathStyle
+		})
+	}
+
+	return cfgOpts, cliOpts, sseCreds, nil
 }
 
 func readAWSCredentialFromDir(dirname string) (*awsCredentials, error) {
@@ -307,7 +328,7 @@ func readAWSCredentialFromDir(dirname string) (*awsCredentials, error) {
 }
 
 // NewS3FromClient will create the new S3 snapstore object from S3 client
-func NewS3FromClient(bucket, prefix, tempDir string, maxParallelChunkUploads uint, minChunkSize int64, cli s3iface.S3API, sseCreds SSECredentials) *S3SnapStore {
+func NewS3FromClient(bucket, prefix, tempDir string, maxParallelChunkUploads uint, minChunkSize int64, cli s3api.Client, sseCreds SSECredentials) *S3SnapStore {
 	return &S3SnapStore{
 		bucket:                  bucket,
 		prefix:                  prefix,
@@ -336,7 +357,7 @@ func (s *S3SnapStore) Fetch(snap brtypes.Snapshot) (io.ReadCloser, error) {
 		getObjectInput.SSECustomerKey = aws.String(s.sseCustomerKey)
 		getObjectInput.SSECustomerKeyMD5 = aws.String(s.sseCustomerKeyMD5)
 	}
-	getObjecOutput, err := s.client.GetObject(getObjectInput)
+	getObjecOutput, err := s.client.GetObject(context.TODO(), getObjectInput)
 	if err != nil {
 		return nil, fmt.Errorf("error while accessing %s: %v", path.Join(snap.Prefix, snap.SnapDir, snap.SnapName), err)
 	}
@@ -380,7 +401,7 @@ func (s *S3SnapStore) Save(snap brtypes.Snapshot, rc io.ReadCloser) (err error) 
 		createMultipartUploadInput.SSECustomerKey = aws.String(s.sseCustomerKey)
 		createMultipartUploadInput.SSECustomerKeyMD5 = aws.String(s.sseCustomerKeyMD5)
 	}
-	uploadOutput, err := s.client.CreateMultipartUploadWithContext(ctx, createMultipartUploadInput)
+	uploadOutput, err := s.client.CreateMultipartUpload(ctx, createMultipartUploadInput)
 	if err != nil {
 		return fmt.Errorf("failed to initiate multipart upload %v", err)
 	}
@@ -394,7 +415,7 @@ func (s *S3SnapStore) Save(snap brtypes.Snapshot, rc io.ReadCloser) (err error) 
 		noOfChunks++
 	}
 	var (
-		completedParts = make([]*s3.CompletedPart, noOfChunks)
+		completedParts = make([]s3types.CompletedPart, noOfChunks)
 		chunkUploadCh  = make(chan chunk, noOfChunks)
 		resCh          = make(chan chunkUploadResult, noOfChunks)
 		wg             sync.WaitGroup
@@ -425,7 +446,7 @@ func (s *S3SnapStore) Save(snap brtypes.Snapshot, rc io.ReadCloser) (err error) 
 		ctx, cancel = context.WithTimeout(context.TODO(), chunkUploadTimeout)
 		defer cancel()
 		logrus.Infof("Aborting the multipart upload with upload ID : %s", *uploadOutput.UploadId)
-		_, err = s.client.AbortMultipartUploadWithContext(ctx, &s3.AbortMultipartUploadInput{
+		_, err = s.client.AbortMultipartUpload(ctx, &s3.AbortMultipartUploadInput{
 			Bucket:   &s.bucket,
 			Key:      aws.String(path.Join(prefix, snap.SnapDir, snap.SnapName)),
 			UploadId: uploadOutput.UploadId,
@@ -435,11 +456,11 @@ func (s *S3SnapStore) Save(snap brtypes.Snapshot, rc io.ReadCloser) (err error) 
 		ctx, cancel = context.WithTimeout(ctx, 30*time.Second)
 		defer cancel()
 		logrus.Infof("Finishing the multipart upload with upload ID : %s", *uploadOutput.UploadId)
-		_, err = s.client.CompleteMultipartUploadWithContext(ctx, &s3.CompleteMultipartUploadInput{
+		_, err = s.client.CompleteMultipartUpload(ctx, &s3.CompleteMultipartUploadInput{
 			Bucket:   &s.bucket,
 			Key:      aws.String(path.Join(prefix, snap.SnapDir, snap.SnapName)),
 			UploadId: uploadOutput.UploadId,
-			MultipartUpload: &s3.CompletedMultipartUpload{
+			MultipartUpload: &s3types.CompletedMultipartUpload{
 				Parts: completedParts,
 			},
 		})
@@ -454,7 +475,7 @@ func (s *S3SnapStore) Save(snap brtypes.Snapshot, rc io.ReadCloser) (err error) 
 	return nil
 }
 
-func (s *S3SnapStore) uploadPart(snap *brtypes.Snapshot, file *os.File, uploadID *string, completedParts []*s3.CompletedPart, offset, chunkSize int64) error {
+func (s *S3SnapStore) uploadPart(snap *brtypes.Snapshot, file *os.File, uploadID *string, completedParts []s3types.CompletedPart, offset, chunkSize int64) error {
 	fileInfo, err := file.Stat()
 	if err != nil {
 		return err
@@ -467,7 +488,7 @@ func (s *S3SnapStore) uploadPart(snap *brtypes.Snapshot, file *os.File, uploadID
 	sr := io.NewSectionReader(file, offset, size)
 	ctx, cancel := context.WithTimeout(context.TODO(), chunkUploadTimeout)
 	defer cancel()
-	partNumber := ((offset / chunkSize) + 1)
+	partNumber := int32((offset / chunkSize) + 1) // #nosec G115 -- partNumber is positive integer between 1 and 10000.
 
 	uploadPartInput := &s3.UploadPartInput{
 		Bucket:     aws.String(s.bucket),
@@ -484,9 +505,9 @@ func (s *S3SnapStore) uploadPart(snap *brtypes.Snapshot, file *os.File, uploadID
 		uploadPartInput.SSECustomerKeyMD5 = aws.String(s.sseCustomerKeyMD5)
 	}
 
-	uploadPartOutput, err := s.client.UploadPartWithContext(ctx, uploadPartInput)
+	uploadPartOutput, err := s.client.UploadPart(ctx, uploadPartInput)
 	if err == nil {
-		completedPart := &s3.CompletedPart{
+		completedPart := s3types.CompletedPart{
 			ETag:       uploadPartOutput.ETag,
 			PartNumber: &partNumber,
 		}
@@ -495,7 +516,7 @@ func (s *S3SnapStore) uploadPart(snap *brtypes.Snapshot, file *os.File, uploadID
 	return err
 }
 
-func (s *S3SnapStore) partUploader(wg *sync.WaitGroup, stopCh <-chan struct{}, snap *brtypes.Snapshot, file *os.File, uploadID *string, completedParts []*s3.CompletedPart, chunkUploadCh <-chan chunk, errCh chan<- chunkUploadResult) {
+func (s *S3SnapStore) partUploader(wg *sync.WaitGroup, stopCh <-chan struct{}, snap *brtypes.Snapshot, file *os.File, uploadID *string, completedParts []s3types.CompletedPart, chunkUploadCh <-chan chunk, errCh chan<- chunkUploadResult) {
 	defer wg.Done()
 	for {
 		select {
@@ -531,18 +552,18 @@ func (s *S3SnapStore) List(includeAll bool) (brtypes.SnapList, error) {
 
 	// Get the status of bucket versioning.
 	// Note: Bucket versioning will always be enabled for object lock.
-	versioningStatus, err := s.client.GetBucketVersioning(&s3.GetBucketVersioningInput{
+	versioningStatus, err := s.client.GetBucketVersioning(context.TODO(), &s3.GetBucketVersioningInput{
 		Bucket: &s.bucket,
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	if versioningStatus.Status != nil && *versioningStatus.Status == s3.BucketVersioningStatusEnabled {
+	if versioningStatus != nil && versioningStatus.Status == s3types.BucketVersioningStatusEnabled {
 		// versioning is found to be enabled on given bucket.
 		logrus.Info("Bucket versioning is found to be enabled.")
 
-		var bucketImmutableExpiryTimeInDays *int64
+		var bucketImmutableExpiryTimeInDays *int32
 		var isObjectLockEnabled bool
 
 		if err := retry.OnError(retry.DefaultBackoff, func(err error) bool {
@@ -578,7 +599,13 @@ func (s *S3SnapStore) List(includeAll bool) (brtypes.SnapList, error) {
 		// allDeleteMarkersInfo contains key of all delete markers present(if any) in the S3 bucket.
 		allDeleteMarkersInfo := make(map[string]struct{})
 
-		if err := s.client.ListObjectVersionsPages(in, func(page *s3.ListObjectVersionsOutput, lastPage bool) bool {
+		paginator := s3.NewListObjectVersionsPaginator(s.client, in)
+		for paginator.HasMorePages() {
+			page, err := paginator.NextPage(context.TODO())
+			if err != nil {
+				return nil, err
+			}
+
 			for _, version := range page.Versions {
 				snapKey := (*version.Key)[len(*page.Prefix):]
 				if strings.Contains(snapKey, backupVersionV1) || strings.Contains(snapKey, backupVersionV2) {
@@ -609,9 +636,6 @@ func (s *S3SnapStore) List(includeAll bool) (brtypes.SnapList, error) {
 					allDeleteMarkersInfo[*deletionMarker.Key] = struct{}{}
 				}
 			}
-			return !lastPage
-		}); err != nil {
-			return nil, err
 		}
 
 		for key, val := range allSnapKeyMapToSnapshotInfo {
@@ -643,12 +667,18 @@ func (s *S3SnapStore) List(includeAll bool) (brtypes.SnapList, error) {
 	} else {
 		// versioning is not found to be enabled on given bucket.
 		logrus.Info("Bucket versioning is not found to be enabled.")
-		in := &s3.ListObjectsInput{
+		in := &s3.ListObjectsV2Input{
 			Bucket: aws.String(s.bucket),
 			Prefix: aws.String(prefix),
 		}
 
-		if err := s.client.ListObjectsPages(in, func(page *s3.ListObjectsOutput, lastPage bool) bool {
+		paginator := s3.NewListObjectsV2Paginator(s.client, in)
+		for paginator.HasMorePages() {
+			page, err := paginator.NextPage(context.TODO())
+			if err != nil {
+				return nil, err
+			}
+
 			for _, key := range page.Contents {
 				k := (*key.Key)[len(*page.Prefix):]
 				if strings.Contains(k, backupVersionV1) || strings.Contains(k, backupVersionV2) {
@@ -661,9 +691,6 @@ func (s *S3SnapStore) List(includeAll bool) (brtypes.SnapList, error) {
 					}
 				}
 			}
-			return !lastPage
-		}); err != nil {
-			return nil, err
 		}
 	}
 
@@ -685,7 +712,7 @@ func (s *S3SnapStore) Delete(snap brtypes.Snapshot) error {
 	}
 
 	// delete snapshot present in bucket.
-	_, err := s.client.DeleteObject(deleteObjectInput)
+	_, err := s.client.DeleteObject(context.TODO(), deleteObjectInput)
 	return err
 }
 
@@ -759,8 +786,8 @@ func getSSECreds(sseCustomerKey, sseCustomerAlgorithm *string) (SSECredentials, 
 }
 
 // GetBucketImmutabilityTime check objectlock is enabled for given bucket, if it does returns the retention period.
-func GetBucketImmutabilityTime(s *S3SnapStore) (bool, *int64, error) {
-	objectConfig, err := s.client.GetObjectLockConfiguration(&s3.GetObjectLockConfigurationInput{
+func GetBucketImmutabilityTime(s *S3SnapStore) (bool, *int32, error) {
+	objectConfig, err := s.client.GetObjectLockConfiguration(context.TODO(), &s3.GetObjectLockConfigurationInput{
 		Bucket: aws.String(s.bucket),
 	})
 	if err != nil {
@@ -769,7 +796,7 @@ func GetBucketImmutabilityTime(s *S3SnapStore) (bool, *int64, error) {
 
 	if objectConfig != nil && objectConfig.ObjectLockConfiguration != nil {
 		// check if object lock is enabled for bucket
-		if objectConfig.ObjectLockConfiguration.ObjectLockEnabled != nil && *objectConfig.ObjectLockConfiguration.ObjectLockEnabled == s3.ObjectLockEnabledEnabled {
+		if objectConfig.ObjectLockConfiguration.ObjectLockEnabled == s3types.ObjectLockEnabledEnabled {
 			// check if rules for object lock is defined for bucket.
 			if objectConfig.ObjectLockConfiguration.Rule != nil && objectConfig.ObjectLockConfiguration.Rule.DefaultRetention != nil {
 				//assumption: retention period of bucket should always be in days, not years.
@@ -786,8 +813,8 @@ func GetBucketImmutabilityTime(s *S3SnapStore) (bool, *int64, error) {
 }
 
 // IsSnapshotMarkedToBeIgnored checks whether snapshot object key with given versionID is tagged to be ignored or not.
-func IsSnapshotMarkedToBeIgnored(client s3iface.S3API, bucketName, key, versionID string) bool {
-	out, err := client.GetObjectTagging(&s3.GetObjectTaggingInput{
+func IsSnapshotMarkedToBeIgnored(client s3api.Client, bucketName, key, versionID string) bool {
+	out, err := client.GetObjectTagging(context.TODO(), &s3.GetObjectTaggingInput{
 		Bucket:    aws.String(bucketName),
 		Key:       aws.String(key),
 		VersionId: aws.String(versionID),

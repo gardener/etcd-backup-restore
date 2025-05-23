@@ -6,22 +6,27 @@ package snapstore_test
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/request"
-	"github.com/aws/aws-sdk-go/service/s3"
-	"github.com/aws/aws-sdk-go/service/s3/s3iface"
+	"github.com/gardener/etcd-backup-restore/pkg/snapstore/internal/s3api"
+
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
+	s3types "github.com/aws/aws-sdk-go-v2/service/s3/types"
 )
+
+// ensure mockS3Client implements the interface
+var _ s3api.Client = (*mockS3Client)(nil)
 
 // Define a mock struct to be used in your unit tests of myFunc.
 type mockS3Client struct {
-	s3iface.S3API
 	objects               map[string]*[]byte
 	multiPartUploads      map[string]*[][]byte
 	prefix                string
@@ -29,7 +34,7 @@ type mockS3Client struct {
 }
 
 // GetObject returns the object from map for mock test
-func (m *mockS3Client) GetObject(in *s3.GetObjectInput) (*s3.GetObjectOutput, error) {
+func (m *mockS3Client) GetObject(_ context.Context, in *s3.GetObjectInput, _ ...func(*s3.Options)) (*s3.GetObjectOutput, error) {
 	if m.objects[*in.Key] == nil {
 		return nil, fmt.Errorf("object not found")
 	}
@@ -40,25 +45,7 @@ func (m *mockS3Client) GetObject(in *s3.GetObjectInput) (*s3.GetObjectOutput, er
 	return &out, nil
 }
 
-// PutObject adds the object to the map for mock test
-func (m *mockS3Client) PutObject(in *s3.PutObjectInput) (*s3.PutObjectOutput, error) {
-	size, err := in.Body.Seek(0, io.SeekEnd)
-	if err != nil {
-		return nil, fmt.Errorf("failed to seek at the end of body %v", err)
-	}
-	if _, err := in.Body.Seek(0, io.SeekStart); err != nil {
-		return nil, fmt.Errorf("failed to seek at the start of body %v", err)
-	}
-	content := make([]byte, size)
-	if _, err := in.Body.Read(content); err != nil {
-		return nil, fmt.Errorf("failed to read complete body %v", err)
-	}
-	m.objects[*in.Key] = &content
-	out := s3.PutObjectOutput{}
-	return &out, nil
-}
-
-func (m *mockS3Client) CreateMultipartUploadWithContext(_ aws.Context, in *s3.CreateMultipartUploadInput, _ ...request.Option) (*s3.CreateMultipartUploadOutput, error) {
+func (m *mockS3Client) CreateMultipartUpload(_ context.Context, in *s3.CreateMultipartUploadInput, _ ...func(*s3.Options)) (*s3.CreateMultipartUploadOutput, error) {
 	uploadID := time.Now().String()
 	var parts [][]byte
 	m.multiPartUploads[uploadID] = &parts
@@ -69,7 +56,7 @@ func (m *mockS3Client) CreateMultipartUploadWithContext(_ aws.Context, in *s3.Cr
 	return out, nil
 }
 
-func (m *mockS3Client) UploadPartWithContext(_ aws.Context, in *s3.UploadPartInput, _ ...request.Option) (*s3.UploadPartOutput, error) {
+func (m *mockS3Client) UploadPart(_ context.Context, in *s3.UploadPartInput, _ ...func(*s3.Options)) (*s3.UploadPartOutput, error) {
 	if *in.PartNumber < 0 {
 		return nil, fmt.Errorf("part number should be positive integer")
 	}
@@ -78,7 +65,7 @@ func (m *mockS3Client) UploadPartWithContext(_ aws.Context, in *s3.UploadPartInp
 		m.multiPartUploadsMutex.Unlock()
 		return nil, fmt.Errorf("multipart upload not initiated")
 	}
-	if *in.PartNumber > int64(len(*m.multiPartUploads[*in.UploadId])) {
+	if *in.PartNumber > int32(len(*m.multiPartUploads[*in.UploadId])) {
 		t := make([][]byte, *in.PartNumber)
 		copy(t, *m.multiPartUploads[*in.UploadId])
 		delete(m.multiPartUploads, *in.UploadId)
@@ -86,15 +73,8 @@ func (m *mockS3Client) UploadPartWithContext(_ aws.Context, in *s3.UploadPartInp
 	}
 	m.multiPartUploadsMutex.Unlock()
 
-	size, err := in.Body.Seek(0, io.SeekEnd)
+	content, err := io.ReadAll(in.Body)
 	if err != nil {
-		return nil, fmt.Errorf("failed to seek at the end of body %v", err)
-	}
-	if _, err := in.Body.Seek(0, io.SeekStart); err != nil {
-		return nil, fmt.Errorf("failed to seek at the start of body %v", err)
-	}
-	content := make([]byte, size)
-	if _, err := in.Body.Read(content); err != nil {
 		return nil, fmt.Errorf("failed to read complete body %v", err)
 	}
 
@@ -109,12 +89,12 @@ func (m *mockS3Client) UploadPartWithContext(_ aws.Context, in *s3.UploadPartInp
 	return out, nil
 }
 
-func (m *mockS3Client) CompleteMultipartUploadWithContext(_ aws.Context, in *s3.CompleteMultipartUploadInput, _ ...request.Option) (*s3.CompleteMultipartUploadOutput, error) {
+func (m *mockS3Client) CompleteMultipartUpload(_ context.Context, in *s3.CompleteMultipartUploadInput, _ ...func(*s3.Options)) (*s3.CompleteMultipartUploadOutput, error) {
 	if m.multiPartUploads[*in.UploadId] == nil {
 		return nil, fmt.Errorf("multipart upload not initiated")
 	}
 	data := *m.multiPartUploads[*in.UploadId]
-	var prevPartId int64 = 0
+	var prevPartId int32 = 0
 	var object []byte
 	for _, part := range in.MultipartUpload.Parts {
 		if *part.PartNumber <= prevPartId {
@@ -133,88 +113,41 @@ func (m *mockS3Client) CompleteMultipartUploadWithContext(_ aws.Context, in *s3.
 	return &out, nil
 }
 
-func (m *mockS3Client) AbortMultipartUploadWithContext(_ aws.Context, in *s3.AbortMultipartUploadInput, _ ...request.Option) (*s3.AbortMultipartUploadOutput, error) {
+func (m *mockS3Client) AbortMultipartUpload(_ context.Context, in *s3.AbortMultipartUploadInput, _ ...func(*s3.Options)) (*s3.AbortMultipartUploadOutput, error) {
 	delete(m.multiPartUploads, *in.UploadId)
 	out := &s3.AbortMultipartUploadOutput{}
 	return out, nil
 }
 
-// ListObject returns the objects from map for mock test
-func (m *mockS3Client) ListObjects(in *s3.ListObjectsInput) (*s3.ListObjectsOutput, error) {
-	var contents []*s3.Object
+// ListObjectV2 returns the objects from map for mock test
+func (m *mockS3Client) ListObjectsV2(_ context.Context, in *s3.ListObjectsV2Input, _ ...func(*s3.Options)) (*s3.ListObjectsV2Output, error) {
+	var contents []s3types.Object
 	for key := range m.objects {
 		if strings.HasPrefix(key, *in.Prefix) {
 			keyPtr := new(string)
 			*keyPtr = key
-			tempObj := &s3.Object{
+			tempObj := s3types.Object{
 				Key: keyPtr,
 			}
 			contents = append(contents, tempObj)
 		}
 	}
-	out := &s3.ListObjectsOutput{
+	out := &s3.ListObjectsV2Output{
 		Prefix:   in.Prefix,
 		Contents: contents,
 	}
 	return out, nil
 }
 
-// ListObject returns the objects from map for mock test
-func (m *mockS3Client) ListObjectsPages(in *s3.ListObjectsInput, callback func(*s3.ListObjectsOutput, bool) bool) error {
+// ListObjectVersions returns the versioned objects from map for mock test.
+func (m *mockS3Client) ListObjectVersions(_ context.Context, in *s3.ListObjectVersionsInput, _ ...func(*s3.Options)) (*s3.ListObjectVersionsOutput, error) {
 	var (
-		count    int64 = 0
-		limit    int64 = 1 // aws default is 1000.
-		lastPage bool  = false
-		keys     []string
-		out      = &s3.ListObjectsOutput{
+		count int32
+		limit int32 = 1 // aws default is 1000.
+		keys  []string
+		out   = &s3.ListObjectVersionsOutput{
 			Prefix:   in.Prefix,
-			Contents: make([]*s3.Object, 0),
-		}
-	)
-	if in.MaxKeys != nil {
-		limit = *in.MaxKeys
-	}
-	for key := range m.objects {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
-
-	for index, key := range keys {
-		if strings.HasPrefix(key, *in.Prefix) {
-			tempObj := &s3.Object{
-				Key: aws.String(key),
-			}
-			out.Contents = append(out.Contents, tempObj)
-			count++
-		}
-		if index == len(keys)-1 {
-			lastPage = true
-		}
-		if count == limit || lastPage {
-			if !callback(out, lastPage) {
-				return nil
-			}
-			count = 0
-			out = &s3.ListObjectsOutput{
-				Prefix:     in.Prefix,
-				Contents:   make([]*s3.Object, 0),
-				NextMarker: &key,
-			}
-		}
-	}
-	return nil
-}
-
-// ListObjectVersionsPages returns the versioned objects from map for mock test.
-func (m *mockS3Client) ListObjectVersionsPages(in *s3.ListObjectVersionsInput, callback func(*s3.ListObjectVersionsOutput, bool) bool) error {
-	var (
-		count    int64
-		limit    int64 = 1 // aws default is 1000.
-		lastPage bool
-		keys     []string
-		out      = &s3.ListObjectVersionsOutput{
-			Prefix:   in.Prefix,
-			Versions: make([]*s3.ObjectVersion, 0),
+			Versions: make([]s3types.ObjectVersion, 0),
 		}
 	)
 
@@ -226,9 +159,27 @@ func (m *mockS3Client) ListObjectVersionsPages(in *s3.ListObjectVersionsInput, c
 	}
 	sort.Strings(keys)
 
-	for index, key := range keys {
+	var (
+		nextPageIdx = 0
+		lastPageIdx = len(keys) - 1
+	)
+
+	if in.KeyMarker != nil {
+		var err error
+		nextPageIdx, err = strconv.Atoi(*in.KeyMarker)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if nextPageIdx > lastPageIdx {
+		return nil, fmt.Errorf("trying to read beyond limits, requested page %d, last page is %d", nextPageIdx, lastPageIdx)
+	}
+
+	for idx, key := range keys[nextPageIdx:] {
+		pageIdx := nextPageIdx + idx
 		if strings.HasPrefix(key, *in.Prefix) {
-			tempObj := &s3.ObjectVersion{
+			tempObj := s3types.ObjectVersion{
 				Key:          aws.String(key),
 				IsLatest:     aws.Bool(true),
 				VersionId:    aws.String(fmt.Sprintf("%s:%d", "mock-versionID", count)),
@@ -237,47 +188,43 @@ func (m *mockS3Client) ListObjectVersionsPages(in *s3.ListObjectVersionsInput, c
 			out.Versions = append(out.Versions, tempObj)
 			count++
 		}
-		if index == len(keys)-1 {
-			lastPage = true
-		}
-		if count == limit || lastPage {
-			if !callback(out, lastPage) {
-				return nil
+
+		if count == limit {
+			if pageIdx < lastPageIdx {
+				out.KeyMarker = aws.String(strconv.Itoa(pageIdx))
+				out.NextKeyMarker = aws.String(strconv.Itoa(pageIdx + 1))
+				out.IsTruncated = aws.Bool(true)
 			}
-			count = 0
-			out = &s3.ListObjectVersionsOutput{
-				Prefix:        in.Prefix,
-				Versions:      make([]*s3.ObjectVersion, 0),
-				NextKeyMarker: &key,
-			}
+			return out, nil
 		}
 	}
-	return nil
+
+	return out, nil
 }
 
 // GetBucketVersioning returns the versioning status of S3's mock bucket.
-func (m *mockS3Client) GetBucketVersioning(in *s3.GetBucketVersioningInput) (*s3.GetBucketVersioningOutput, error) {
+func (m *mockS3Client) GetBucketVersioning(_ context.Context, in *s3.GetBucketVersioningInput, _ ...func(*s3.Options)) (*s3.GetBucketVersioningOutput, error) {
 	if in != nil && *in.Bucket == "mock-S3NonObjectLockedBucket" {
 		return &s3.GetBucketVersioningOutput{}, nil
 	} else if in != nil && *in.Bucket == "mock-S3ObjectLockedBucket" {
 		return &s3.GetBucketVersioningOutput{
-			Status: aws.String(s3.BucketVersioningStatusEnabled),
+			Status: s3types.BucketVersioningStatusEnabled,
 		}, nil
 	}
 	return nil, fmt.Errorf("unable to check versioning status for given bucket input")
 }
 
 // GetObjectLockConfiguration returns the object lock configuration of S3's mock bucket.
-func (m *mockS3Client) GetObjectLockConfiguration(in *s3.GetObjectLockConfigurationInput) (*s3.GetObjectLockConfigurationOutput, error) {
-	defaultRetentionPeriod := int64(2)
+func (m *mockS3Client) GetObjectLockConfiguration(_ context.Context, in *s3.GetObjectLockConfigurationInput, _ ...func(*s3.Options)) (*s3.GetObjectLockConfigurationOutput, error) {
+	defaultRetentionPeriod := int32(2)
 
 	if in != nil && *in.Bucket == "mock-S3ObjectLockedBucket" {
 		return &s3.GetObjectLockConfigurationOutput{
-			ObjectLockConfiguration: &s3.ObjectLockConfiguration{
-				ObjectLockEnabled: aws.String(s3.ObjectLockEnabledEnabled),
-				Rule: &s3.ObjectLockRule{
-					DefaultRetention: &s3.DefaultRetention{
-						Days: aws.Int64(defaultRetentionPeriod),
+			ObjectLockConfiguration: &s3types.ObjectLockConfiguration{
+				ObjectLockEnabled: s3types.ObjectLockEnabledEnabled,
+				Rule: &s3types.ObjectLockRule{
+					DefaultRetention: &s3types.DefaultRetention{
+						Days: &defaultRetentionPeriod,
 					},
 				},
 			},
@@ -286,8 +233,8 @@ func (m *mockS3Client) GetObjectLockConfiguration(in *s3.GetObjectLockConfigurat
 
 	if in != nil && *in.Bucket == "mock-s3ObjectLockBucketButRulesNotDefined" {
 		return &s3.GetObjectLockConfigurationOutput{
-			ObjectLockConfiguration: &s3.ObjectLockConfiguration{
-				ObjectLockEnabled: aws.String(s3.ObjectLockEnabledEnabled),
+			ObjectLockConfiguration: &s3types.ObjectLockConfiguration{
+				ObjectLockEnabled: s3types.ObjectLockEnabledEnabled,
 			},
 		}, nil
 	}
@@ -296,23 +243,23 @@ func (m *mockS3Client) GetObjectLockConfiguration(in *s3.GetObjectLockConfigurat
 }
 
 // GetObjectTagging returns the tag for S3's mock bucket object.
-func (m *mockS3Client) GetObjectTagging(input *s3.GetObjectTaggingInput) (*s3.GetObjectTaggingOutput, error) {
+func (m *mockS3Client) GetObjectTagging(_ context.Context, input *s3.GetObjectTaggingInput, _ ...func(*s3.Options)) (*s3.GetObjectTaggingOutput, error) {
 	if *input.Bucket == "mock-s3Bucket" {
 		return nil, fmt.Errorf("unable to check tag for given object input")
 	}
 
-	objectTag := []*s3.Tag{}
+	objectTag := []s3types.Tag{}
 
 	if *input.Key == "mock/v2/Full-000000xx-000000yy-yyxxzz.gz" && *input.VersionId == "mockVersion1" {
 		return &s3.GetObjectTaggingOutput{
-			TagSet: append(objectTag, &s3.Tag{
+			TagSet: append(objectTag, s3types.Tag{
 				Key:   aws.String("x-etcd-snapshot-exclude"),
 				Value: aws.String("true"),
 			}),
 		}, nil
 	} else if *input.Key == "mock/v2/Full-000000xx-000000yy-yyxxzz.gz" && *input.VersionId == "mockVersion2" {
 		return &s3.GetObjectTaggingOutput{
-			TagSet: append(objectTag, &s3.Tag{
+			TagSet: append(objectTag, s3types.Tag{
 				Key:   aws.String("x-etcd-snapshot-exclude"),
 				Value: aws.String("false"),
 			}),
@@ -325,7 +272,7 @@ func (m *mockS3Client) GetObjectTagging(input *s3.GetObjectTaggingInput) (*s3.Ge
 }
 
 // DeleteObject deletes the object from map for mock test
-func (m *mockS3Client) DeleteObject(in *s3.DeleteObjectInput) (*s3.DeleteObjectOutput, error) {
+func (m *mockS3Client) DeleteObject(_ context.Context, in *s3.DeleteObjectInput, _ ...func(*s3.Options)) (*s3.DeleteObjectOutput, error) {
 	delete(m.objects, *in.Key)
 	return &s3.DeleteObjectOutput{}, nil
 }
