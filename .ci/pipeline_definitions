@@ -60,13 +60,13 @@ etcd-backup-restore:
                 teamname: 'gardener/etcd-druid-maintainers'
     steps:
       check:
-        image: 'golang:1.24.2'
+        image: 'golang:1.24.4'
       unit_test:
-        image: 'golang:1.24.2'
+        image: 'golang:1.24.4'
       integration_test:
-        image: 'golang:1.24.2'
+        image: 'golang:1.24.4'
       build:
-        image: 'golang:1.24.2'
+        image: 'golang:1.24.4'
         output_dir: 'binary'
 
   jobs:
