@@ -12,10 +12,15 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
-
 	"github.com/aliyun/aliyun-oss-go-sdk/oss"
+	"github.com/gardener/etcd-backup-restore/pkg/snapstore/internal/ossApi"
 )
+
+// ensure mockOSSBucket implements the OSSBucket interface
+var _ ossApi.OSSBucket = (*mockOSSBucket)(nil)
+
+// ensure mockOSSClient implements the Client interface
+var _ ossApi.Client = (*mockOSSClient)(nil)
 
 type uploadParts []oss.UploadPart
 
@@ -32,12 +37,27 @@ func (slice uploadParts) Swap(i, j int) {
 }
 
 type mockOSSBucket struct {
-	snapstore.OSSBucket
 	objects               map[string]*[]byte
 	multiPartUploads      map[string]*[][]byte
 	prefix                string
 	bucketName            string
 	multiPartUploadsMutex sync.Mutex
+}
+
+type mockOSSClient struct {
+	objects          map[string]*[]byte
+	multiPartUploads map[string]*[][]byte
+	prefix           string
+	bucketName       string
+}
+
+func getOSSMockBucket(m *mockOSSClient) *mockOSSBucket {
+	return &mockOSSBucket{
+		objects:          m.objects,
+		multiPartUploads: m.multiPartUploads,
+		prefix:           m.prefix,
+		bucketName:       m.bucketName,
+	}
 }
 
 // GetObject returns the object from map for mock test
@@ -150,4 +170,12 @@ func (m *mockOSSBucket) ListObjects(_ ...oss.Option) (oss.ListObjectsResult, err
 func (m *mockOSSBucket) DeleteObject(objectKey string, _ ...oss.Option) error {
 	delete(m.objects, objectKey)
 	return nil
+}
+
+// // GetBucketWorm get bucket worm configuration for given bucket name.
+func (m *mockOSSClient) GetBucketWorm(bucketName string, opts ...oss.Option) (oss.WormConfiguration, error) {
+	return oss.WormConfiguration{
+		State:                 "InProgress",
+		RetentionPeriodInDays: 1,
+	}, nil
 }

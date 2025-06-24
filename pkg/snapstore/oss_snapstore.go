@@ -18,22 +18,13 @@ import (
 	"sync"
 	"time"
 
+	"github.com/aws/smithy-go/ptr"
+	"github.com/gardener/etcd-backup-restore/pkg/snapstore/internal/ossApi"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 
 	"github.com/aliyun/aliyun-oss-go-sdk/oss"
 	"github.com/sirupsen/logrus"
 )
-
-// OSSBucket is an interface for oss.Bucket used in snapstore
-type OSSBucket interface {
-	GetObject(objectKey string, options ...oss.Option) (io.ReadCloser, error)
-	InitiateMultipartUpload(objectKey string, options ...oss.Option) (oss.InitiateMultipartUploadResult, error)
-	CompleteMultipartUpload(imur oss.InitiateMultipartUploadResult, parts []oss.UploadPart, options ...oss.Option) (oss.CompleteMultipartUploadResult, error)
-	ListObjects(options ...oss.Option) (oss.ListObjectsResult, error)
-	DeleteObject(objectKey string, options ...oss.Option) error
-	UploadPart(imur oss.InitiateMultipartUploadResult, reader io.Reader, partSize int64, partNumber int, options ...oss.Option) (oss.UploadPart, error)
-	AbortMultipartUpload(imur oss.InitiateMultipartUploadResult, options ...oss.Option) error
-}
 
 const (
 	// Total number of chunks to be uploaded must be one less than maximum limit allowed.
@@ -51,7 +42,9 @@ type authOptions struct {
 
 // OSSSnapStore is snapstore with Alicloud OSS object store as backend
 type OSSSnapStore struct {
-	bucket                  OSSBucket
+	bucket                  ossApi.OSSBucket
+	client                  ossApi.Client
+	bucketName              string
 	prefix                  string
 	tempDir                 string
 	maxParallelChunkUploads uint
@@ -78,14 +71,16 @@ func newOSSFromAuthOpt(bucket, prefix, tempDir string, maxParallelChunkUploads u
 		return nil, err
 	}
 
-	return NewOSSFromBucket(prefix, tempDir, maxParallelChunkUploads, minChunkSize, bucketOSS), nil
+	return NewOSSFromBucket(prefix, tempDir, bucket, maxParallelChunkUploads, minChunkSize, client, bucketOSS), nil
 }
 
 // NewOSSFromBucket will create the new OSS snapstore object from OSS bucket
-func NewOSSFromBucket(prefix, tempDir string, maxParallelChunkUploads uint, minChunkSize int64, bucket OSSBucket) *OSSSnapStore {
+func NewOSSFromBucket(prefix, tempDir, bucketName string, maxParallelChunkUploads uint, minChunkSize int64, client ossApi.Client, bucket ossApi.OSSBucket) *OSSSnapStore {
 	return &OSSSnapStore{
 		prefix:                  prefix,
 		bucket:                  bucket,
+		client:                  client,
+		bucketName:              bucketName,
 		maxParallelChunkUploads: maxParallelChunkUploads,
 		minChunkSize:            minChunkSize,
 		tempDir:                 tempDir,
@@ -224,6 +219,14 @@ func (s *OSSSnapStore) List(_ bool) (brtypes.SnapList, error) {
 	prefix := path.Join(strings.Join(prefixTokens[:len(prefixTokens)-1], "/"))
 
 	var snapList brtypes.SnapList
+	var bucketImmutableExpiryTimeInDays *int
+
+	config, err := s.client.GetBucketWorm(s.bucketName)
+	if err != nil {
+		logrus.Warnf("unable to get worm configuration for bukcet: %v", err)
+	} else if config.State == "InProgress" || config.State == "Locked" {
+		bucketImmutableExpiryTimeInDays = ptr.Int(config.RetentionPeriodInDays)
+	}
 
 	marker := ""
 	for {
@@ -238,6 +241,11 @@ func (s *OSSSnapStore) List(_ bool) (brtypes.SnapList, error) {
 					// Warning
 					logrus.Warnf("Invalid snapshot found. Ignoring it: %s", object.Key)
 				} else {
+					if bucketImmutableExpiryTimeInDays != nil {
+						// To get OSS object's "ImmutabilityExpiryTime", backup-restore is calculating the "ImmutabilityExpiryTime" using bucket retention period.
+						// ImmutabilityExpiryTime = SnapshotCreationTime + bucketImmutabilityTimeInDays
+						snap.ImmutabilityExpiryTime = snap.CreatedOn.Add(time.Duration(*bucketImmutableExpiryTimeInDays) * 24 * time.Hour)
+					}
 					snapList = append(snapList, snap)
 				}
 			}
