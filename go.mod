@@ -16,7 +16,7 @@ require (
 	github.com/gophercloud/gophercloud v0.17.0
 	github.com/gophercloud/utils v0.0.0-20200204043447-9864b6f1f12f
 	github.com/onsi/ginkgo/v2 v2.23.4
-	github.com/onsi/gomega v1.36.3
+	github.com/onsi/gomega v1.37.0
 	github.com/prometheus/client_golang v1.21.1
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/sirupsen/logrus v1.9.3 // replace this completely with zap
