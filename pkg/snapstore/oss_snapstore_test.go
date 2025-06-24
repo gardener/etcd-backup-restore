@@ -12,8 +12,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/aliyun/aliyun-oss-go-sdk/oss"
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore/internal/ossApi"
+
+	"github.com/aliyun/aliyun-oss-go-sdk/oss"
 )
 
 // ensure mockOSSBucket implements the OSSBucket interface
@@ -173,7 +174,7 @@ func (m *mockOSSBucket) DeleteObject(objectKey string, _ ...oss.Option) error {
 }
 
 // // GetBucketWorm get bucket worm configuration for given bucket name.
-func (m *mockOSSClient) GetBucketWorm(bucketName string, opts ...oss.Option) (oss.WormConfiguration, error) {
+func (m *mockOSSClient) GetBucketWorm(_ string, _ ...oss.Option) (oss.WormConfiguration, error) {
 	return oss.WormConfiguration{
 		State:                 "InProgress",
 		RetentionPeriodInDays: 1,

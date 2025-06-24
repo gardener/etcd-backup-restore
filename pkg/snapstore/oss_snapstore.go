@@ -18,11 +18,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/aws/smithy-go/ptr"
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore/internal/ossApi"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 
 	"github.com/aliyun/aliyun-oss-go-sdk/oss"
+	"github.com/aws/smithy-go/ptr"
 	"github.com/sirupsen/logrus"
 )
 
