@@ -221,11 +221,11 @@ func (s *OSSSnapStore) List(_ bool) (brtypes.SnapList, error) {
 	var snapList brtypes.SnapList
 	var bucketImmutableExpiryTimeInDays *int
 
-	config, err := s.client.GetBucketWorm(s.bucketName)
+	wormCfg, err := s.client.GetBucketWorm(s.bucketName)
 	if err != nil {
 		logrus.Warnf("unable to get worm configuration for bukcet: %v", err)
-	} else if config.State == "InProgress" || config.State == "Locked" {
-		bucketImmutableExpiryTimeInDays = ptr.Int(config.RetentionPeriodInDays)
+	} else if wormCfg.State == "InProgress" || wormCfg.State == "Locked" {
+		bucketImmutableExpiryTimeInDays = ptr.Int(wormCfg.RetentionPeriodInDays)
 	}
 
 	marker := ""
@@ -242,7 +242,8 @@ func (s *OSSSnapStore) List(_ bool) (brtypes.SnapList, error) {
 					logrus.Warnf("Invalid snapshot found. Ignoring it: %s", object.Key)
 				} else {
 					if bucketImmutableExpiryTimeInDays != nil {
-						// To get OSS object's "ImmutabilityExpiryTime", backup-restore is calculating the "ImmutabilityExpiryTime" using bucket retention period.
+						// To get OSS object's "ImmutabilityExpiryTime",
+						// backup-restore is calculating the "ImmutabilityExpiryTime" using bucket retention period and snapshot creation time.
 						// ImmutabilityExpiryTime = SnapshotCreationTime + bucketImmutabilityTimeInDays
 						snap.ImmutabilityExpiryTime = snap.CreatedOn.Add(time.Duration(*bucketImmutableExpiryTimeInDays) * 24 * time.Hour)
 					}

@@ -404,7 +404,7 @@ You can remove an unlocked retention policy to adjust the retention period or yo
 
    - To extend the retention period:
       1. [Retention policy must be locked](#lock-the-retention-policy-for-oss).
-      2. Get the wormId of bucket as it's need to be pass in the request.
+      2. Get the wormId of bucket as it's required to be passed in the request.
   
 ```bash
 ## Get the wormId of bucket

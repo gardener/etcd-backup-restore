@@ -173,7 +173,7 @@ func (m *mockOSSBucket) DeleteObject(objectKey string, _ ...oss.Option) error {
 	return nil
 }
 
-// // GetBucketWorm get bucket worm configuration for given bucket name.
+// GetBucketWorm get bucket worm configuration for given bucket name.
 func (m *mockOSSClient) GetBucketWorm(_ string, _ ...oss.Option) (oss.WormConfiguration, error) {
 	return oss.WormConfiguration{
 		State:                 "InProgress",
