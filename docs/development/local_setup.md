@@ -110,11 +110,18 @@ Export the following environment variables according to your host OS:
 
 Taking the example of S3 again here, the following is the necessary structure for a directory which holds the S3 credential files (extra credentials correspond to extra files, which are not compulsory).
 
+> [!NOTE]
+> `etcdbrctl` supports different authentication methods, therefore not all files must be set. The always required file is `region`.
+> If static credentials are used, then the files `accessKeyID` and `secretAccessKey` must be set.
+> Alternatively, if web identity role is used, then the files `roleARN` and `token` must be set.
+
 ```console
 s3credentials
-├── accessKeyID
 ├── region
-└── secretAccessKey
+├── accessKeyID
+├── secretAccessKey
+├── roleARN
+└── token
 ```
 
 > [!TIP]  
@@ -124,10 +131,17 @@ s3credentials
 
 Sticking to the S3 example, the `.json` file which contains the credentials should look like so:
 
-```console
+> [!NOTE]
+> Similarly to credentials [credentials in a directory](#credentials-in-a-directory), not all fields must be set at once. The `region` field is always required.
+> If static credentials are used, then the fields `accessKeyID` and `secretAccessKey` must be set,
+> otherwise, when web identity role is used the fields `roleARN` and `token` must be set.
+
+```json
 {
-  "accessKeyID": "<accessKeyID>",
   "region": "<region>",
+  "accessKeyID": "<accessKeyID>",
   "secretAccessKey": "<secretAccessKey>",
+  "roleARN": "<roleARN>",
+  "token": "<JWT>",
 }
 ```
