@@ -337,7 +337,7 @@ func readAWSCredentialFromDir(dirname string) (*awsCredentials, error) {
 			}
 			awsConfig.SSECustomerAlgorithm = ptr.To(string(data))
 		case "roleARN":
-			roleARN, err := os.ReadFile(dirname + "/roleARN")
+			roleARN, err := os.ReadFile(dirname + "/roleARN") // #nosec G304 -- this is a trusted file, obtained via user input.
 			if err != nil {
 				return nil, err
 			}
