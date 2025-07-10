@@ -275,31 +275,31 @@ func readAWSCredentialFromDir(dirname string) (*awsCredentials, error) {
 	for _, file := range files {
 		switch file.Name() {
 		case "accessKeyID":
-			data, err := os.ReadFile(dirname + "/accessKeyID") // #nosec G304 -- this is a trusted file, obtained via user input.
+			data, err := os.ReadFile(filepath.Join(dirname, "accessKeyID")) // #nosec G304 -- this is a trusted file, obtained via user input.
 			if err != nil {
 				return nil, err
 			}
 			awsConfig.AccessKeyID = string(data)
 		case "region":
-			data, err := os.ReadFile(dirname + "/region") // #nosec G304 -- this is a trusted file, obtained via user input.
+			data, err := os.ReadFile(filepath.Join(dirname, "region")) // #nosec G304 -- this is a trusted file, obtained via user input.
 			if err != nil {
 				return nil, err
 			}
 			awsConfig.Region = string(data)
 		case "secretAccessKey":
-			data, err := os.ReadFile(dirname + "/secretAccessKey") // #nosec G304 -- this is a trusted file, obtained via user input.
+			data, err := os.ReadFile(filepath.Join(dirname, "secretAccessKey")) // #nosec G304 -- this is a trusted file, obtained via user input.
 			if err != nil {
 				return nil, err
 			}
 			awsConfig.SecretAccessKey = string(data)
 		case "endpoint":
-			data, err := os.ReadFile(dirname + "/endpoint") // #nosec G304 -- this is a trusted file, obtained via user input.
+			data, err := os.ReadFile(filepath.Join(dirname, "endpoint")) // #nosec G304 -- this is a trusted file, obtained via user input.
 			if err != nil {
 				return nil, err
 			}
 			awsConfig.Endpoint = ptr.To(string(data))
 		case "s3ForcePathStyle":
-			data, err := os.ReadFile(dirname + "/s3ForcePathStyle") // #nosec G304 -- this is a trusted file, obtained via user input.
+			data, err := os.ReadFile(filepath.Join(dirname, "s3ForcePathStyle")) // #nosec G304 -- this is a trusted file, obtained via user input.
 			if err != nil {
 				return nil, err
 			}
@@ -309,7 +309,7 @@ func readAWSCredentialFromDir(dirname string) (*awsCredentials, error) {
 			}
 			awsConfig.S3ForcePathStyle = &val
 		case "insecureSkipVerify":
-			data, err := os.ReadFile(dirname + "/insecureSkipVerify") // #nosec G304 -- this is a trusted file, obtained via user input.
+			data, err := os.ReadFile(filepath.Join(dirname, "insecureSkipVerify")) // #nosec G304 -- this is a trusted file, obtained via user input.
 			if err != nil {
 				return nil, err
 			}
@@ -319,31 +319,31 @@ func readAWSCredentialFromDir(dirname string) (*awsCredentials, error) {
 			}
 			awsConfig.InsecureSkipVerify = &val
 		case "trustedCaCert":
-			data, err := os.ReadFile(dirname + "/trustedCaCert") // #nosec G304 -- this is a trusted file, obtained via user input.
+			data, err := os.ReadFile(filepath.Join(dirname, "trustedCaCert")) // #nosec G304 -- this is a trusted file, obtained via user input.
 			if err != nil {
 				return nil, err
 			}
 			awsConfig.TrustedCaCert = ptr.To(string(data))
 		case "sseCustomerKey":
-			data, err := os.ReadFile(dirname + "/sseCustomerKey") // #nosec G304 -- this is a trusted file, obtained via user input.
+			data, err := os.ReadFile(filepath.Join(dirname, "sseCustomerKey")) // #nosec G304 -- this is a trusted file, obtained via user input.
 			if err != nil {
 				return nil, err
 			}
 			awsConfig.SSECustomerKey = ptr.To(string(data))
 		case "sseCustomerAlgorithm":
-			data, err := os.ReadFile(dirname + "/sseCustomerAlgorithm") // #nosec G304 -- this is a trusted file, obtained via user input.
+			data, err := os.ReadFile(filepath.Join(dirname, "sseCustomerAlgorithm")) // #nosec G304 -- this is a trusted file, obtained via user input.
 			if err != nil {
 				return nil, err
 			}
 			awsConfig.SSECustomerAlgorithm = ptr.To(string(data))
 		case "roleARN":
-			roleARN, err := os.ReadFile(dirname + "/roleARN") // #nosec G304 -- this is a trusted file, obtained via user input.
+			roleARN, err := os.ReadFile(filepath.Join(dirname, "roleARN")) // #nosec G304 -- this is a trusted file, obtained via user input.
 			if err != nil {
 				return nil, err
 			}
 			awsConfig.RoleARN = string(roleARN)
 		case "token":
-			awsConfig.TokenPath = dirname + "/token"
+			awsConfig.TokenPath = filepath.Join(dirname, "token")
 		}
 	}
 
@@ -775,7 +775,7 @@ func GetS3CredentialsLastModifiedTime() (time.Time, error) {
 			return awsTimestamp, nil
 		}
 
-		return time.Time{}, fmt.Errorf("failed to get AWS credential timestamp from the directory %v with error: %w, %w", dir, err, err2)
+		return time.Time{}, fmt.Errorf("failed to get AWS credential timestamp from the directory %v with error: %w", dir, errors.Join(err, err2))
 	}
 
 	if filename, isSet := os.LookupEnv(awsCredentialJSONFile); isSet {
@@ -791,12 +791,19 @@ func GetS3CredentialsLastModifiedTime() (time.Time, error) {
 }
 
 func isAWSConfigEmpty(config *awsCredentials) error {
-	if len(config.Region) != 0 &&
-		(len(config.AccessKeyID) != 0 && len(config.SecretAccessKey) != 0 ||
-			len(config.RoleARN) != 0 && len(config.TokenPath) != 0) {
+	if len(config.Region) == 0 {
+		return fmt.Errorf("aws s3 credentials: region is missing")
+	}
+
+	if len(config.AccessKeyID) != 0 && len(config.SecretAccessKey) != 0 {
 		return nil
 	}
-	return fmt.Errorf("aws s3 credentials: region, and secretAccessKey and accessKeyID, or roleARN and token are missing")
+
+	if len(config.RoleARN) != 0 && len(config.TokenPath) != 0 {
+		return nil
+	}
+
+	return fmt.Errorf("aws s3 credentials: either set secretAccessKey and accessKeyID or roleARN and token")
 }
 
 // Creates SSE Credentials that are included in the S3 API calls for customer managed SSE

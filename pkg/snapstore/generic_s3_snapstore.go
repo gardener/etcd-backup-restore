@@ -55,7 +55,7 @@ func newGenericS3FromAuthOpt(bucket, prefix, tempDir string, maxParallelChunkUpl
 	}
 	cfgOpts = append(cfgOpts, config.WithCredentialsProvider(aws.NewCredentialsCache(credentialsProvider)))
 
-	cfg, err := config.LoadDefaultConfig(context.TODO(), cfgOpts...)
+	cfg, err := config.LoadDefaultConfig(context.Background(), cfgOpts...)
 	if err != nil {
 		return nil, fmt.Errorf("could not create S3 session: %w", err)
 	}
