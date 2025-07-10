@@ -30,7 +30,7 @@ spec:
     spec:
 {{- if and .Values.backup.storageProvider (eq .Values.backup.storageProvider "Local") }}
       initContainers:
-      - args: 
+      - args:
         - chown -R 65532:65532 /home/nonroot/{{ .Values.backup.storageContainer}}
         command:
         - sh
@@ -48,7 +48,7 @@ spec:
           runAsUser: 0
 {{- end }}
       containers:
-      - args: 
+      - args:
         - start-etcd
         - --backup-restore-host-port={{ .Release.Name }}-etcd-local:{{ .Values.servicePorts.etcdBackupRestore.server }}
         - --etcd-server-name={{ .Release.Name }}-etcd-local
@@ -134,7 +134,7 @@ spec:
     {{- if .Values.backup.compression.enabled }}
         - --compress-snapshots={{ .Values.backup.compression.enabled }}
     {{- end }}
-    {{- if .Values.backup.compression.policy }}        
+    {{- if .Values.backup.compression.policy }}
         - --compression-policy={{ .Values.backup.compression.policy }}
     {{- end }}
   {{- end }}
@@ -283,7 +283,7 @@ spec:
           mountPath: /var/etcdbr/ssl/server
 {{- end }}
 {{- if .Values.backup.storageProvider }}
-  {{- if eq .Values.backup.storageProvider "Local"}}
+  {{- if eq .Values.backup.storageProvider "Local" }}
         - name: local-backup
           mountPath: /home/nonroot/{{ .Values.backup.storageContainer}}
   {{- else if eq .Values.backup.storageProvider "GCS" }}
@@ -346,7 +346,7 @@ spec:
           secretName: {{ .Release.Name }}-etcdbr-client-tls
 {{- end }}
 {{- if .Values.backup.storageProvider }}
-  {{- if eq .Values.backup.storageProvider "Local"}}
+  {{- if eq .Values.backup.storageProvider "Local" }}
       - name: local-backup
         hostPath:
           path: {{ .Values.backup.local.path }}/{{ .Values.backup.storageContainer }}
@@ -366,4 +366,3 @@ spec:
       resources:
         requests:
           storage: {{ .Values.storageCapacity }}
-          
