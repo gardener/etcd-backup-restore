@@ -2,7 +2,7 @@
 
 ## Goal
 
-Main goal of this project to provide a solution to make [etcd] instance backing the kubernetes cluster robust to failures. Etcd data is backed up at regular intervals. The etcd instance runs on a Seed Kubernetes cluster and stores the state of the Shoot Kubernetes clusters. In case of etcd instance failures, the etcd instance is reconciled and in the extreme case restored from the latest non-corrupt backup available.
+Main goal of this project to provide a solution to make [etcd] instance backing the kubernetes cluster robust to failures. Etcd data is backed up at regular intervals. The etcd instance runs on a Gardener Seed Kubernetes cluster and stores the state of the Gardener Shoot Kubernetes clusters. In case of etcd instance failures, the etcd instance is reconciled and in the extreme case restored from the latest non-corrupt backup available.
 
 ## Non Goal
 
@@ -66,7 +66,7 @@ Sidecar container has two components
 
 #### Prober
 
-- Probe etcd container for liveliness of etcd process.
+- Probe etcd container for liveliness of the etcd process.
 - Probe is required to ensure that etcd is live before backups are triggered.
 - Schedule the backup operation (probably using cron library) which triggers full snapshot at regular intervals.
 - Store the snapshot in the configured cloud object store.

@@ -108,6 +108,8 @@ backup:
   #   s3ForcePathStyle: "true" # optional
   #   sseCustomerKey: aes-256-sse-customer-key # optional
   #   sseCustomerAlgorithm: aes-256-sse-customer-algorithm # optional
+  #   token: <JWT>
+  #   roleARN: arn:aws:iam::123456789012:role/role-name
   # gcs:
   #   serviceAccountJson: service-account-json-with-object-storage-privileges
   #   storageAPIEndpoint: endpoint-override-for-storage-api # optional
