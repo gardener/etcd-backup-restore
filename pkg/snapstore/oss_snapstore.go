@@ -18,7 +18,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gardener/etcd-backup-restore/pkg/snapstore/internal/ossApi"
+	stiface "github.com/gardener/etcd-backup-restore/pkg/snapstore/oss"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 
 	"github.com/aliyun/aliyun-oss-go-sdk/oss"
@@ -42,8 +42,8 @@ type authOptions struct {
 
 // OSSSnapStore is snapstore with Alicloud OSS object store as backend
 type OSSSnapStore struct {
-	bucket                  ossApi.OSSBucket
-	client                  ossApi.Client
+	bucket                  stiface.OSSBucket
+	client                  stiface.Client
 	bucketName              string
 	prefix                  string
 	tempDir                 string
@@ -75,7 +75,7 @@ func newOSSFromAuthOpt(bucket, prefix, tempDir string, maxParallelChunkUploads u
 }
 
 // NewOSSFromBucket will create the new OSS snapstore object from OSS bucket
-func NewOSSFromBucket(prefix, tempDir, bucketName string, maxParallelChunkUploads uint, minChunkSize int64, client ossApi.Client, bucket ossApi.OSSBucket) *OSSSnapStore {
+func NewOSSFromBucket(prefix, tempDir, bucketName string, maxParallelChunkUploads uint, minChunkSize int64, client stiface.Client, bucket stiface.OSSBucket) *OSSSnapStore {
 	return &OSSSnapStore{
 		prefix:                  prefix,
 		bucket:                  bucket,

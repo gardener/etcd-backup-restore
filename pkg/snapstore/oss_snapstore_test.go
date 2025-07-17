@@ -12,16 +12,16 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gardener/etcd-backup-restore/pkg/snapstore/internal/ossApi"
+	stiface "github.com/gardener/etcd-backup-restore/pkg/snapstore/oss"
 
 	"github.com/aliyun/aliyun-oss-go-sdk/oss"
 )
 
 // ensure mockOSSBucket implements the OSSBucket interface
-var _ ossApi.OSSBucket = (*mockOSSBucket)(nil)
+var _ stiface.OSSBucket = (*mockOSSBucket)(nil)
 
 // ensure mockOSSClient implements the Client interface
-var _ ossApi.Client = (*mockOSSClient)(nil)
+var _ stiface.Client = (*mockOSSClient)(nil)
 
 type uploadParts []oss.UploadPart
 
