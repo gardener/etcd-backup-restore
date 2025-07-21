@@ -66,7 +66,7 @@ mkdir openssl && cd openssl
 #### Generating CA cert bundle
 
 ```console
-openssl genrsa -out ca.key 2048
+openssl genrsa -out ca.key 4096
 openssl req -new -key ca.key -subj "/CN=etcd" -out ca.csr
 
 cat > ca.csr.conf <<EOF
@@ -75,7 +75,7 @@ keyUsage=critical,digitalSignature,keyEncipherment,keyCertSign,cRLSign
 basicConstraints=critical,CA:TRUE
 EOF
 
-openssl x509 -req -in ca.csr -signkey ca.key -out ca.crt -sha256 -days 3653 -extensions v3_ext -extfile ca.csr.conf
+openssl x509 -req -in ca.csr -signkey ca.key -out ca.crt -sha256 -days 365 -extensions v3_ext -extfile ca.csr.conf
 
 # view contents of the generated certificate
 openssl x509 -in ca.crt -noout -text
@@ -84,12 +84,12 @@ openssl x509 -in ca.crt -noout -text
 #### Generating TLS key-pair
 
 ```console
-openssl genrsa -out server.key 2048
+openssl genrsa -out server.key 4096
 
 # In the `alt_names` section of server.csr.conf, replace all occurrences of `mynamespace` with the namespace into which you'll deploy the helm chart
 cat > server.csr.conf <<EOF
 [ req ]
-default_bits = 2048
+default_bits = 4096
 prompt = no
 default_md = sha256
 req_extensions = req_ext
@@ -118,7 +118,7 @@ EOF
 
 openssl req -new -key server.key -out server.csr -config server.csr.conf
 
-openssl x509 -req -in server.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out server.crt -sha256 -days 3653 -extensions v3_ext -extfile server.csr.conf
+openssl x509 -req -in server.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out server.crt -sha256 -days 365 -extensions v3_ext -extfile server.csr.conf
 
 # view contents of the generated certificate
 openssl x509 -in server.crt -noout -text
