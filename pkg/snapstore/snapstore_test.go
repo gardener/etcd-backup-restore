@@ -59,15 +59,16 @@ type tagger interface {
 
 var _ = Describe("Save, List, Fetch, Delete from mock snapstore", func() {
 	var (
-		snap1       brtypes.Snapshot
-		snap2       brtypes.Snapshot
-		snap3       brtypes.Snapshot
-		snap4       brtypes.Snapshot
-		snap5       brtypes.Snapshot
-		snapstores  map[string]testSnapStore
-		awsS3Client *mockS3Client
-		gcsClient   *mockGCSClient
-		absClient   *fakeABSContainerClient
+		snap1        brtypes.Snapshot
+		snap2        brtypes.Snapshot
+		snap3        brtypes.Snapshot
+		snap4        brtypes.Snapshot
+		snap5        brtypes.Snapshot
+		snapstores   map[string]testSnapStore
+		awsS3Client  *mockS3Client
+		gcsClient    *mockGCSClient
+		absClient    *fakeABSContainerClient
+		aliOSSClient *mockOSSClient
 	)
 
 	BeforeEach(func() {
@@ -139,6 +140,13 @@ var _ = Describe("Save, List, Fetch, Delete from mock snapstore", func() {
 			multiPartUploads: map[string]*[][]byte{},
 		}
 
+		aliOSSClient = &mockOSSClient{
+			objects:          objectMap,
+			prefix:           prefixV2,
+			multiPartUploads: map[string]*[][]byte{},
+			bucketName:       bucket,
+		}
+
 		snapstores = map[string]testSnapStore{
 			brtypes.SnapstoreProviderSwift: {
 				SnapStore:              NewSwiftSnapstoreFromClient(bucket, prefixV2, "/tmp", 5, brtypes.MinChunkSize, fake.ServiceClient()),
@@ -153,12 +161,7 @@ var _ = Describe("Save, List, Fetch, Delete from mock snapstore", func() {
 				objectCountPerSnapshot: 1,
 			},
 			brtypes.SnapstoreProviderOSS: {
-				SnapStore: NewOSSFromBucket(prefixV2, "/tmp", 5, brtypes.MinChunkSize, &mockOSSBucket{
-					objects:          objectMap,
-					prefix:           prefixV2,
-					multiPartUploads: map[string]*[][]byte{},
-					bucketName:       bucket,
-				}),
+				SnapStore:              NewOSSFromBucket(prefixV2, "/tmp", bucket, 5, brtypes.MinChunkSize, aliOSSClient, getOSSMockBucket(aliOSSClient)),
 				objectCountPerSnapshot: 1,
 			},
 			// Storage Provider S3 bucket with object lock enabled.
