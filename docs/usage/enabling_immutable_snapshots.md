@@ -344,9 +344,10 @@ aws s3api put-object-lock-configuration --bucket my-bucket \
 - S3 Object Lock can be activated at either on the bucket or object level. Moreover, it can be enabled when creating a new buckets or on an already existing/old buckets.
 - For new buckets: These buckets will only contains the new snapshots, hence all the snapshots inside this bucket will be immutable versioned snapshots.
 - For existing/old buckets: These buckets can contain a mix of pre-existing non-versioned, non-immutable snapshots and newly uploaded snapshots which are immutable and versioned with retention period.
-The following diagram illustrates the working of snapshots with S3 for existing/old buckets as well as for new buckets.
 
-  ![Working with S3](../images/S3_immutability_working.png)
+The following diagram illustrates the working of snapshots with all storage providers for existing/old buckets.
+
+  ![Working with immutable backup](../images/immutableBackup_working.png)
 
 ## Ignoring Snapshots During Restoration
 
