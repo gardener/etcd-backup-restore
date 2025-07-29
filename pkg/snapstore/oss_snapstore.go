@@ -223,8 +223,16 @@ func (s *OSSSnapStore) List(_ bool) (brtypes.SnapList, error) {
 
 	wormCfg, err := s.client.GetBucketWorm(s.bucketName)
 	if err != nil {
-		logrus.Warnf("unable to get worm configuration for bukcet: %v", err)
-	} else if wormCfg.State == "InProgress" || wormCfg.State == "Locked" {
+		ossErr, ok := err.(oss.ServiceError)
+		if !ok {
+			logrus.Errorf("unable to get worm configuration for bucket: %v", err)
+			return nil, err
+		}
+		if ossErr.Code == "NoSuchWORMConfiguration" {
+			logrus.Warnf("WORM Configuration does not exist for bucket: %v", ossErr)
+		}
+	}
+	if wormCfg.State == "InProgress" || wormCfg.State == "Locked" {
 		bucketImmutableExpiryTimeInDays = ptr.Int(wormCfg.RetentionPeriodInDays)
 	}
 
