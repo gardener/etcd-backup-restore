@@ -5,6 +5,7 @@ This guide walks you through the process of enabling immutable snapshots in `etc
 1. Google Cloud Storage (GCS)
 2. Azure Blob Storage (ABS)
 3. Amazon Simple Storage Service (AWS S3)
+4. ALI Cloud Object Storage Service (OSS)
 
 > [!Note]
 > Currently, Openstack object storage (swift) doesn't support immutability for objects: https://blueprints.launchpad.net/swift/+spec/immutability-middleware.
@@ -37,6 +38,7 @@ Please move to respective storage providers for configurations:
 - [Google Cloud Storage](#google-cloud-storage-gcs)
 - [Azure Blob Storage](#azure-blob-storage-abs)
 - [AWS Simple Storage Service](#aws-simple-storage-service-aws-s3)
+- [ALI Cloud OSS](#ali-cloud-oss)
 
 ## Google Cloud Storage (GCS)
 
@@ -349,6 +351,97 @@ The following diagram illustrates the working of snapshots with all storage prov
 
   ![Working with immutable backup](../images/immutableBackup_working.png)
 
+### ALI Cloud OSS
+
+### ALI Cloud OSS Terminology
+
+- **Bucket**: A storage resource in cloud storage services where objects (such as snapshots) are stored. Ali cloud OSS uses the term **bucket**.
+
+- **WORM**: The property of an object being unmodifiable after creation i.e write-once-ready-many, until the retention period expires.
+
+- **Retention Policy**: A configuration that specifies a retention period during which objects in a bucket are protected from deletion or modification.
+
+- **Retention Period**: The duration defined in the retention policy during which objects remain immutable/worm.
+
+#### Configure an retention policy on a OSS bucket
+
+1. **Set the Retention Policy**
+
+   Use the `aliyun` command-line tool to set the immutability/retention period:
+
+   ```bash
+   aliyun oss worm init oss://[BUCKET_NAME] [RETENTION_PERIOD]
+   ```
+
+   - Replace `[RETENTION_PERIOD]` with the desired immutability period (e.g., `4d` for four days).
+   - Replace `[BUCKET_NAME]` with the name of your bucket.
+
+   **Example:**
+
+   ```bash
+   aliyun oss worm init oss://my-bucket 4
+   ```
+
+  > [!Note]
+  > If a retention policy is not locked within 24 hours after it is created, the retention policy becomes invalid.
+
+#### Modify the retention policy
+
+You can remove an unlocked retention policy to adjust the retention period or you can extend retention period of the bucket(provided retention policy is locked).
+
+1. **Remove the Retention Policy**
+
+  ```bash
+  aliyun oss worm abort oss://[BUCKET_NAME]
+  ```
+
+  **Example:**
+
+  ```bash
+  aliyun oss worm abort oss://my-bucket
+  ```
+
+2. **Extend Retention Period**
+
+   - To extend the retention period:
+      1. [Retention policy must be locked](#lock-the-retention-policy-for-oss).
+      2. Get the wormId of bucket as it's required to be passed in the request.
+  
+```bash
+## Get the wormId of bucket
+aliyun oss worm get oss://[BUCKET_NAME]
+
+# extend then retention period of retention policy for bucket
+aliyun oss worm extend oss://[BUCKET_NAME] [RETENTION_PERIOD] [WormId]
+```
+
+  **Example:**
+
+  ```bash
+  aliyun oss worm get oss://my-bucket
+
+  aliyun oss worm extend oss://my-bucket 5 <worm-id>
+  ```
+
+#### Lock the retention policy for OSS
+
+Locking the retention policy makes it irreversible and ensures that the policy cannot be reduced or removed. This provides compliance with regulatory requirements.
+
+1. **Lock the Policy**
+
+  ```bash
+  aliyun oss worm complete oss://[BUCKET_NAME] [WormId]
+  ```
+
+  **Example:**
+
+  ```bash
+  aliyun oss worm complete oss://my-bucket <wormID>
+  ```
+
+  > [!CAUTION]
+  > Once retention policy is locked, then retention policy cannot be removed and retention period can't be decreased.
+
 ## Ignoring Snapshots During Restoration
 
 In certain scenarios, you might want `etcd-backup-restore` to ignore specific snapshots present in the object store during the restoration of etcd's data directory. When snapshots were mutable, operators could simply delete any snapshots present in the object store, and subsequent restorations would not include them. However, once immutability is enabled, it is no longer possible to delete these snapshots.
@@ -512,3 +605,7 @@ By following best practices and regularly reviewing your backup and immutability
   - [Object Lock Documentation](https://aws.amazon.com/s3/features/object-lock/)
   - [Object Lock modes and best practices](https://docs.aws.amazon.com/AmazonS3/latest/userguide/object-lock.html)
   - [Deletion of object](https://docs.aws.amazon.com/AmazonS3/latest/userguide/DeletingObjectVersions.html)
+
+- **ALI Cloud OSS**
+  - [Enable Worm on bucket](https://www.alibabacloud.com/help/en/oss/developer-reference/worm)
+  - [OSS Retention Policy](https://www.alibabacloud.com/help/en/oss/user-guide/oss-retention-policies)
