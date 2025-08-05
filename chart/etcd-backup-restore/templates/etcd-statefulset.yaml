@@ -353,8 +353,18 @@ spec:
           type: DirectoryOrCreate
   {{- else }}
       - name: etcd-backup
-        secret:
-          secretName: {{ .Release.Name }}-etcd-backup
+        projected:
+          defaultMode: 0440
+          sources:
+          - secret:
+              name: {{ .Release.Name }}-etcd-backup
+              optional: false
+          {{- if .Values.backup.tokenAuth.enabled }}
+          - serviceAccountToken:
+              path: token
+              expirationSeconds: {{ .Values.backup.tokenAuth.expirationSeconds}}
+              audience: {{ .Values.backup.tokenAuth.audience }}
+          {{- end }}
   {{- end }}
 {{- end }}
   volumeClaimTemplates:

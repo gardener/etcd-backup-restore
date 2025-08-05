@@ -108,7 +108,6 @@ backup:
   #   s3ForcePathStyle: "true" # optional
   #   sseCustomerKey: aes-256-sse-customer-key # optional
   #   sseCustomerAlgorithm: aes-256-sse-customer-algorithm # optional
-  #   token: <JWT>
   #   roleARN: arn:aws:iam::123456789012:role/role-name
   # gcs:
   #   serviceAccountJson: service-account-json-with-object-storage-privileges
@@ -141,6 +140,10 @@ backup:
   #   secretAccessKey: secret-access-key-with-object-storage-privileges
   #   endpoint: ocs-endpoint-url
   #   region: region-name
+  tokenAuth:
+    enabled: false
+    audience: aud
+    expirationSeconds: 3600
 
 # etcdAuth field contains the pre-created username-password pair
 # for etcd. Comment this whole section if you dont want to use
