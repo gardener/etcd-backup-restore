@@ -1,6 +1,6 @@
 # Getting started
 
-The binary builds are not published with each release, but it is pretty straight forward to build it by following the steps mentioned [here](../development/local_setup.md#build). But we do publish the docker image with each release, please check the [release page](https://github.com/gardener/etcd-backup-restore/releases) for the same. Currently, release docker images are pushed to `europe-docker.pkg.dev/gardener-project/public/gardener/etcdbrctl` to container registry.
+The binary builds are not published with each release, but it is pretty straight forward to build it by following the steps mentioned [here](../development/local_setup.md#build). But we do publish the docker image with each release, please check the [release page](https://github.com/gardener/etcd-backup-restore/releases) for the same. Currently, release docker images are pushed to `europe-docker.pkg.dev/gardener-project/public/gardener/etcdbrctl` container  repository.
 
 ## Usage
 
@@ -13,7 +13,9 @@ The procedure to provide credentials to access the cloud provider object store v
 ### Passing Credentials
 
 * For `AWS S3`:
-   1. The secret file should be provided, and the file path should be made available as an environment variable: `AWS_APPLICATION_CREDENTIALS`.
+   1. The secret file should be provided, and the file path should be made available as an environment variable: `AWS_APPLICATION_CREDENTIALS`. AWS S3 supports two alternative authentication options:
+      1. Static credentials: `accessKeyID` and `secretAccessKey` must be set.
+      1. Web Identity Role: `roleARN` and `tokenPath` must be set.
    2. For `S3-compatible providers` such as MinIO, `endpoint`, `s3ForcePathStyle`, `insecureSkipVerify` and `trustedCaCert`, can also be made available in an above file to configure the S3 client to communicate to a non-AWS provider.
    3. To enable Server-Side Encryption using Customer Managed Keys for `S3-compatible providers`, use `sseCustomerKey` and `sseCustomerAlgorithm` in the credentials file above. For example, `sseCustomerAlgorithm` could be set to `AES256`, and correspondingly the `sseCustomerKey` is set to a valid AES-256 key.
 

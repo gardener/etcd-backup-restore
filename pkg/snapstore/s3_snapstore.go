@@ -765,8 +765,8 @@ func GetS3CredentialsLastModifiedTime() (time.Time, error) {
 			webIdentityCredentialsFiles = []string{filepath.Join(dir, "region"), filepath.Join(dir, "roleARN"), filepath.Join(dir, "token")}
 		)
 
-		awsTimestamp, err := getLatestCredentialsModifiedTime(staticCredentialsFiles)
-		if err == nil {
+		awsTimestamp, err1 := getLatestCredentialsModifiedTime(staticCredentialsFiles)
+		if err1 == nil {
 			return awsTimestamp, nil
 		}
 
@@ -775,7 +775,7 @@ func GetS3CredentialsLastModifiedTime() (time.Time, error) {
 			return awsTimestamp, nil
 		}
 
-		return time.Time{}, fmt.Errorf("failed to get AWS credential timestamp from the directory %v with error: %w", dir, errors.Join(err, err2))
+		return time.Time{}, fmt.Errorf("failed to get AWS credential timestamp from the directory %v with error: %w", dir, errors.Join(err1, err2))
 	}
 
 	if filename, isSet := os.LookupEnv(awsCredentialJSONFile); isSet {

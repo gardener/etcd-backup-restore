@@ -131,17 +131,10 @@ s3credentials
 
 Sticking to the S3 example, the `.json` file which contains the credentials should look like so:
 
-> [!NOTE]
-> Similarly to credentials [credentials in a directory](#credentials-in-a-directory), not all fields must be set at once. The `region` field is always required.
-> If static credentials are used, then the fields `accessKeyID` and `secretAccessKey` must be set,
-> otherwise, when web identity role is used the fields `roleARN` and `tokenPath` must be set.
-
 ```json
 {
-  "region": "<region>",
   "accessKeyID": "<accessKeyID>",
+  "region": "<region>",
   "secretAccessKey": "<secretAccessKey>",
-  "roleARN": "<roleARN>",
-  "tokenPath": "<path-to-jwt>",
 }
 ```
