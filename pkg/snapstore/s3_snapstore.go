@@ -48,18 +48,20 @@ const (
 )
 
 type awsCredentials struct {
-	SSECustomerAlgorithm *string `json:"sseCustomerAlgorithm,omitempty"`
-	SSECustomerKey       *string `json:"sseCustomerKey,omitempty"`
-	Endpoint             *string `json:"endpoint,omitempty"`
-	S3ForcePathStyle     *bool   `json:"s3ForcePathStyle,omitempty"`
-	InsecureSkipVerify   *bool   `json:"insecureSkipVerify,omitempty"`
-	TrustedCaCert        *string `json:"trustedCaCert,omitempty"`
-	AccessKeyID          string  `json:"accessKeyID"`
-	Region               string  `json:"region"`
-	SecretAccessKey      string  `json:"secretAccessKey"`
-	BucketName           string  `json:"bucketName"`
-	RoleARN              string  `json:"roleARN"`
-	TokenPath            string  `json:"tokenPath"`
+	SSECustomerAlgorithm       *string `json:"sseCustomerAlgorithm,omitempty"`
+	SSECustomerKey             *string `json:"sseCustomerKey,omitempty"`
+	Endpoint                   *string `json:"endpoint,omitempty"`
+	S3ForcePathStyle           *bool   `json:"s3ForcePathStyle,omitempty"`
+	InsecureSkipVerify         *bool   `json:"insecureSkipVerify,omitempty"`
+	TrustedCaCert              *string `json:"trustedCaCert,omitempty"`
+	RequestChecksumCalculation *string `json:"requestChecksumCalculation,omitempty"`
+	ResponseChecksumValidation *string `json:"responseChecksumValidation,omitempty"`
+	AccessKeyID                string  `json:"accessKeyID"`
+	Region                     string  `json:"region"`
+	SecretAccessKey            string  `json:"secretAccessKey"`
+	BucketName                 string  `json:"bucketName"`
+	RoleARN                    string  `json:"roleARN"`
+	TokenPath                  string  `json:"tokenPath"`
 }
 
 // SSECredentials to hold fields for server-side encryption in I/O operations
@@ -139,58 +141,7 @@ func readAWSCredentialsJSONFile(filename string) ([]func(*awsconfig.LoadOptions)
 	if err != nil {
 		return nil, nil, SSECredentials{}, err
 	}
-
-	httpClient := http.DefaultClient
-	if awsConfig.InsecureSkipVerify != nil && *awsConfig.InsecureSkipVerify {
-		httpClient.Transport = &http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: *awsConfig.InsecureSkipVerify}, // #nosec G402 -- InsecureSkipVerify is set by user input, and can be allowed to be set to true based on user's requirement.
-		}
-	}
-
-	if awsConfig.TrustedCaCert != nil {
-		caCertPool := x509.NewCertPool()
-		caCertPool.AppendCertsFromPEM([]byte(*awsConfig.TrustedCaCert))
-		httpClient.Transport = &http.Transport{
-			TLSClientConfig: &tls.Config{
-				RootCAs:            caCertPool,
-				InsecureSkipVerify: false,
-				MinVersion:         tls.VersionTLS13,
-			},
-		}
-	}
-
-	sseCreds, err := getSSECreds(awsConfig.SSECustomerKey, awsConfig.SSECustomerAlgorithm)
-	if err != nil {
-		return nil, nil, SSECredentials{}, err
-	}
-
-	var (
-		cfgOpts = []func(*awsconfig.LoadOptions) error{
-			awsconfig.WithRegion(awsConfig.Region),
-			awsconfig.WithHTTPClient(httpClient),
-		}
-		cliOpts             = []func(*s3.Options){}
-		credentialsProvider aws.CredentialsProvider
-	)
-
-	if awsConfig.AccessKeyID != "" {
-		credentialsProvider = credentials.NewStaticCredentialsProvider(awsConfig.AccessKeyID, awsConfig.SecretAccessKey, "")
-	} else {
-		credentialsProvider = stscreds.NewWebIdentityRoleProvider(sts.NewFromConfig(aws.Config{Region: awsConfig.Region}), awsConfig.RoleARN, stscreds.IdentityTokenFile(awsConfig.TokenPath))
-	}
-	cfgOpts = append(cfgOpts, awsconfig.WithCredentialsProvider(aws.NewCredentialsCache(credentialsProvider)))
-
-	if awsConfig.Endpoint != nil {
-		cfgOpts = append(cfgOpts, awsconfig.WithBaseEndpoint(*awsConfig.Endpoint))
-	}
-
-	if awsConfig.S3ForcePathStyle != nil {
-		cliOpts = append(cliOpts, func(o *s3.Options) {
-			o.UsePathStyle = *awsConfig.S3ForcePathStyle
-		})
-	}
-
-	return cfgOpts, cliOpts, sseCreds, nil
+	return awsCredentialsFromConfig(awsConfig)
 }
 
 // credentialsFromJSON obtains AWS credentials from a JSON value.
@@ -211,7 +162,10 @@ func readAWSCredentialFiles(dirname string) ([]func(*awsconfig.LoadOptions) erro
 	if err != nil {
 		return nil, nil, SSECredentials{}, err
 	}
+	return awsCredentialsFromConfig(awsConfig)
+}
 
+func awsCredentialsFromConfig(awsConfig *awsCredentials) ([]func(*awsconfig.LoadOptions) error, []func(*s3.Options), SSECredentials, error) {
 	httpClient := http.DefaultClient
 	if awsConfig.InsecureSkipVerify != nil && *awsConfig.InsecureSkipVerify {
 		httpClient.Transport = &http.Transport{
@@ -230,6 +184,7 @@ func readAWSCredentialFiles(dirname string) ([]func(*awsconfig.LoadOptions) erro
 			},
 		}
 	}
+
 	sseCreds, err := getSSECreds(awsConfig.SSECustomerKey, awsConfig.SSECustomerAlgorithm)
 	if err != nil {
 		return nil, nil, SSECredentials{}, err
@@ -260,8 +215,53 @@ func readAWSCredentialFiles(dirname string) ([]func(*awsconfig.LoadOptions) erro
 			o.UsePathStyle = *awsConfig.S3ForcePathStyle
 		})
 	}
+	if awsConfig.RequestChecksumCalculation != nil {
+		v, err := requestChecksumCalculation(*awsConfig.RequestChecksumCalculation)
+		if err != nil {
+			return nil, nil, SSECredentials{}, err
+		}
+		cliOpts = append(cliOpts, func(o *s3.Options) {
+			o.RequestChecksumCalculation = v
+		})
+	}
+	if awsConfig.ResponseChecksumValidation != nil {
+		v, err := responseChecksumValidation(*awsConfig.ResponseChecksumValidation)
+		if err != nil {
+			return nil, nil, SSECredentials{}, err
+		}
+		cliOpts = append(cliOpts, func(o *s3.Options) {
+			o.ResponseChecksumValidation = v
+		})
+	}
 
 	return cfgOpts, cliOpts, sseCreds, nil
+}
+
+const (
+	checksumWhenSupported = "when_supported"
+	checksumWhenRequired  = "when_required"
+)
+
+func requestChecksumCalculation(value string) (aws.RequestChecksumCalculation, error) {
+	switch strings.ToLower(value) {
+	case checksumWhenSupported:
+		return aws.RequestChecksumCalculationWhenSupported, nil
+	case checksumWhenRequired:
+		return aws.RequestChecksumCalculationWhenRequired, nil
+	default:
+		return 0, fmt.Errorf("invalid value %q for requestChecksumCalculation, must be when_supported/when_required", value)
+	}
+}
+
+func responseChecksumValidation(value string) (aws.ResponseChecksumValidation, error) {
+	switch strings.ToLower(value) {
+	case checksumWhenSupported:
+		return aws.ResponseChecksumValidationWhenSupported, nil
+	case checksumWhenRequired:
+		return aws.ResponseChecksumValidationWhenRequired, nil
+	default:
+		return 0, fmt.Errorf("invalid value %q for responseChecksumValidation, must be when_supported/when_required", value)
+	}
 }
 
 func readAWSCredentialFromDir(dirname string) (*awsCredentials, error) {
@@ -344,6 +344,18 @@ func readAWSCredentialFromDir(dirname string) (*awsCredentials, error) {
 			awsConfig.RoleARN = string(roleARN)
 		case "token":
 			awsConfig.TokenPath = filepath.Join(dirname, "token")
+		case "requestChecksumCalculation":
+			data, err := os.ReadFile(dirname + "/requestChecksumCalculation") // #nosec G304 -- this is a trusted file, obtained via user input.
+			if err != nil {
+				return nil, err
+			}
+			awsConfig.RequestChecksumCalculation = ptr.To(string(data))
+		case "responseChecksumValidation":
+			data, err := os.ReadFile(dirname + "/responseChecksumValidation") // #nosec G304 -- this is a trusted file, obtained via user input.
+			if err != nil {
+				return nil, err
+			}
+			awsConfig.ResponseChecksumValidation = ptr.To(string(data))
 		}
 	}
 
