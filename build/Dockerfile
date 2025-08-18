@@ -9,7 +9,7 @@ COPY . .
 
 RUN make build
 
-FROM gcr.io/distroless/static-debian11:nonroot AS backup-restore
+FROM gcr.io/distroless/static-debian12:nonroot AS backup-restore
 
 COPY --from=builder /go/src/github.com/gardener/backup-restore/bin/etcdbrctl /etcdbrctl
 WORKDIR /

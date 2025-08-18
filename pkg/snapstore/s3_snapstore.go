@@ -31,8 +31,10 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
+	"github.com/aws/aws-sdk-go-v2/credentials/stscreds"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	s3types "github.com/aws/aws-sdk-go-v2/service/s3/types"
+	"github.com/aws/aws-sdk-go-v2/service/sts"
 	"github.com/sirupsen/logrus"
 	"k8s.io/client-go/util/retry"
 	"k8s.io/utils/ptr"
@@ -56,6 +58,8 @@ type awsCredentials struct {
 	Region               string  `json:"region"`
 	SecretAccessKey      string  `json:"secretAccessKey"`
 	BucketName           string  `json:"bucketName"`
+	RoleARN              string  `json:"roleARN"`
+	TokenPath            string  `json:"tokenPath"`
 }
 
 // SSECredentials to hold fields for server-side encryption in I/O operations
@@ -162,12 +166,19 @@ func readAWSCredentialsJSONFile(filename string) ([]func(*awsconfig.LoadOptions)
 
 	var (
 		cfgOpts = []func(*awsconfig.LoadOptions) error{
-			awsconfig.WithCredentialsProvider(aws.NewCredentialsCache(credentials.NewStaticCredentialsProvider(awsConfig.AccessKeyID, awsConfig.SecretAccessKey, ""))),
 			awsconfig.WithRegion(awsConfig.Region),
 			awsconfig.WithHTTPClient(httpClient),
 		}
-		cliOpts = []func(*s3.Options){}
+		cliOpts             = []func(*s3.Options){}
+		credentialsProvider aws.CredentialsProvider
 	)
+
+	if awsConfig.AccessKeyID != "" {
+		credentialsProvider = credentials.NewStaticCredentialsProvider(awsConfig.AccessKeyID, awsConfig.SecretAccessKey, "")
+	} else {
+		credentialsProvider = stscreds.NewWebIdentityRoleProvider(sts.NewFromConfig(aws.Config{Region: awsConfig.Region}), awsConfig.RoleARN, stscreds.IdentityTokenFile(awsConfig.TokenPath))
+	}
+	cfgOpts = append(cfgOpts, awsconfig.WithCredentialsProvider(aws.NewCredentialsCache(credentialsProvider)))
 
 	if awsConfig.Endpoint != nil {
 		cfgOpts = append(cfgOpts, awsconfig.WithBaseEndpoint(*awsConfig.Endpoint))
@@ -226,12 +237,19 @@ func readAWSCredentialFiles(dirname string) ([]func(*awsconfig.LoadOptions) erro
 
 	var (
 		cfgOpts = []func(*awsconfig.LoadOptions) error{
-			awsconfig.WithCredentialsProvider(aws.NewCredentialsCache(credentials.NewStaticCredentialsProvider(awsConfig.AccessKeyID, awsConfig.SecretAccessKey, ""))),
 			awsconfig.WithRegion(awsConfig.Region),
 			awsconfig.WithHTTPClient(httpClient),
 		}
-		cliOpts = []func(*s3.Options){}
+		cliOpts             = []func(*s3.Options){}
+		credentialsProvider aws.CredentialsProvider
 	)
+
+	if awsConfig.AccessKeyID != "" {
+		credentialsProvider = credentials.NewStaticCredentialsProvider(awsConfig.AccessKeyID, awsConfig.SecretAccessKey, "")
+	} else {
+		credentialsProvider = stscreds.NewWebIdentityRoleProvider(sts.NewFromConfig(aws.Config{Region: awsConfig.Region}), awsConfig.RoleARN, stscreds.IdentityTokenFile(awsConfig.TokenPath))
+	}
+	cfgOpts = append(cfgOpts, awsconfig.WithCredentialsProvider(aws.NewCredentialsCache(credentialsProvider)))
 
 	if awsConfig.Endpoint != nil {
 		cfgOpts = append(cfgOpts, awsconfig.WithBaseEndpoint(*awsConfig.Endpoint))
@@ -257,31 +275,31 @@ func readAWSCredentialFromDir(dirname string) (*awsCredentials, error) {
 	for _, file := range files {
 		switch file.Name() {
 		case "accessKeyID":
-			data, err := os.ReadFile(dirname + "/accessKeyID") // #nosec G304 -- this is a trusted file, obtained via user input.
+			data, err := os.ReadFile(filepath.Join(dirname, "accessKeyID")) // #nosec G304 -- this is a trusted file, obtained via user input.
 			if err != nil {
 				return nil, err
 			}
 			awsConfig.AccessKeyID = string(data)
 		case "region":
-			data, err := os.ReadFile(dirname + "/region") // #nosec G304 -- this is a trusted file, obtained via user input.
+			data, err := os.ReadFile(filepath.Join(dirname, "region")) // #nosec G304 -- this is a trusted file, obtained via user input.
 			if err != nil {
 				return nil, err
 			}
 			awsConfig.Region = string(data)
 		case "secretAccessKey":
-			data, err := os.ReadFile(dirname + "/secretAccessKey") // #nosec G304 -- this is a trusted file, obtained via user input.
+			data, err := os.ReadFile(filepath.Join(dirname, "secretAccessKey")) // #nosec G304 -- this is a trusted file, obtained via user input.
 			if err != nil {
 				return nil, err
 			}
 			awsConfig.SecretAccessKey = string(data)
 		case "endpoint":
-			data, err := os.ReadFile(dirname + "/endpoint") // #nosec G304 -- this is a trusted file, obtained via user input.
+			data, err := os.ReadFile(filepath.Join(dirname, "endpoint")) // #nosec G304 -- this is a trusted file, obtained via user input.
 			if err != nil {
 				return nil, err
 			}
 			awsConfig.Endpoint = ptr.To(string(data))
 		case "s3ForcePathStyle":
-			data, err := os.ReadFile(dirname + "/s3ForcePathStyle") // #nosec G304 -- this is a trusted file, obtained via user input.
+			data, err := os.ReadFile(filepath.Join(dirname, "s3ForcePathStyle")) // #nosec G304 -- this is a trusted file, obtained via user input.
 			if err != nil {
 				return nil, err
 			}
@@ -291,7 +309,7 @@ func readAWSCredentialFromDir(dirname string) (*awsCredentials, error) {
 			}
 			awsConfig.S3ForcePathStyle = &val
 		case "insecureSkipVerify":
-			data, err := os.ReadFile(dirname + "/insecureSkipVerify") // #nosec G304 -- this is a trusted file, obtained via user input.
+			data, err := os.ReadFile(filepath.Join(dirname, "insecureSkipVerify")) // #nosec G304 -- this is a trusted file, obtained via user input.
 			if err != nil {
 				return nil, err
 			}
@@ -301,23 +319,31 @@ func readAWSCredentialFromDir(dirname string) (*awsCredentials, error) {
 			}
 			awsConfig.InsecureSkipVerify = &val
 		case "trustedCaCert":
-			data, err := os.ReadFile(dirname + "/trustedCaCert") // #nosec G304 -- this is a trusted file, obtained via user input.
+			data, err := os.ReadFile(filepath.Join(dirname, "trustedCaCert")) // #nosec G304 -- this is a trusted file, obtained via user input.
 			if err != nil {
 				return nil, err
 			}
 			awsConfig.TrustedCaCert = ptr.To(string(data))
 		case "sseCustomerKey":
-			data, err := os.ReadFile(dirname + "/sseCustomerKey") // #nosec G304 -- this is a trusted file, obtained via user input.
+			data, err := os.ReadFile(filepath.Join(dirname, "sseCustomerKey")) // #nosec G304 -- this is a trusted file, obtained via user input.
 			if err != nil {
 				return nil, err
 			}
 			awsConfig.SSECustomerKey = ptr.To(string(data))
 		case "sseCustomerAlgorithm":
-			data, err := os.ReadFile(dirname + "/sseCustomerAlgorithm") // #nosec G304 -- this is a trusted file, obtained via user input.
+			data, err := os.ReadFile(filepath.Join(dirname, "sseCustomerAlgorithm")) // #nosec G304 -- this is a trusted file, obtained via user input.
 			if err != nil {
 				return nil, err
 			}
 			awsConfig.SSECustomerAlgorithm = ptr.To(string(data))
+		case "roleARN":
+			roleARN, err := os.ReadFile(filepath.Join(dirname, "roleARN")) // #nosec G304 -- this is a trusted file, obtained via user input.
+			if err != nil {
+				return nil, err
+			}
+			awsConfig.RoleARN = string(roleARN)
+		case "token":
+			awsConfig.TokenPath = filepath.Join(dirname, "token")
 		}
 	}
 
@@ -733,15 +759,23 @@ func GetS3CredentialsLastModifiedTime() (time.Time, error) {
 
 	if dir, isSet := os.LookupEnv(awsCredentialDirectory); isSet {
 		// credential files which are essential for creating the S3 snapstore
-		credentialFiles := []string{"accessKeyID", "region", "secretAccessKey"}
-		for i := range credentialFiles {
-			credentialFiles[i] = filepath.Join(dir, credentialFiles[i])
+		// either static or web identity credential files should be set
+		var (
+			staticCredentialsFiles      = []string{filepath.Join(dir, "region"), filepath.Join(dir, "accessKeyID"), filepath.Join(dir, "secretAccessKey")}
+			webIdentityCredentialsFiles = []string{filepath.Join(dir, "region"), filepath.Join(dir, "roleARN"), filepath.Join(dir, "token")}
+		)
+
+		awsTimestamp, err1 := getLatestCredentialsModifiedTime(staticCredentialsFiles)
+		if err1 == nil {
+			return awsTimestamp, nil
 		}
-		awsTimeStamp, err := getLatestCredentialsModifiedTime(credentialFiles)
-		if err != nil {
-			return time.Time{}, fmt.Errorf("failed to get AWS credential timestamp from the directory %v with error: %w", dir, err)
+
+		awsTimestamp, err2 := getLatestCredentialsModifiedTime(webIdentityCredentialsFiles)
+		if err2 == nil {
+			return awsTimestamp, nil
 		}
-		return awsTimeStamp, nil
+
+		return time.Time{}, fmt.Errorf("failed to get AWS credential timestamp from the directory %v with error: %w", dir, errors.Join(err1, err2))
 	}
 
 	if filename, isSet := os.LookupEnv(awsCredentialJSONFile); isSet {
@@ -757,10 +791,19 @@ func GetS3CredentialsLastModifiedTime() (time.Time, error) {
 }
 
 func isAWSConfigEmpty(config *awsCredentials) error {
-	if len(config.AccessKeyID) != 0 && len(config.Region) != 0 && len(config.SecretAccessKey) != 0 {
+	if len(config.Region) == 0 {
+		return fmt.Errorf("aws s3 credentials: region is missing")
+	}
+
+	if len(config.AccessKeyID) != 0 && len(config.SecretAccessKey) != 0 {
 		return nil
 	}
-	return fmt.Errorf("aws s3 credentials: region, secretAccessKey or accessKeyID is missing")
+
+	if len(config.RoleARN) != 0 && len(config.TokenPath) != 0 {
+		return nil
+	}
+
+	return fmt.Errorf("aws s3 credentials: either set secretAccessKey and accessKeyID or roleARN and token")
 }
 
 // Creates SSE Credentials that are included in the S3 API calls for customer managed SSE

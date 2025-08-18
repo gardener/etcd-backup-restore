@@ -1,6 +1,6 @@
 # Getting started
 
-The binary builds are not published with each release, but it is pretty straight forward to build it by following the steps mentioned [here](../development/local_setup.md#build). But we do publish the docker image with each release, please check the [release page](https://github.com/gardener/etcd-backup-restore/releases) for the same. Currently, release docker images are pushed to `europe-docker.pkg.dev/gardener-project/public/gardener/etcdbrctl` to container registry.
+The binary builds are not published with each release, but it is pretty straight forward to build it by following the steps mentioned [here](../development/local_setup.md#build). But we do publish the docker image with each release, please check the [release page](https://github.com/gardener/etcd-backup-restore/releases) for the same. Currently, release docker images are pushed to `europe-docker.pkg.dev/gardener-project/public/gardener/etcdbrctl` container  repository.
 
 ## Usage
 
@@ -13,7 +13,9 @@ The procedure to provide credentials to access the cloud provider object store v
 ### Passing Credentials
 
 * For `AWS S3`:
-   1. The secret file should be provided, and the file path should be made available as an environment variable: `AWS_APPLICATION_CREDENTIALS`.
+   1. The secret file should be provided, and the file path should be made available as an environment variable: `AWS_APPLICATION_CREDENTIALS`. AWS S3 supports two alternative authentication options:
+      1. Static credentials: `accessKeyID` and `secretAccessKey` must be set.
+      1. Web Identity Role: `roleARN` and `tokenPath` must be set.
    2. For `S3-compatible providers` such as MinIO, `endpoint`, `s3ForcePathStyle`, `insecureSkipVerify` and `trustedCaCert`, can also be made available in an above file to configure the S3 client to communicate to a non-AWS provider.
    3. To enable Server-Side Encryption using Customer Managed Keys for `S3-compatible providers`, use `sseCustomerKey` and `sseCustomerAlgorithm` in the credentials file above. For example, `sseCustomerAlgorithm` could be set to `AES256`, and correspondingly the `sseCustomerKey` is set to a valid AES-256 key.
 
@@ -96,7 +98,7 @@ INFO[0018] Taking delta snapshot for time: 2019-08-05 21:41:52.258109 +0530 IST
 INFO[0018] No events received to save snapshot. Skipping delta snapshot.
 ```
 
-The command mentioned above takes hourly snapshots and pushs it to S3 bucket named "etcd-backup". It is configured to keep only last 10 backups in bucket.
+The command mentioned above takes hourly snapshots and push it to S3 bucket named "etcd-backup". It is configured to keep only last 10 backups in bucket.
 
 `Exponential` policy stores the snapshots in a condensed manner as mentioned below:
 - All full backups and delta backups for the previous hour.
@@ -164,7 +166,8 @@ INFO[0008] Successfully restored the etcd data directory.
 
 With sub-command `server` you can start a http server which exposes an endpoint to initialize etcd over REST interface. The server also keeps the backup schedule thread running to keep taking periodic backups. This is mainly made available to manage an etcd instance running in a Kubernetes cluster. You can deploy the example [helm chart](../../chart/etcd-backup-restore) on a Kubernetes cluster to have a fault-resilient, self-healing etcd cluster.
 
-> **Note**: When deployed with the helm chart, only the static single member & static multi-member etcd cluster configurations are supported. The dynamic etcd cluster configuration is not supported. That is 0 to 1 or 0 to 3 member clusters are supported but not 1 to 3 member clusters. This is due to extra complexity in handling the scale-up scenario which cannot be brought into the helm charts at the moment. We recommend using [etcd-druid](https://github.com/gardener/etcd-druid/) for full-fledged etcd cluster management.
+> [!NOTE]
+> When deployed with the helm chart, only the static single member & static multi-member etcd cluster configurations are supported. The dynamic etcd cluster configuration is not supported. That is 0 to 1 or 0 to 3 member clusters are supported but not 1 to 3 member clusters. This is due to extra complexity in handling the scale-up scenario which cannot be brought into the helm charts at the moment. We recommend using [etcd-druid](https://github.com/gardener/etcd-druid/) for full-fledged etcd cluster management.
 
 ## Etcdbrctl copy
 
@@ -180,10 +183,10 @@ $ ./bin/etcdbrctl copy \
 --source-store-container="container" \
 --source-storage-provider="GCS" \
 --max-backup-age=15 \
-INFO[0000] etcd-backup-restore Version: v0.14.0-dev     
-INFO[0000] Git SHA: b821ee55                            
-INFO[0000] Go Version: go1.16.5                         
-INFO[0000] Go OS/Arch: darwin/amd64                     
+INFO[0000] etcd-backup-restore Version: v0.14.0-dev
+INFO[0000] Git SHA: b821ee55
+INFO[0000] Go Version: go1.16.5
+INFO[0000] Go OS/Arch: darwin/amd64
 INFO[0000] Getting source backups...                     actor=copier
 ...
 INFO[0026] Copying Incr snapshot Incr-ID.gz...  actor=copier

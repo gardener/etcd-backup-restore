@@ -71,15 +71,15 @@ You can verify the installation by running following command:
 
     ```console
     ➜ etcdbrctl -v
-    INFO[0000] etcd-backup-restore Version: v0.29.0-dev     
-    INFO[0000] Git SHA: 0247d8d4                            
-    INFO[0000] Go Version: go1.22.1                         
+    INFO[0000] etcd-backup-restore Version: v0.29.0-dev
+    INFO[0000] Git SHA: 0247d8d4
+    INFO[0000] Go Version: go1.22.1
     INFO[0000] Go OS/Arch: darwin/arm64
     ```
 
 ## Running `etcdbrctl` as a process
 
-> [!WARNING]  
+> [!WARNING]
 > Ensure that you do not add your `credentialDirectory` or `credential_file.json` to your version control. Easiest way to ensure this, is to avoid using `git add .`. You could add these files/directory as `.gitignore` targets, or have the credential file/directory exist in a directory which is not tracked by `git`.
 
 ### Environment variables
@@ -110,21 +110,28 @@ Export the following environment variables according to your host OS:
 
 Taking the example of S3 again here, the following is the necessary structure for a directory which holds the S3 credential files (extra credentials correspond to extra files, which are not compulsory).
 
+> [!NOTE]
+> `etcdbrctl` supports different authentication methods, therefore not all files must be set. The always required file is `region`.
+> If static credentials are used, then the files `accessKeyID` and `secretAccessKey` must be set.
+> Alternatively, if web identity role is used, then the files `roleARN` and `token` must be set.
+
 ```console
 s3credentials
-├── accessKeyID
 ├── region
-└── secretAccessKey
+├── accessKeyID
+├── secretAccessKey
+├── roleARN
+└── token
 ```
 
-> [!TIP]  
+> [!TIP]
 > Each file mentioned above will consist of the credential strings only. Ensure that there are no newline/carriage return characters at the end of the files while saving these credential files. Modern text editors are typically configured to add newline characters at the end of files on format/save. The newline characters will completely change the credentials and will cause the requests with S3 to not get authenticated. For example, the region file would contain only the string `eu-west-1`, without any trailing characters.
 
 #### Credentials in a JSON file
 
 Sticking to the S3 example, the `.json` file which contains the credentials should look like so:
 
-```console
+```json
 {
   "accessKeyID": "<accessKeyID>",
   "region": "<region>",
