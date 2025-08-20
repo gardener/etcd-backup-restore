@@ -1,0 +1,718 @@
+version = 1
+SPDX-PackageName = "Gardener etcd-backup-restore"
+SPDX-PackageSupplier = "The Gardener project <gardener@googlegroups.com>"
+SPDX-PackageDownloadLocation = "https://github.com/gardener/etcd-backup-restore"
+
+[[annotations]]
+path = "**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2017-2025 SAP SE or an SAP affiliate company and Gardener contributors"
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = "**.md"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2017-2025 SAP SE or an SAP affiliate company and Gardener contributors"
+SPDX-License-Identifier = "CC-BY-4.0"
+
+[[annotations]]
+path = "pkg/snapstore/gcs/interfaces.go"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2018 Google LLC"
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = "pkg/snapstore/gcs/adapters.go"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2018 Google LLC"
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = "pkg/snapshot/restorer/restorer.go"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2018 The etcd Authors"
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = "vendor/github.com/google/gnostic/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 github.com/google/gnostic contributors."
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = "vendor/cloud.google.com/go/storage/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 cloud.google.com/go/storage contributors."
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = "vendor/github.com/xiang90/probing/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 github.com/xiang90/probing contributors."
+SPDX-License-Identifier = "MIT"
+
+[[annotations]]
+path = "vendor/github.com/cespare/xxhash/v2/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 github.com/cespare/xxhash/v2 contributors."
+SPDX-License-Identifier = "MIT"
+
+[[annotations]]
+path = "vendor/github.com/modern-go/reflect2/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 github.com/modern-go/reflect2 contributors."
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = "vendor/google.golang.org/api/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 google.golang.org/api contributors."
+SPDX-License-Identifier = "BSD-3-Clause"
+
+[[annotations]]
+path = "vendor/github.com/grpc-ecosystem/grpc-gateway/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 github.com/grpc-ecosystem/grpc-gateway contributors."
+SPDX-License-Identifier = "BSD-3-Clause"
+
+[[annotations]]
+path = "vendor/github.com/evanphx/json-patch/v5/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 github.com/evanphx/json-patch/v5 contributors."
+SPDX-License-Identifier = "BSD-3-Clause"
+
+[[annotations]]
+path = "vendor/github.com/google/pprof/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 github.com/google/pprof contributors."
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = "vendor/k8s.io/apimachinery/third_party/forked/golang/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 k8s.io/apimachinery/third_party/forked/golang contributors."
+SPDX-License-Identifier = "BSD-3-Clause"
+
+[[annotations]]
+path = "vendor/github.com/prometheus/common/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 github.com/prometheus/common contributors."
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = "vendor/github.com/tmc/grpc-websocket-proxy/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 github.com/tmc/grpc-websocket-proxy contributors."
+SPDX-License-Identifier = "MIT"
+
+[[annotations]]
+path = "vendor/golang.org/x/term/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 golang.org/x/term contributors."
+SPDX-License-Identifier = "BSD-3-Clause"
+
+[[annotations]]
+path = "vendor/github.com/onsi/gomega/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 github.com/onsi/gomega contributors."
+SPDX-License-Identifier = "MIT"
+
+[[annotations]]
+path = "vendor/github.com/Azure/azure-storage-blob-go/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 github.com/Azure/azure-storage-blob-go contributors."
+SPDX-License-Identifier = "MIT"
+
+[[annotations]]
+path = "vendor/github.com/emicklei/go-restful/v3/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 github.com/emicklei/go-restful/v3 contributors."
+SPDX-License-Identifier = "MIT"
+
+[[annotations]]
+path = "vendor/github.com/cyphar/filepath-securejoin/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 github.com/cyphar/filepath-securejoin contributors."
+SPDX-License-Identifier = "BSD-3-Clause"
+
+[[annotations]]
+path = "vendor/golang.org/x/text/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 golang.org/x/text contributors."
+SPDX-License-Identifier = "BSD-3-Clause"
+
+[[annotations]]
+path = "vendor/github.com/matttproud/golang_protobuf_extensions/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 github.com/matttproud/golang_protobuf_extensions contributors."
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = "vendor/golang.org/x/oauth2/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 golang.org/x/oauth2 contributors."
+SPDX-License-Identifier = "BSD-3-Clause"
+
+[[annotations]]
+path = "vendor/github.com/BurntSushi/toml/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 github.com/BurntSushi/toml contributors."
+SPDX-License-Identifier = "MIT"
+
+[[annotations]]
+path = "vendor/github.com/golang/groupcache/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 github.com/golang/groupcache contributors."
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = "vendor/github.com/jmespath/go-jmespath/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 github.com/jmespath/go-jmespath contributors."
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = "vendor/go.opencensus.io/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 go.opencensus.io contributors."
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = "vendor/github.com/google/btree/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 github.com/google/btree contributors."
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = "vendor/github.com/evanphx/json-patch/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 github.com/evanphx/json-patch contributors."
+SPDX-License-Identifier = "BSD-3-Clause"
+
+[[annotations]]
+path = "vendor/golang.org/x/sys/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 golang.org/x/sys contributors."
+SPDX-License-Identifier = "BSD-3-Clause"
+
+[[annotations]]
+path = "vendor/k8s.io/utils/internal/third_party/forked/golang/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 k8s.io/utils/internal/third_party/forked/golang contributors."
+SPDX-License-Identifier = "BSD-3-Clause"
+
+[[annotations]]
+path = "vendor/go.uber.org/atomic/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 go.uber.org/atomic contributors."
+SPDX-License-Identifier = "MIT"
+
+[[annotations]]
+path = "vendor/github.com/beorn7/perks/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 github.com/beorn7/perks contributors."
+SPDX-License-Identifier = "MIT"
+
+[[annotations]]
+path = "vendor/github.com/google/uuid/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 github.com/google/uuid contributors."
+SPDX-License-Identifier = "BSD-3-Clause"
+
+[[annotations]]
+path = "vendor/google.golang.org/grpc/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 google.golang.org/grpc contributors."
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = "vendor/github.com/Masterminds/semver/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 github.com/Masterminds/semver contributors."
+SPDX-License-Identifier = "MIT"
+
+[[annotations]]
+path = "vendor/github.com/gobwas/glob/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 github.com/gobwas/glob contributors."
+SPDX-License-Identifier = "MIT"
+
+[[annotations]]
+path = "vendor/github.com/mitchellh/reflectwalk/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 github.com/mitchellh/reflectwalk contributors."
+SPDX-License-Identifier = "MIT"
+
+[[annotations]]
+path = "vendor/github.com/munnerz/goautoneg/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 github.com/munnerz/goautoneg contributors."
+SPDX-License-Identifier = "BSD-3-Clause"
+
+[[annotations]]
+path = "vendor/github.com/aws/aws-sdk-go-v2/internal/sync/singleflight/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 github.com/aws/aws-sdk-go-v2/internal/sync/singleflight contributors."
+SPDX-License-Identifier = "BSD-3-Clause"
+
+[[annotations]]
+path = "vendor/sigs.k8s.io/structured-merge-diff/v4/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 sigs.k8s.io/structured-merge-diff/v4 contributors."
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = "vendor/github.com/json-iterator/go/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 github.com/json-iterator/go contributors."
+SPDX-License-Identifier = "MIT"
+
+[[annotations]]
+path = "vendor/github.com/josharian/intern/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 github.com/josharian/intern contributors."
+SPDX-License-Identifier = "MIT"
+
+[[annotations]]
+path = "vendor/gopkg.in/yaml.v2/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 gopkg.in/yaml.v2 contributors."
+SPDX-License-Identifier = "MIT"
+
+[[annotations]]
+path = "vendor/gopkg.in/yaml.v3/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 gopkg.in/yaml.v3 contributors."
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = "vendor/google.golang.org/api/internal/third_party/uritemplates/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 google.golang.org/api/internal/third_party/uritemplates contributors."
+SPDX-License-Identifier = "BSD-3-Clause"
+
+[[annotations]]
+path = "vendor/google.golang.org/protobuf/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 google.golang.org/protobuf contributors."
+SPDX-License-Identifier = "BSD-3-Clause"
+
+[[annotations]]
+path = "vendor/github.com/robfig/cron/v3/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 github.com/robfig/cron/v3 contributors."
+SPDX-License-Identifier = "MIT"
+
+[[annotations]]
+path = "vendor/github.com/imdario/mergo/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 github.com/imdario/mergo contributors."
+SPDX-License-Identifier = "BSD-3-Clause"
+
+[[annotations]]
+path = "vendor/github.com/soheilhy/cmux/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 github.com/soheilhy/cmux contributors."
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = "vendor/github.com/huandu/xstrings/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 github.com/huandu/xstrings contributors."
+SPDX-License-Identifier = "MIT"
+
+[[annotations]]
+path = "vendor/cloud.google.com/go/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 cloud.google.com/go contributors."
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = "vendor/k8s.io/utils/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 k8s.io/utils contributors."
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = "vendor/github.com/davecgh/go-spew/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 github.com/davecgh/go-spew contributors."
+SPDX-License-Identifier = "ISC"
+
+[[annotations]]
+path = "vendor/github.com/prometheus/procfs/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 github.com/prometheus/procfs contributors."
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = "vendor/github.com/aws/aws-sdk-go-v2/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 github.com/aws/aws-sdk-go-v2 contributors."
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = "vendor/sigs.k8s.io/json/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 sigs.k8s.io/json contributors."
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = "vendor/k8s.io/helm/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 k8s.io/helm contributors."
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = "vendor/github.com/jonboulle/clockwork/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 github.com/jonboulle/clockwork contributors."
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = "vendor/github.com/mitchellh/copystructure/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 github.com/mitchellh/copystructure contributors."
+SPDX-License-Identifier = "MIT"
+
+[[annotations]]
+path = "vendor/golang.org/x/time/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 golang.org/x/time contributors."
+SPDX-License-Identifier = "BSD-3-Clause"
+
+[[annotations]]
+path = "vendor/github.com/googleapis/gax-go/v2/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 github.com/googleapis/gax-go/v2 contributors."
+SPDX-License-Identifier = "BSD-3-Clause"
+
+[[annotations]]
+path = "vendor/github.com/prometheus/client_golang/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 github.com/prometheus/client_golang contributors."
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = "vendor/github.com/golang/mock/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 github.com/golang/mock contributors."
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = "vendor/github.com/prometheus/client_model/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 github.com/prometheus/client_model contributors."
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = "vendor/sigs.k8s.io/controller-runtime/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 sigs.k8s.io/controller-runtime contributors."
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = "vendor/go.uber.org/zap/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 go.uber.org/zap contributors."
+SPDX-License-Identifier = "MIT"
+
+[[annotations]]
+path = "vendor/github.com/spf13/cobra/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 github.com/spf13/cobra contributors."
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = "vendor/k8s.io/apimachinery/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 k8s.io/apimachinery contributors."
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = "vendor/github.com/dgrijalva/jwt-go/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 github.com/dgrijalva/jwt-go contributors."
+SPDX-License-Identifier = "MIT"
+
+[[annotations]]
+path = "vendor/github.com/pkg/errors/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 github.com/pkg/errors contributors."
+SPDX-License-Identifier = "BSD-2-Clause"
+
+[[annotations]]
+path = "vendor/github.com/onsi/ginkgo/v2/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 github.com/onsi/ginkgo/v2 contributors."
+SPDX-License-Identifier = "MIT"
+
+[[annotations]]
+path = "vendor/github.com/gophercloud/utils/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 github.com/gophercloud/utils contributors."
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = "vendor/github.com/grpc-ecosystem/go-grpc-middleware/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 github.com/grpc-ecosystem/go-grpc-middleware contributors."
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = "vendor/k8s.io/kube-openapi/pkg/internal/third_party/go-json-experiment/json/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 k8s.io/kube-openapi/pkg/internal/third_party/go-json-experiment/json contributors."
+SPDX-License-Identifier = "BSD-3-Clause"
+
+[[annotations]]
+path = "vendor/github.com/gorilla/websocket/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 github.com/gorilla/websocket contributors."
+SPDX-License-Identifier = "BSD-2-Clause"
+
+[[annotations]]
+path = "vendor/github.com/golang/protobuf/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 github.com/golang/protobuf contributors."
+SPDX-License-Identifier = "BSD-3-Clause"
+
+[[annotations]]
+path = "vendor/k8s.io/klog/v2/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 k8s.io/klog/v2 contributors."
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = "vendor/github.com/spf13/pflag/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 github.com/spf13/pflag contributors."
+SPDX-License-Identifier = "BSD-3-Clause"
+
+[[annotations]]
+path = "vendor/go.uber.org/multierr/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 go.uber.org/multierr contributors."
+SPDX-License-Identifier = "MIT"
+
+[[annotations]]
+path = "vendor/github.com/go-task/slim-sprig/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 github.com/go-task/slim-sprig contributors."
+SPDX-License-Identifier = "MIT"
+
+[[annotations]]
+path = "vendor/github.com/google/gofuzz/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 github.com/google/gofuzz contributors."
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = "vendor/github.com/go-logr/logr/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 github.com/go-logr/logr contributors."
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = "vendor/github.com/Masterminds/sprig/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 github.com/Masterminds/sprig contributors."
+SPDX-License-Identifier = "MIT"
+
+[[annotations]]
+path = "vendor/github.com/sirupsen/logrus/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 github.com/sirupsen/logrus contributors."
+SPDX-License-Identifier = "MIT"
+
+[[annotations]]
+path = "vendor/github.com/google/go-cmp/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 github.com/google/go-cmp contributors."
+SPDX-License-Identifier = "BSD-3-Clause"
+
+[[annotations]]
+path = "vendor/github.com/coreos/go-systemd/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 github.com/coreos/go-systemd contributors."
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = "vendor/golang.org/x/crypto/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 golang.org/x/crypto contributors."
+SPDX-License-Identifier = "BSD-3-Clause"
+
+[[annotations]]
+path = "vendor/golang.org/x/net/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 golang.org/x/net contributors."
+SPDX-License-Identifier = "BSD-3-Clause"
+
+[[annotations]]
+path = "vendor/k8s.io/client-go/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 k8s.io/client-go contributors."
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = "vendor/github.com/inconshreveable/mousetrap/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 github.com/inconshreveable/mousetrap contributors."
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = "vendor/github.com/coreos/go-semver/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 github.com/coreos/go-semver contributors."
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = "vendor/go.etcd.io/bbolt/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 go.etcd.io/bbolt contributors."
+SPDX-License-Identifier = "MIT"
+
+[[annotations]]
+path = "vendor/google.golang.org/appengine/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 google.golang.org/appengine contributors."
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = "vendor/go.etcd.io/etcd/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 go.etcd.io/etcd contributors."
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = "vendor/golang.org/x/xerrors/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 golang.org/x/xerrors contributors."
+SPDX-License-Identifier = "BSD-3-Clause"
+
+[[annotations]]
+path = "vendor/google.golang.org/genproto/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 google.golang.org/genproto contributors."
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = "vendor/github.com/Masterminds/goutils/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 github.com/Masterminds/goutils contributors."
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = "vendor/github.com/gophercloud/gophercloud/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 github.com/gophercloud/gophercloud contributors."
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = "vendor/github.com/coreos/pkg/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 github.com/coreos/pkg contributors."
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = "vendor/k8s.io/api/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 k8s.io/api contributors."
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = "vendor/github.com/aliyun/aliyun-oss-go-sdk/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 github.com/aliyun/aliyun-oss-go-sdk contributors."
+SPDX-License-Identifier = "MIT"
+
+[[annotations]]
+path = "vendor/github.com/go-openapi/swag/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 github.com/go-openapi/swag contributors."
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = "vendor/github.com/mailru/easyjson/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 github.com/mailru/easyjson contributors."
+SPDX-License-Identifier = "MIT"
+
+[[annotations]]
+path = "vendor/github.com/dustin/go-humanize/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 github.com/dustin/go-humanize contributors."
+SPDX-License-Identifier = "MIT"
+
+[[annotations]]
+path = "vendor/golang.org/x/tools/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 golang.org/x/tools contributors."
+SPDX-License-Identifier = "BSD-3-Clause"
+
+[[annotations]]
+path = "vendor/github.com/go-openapi/jsonpointer/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 github.com/go-openapi/jsonpointer contributors."
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = "vendor/github.com/grpc-ecosystem/go-grpc-prometheus/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 github.com/grpc-ecosystem/go-grpc-prometheus contributors."
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = "vendor/github.com/gogo/protobuf/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 github.com/gogo/protobuf contributors."
+SPDX-License-Identifier = "BSD-3-Clause"
+
+[[annotations]]
+path = "vendor/github.com/go-openapi/jsonreference/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 github.com/go-openapi/jsonreference contributors."
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = "vendor/k8s.io/kube-openapi/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 k8s.io/kube-openapi contributors."
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = "vendor/github.com/modern-go/concurrent/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 github.com/modern-go/concurrent contributors."
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = "vendor/github.com/mattn/go-ieproxy/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 github.com/mattn/go-ieproxy contributors."
+SPDX-License-Identifier = "MIT"
+
+[[annotations]]
+path = "vendor/k8s.io/kube-openapi/pkg/validation/spec/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 k8s.io/kube-openapi/pkg/validation/spec contributors."
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = "vendor/github.com/Azure/azure-pipeline-go/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 github.com/Azure/azure-pipeline-go contributors."
+SPDX-License-Identifier = "MIT"
+
+[[annotations]]
+path = "vendor/github.com/moby/spdystream/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 github.com/moby/spdystream contributors."
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = "vendor/gopkg.in/inf.v0/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2024 gopkg.in/inf.v0 contributors."
+SPDX-License-Identifier = "BSD-3-Clause"
