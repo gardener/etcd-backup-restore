@@ -7,6 +7,7 @@ package copier
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -135,7 +136,8 @@ func (c *Copier) copyBackups() error {
 	// find snapshots missing in destination
 	var snapshotsToCopy brtypes.SnapList
 	for _, snapshot := range sourceSnapshot {
-		if _, ok := destSnapshotsMap[snapshot.SnapName]; !ok {
+		snapNameWithoutSuffix := strings.TrimSuffix(snapshot.SnapName, brtypes.FinalSuffix)
+		if _, ok := destSnapshotsMap[snapNameWithoutSuffix]; !ok {
 			snapshotsToCopy = append(snapshotsToCopy, snapshot)
 		} else {
 			c.logger.Infof("Skipping %s snapshot %s as it already exists", snapshot.Kind, snapshot.SnapName)
