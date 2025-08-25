@@ -5,6 +5,7 @@
 package snapstore
 
 import (
+	"bytes"
 	"context"
 	"crypto/md5" // #nosec G501 -- S3 API supports only MD5 hash for SSE headers
 	"crypto/tls"
@@ -47,28 +48,41 @@ const (
 	awsCredentialJSONFile        = "AWS_APPLICATION_CREDENTIALS_JSON"
 )
 
+var (
+	// Global registry for SSE key usage tracking
+	globalSSEKeyUsage      = make(map[string]string) // map[bucketPrefix+snapshotKey]keyID
+	globalSSEKeyUsageMutex sync.RWMutex
+	globalSSEKeySyncStatus = make(map[string]bool) // map[bucketPrefix]bool - tracks if synced with storage
+)
+
 type awsCredentials struct {
-	SSECustomerAlgorithm       *string `json:"sseCustomerAlgorithm,omitempty"`
-	SSECustomerKey             *string `json:"sseCustomerKey,omitempty"`
-	Endpoint                   *string `json:"endpoint,omitempty"`
-	S3ForcePathStyle           *bool   `json:"s3ForcePathStyle,omitempty"`
-	InsecureSkipVerify         *bool   `json:"insecureSkipVerify,omitempty"`
-	TrustedCaCert              *string `json:"trustedCaCert,omitempty"`
-	RequestChecksumCalculation *string `json:"requestChecksumCalculation,omitempty"`
-	ResponseChecksumValidation *string `json:"responseChecksumValidation,omitempty"`
-	AccessKeyID                string  `json:"accessKeyID"`
-	Region                     string  `json:"region"`
-	SecretAccessKey            string  `json:"secretAccessKey"`
-	BucketName                 string  `json:"bucketName"`
-	RoleARN                    string  `json:"roleARN"`
-	TokenPath                  string  `json:"tokenPath"`
+	SSECustomerKeyConf         *sseKeyConfig `json:"sseCustomerKeyConf,omitempty"`
+	Endpoint                   *string       `json:"endpoint,omitempty"`
+	S3ForcePathStyle           *bool         `json:"s3ForcePathStyle,omitempty"`
+	InsecureSkipVerify         *bool         `json:"insecureSkipVerify,omitempty"`
+	TrustedCaCert              *string       `json:"trustedCaCert,omitempty"`
+	RequestChecksumCalculation *string       `json:"requestChecksumCalculation,omitempty"`
+	ResponseChecksumValidation *string       `json:"responseChecksumValidation,omitempty"`
+	AccessKeyID                string        `json:"accessKeyID"`
+	Region                     string        `json:"region"`
+	SecretAccessKey            string        `json:"secretAccessKey"`
+	BucketName                 string        `json:"bucketName"`
+	RoleARN                    string        `json:"roleARN"`
+	TokenPath                  string        `json:"tokenPath"`
+}
+
+type deprecatedAwsCredentials struct {
+	SSECustomerKey       *string `json:"sseCustomerKey,omitempty"`
+	SSECustomerAlgorithm *string `json:"sseCustomerAlgorithm,omitempty"`
 }
 
 // SSECredentials to hold fields for server-side encryption in I/O operations
 type SSECredentials struct {
-	sseCustomerAlgorithm string
-	sseCustomerKey       string
-	sseCustomerKeyMD5    string
+	sseCustomerAlgorithm        string
+	sseCustomerKeys             []string
+	sseCustomerKeyMD5s          []string
+	sseCustomerKeyIDs           []string
+	disableEncryptionForWriting bool
 }
 
 // S3SnapStore is snapstore with AWS S3 object store as backend
@@ -83,6 +97,116 @@ type S3SnapStore struct {
 	minChunkSize            int64
 }
 
+type SSEKeyUsageRegistry struct{}
+
+func GetSSEKeyUsageRegistry() *SSEKeyUsageRegistry {
+	return &SSEKeyUsageRegistry{}
+}
+
+// RecordKeyUsage records which key was used for a specific snapshot
+// Use keyID = "unencrypted" for files not encrypted with SSE-C
+// Use keyID = actual key ID for files encrypted with SSE-C
+func (r *SSEKeyUsageRegistry) RecordKeyUsage(bucketPrefix, snapshotKey, keyID string) {
+	globalSSEKeyUsageMutex.Lock()
+	defer globalSSEKeyUsageMutex.Unlock()
+	fullKey := bucketPrefix + "/" + snapshotKey
+	globalSSEKeyUsage[fullKey] = keyID
+}
+
+// RecordNoEncryption records that a file is not encrypted with SSE-C
+func (r *SSEKeyUsageRegistry) RecordNoEncryption(bucketPrefix, snapshotKey string) {
+	r.RecordKeyUsage(bucketPrefix, snapshotKey, "unencrypted")
+}
+
+// RecordBrokenFile records that a file is broken and cannot be decrypted
+func (r *SSEKeyUsageRegistry) RecordBrokenFile(bucketPrefix, snapshotKey string) {
+	r.RecordKeyUsage(bucketPrefix, snapshotKey, "broken")
+}
+
+// GetKeyUsage returns the key ID used for a specific snapshot
+func (r *SSEKeyUsageRegistry) GetKeyUsage(bucketPrefix, snapshotKey string) (string, bool) {
+	globalSSEKeyUsageMutex.RLock()
+	defer globalSSEKeyUsageMutex.RUnlock()
+	fullKey := bucketPrefix + "/" + snapshotKey
+	keyID, exists := globalSSEKeyUsage[fullKey]
+	return keyID, exists
+}
+
+// GetAllUsage returns a copy of all key usage data for a specific bucket/prefix
+func (r *SSEKeyUsageRegistry) GetAllUsage(bucketPrefix string) map[string]string {
+	globalSSEKeyUsageMutex.RLock()
+	defer globalSSEKeyUsageMutex.RUnlock()
+
+	usageCopy := make(map[string]string)
+	prefix := bucketPrefix + "/"
+	for fullKey, keyID := range globalSSEKeyUsage {
+		if strings.HasPrefix(fullKey, prefix) {
+			// Remove the bucket prefix to get just the snapshot key
+			snapshotKey := strings.TrimPrefix(fullKey, prefix)
+			usageCopy[snapshotKey] = keyID
+		}
+	}
+	return usageCopy
+}
+
+// GetUsageWithStatus returns key usage data and sync status for a specific bucket/prefix
+func (r *SSEKeyUsageRegistry) GetUsageWithStatus(bucketPrefix string) (map[string]string, bool) {
+	globalSSEKeyUsageMutex.RLock()
+	defer globalSSEKeyUsageMutex.RUnlock()
+
+	usageCopy := make(map[string]string)
+	prefix := bucketPrefix + "/"
+	for fullKey, keyID := range globalSSEKeyUsage {
+		if strings.HasPrefix(fullKey, prefix) {
+			// Remove the bucket prefix to get just the snapshot key
+			snapshotKey := strings.TrimPrefix(fullKey, prefix)
+			usageCopy[snapshotKey] = keyID
+		}
+	}
+
+	isUpToDate := globalSSEKeySyncStatus[bucketPrefix]
+	return usageCopy, isUpToDate
+}
+
+// IsUpToDate returns the sync status for a specific bucket/prefix
+func (r *SSEKeyUsageRegistry) IsUpToDate(bucketPrefix string) bool {
+	globalSSEKeyUsageMutex.RLock()
+	defer globalSSEKeyUsageMutex.RUnlock()
+	return globalSSEKeySyncStatus[bucketPrefix]
+}
+
+// SyncWithSnapshots ensures the registry only contains entries for existing snapshots
+func (r *SSEKeyUsageRegistry) SyncWithSnapshots(bucketPrefix string, snapList brtypes.SnapList) {
+	globalSSEKeyUsageMutex.Lock()
+	defer globalSSEKeyUsageMutex.Unlock()
+
+	prefix := bucketPrefix + "/"
+	seen := make(map[string]struct{}, len(snapList))
+
+	// Mark existing snapshots and add unknown entries for new ones
+	for _, snap := range snapList {
+		snapshotKey := path.Join(snap.SnapDir, snap.SnapName)
+		fullKey := prefix + snapshotKey
+		seen[fullKey] = struct{}{}
+
+		if _, tracked := globalSSEKeyUsage[fullKey]; !tracked {
+			globalSSEKeyUsage[fullKey] = "unknown"
+		}
+	}
+
+	// Remove entries for snapshots that no longer exist
+	for fullKey := range globalSSEKeyUsage {
+		if strings.HasPrefix(fullKey, prefix) {
+			if _, stillExists := seen[fullKey]; !stillExists {
+				delete(globalSSEKeyUsage, fullKey)
+			}
+		}
+	}
+
+	// Mark this bucket/prefix as up-to-date
+	globalSSEKeySyncStatus[bucketPrefix] = true
+}
+
 // NewS3SnapStore create new S3SnapStore from shared configuration with specified bucket
 func NewS3SnapStore(config *brtypes.SnapstoreConfig) (*S3SnapStore, error) {
 	cfgOpts, cliOpts, sseCreds, err := getConfigOpts(getEnvPrefixString(config))
@@ -95,12 +219,26 @@ func NewS3SnapStore(config *brtypes.SnapstoreConfig) (*S3SnapStore, error) {
 		return nil, fmt.Errorf("new AWS config failed: %w", err)
 	}
 
+	checkSSECredsValidity(sseCreds)
+
 	cli := s3.NewFromConfig(cfg, cliOpts...)
 	return NewS3FromClient(config.Container, config.Prefix, config.TempDir, config.MaxParallelChunkUploads, config.MinChunkSize, cli, sseCreds), nil
 }
 
+func checkSSECredsValidity(sseCreds SSECredentials) error {
+	if len(sseCreds.sseCustomerKeys) != 0 && sseCreds.sseCustomerAlgorithm != "AES256" {
+		return fmt.Errorf("there are SSE-C keys provided but the the only SSE-C algorithm supported (AES256) is not set, instead %s was provided", sseCreds.sseCustomerAlgorithm)
+	}
+
+	if len(sseCreds.sseCustomerKeys) == 0 && sseCreds.sseCustomerAlgorithm == "AES256" {
+		return fmt.Errorf("there are no SSE-C keys provided but encryption algorithm is set to AES256")
+	}
+	return nil
+}
+
 func getConfigOpts(prefixString string) ([]func(*awsconfig.LoadOptions) error, []func(*s3.Options), SSECredentials, error) {
 	if filename, isSet := os.LookupEnv(prefixString + awsCredentialJSONFile); isSet {
+		logrus.Infof("Reading AWS credentials JSON file: %s", filename)
 		creds, cliOpts, sseCreds, err := readAWSCredentialsJSONFile(filename)
 		if err != nil {
 			return nil, nil, SSECredentials{}, fmt.Errorf("error getting credentials using %v file with error %w", filename, err)
@@ -133,7 +271,7 @@ func getConfigOpts(prefixString string) ([]func(*awsconfig.LoadOptions) error, [
 		return creds, cliOpts, sseCreds, nil
 	}
 
-	return nil, nil, SSECredentials{}, nil
+	return nil, nil, SSECredentials{}, errors.New("no AWS credentials found in environment variables")
 }
 
 func readAWSCredentialsJSONFile(filename string) ([]func(*awsconfig.LoadOptions) error, []func(*s3.Options), SSECredentials, error) {
@@ -153,6 +291,34 @@ func credentialsFromJSON(filename string) (*awsCredentials, error) {
 	awsConfig := &awsCredentials{}
 	if err := json.Unmarshal(jsonData, awsConfig); err != nil {
 		return nil, err
+	}
+
+	awsDeprecatedConfig := &deprecatedAwsCredentials{}
+	if err := json.Unmarshal(jsonData, awsDeprecatedConfig); err != nil {
+		return nil, err
+	}
+
+	if awsConfig.SSECustomerKeyConf != nil {
+		if awsDeprecatedConfig.SSECustomerAlgorithm != nil || awsDeprecatedConfig.SSECustomerKey != nil {
+			return nil, errors.New("sseCustomerKeyConf has been provided, but deprecated fields sseCustomerAlgorithm/key are also present in the JSON file")
+		}
+	} else {
+		// Migrate deprecated fields if present
+		if awsDeprecatedConfig.SSECustomerAlgorithm != nil || awsDeprecatedConfig.SSECustomerKey != nil {
+			if awsDeprecatedConfig.SSECustomerAlgorithm == nil || awsDeprecatedConfig.SSECustomerKey == nil {
+				return nil, errors.New("both sseCustomerAlgorithm and sseCustomerKey must be provided together in the JSON file")
+			}
+
+			var sseKeyEntries []sseKeyEntry
+			sseKeyEntries = append(sseKeyEntries, sseKeyEntry{
+				ID:    "key1",
+				Value: *awsDeprecatedConfig.SSECustomerKey,
+			})
+			awsConfig.SSECustomerKeyConf = &sseKeyConfig{
+				Keys:      sseKeyEntries,
+				Algorithm: *awsDeprecatedConfig.SSECustomerAlgorithm,
+			}
+		}
 	}
 	return awsConfig, nil
 }
@@ -185,13 +351,10 @@ func awsCredentialsFromConfig(awsConfig *awsCredentials) ([]func(*awsconfig.Load
 		}
 	}
 
-	sseCreds, err := getSSECreds(awsConfig.SSECustomerKey, awsConfig.SSECustomerAlgorithm)
-	if err != nil {
-		return nil, nil, SSECredentials{}, err
-	}
-
 	var (
-		cfgOpts = []func(*awsconfig.LoadOptions) error{
+		sseCreds SSECredentials
+		err      error
+		cfgOpts  = []func(*awsconfig.LoadOptions) error{
 			awsconfig.WithRegion(awsConfig.Region),
 			awsconfig.WithHTTPClient(httpClient),
 		}
@@ -233,6 +396,9 @@ func awsCredentialsFromConfig(awsConfig *awsCredentials) ([]func(*awsconfig.Load
 			o.ResponseChecksumValidation = v
 		})
 	}
+	if sseCreds, err = getSSECredsFromConf(awsConfig.SSECustomerKeyConf); err != nil {
+		return nil, nil, SSECredentials{}, err
+	}
 
 	return cfgOpts, cliOpts, sseCreds, nil
 }
@@ -272,7 +438,13 @@ func readAWSCredentialFromDir(dirname string) (*awsCredentials, error) {
 		return nil, err
 	}
 
+	sseCustomerKeyOrAlgorithmFound := false
+	sseCustomerKeyConfFound := false
+	var sseKeyConf sseKeyConfig
+	awsConfig.SSECustomerKeyConf = &sseKeyConf
+
 	for _, file := range files {
+		logrus.Infof("Reading AWS credential file: %s", file.Name())
 		switch file.Name() {
 		case "accessKeyID":
 			data, err := os.ReadFile(filepath.Join(dirname, "accessKeyID")) // #nosec G304 -- this is a trusted file, obtained via user input.
@@ -324,18 +496,49 @@ func readAWSCredentialFromDir(dirname string) (*awsCredentials, error) {
 				return nil, err
 			}
 			awsConfig.TrustedCaCert = ptr.To(string(data))
-		case "sseCustomerKey":
-			data, err := os.ReadFile(filepath.Join(dirname, "sseCustomerKey")) // #nosec G304 -- this is a trusted file, obtained via user input.
-			if err != nil {
-				return nil, err
-			}
-			awsConfig.SSECustomerKey = ptr.To(string(data))
 		case "sseCustomerAlgorithm":
+			if sseCustomerKeyConfFound {
+				return nil, errors.New("cannot specify both sseCustomerAlgorithm/key and sseCustomerKeyConf")
+			}
+			sseCustomerKeyOrAlgorithmFound = true
 			data, err := os.ReadFile(filepath.Join(dirname, "sseCustomerAlgorithm")) // #nosec G304 -- this is a trusted file, obtained via user input.
 			if err != nil {
 				return nil, err
 			}
-			awsConfig.SSECustomerAlgorithm = ptr.To(string(data))
+			awsConfig.SSECustomerKeyConf.Algorithm = string(data)
+
+		case "sseCustomerKey":
+			if sseCustomerKeyOrAlgorithmFound {
+				return nil, errors.New("cannot specify both sseCustomerAlgorithm/key and sseCustomerKeyConf")
+			}
+			sseCustomerKeyOrAlgorithmFound = true
+			data, err := os.ReadFile(filepath.Join(dirname, "sseCustomerKey")) // #nosec G304 -- this is a trusted file, obtained via user input.
+			if err != nil {
+				return nil, err
+			}
+			var sseKeyEntry1 []sseKeyEntry
+			sseKeyEntry1 = append(sseKeyEntry1, sseKeyEntry{
+				ID:    "key1",
+				Value: string(data),
+			})
+			awsConfig.SSECustomerKeyConf.Keys = sseKeyEntry1
+
+		case "sseCustomerKeyConf":
+			if sseCustomerKeyOrAlgorithmFound {
+				return nil, errors.New("cannot specify both sseCustomerAlgorithm/key and sseCustomerKeyConf")
+			}
+			sseCustomerKeyConfFound = true
+			data, err := os.ReadFile(filepath.Join(dirname, "sseCustomerKeyConf")) // #nosec G304 -- this is a trusted file, obtained via user input.
+			if err != nil {
+				return nil, err
+			}
+
+			if err := json.Unmarshal(data, &sseKeyConf); err != nil {
+				return nil, fmt.Errorf("failed to unmarshal sseCustomerKeyConf: %w", err)
+			}
+			logrus.Infof("Loaded customer managed SSE-C key configuration with %d keys, encryptiononwritedisabled: %t", len(sseKeyConf.Keys), sseKeyConf.DisableEncryptionForWriting)
+			awsConfig.SSECustomerKeyConf = &sseKeyConf
+
 		case "roleARN":
 			roleARN, err := os.ReadFile(filepath.Join(dirname, "roleARN")) // #nosec G304 -- this is a trusted file, obtained via user input.
 			if err != nil {
@@ -362,6 +565,7 @@ func readAWSCredentialFromDir(dirname string) (*awsCredentials, error) {
 	if err := isAWSConfigEmpty(awsConfig); err != nil {
 		return nil, err
 	}
+
 	return awsConfig, nil
 }
 
@@ -378,28 +582,83 @@ func NewS3FromClient(bucket, prefix, tempDir string, maxParallelChunkUploads uin
 	}
 }
 
+// Helper method to get bucket prefix for this store instance
+func (s *S3SnapStore) getBucketPrefix() string {
+	return s.bucket + "/" + s.prefix
+}
+
 // Fetch should open reader for the snapshot file from store
 func (s *S3SnapStore) Fetch(snap brtypes.Snapshot) (io.ReadCloser, error) {
-	getObjectInput := &s3.GetObjectInput{
-		Bucket: aws.String(s.bucket),
-		Key:    aws.String(path.Join(snap.Prefix, snap.SnapDir, snap.SnapName)),
+	var lastErr error
+	var data []byte
+
+	if len(s.sseCustomerKeys) == 0 {
+		// No SSE-C: fetch normally
+		getObjectInput := &s3.GetObjectInput{
+			Bucket: aws.String(s.bucket),
+			Key:    aws.String(path.Join(snap.Prefix, snap.SnapDir, snap.SnapName)),
+		}
+		if snap.VersionID != nil {
+			// To fetch the versioned snapshot incase object lock is enabled for bucket.
+			getObjectInput.VersionId = snap.VersionID
+		}
+
+		getObjectOutput, err := s.client.GetObject(context.TODO(), getObjectInput)
+		if err != nil {
+			return nil, fmt.Errorf("failed to fetch snapshot from s3: %v", err)
+		}
+		rc := getObjectOutput.Body
+		data, err = io.ReadAll(rc)
+		rc.Close()
+		if err != nil {
+			return nil, fmt.Errorf("failed to read snapshot from s3: %v", err)
+		}
+		// Record that this file is not encrypted with SSE-C
+		registry := GetSSEKeyUsageRegistry()
+		snapshotKey := path.Join(snap.SnapDir, snap.SnapName)
+		registry.RecordNoEncryption(s.getBucketPrefix(), snapshotKey)
+	} else {
+		// Try all SSE-C keys
+		success := false
+		for i, key := range s.sseCustomerKeys {
+			logrus.Infof("Fetching snapshot from S3 using SSE-C key: idx:%v, key ID: %v", i, s.sseCustomerKeyIDs[i])
+			getObjectInput := &s3.GetObjectInput{
+				Bucket:               aws.String(s.bucket),
+				Key:                  aws.String(path.Join(snap.Prefix, snap.SnapDir, snap.SnapName)),
+				SSECustomerAlgorithm: aws.String(s.sseCustomerAlgorithm),
+				SSECustomerKey:       aws.String(key),
+				SSECustomerKeyMD5:    aws.String(s.sseCustomerKeyMD5s[i]),
+			}
+			if snap.VersionID != nil {
+				// To fetch the versioned snapshot incase object lock is enabled for bucket.
+				getObjectInput.VersionId = snap.VersionID
+			}
+			getObjectOutput, err := s.client.GetObject(context.TODO(), getObjectInput)
+			if err == nil {
+				rc := getObjectOutput.Body
+				data, err = io.ReadAll(rc)
+				rc.Close()
+				if err != nil {
+					lastErr = err
+					logrus.Errorf("failed to read snapshot from s3 using SSE-C key: %v: key ID: %v - %v", i, s.sseCustomerKeyIDs[i], err)
+					continue
+				}
+				// Record the key used for this file in global registry
+				registry := GetSSEKeyUsageRegistry()
+				snapshotKey := path.Join(snap.SnapDir, snap.SnapName)
+				registry.RecordKeyUsage(s.getBucketPrefix(), snapshotKey, s.sseCustomerKeyIDs[i])
+				success = true
+				break
+			}
+			lastErr = err
+		}
+		if !success {
+			return nil, fmt.Errorf("all SSE-C keys failed to fetch object: %v", lastErr)
+		}
 	}
 
-	if snap.VersionID != nil {
-		// To fetch the versioned snapshot incase object lock is enabled for bucket.
-		getObjectInput.VersionId = snap.VersionID
-	}
-	if s.sseCustomerKey != "" {
-		// Customer managed Server Side Encryption
-		getObjectInput.SSECustomerAlgorithm = aws.String(s.sseCustomerAlgorithm)
-		getObjectInput.SSECustomerKey = aws.String(s.sseCustomerKey)
-		getObjectInput.SSECustomerKeyMD5 = aws.String(s.sseCustomerKeyMD5)
-	}
-	getObjecOutput, err := s.client.GetObject(context.TODO(), getObjectInput)
-	if err != nil {
-		return nil, fmt.Errorf("error while accessing %s: %v", path.Join(snap.Prefix, snap.SnapDir, snap.SnapName), err)
-	}
-	return getObjecOutput.Body, nil
+	br := bytes.NewReader(data)
+	return io.NopCloser(br), nil
 }
 
 // Save will write the snapshot to store
@@ -433,12 +692,18 @@ func (s *S3SnapStore) Save(snap brtypes.Snapshot, rc io.ReadCloser) (err error) 
 		Bucket: aws.String(s.bucket),
 		Key:    aws.String(path.Join(prefix, snap.SnapDir, snap.SnapName)),
 	}
-	if s.sseCustomerKey != "" {
+
+	// TODO: skip encryption for encryption rollback
+	if !s.disableEncryptionForWriting && len(s.sseCustomerKeys) > 0 {
 		// Customer managed Server Side Encryption
+		logrus.Infof("Using customer managed SSE-C key for snapshot upload with key ID: %s", s.sseCustomerKeyIDs[0])
 		createMultipartUploadInput.SSECustomerAlgorithm = aws.String(s.sseCustomerAlgorithm)
-		createMultipartUploadInput.SSECustomerKey = aws.String(s.sseCustomerKey)
-		createMultipartUploadInput.SSECustomerKeyMD5 = aws.String(s.sseCustomerKeyMD5)
+		createMultipartUploadInput.SSECustomerKey = aws.String(s.sseCustomerKeys[0])
+		createMultipartUploadInput.SSECustomerKeyMD5 = aws.String(s.sseCustomerKeyMD5s[0])
+	} else {
+		logrus.Info("Not using customer managed SSE-C key for upload")
 	}
+
 	uploadOutput, err := s.client.CreateMultipartUpload(ctx, createMultipartUploadInput)
 	if err != nil {
 		return fmt.Errorf("failed to initiate multipart upload %v", err)
@@ -510,6 +775,15 @@ func (s *S3SnapStore) Save(snap brtypes.Snapshot, rc io.ReadCloser) (err error) 
 	if snapshotErr != nil {
 		return fmt.Errorf("failed uploading chunk, id: %d, offset: %d, error: %v", snapshotErr.chunk.id, snapshotErr.chunk.offset, snapshotErr.err)
 	}
+	// At the end of successful save, record key usage
+	registry := GetSSEKeyUsageRegistry()
+	snapshotKey := path.Join(snap.SnapDir, snap.SnapName)
+
+	if !s.disableEncryptionForWriting && len(s.sseCustomerKeyIDs) > 0 {
+		registry.RecordKeyUsage(s.getBucketPrefix(), snapshotKey, s.sseCustomerKeyIDs[0])
+	} else {
+		registry.RecordNoEncryption(s.getBucketPrefix(), snapshotKey)
+	}
 	return nil
 }
 
@@ -536,11 +810,11 @@ func (s *S3SnapStore) uploadPart(snap *brtypes.Snapshot, file *os.File, uploadID
 		Body:       sr,
 	}
 
-	if s.sseCustomerKey != "" {
+	if !s.disableEncryptionForWriting && len(s.sseCustomerKeys) > 0 {
 		// Customer managed Server Side Encryption
 		uploadPartInput.SSECustomerAlgorithm = aws.String(s.sseCustomerAlgorithm)
-		uploadPartInput.SSECustomerKey = aws.String(s.sseCustomerKey)
-		uploadPartInput.SSECustomerKeyMD5 = aws.String(s.sseCustomerKeyMD5)
+		uploadPartInput.SSECustomerKey = aws.String(s.sseCustomerKeys[0])
+		uploadPartInput.SSECustomerKeyMD5 = aws.String(s.sseCustomerKeyMD5s[0])
 	}
 
 	uploadPartOutput, err := s.client.UploadPart(ctx, uploadPartInput)
@@ -574,14 +848,14 @@ func (s *S3SnapStore) partUploader(wg *sync.WaitGroup, stopCh <-chan struct{}, s
 	}
 }
 
-// List returns a sorted list of snapshot files present in the object store.
-// If Bucket versioning is not enabled for S3 bucket:
-//   - It returns a sorted list of all snapshot files present in the object store.
-//
-// If Bucket versioning or object lock is enabled for S3 bucket:
-//   - It returns a sorted list of all firstCreated/oldest snapshot files present in the object store.
-//   - It also captures the "ImmutabilityExpiryTime" and "VersionID" of corresponding versioned snapshot.
 func (s *S3SnapStore) List(includeAll bool) (brtypes.SnapList, error) {
+	// List returns a sorted list of snapshot files present in the object store.
+	// If Bucket versioning is not enabled for S3 bucket:
+	//   - It returns a sorted list of all snapshot files present in the object store.
+	//
+	// If Bucket versioning or object lock is enabled for S3 bucket:
+	//   - It returns a sorted list of all firstCreated/oldest snapshot files present in the object store.
+	//   - It also captures the "ImmutabilityExpiryTime" and "VersionID" of corresponding versioned snapshot.
 	var snapList brtypes.SnapList
 	prefixTokens := strings.Split(s.prefix, "/")
 	// Last element of the tokens is backup version
@@ -733,6 +1007,11 @@ func (s *S3SnapStore) List(includeAll bool) (brtypes.SnapList, error) {
 	}
 
 	sort.Sort(snapList)
+
+	// Ensure sseKeyUsage map is in sync with the listed snapshots
+	registry := GetSSEKeyUsageRegistry()
+	registry.SyncWithSnapshots(s.getBucketPrefix(), snapList)
+
 	return snapList, nil
 }
 
@@ -818,25 +1097,30 @@ func isAWSConfigEmpty(config *awsCredentials) error {
 	return fmt.Errorf("aws s3 credentials: either set secretAccessKey and accessKeyID or roleARN and token")
 }
 
-// Creates SSE Credentials that are included in the S3 API calls for customer managed SSE
-// Key rotation is not handled by etcd-backup-restore, use SSE through customer managed keys at your discretion
-// See: https://github.com/gardener/etcd-backup-restore/pull/719#issuecomment-2016366462
-func getSSECreds(sseCustomerKey, sseCustomerAlgorithm *string) (SSECredentials, error) {
-	// SSE-C not utilized
-	if sseCustomerKey == nil && sseCustomerAlgorithm == nil {
+func getSSECredsFromConf(conf *sseKeyConfig) (SSECredentials, error) {
+	if conf == nil || len(conf.Keys) == 0 {
 		return SSECredentials{}, nil
 	}
-
-	if sseCustomerKey == nil || sseCustomerAlgorithm == nil {
-		return SSECredentials{}, fmt.Errorf("both sseCustomerKey and sseCustomerAlgorithm are to be provided if customer managed SSE keys are to be used")
+	keys := make([]string, len(conf.Keys))
+	md5s := make([]string, len(conf.Keys))
+	ids := make([]string, len(conf.Keys))
+	for i, entry := range conf.Keys {
+		decodedKey, err := base64.StdEncoding.DecodeString(entry.Value)
+		if err != nil {
+			return SSECredentials{}, fmt.Errorf("failed to decode base64 key for id %s: %w", entry.ID, err)
+		}
+		keys[i] = string(decodedKey)
+		ids[i] = entry.ID
+		sum := md5.Sum(decodedKey[:]) // #nosec G401 -- S3 API supports only MD5 hash for SSE headers, as per https://docs.aws.amazon.com/AmazonS3/latest/userguide/ServerSideEncryptionCustomerKeys.html
+		md5s[i] = base64.StdEncoding.EncodeToString(sum[:])
 	}
 
-	SSECustomerKeyMD5Bytes := md5.Sum([]byte(*sseCustomerKey)) // #nosec G401 -- S3 API supports only MD5 hash for SSE headers, as per https://docs.aws.amazon.com/AmazonS3/latest/userguide/ServerSideEncryptionCustomerKeys.html
-	sseCustomerKeyMD5 := base64.StdEncoding.EncodeToString(SSECustomerKeyMD5Bytes[:])
 	return SSECredentials{
-		sseCustomerKey:       *sseCustomerKey,
-		sseCustomerKeyMD5:    sseCustomerKeyMD5,
-		sseCustomerAlgorithm: *sseCustomerAlgorithm,
+		sseCustomerAlgorithm:        conf.Algorithm,
+		sseCustomerKeys:             keys,
+		sseCustomerKeyMD5s:          md5s,
+		sseCustomerKeyIDs:           ids,
+		disableEncryptionForWriting: conf.DisableEncryptionForWriting,
 	}, nil
 }
 
@@ -885,4 +1169,171 @@ func IsSnapshotMarkedToBeIgnored(client s3api.Client, bucketName, key, versionID
 	}
 
 	return false
+}
+
+// ReencryptAllSnapshots re-encrypts all snapshots in the store using the current (first) SSE-C key if encryption is enabled.
+func (s *S3SnapStore) ReencryptAllSnapshots(logger *logrus.Entry) error {
+	snapshots, err := s.List(false)
+	if err != nil {
+		logger.Errorf("Failed to list snapshots for re-encryption: %v", err)
+		return err
+	}
+
+	for _, snap := range snapshots {
+		reconcileNeed := true
+		objKey := path.Join(snap.Prefix, snap.SnapDir, snap.SnapName)
+
+		// 1. Check if object is unencrypted (no SSE-C)
+		headInputNoSSEC := &s3.HeadObjectInput{
+			Bucket: aws.String(s.bucket),
+			Key:    aws.String(objKey),
+		}
+		_, err := s.client.HeadObject(context.TODO(), headInputNoSSEC)
+		if err == nil {
+			// Object is unencrypted
+			if s.disableEncryptionForWriting || len(s.sseCustomerKeys) == 0 {
+				reconcileNeed = false
+			}
+		} else {
+			// 2. Check if object is already encrypted with the current key
+			headInput := &s3.HeadObjectInput{
+				Bucket:               aws.String(s.bucket),
+				Key:                  aws.String(objKey),
+				SSECustomerAlgorithm: aws.String(s.sseCustomerAlgorithm),
+				SSECustomerKey:       aws.String(s.sseCustomerKeys[0]),
+				SSECustomerKeyMD5:    aws.String(s.sseCustomerKeyMD5s[0]),
+			}
+			_, err = s.client.HeadObject(context.TODO(), headInput)
+			if err == nil {
+				logger.Infof("Skipping %s: already encrypted with key: %v", snap.SnapName, s.sseCustomerKeyIDs[0])
+				reconcileNeed = false
+			}
+
+		}
+
+		if reconcileNeed {
+			// 3. Needs re-encryption (encrypted with old key)
+			logger.Infof("Re-encrypting snapshot: %s", snap.SnapName)
+			rc, err := s.Fetch(*snap)
+			if err != nil {
+				logger.Errorf("Failed to fetch %s: %v", snap.SnapName, err)
+				// TODO: this is error condition we need to solve
+				return err
+			}
+			err = s.Save(*snap, rc)
+			rc.Close()
+			if err != nil {
+				logger.Errorf("Failed to re-encrypt %s: %v", snap.SnapName, err)
+				// TODO: this is error condition we need to solve
+				return err
+			}
+			logger.Infof("Successfully re-encrypted %s", snap.SnapName)
+		}
+	}
+	logger.Info("Re-encryption of all snapshots completed.")
+	return nil
+}
+
+func (s *S3SnapStore) GetSSEKeyUsage() map[string]string {
+	registry := GetSSEKeyUsageRegistry()
+	return registry.GetAllUsage(s.getBucketPrefix())
+}
+
+func (s *S3SnapStore) GetSSEKeyUsageWithStatus() (map[string]string, bool) {
+	registry := GetSSEKeyUsageRegistry()
+	return registry.GetUsageWithStatus(s.getBucketPrefix())
+}
+
+type sseKeyEntry struct {
+	ID    string `json:"id"`
+	Value string `json:"value"`
+}
+
+type sseKeyConfig struct {
+	Algorithm                   string        `json:"algorithm"`
+	DisableEncryptionForWriting bool          `json:"disableEncryptionForWriting"`
+	Keys                        []sseKeyEntry `json:"keys"`
+}
+
+// Add method to scan all files and determine their encryption status
+func (s *S3SnapStore) ScanAllSnapshots(logger *logrus.Entry) error {
+	snapshots, err := s.List(false)
+	if err != nil {
+		logger.Errorf("Failed to list snapshots for scanning: %v", err)
+		return err
+	}
+
+	registry := GetSSEKeyUsageRegistry()
+
+	for _, snap := range snapshots {
+		objKey := path.Join(snap.Prefix, snap.SnapDir, snap.SnapName)
+		snapshotKey := path.Join(snap.SnapDir, snap.SnapName)
+
+		logger.Infof("Scanning snapshot: %s", snap.SnapName)
+
+		// First, try to fetch without SSE-C (plaintext)
+		headInputNoSSEC := &s3.HeadObjectInput{
+			Bucket: aws.String(s.bucket),
+			Key:    aws.String(objKey),
+		}
+		_, err := s.client.HeadObject(context.TODO(), headInputNoSSEC)
+		if err == nil {
+			// File is unencrypted
+			logger.Infof("File %s is unencrypted", snap.SnapName)
+			registry.RecordNoEncryption(s.getBucketPrefix(), snapshotKey)
+			continue
+		}
+
+		// File appears to be encrypted, try all available keys
+		foundKey := false
+
+		for i, key := range s.sseCustomerKeys {
+			headInput := &s3.HeadObjectInput{
+				Bucket:               aws.String(s.bucket),
+				Key:                  aws.String(objKey),
+				SSECustomerAlgorithm: aws.String(s.sseCustomerAlgorithm),
+				SSECustomerKey:       aws.String(key),
+				SSECustomerKeyMD5:    aws.String(s.sseCustomerKeyMD5s[i]),
+			}
+			_, err := s.client.HeadObject(context.TODO(), headInput)
+			if err == nil {
+				// This key can decrypt the file
+				logger.Infof("File %s can be decrypted with key: %s", snap.SnapName, s.sseCustomerKeyIDs[i])
+				registry.RecordKeyUsage(s.getBucketPrefix(), snapshotKey, s.sseCustomerKeyIDs[i])
+				foundKey = true
+				break
+			}
+		}
+
+		if !foundKey {
+			// File is encrypted but none of our keys can decrypt it
+			logger.Warnf("File %s is broken - cannot be decrypted with any available key", snap.SnapName)
+			registry.RecordBrokenFile(s.getBucketPrefix(), snapshotKey)
+		}
+	}
+
+	logger.Info("Scan of all snapshots completed.")
+	return nil
+}
+
+// Add method to clear all data for a specific bucket/prefix
+func (r *SSEKeyUsageRegistry) ClearBucketData(bucketPrefix string) {
+	globalSSEKeyUsageMutex.Lock()
+	defer globalSSEKeyUsageMutex.Unlock()
+
+	prefix := bucketPrefix + "/"
+	// Remove all entries for this bucket/prefix
+	for fullKey := range globalSSEKeyUsage {
+		if strings.HasPrefix(fullKey, prefix) {
+			delete(globalSSEKeyUsage, fullKey)
+		}
+	}
+	// Mark as not up-to-date
+	globalSSEKeySyncStatus[bucketPrefix] = false
+}
+
+// Add method to S3SnapStore to clear its data
+func (s *S3SnapStore) ClearSSEKeyUsageData() {
+	registry := GetSSEKeyUsageRegistry()
+	registry.ClearBucketData(s.getBucketPrefix())
 }
