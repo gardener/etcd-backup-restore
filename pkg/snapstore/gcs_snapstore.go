@@ -44,7 +44,7 @@ const (
 	// externalAccountCredentialType is the type of credentials contained in the credentialsConfig file.
 	externalAccountCredentialType = "external_account"
 	// allowedSubjectTokenType is the allowed `subject_token_type` value when external_account is used.
-	allowedSubjectTokenType = "urn:ietf:params:oauth:token-type:jwt"
+	allowedSubjectTokenType = "urn:ietf:params:oauth:token-type:jwt" // #nosec G101 -- This is not a hardcoded credentials, but the value of expected subject token type.
 )
 
 var (
@@ -379,7 +379,7 @@ func GetGCSCredentialsLastModifiedTime() (time.Time, error) {
 		return time.Time{}, fmt.Errorf("environment variable %q for the GCS credential file is not set", envStoreCredentials)
 	}
 
-	data, err := os.ReadFile(credentialsFilePath)
+	data, err := os.ReadFile(credentialsFilePath) // #nosec G304 -- this is a trusted file, obtained from mounted secret.
 	if err != nil {
 		return time.Time{}, fmt.Errorf("unable to read credential file %q: %w", credentialsFilePath, err)
 	}
@@ -484,7 +484,7 @@ func validateServiceAccountCredentials(sa *credConfig, raw []byte) error {
 func validateExternalAccountCredentials(raw []byte, credentialsDir string) error {
 	const (
 		keyAudience                       = "audience"
-		keyCredentialSource               = "credential_source"
+		keyCredentialSource               = "credential_source" // #nosec G101 -- This is not a hardcoded credentials, but json key for in credentials configuration file.
 		keyServiceAccountImpersonationURL = "service_account_impersonation_url"
 		keySubjectTokenType               = "subject_token_type"
 		keyTokenURL                       = "token_url"
@@ -504,7 +504,7 @@ func validateExternalAccountCredentials(raw []byte, credentialsDir string) error
 		externalAccountAllowedFields = append(externalAccountRequiredConfigFields, keyServiceAccountImpersonationURL)
 	)
 
-	projectID, err := os.ReadFile(path.Join(credentialsDir, "projectID"))
+	projectID, err := os.ReadFile(path.Join(credentialsDir, "projectID")) // #nosec G304 -- this is a trusted file, obtained from mounted secret.
 	if err != nil {
 		return err
 	}
