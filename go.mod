@@ -37,8 +37,6 @@ require (
 	sigs.k8s.io/yaml v1.5.0
 )
 
-require github.com/aws/smithy-go v1.22.2
-
 require (
 	cel.dev/expr v0.23.1 // indirect
 	cloud.google.com/go v0.120.0 // indirect
@@ -49,6 +47,7 @@ require (
 	dario.cat/mergo v1.0.1 // indirect
 	github.com/Azure/azure-sdk-for-go/sdk/internal v1.11.0 // indirect
 	github.com/Azure/go-ansiterm v0.0.0-20250102033503-faa5f7b0171c // indirect
+	github.com/aws/smithy-go v1.22.2
 	github.com/BurntSushi/toml v1.5.0 // indirect
 	github.com/GoogleCloudPlatform/opentelemetry-operations-go/detectors/gcp v1.27.0 // indirect
 	github.com/GoogleCloudPlatform/opentelemetry-operations-go/exporter/metric v0.51.0 // indirect
