@@ -16,7 +16,7 @@ The procedure to provide credentials to access the cloud provider object store v
    1. The secret file should be provided, and the file path should be made available as an environment variable: `AWS_APPLICATION_CREDENTIALS`. AWS S3 supports two alternative authentication options:
       1. Static credentials: `accessKeyID` and `secretAccessKey` must be set.
       1. Web Identity Role: `roleARN` and `tokenPath` must be set.
-   2. For `S3-compatible providers` such as MinIO, `endpoint`, `s3ForcePathStyle`, `insecureSkipVerify` and `trustedCaCert`, can also be made available in an above file to configure the S3 client to communicate to a non-AWS provider.
+   2. For `S3-compatible providers` such as MinIO, `endpoint`, `s3ForcePathStyle`, `insecureSkipVerify`, `trustedCaCert`, `requestChecksumCalculation` and `responseChecksumValidation`, can also be made available in an above file to configure the S3 client to communicate to a non-AWS provider.
    3. To enable Server-Side Encryption using Customer Managed Keys for `S3-compatible providers`, use `sseCustomerKey` and `sseCustomerAlgorithm` in the credentials file above. For example, `sseCustomerAlgorithm` could be set to `AES256`, and correspondingly the `sseCustomerKey` is set to a valid AES-256 key.
 
 * For `Google Cloud Storage`:

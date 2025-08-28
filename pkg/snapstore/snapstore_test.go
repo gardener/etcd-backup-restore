@@ -657,6 +657,65 @@ var _ = Describe("Server Side Encryption Customer Managed Key for S3", func() {
 	})
 })
 
+var _ = Describe("Configuring Checksum Handling", func() {
+	s3SnapstoreConfig := brtypes.SnapstoreConfig{
+		Provider:  brtypes.SnapstoreProviderS3,
+		Container: "etcd-test",
+		Prefix:    "v2",
+	}
+	var credentialDirectory, credentialFilePath string
+
+	BeforeEach(func() {
+		credentialDirectory = GinkgoT().TempDir()
+		credentialFilePath = filepath.Join(credentialDirectory, "credentials.json")
+		GinkgoT().Setenv("AWS_APPLICATION_CREDENTIALS_JSON", credentialFilePath)
+	})
+
+	Context("when no checksum config is provided", func() {
+		It("should return the snapstore without errors", func() {
+			// SSE-C fields not present
+			err := os.WriteFile(credentialFilePath, []byte(`{
+  "accessKeyID": "XXXXXXXXXXXXXXXXXXXX",
+  "secretAccessKey": "XXXXXXXXXXXXXXXXXXXX",
+  "region": "eu-west-1"
+}`), os.ModePerm)
+			Expect(err).NotTo(HaveOccurred())
+			_, err = NewS3SnapStore(&s3SnapstoreConfig)
+			Expect(err).NotTo(HaveOccurred())
+		})
+	})
+
+	Context("when a valid checksum config is provided", func() {
+		It("should return an error", func() {
+			// SSE-C fields not present
+			err := os.WriteFile(credentialFilePath, []byte(`{
+  "accessKeyID": "XXXXXXXXXXXXXXXXXXXX",
+  "secretAccessKey": "XXXXXXXXXXXXXXXXXXXX",
+  "region": "eu-west-1",
+  "responseChecksumValidation": "when_required"
+}`), os.ModePerm)
+			Expect(err).NotTo(HaveOccurred())
+			_, err = NewS3SnapStore(&s3SnapstoreConfig)
+			Expect(err).NotTo(HaveOccurred())
+		})
+	})
+
+	Context("when an invalid checksum config is provided", func() {
+		It("should return an error", func() {
+			// SSE-C fields not present
+			err := os.WriteFile(credentialFilePath, []byte(`{
+  "accessKeyID": "XXXXXXXXXXXXXXXXXXXX",
+  "secretAccessKey": "XXXXXXXXXXXXXXXXXXXX",
+  "region": "eu-west-1",
+  "requestChecksumCalculation": "foo"
+}`), os.ModePerm)
+			Expect(err).NotTo(HaveOccurred())
+			_, err = NewS3SnapStore(&s3SnapstoreConfig)
+			Expect(err).To(MatchError(ContainSubstring("invalid value")))
+		})
+	})
+})
+
 var _ = Describe("Get Bucket versioning status for S3 buckets", func() {
 	var (
 		awsS3Client *mockS3Client
