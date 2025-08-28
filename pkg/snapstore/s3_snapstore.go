@@ -345,13 +345,13 @@ func readAWSCredentialFromDir(dirname string) (*awsCredentials, error) {
 		case "token":
 			awsConfig.TokenPath = filepath.Join(dirname, "token")
 		case "requestChecksumCalculation":
-			data, err := os.ReadFile(filepath.Join(dirname, "/requestChecksumCalculation")) // #nosec G304 -- this is a trusted file, obtained via user input.
+			data, err := os.ReadFile(filepath.Join(dirname, "requestChecksumCalculation")) // #nosec G304 -- this is a trusted file, obtained via user input.
 			if err != nil {
 				return nil, err
 			}
 			awsConfig.RequestChecksumCalculation = ptr.To(string(data))
 		case "responseChecksumValidation":
-			data, err := os.ReadFile(filepath.Join(dirname, "/responseChecksumValidation")) // #nosec G304 -- this is a trusted file, obtained via user input.
+			data, err := os.ReadFile(filepath.Join(dirname, "responseChecksumValidation")) // #nosec G304 -- this is a trusted file, obtained via user input.
 			if err != nil {
 				return nil, err
 			}
