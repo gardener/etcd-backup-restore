@@ -111,6 +111,14 @@ backup:
   #   roleARN: arn:aws:iam::123456789012:role/role-name
   # gcs:
   #   serviceAccountJson: service-account-json-with-object-storage-privileges
+  #   credentialsConfig:
+  #     universe_domain: "googleapis.com"
+  #     type: "external_account"
+  #     audience: "//iam.googleapis.com/projects/<project_number>/locations/global/workloadIdentityPools/<pool_name>/providers/<provider_name>"
+  #     subject_token_type: "urn:ietf:params:oauth:token-type:jwt"
+  #     token_url: "https://sts.googleapis.com/v1/token"
+  #     service_account_impersonation_url: "https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/<service_account_email>:generateAccessToken" # optional
+  #   projectID: project
   #   storageAPIEndpoint: endpoint-override-for-storage-api # optional
   #   emulatorEnabled: boolean-flag-to-configure-etcdbr-to-use-gcs-emulator # optional
   # abs:
