@@ -446,6 +446,7 @@ func getGCSCredentialsConfigFromJSON(data []byte) (*credConfig, error) {
 	return credentialsConfig, nil
 }
 
+// validateServiceAccountCredentials validates credentials of type service_account.
 func validateServiceAccountCredentials(sa *credConfig, raw []byte) error {
 	if !projectIDRegexp.MatchString(sa.ProjectID) {
 		return fmt.Errorf("service account project ID %q does not match the expected format '%q'", sa.ProjectID, projectIDRegexp.String())
@@ -481,6 +482,8 @@ func validateServiceAccountCredentials(sa *credConfig, raw []byte) error {
 	return nil
 }
 
+// validateExternalAccountCredentials validates credentials of type external_account.
+// Validation implementation is copied from https://github.com/gardener/gardener-extension-provider-gcp/blob/2e7a86312e7d84f49c4374e9da055cbb41cba8bb/pkg/apis/gcp/validation/workloadidentity.go
 func validateExternalAccountCredentials(raw []byte, credentialsDir string) error {
 	const (
 		keyAudience                       = "audience"
