@@ -112,6 +112,8 @@ func (hb *Heartbeat) RenewMemberLease(ctx context.Context) error {
 	}
 
 	memberID := strconv.FormatUint(response.Header.GetMemberId(), 16)
+	memberID += ":"
+	memberID += strconv.FormatUint(response.Header.GetClusterId(), 16)
 	if response.Header.GetMemberId() == response.Leader {
 		memberID += ":Leader"
 	} else {
