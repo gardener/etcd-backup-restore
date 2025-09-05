@@ -111,16 +111,18 @@ func (hb *Heartbeat) RenewMemberLease(ctx context.Context) error {
 		}
 	}
 
-	memberID := strconv.FormatUint(response.Header.GetMemberId(), 16)
+	memberInfo := strconv.FormatUint(response.Header.GetMemberId(), 16)
+	memberInfo += ":"
+	memberInfo += strconv.FormatUint(response.Header.GetClusterId(), 16)
 	if response.Header.GetMemberId() == response.Leader {
-		memberID += ":Leader"
+		memberInfo += ":Leader"
 	} else {
-		memberID += ":Member"
+		memberInfo += ":Member"
 	}
 
 	//Change HolderIdentity and RenewTime of lease
 	renewedMemberLease := memberLease.DeepCopy()
-	renewedMemberLease.Spec.HolderIdentity = &memberID
+	renewedMemberLease.Spec.HolderIdentity = &memberInfo
 	renewedTime := time.Now()
 	renewedMemberLease.Spec.RenewTime = &metav1.MicroTime{Time: renewedTime}
 	// Update only keys from metadata
@@ -138,7 +140,7 @@ func (hb *Heartbeat) RenewMemberLease(ctx context.Context) error {
 		}
 	}
 
-	hb.logger.Debugf("Renewed member lease for etcd memberID: %v", memberID)
+	hb.logger.Debugf("Renewed member lease for etcd member: %v", memberInfo)
 
 	return nil
 }
