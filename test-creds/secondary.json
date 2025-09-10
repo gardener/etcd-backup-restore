@@ -1,0 +1,1 @@
+{"endpoint":"https://s3.amazonaws.com","region":"us-east-1","accessKeyID":"fake","secretAccessKey":"fake","bucketName":"my-bucket-secondary","SSECustomerKey":"YWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYQ==","SSECustomerAlgorithm":"AES256"}

@@ -166,7 +166,7 @@ var _ = Describe("Save, List, Fetch, Delete from mock snapstore", func() {
 			},
 			// Storage Provider S3 bucket with object lock enabled.
 			brtypes.SnapstoreProviderS3: {
-				SnapStore:              NewS3FromClient(s3ObjectLockedBucket, prefixV2, "/tmp", 5, brtypes.MinChunkSize, awsS3Client, SSECredentials{}),
+				SnapStore:              NewS3FromClient(s3ObjectLockedBucket, prefixV2, "/tmp", 5, brtypes.MinChunkSize, awsS3Client, SSECredentials{}, "test"),
 				objectCountPerSnapshot: 1,
 			},
 			// Storage Provider S3 bucket with object lock not enabled
@@ -176,7 +176,7 @@ var _ = Describe("Save, List, Fetch, Delete from mock snapstore", func() {
 					objects:          objectMap,
 					prefix:           prefixV2,
 					multiPartUploads: map[string]*[][]byte{},
-				}, SSECredentials{}),
+				}, SSECredentials{}, "test"),
 				objectCountPerSnapshot: 1,
 			},
 			// TODO: To be removed as storage provider OCS is using S3 compatible APIs,
@@ -186,7 +186,7 @@ var _ = Describe("Save, List, Fetch, Delete from mock snapstore", func() {
 					objects:          objectMap,
 					prefix:           prefixV2,
 					multiPartUploads: map[string]*[][]byte{},
-				}, SSECredentials{}),
+				}, SSECredentials{}, "test"),
 				objectCountPerSnapshot: 1,
 			},
 		}
@@ -761,7 +761,7 @@ var _ = Describe("Get Immutability time for S3 bucket", func() {
 
 	Context("S3 bucket with object lock enabled and object lock config defined", func() {
 		It("Should return retention period", func() {
-			snapStore := NewS3FromClient(s3ObjectLockedBucket, prefixV2, "/tmp", 5, brtypes.MinChunkSize, awsS3Client, SSECredentials{})
+			snapStore := NewS3FromClient(s3ObjectLockedBucket, prefixV2, "/tmp", 5, brtypes.MinChunkSize, awsS3Client, SSECredentials{}, "test")
 			isObjectLockEnabled, retentionPeriod, err := GetBucketImmutabilityTime(snapStore)
 			Expect(err).ShouldNot(HaveOccurred())
 			Expect(retentionPeriod).Should(Equal(aws.Int32(2)))
@@ -770,7 +770,7 @@ var _ = Describe("Get Immutability time for S3 bucket", func() {
 	})
 	Context("S3 bucket with object lock enabled but object lock config is not defined", func() {
 		It("Should return nil retention period", func() {
-			snapStore := NewS3FromClient(s3ObjectLockBucketButRulesNotDefined, prefixV2, "/tmp", 5, brtypes.MinChunkSize, awsS3Client, SSECredentials{})
+			snapStore := NewS3FromClient(s3ObjectLockBucketButRulesNotDefined, prefixV2, "/tmp", 5, brtypes.MinChunkSize, awsS3Client, SSECredentials{}, "test")
 			isObjectLockEnabled, retentionPeriod, err := GetBucketImmutabilityTime(snapStore)
 			Expect(err).ShouldNot(HaveOccurred())
 			Expect(retentionPeriod).Should(BeNil())
@@ -779,7 +779,7 @@ var _ = Describe("Get Immutability time for S3 bucket", func() {
 	})
 	Context("S3 bucket with object lock not enabled", func() {
 		It("Should return an error", func() {
-			snapStore := NewS3FromClient(s3NonObjectLockedBucket, prefixV2, "/tmp", 5, brtypes.MinChunkSize, awsS3Client, SSECredentials{})
+			snapStore := NewS3FromClient(s3NonObjectLockedBucket, prefixV2, "/tmp", 5, brtypes.MinChunkSize, awsS3Client, SSECredentials{}, "test")
 			isObjectLockEnabled, retentionPeriod, err := GetBucketImmutabilityTime(snapStore)
 			Expect(err).Should(HaveOccurred())
 			Expect(retentionPeriod).Should(BeNil())
