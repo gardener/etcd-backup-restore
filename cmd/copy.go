@@ -36,10 +36,11 @@ func NewCopyCommand(ctx context.Context) *cobra.Command {
 				logger.Fatalf("Could not get source and destination snapstores: %v", err)
 			}
 
-			copier := copier.NewCopier(
+			copier := copier.NewCopierWithConfig(
 				logger,
 				sourceStorage,
 				destStorage,
+				opts.snapstoreConfig,
 				opts.maxBackups,
 				opts.maxBackupAge,
 				opts.maxParallelCopyOperations,

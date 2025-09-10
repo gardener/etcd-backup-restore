@@ -7,6 +7,8 @@ package copier
 import (
 	"context"
 	"fmt"
+	"os"
+	"path"
 	"strings"
 	"sync"
 	"time"
@@ -33,11 +35,37 @@ func GetSourceAndDestinationStores(sourceSnapStoreConfig *brtypes.SnapstoreConfi
 	return sourceSnapStore, destSnapStore, nil
 }
 
+// NewCopierWithConfig creates a new copier with access to destination config for proper prefix handling.
+func NewCopierWithConfig(
+	logger *logrus.Entry,
+	sourceSnapStore brtypes.SnapStore,
+	destSnapStore brtypes.SnapStore,
+	destSnapStoreConfig *brtypes.SnapstoreConfig,
+	maxBackups int,
+	maxBackupAge int,
+	maxParallelCopyOperations int,
+	waitForFinalSnapshot bool,
+	waitForFinalSnapshotTimeout time.Duration,
+) *Copier {
+	return &Copier{
+		logger:                      logger.WithField("actor", "copier"),
+		sourceSnapStore:             sourceSnapStore,
+		destSnapStore:               destSnapStore,
+		destSnapStoreConfig:         destSnapStoreConfig,
+		maxBackups:                  maxBackups,
+		maxBackupAge:                maxBackupAge,
+		maxParallelCopyOperations:   maxParallelCopyOperations,
+		waitForFinalSnapshot:        waitForFinalSnapshot,
+		waitForFinalSnapshotTimeout: waitForFinalSnapshotTimeout,
+	}
+}
+
 // Copier can be used to copy backups from a source to a destination store.
 type Copier struct {
 	logger                      *logrus.Entry
 	sourceSnapStore             brtypes.SnapStore
 	destSnapStore               brtypes.SnapStore
+	destSnapStoreConfig         *brtypes.SnapstoreConfig
 	maxBackups                  int
 	maxBackupAge                int
 	maxParallelCopyOperations   int
@@ -219,11 +247,46 @@ func (c *Copier) copySnapshot(snapshot *brtypes.Snapshot) error {
 	}
 
 	snapshot.SetFinal(false)
+
+	// Update the snapshot's prefix to match the destination store's prefix structure
+	// This ensures the full path including "v2" is preserved in the destination
+	if c.destSnapStoreConfig != nil {
+		snapshot.Prefix = c.getDestinationPrefix()
+	}
+
 	if err := c.destSnapStore.Save(*snapshot, rc); err != nil {
 		return fmt.Errorf("could not save snapshot %s to destination store: %v", snapshot.SnapName, err)
 	}
 
 	return nil
+}
+
+// getDestinationPrefix constructs the destination prefix path based on the destination snapstore config
+func (c *Copier) getDestinationPrefix() string {
+	if c.destSnapStoreConfig == nil {
+		return ""
+	}
+
+	// Construct the path similar to how utils.go does it
+	switch c.destSnapStoreConfig.Provider {
+	case brtypes.SnapstoreProviderLocal, "":
+		if c.destSnapStoreConfig.Container == "" {
+			c.destSnapStoreConfig.Container = "default.bkp"
+		}
+
+		// For local snapstore, the prefix includes the full path
+		homeDir, err := os.UserHomeDir()
+		if err != nil {
+			c.logger.Warnf("Could not get home directory for prefix construction: %v", err)
+			return ""
+		}
+
+		// This mirrors the logic in utils.go getSingleSnapstoreWithIdentifier
+		return path.Join(homeDir, c.destSnapStoreConfig.Container, c.destSnapStoreConfig.Prefix)
+	default:
+		// For cloud providers, the prefix is just the configured prefix
+		return c.destSnapStoreConfig.Prefix
+	}
 }
 
 // doWaitForFinalSnapshot waits for a final full snapshot in the given store.

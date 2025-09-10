@@ -7,6 +7,7 @@ package types
 import (
 	"fmt"
 	"io"
+	"os"
 	"path"
 	"strconv"
 	"strings"
@@ -183,22 +184,25 @@ func (s SnapList) Less(i, j int) bool {
 
 // SnapstoreConfig defines the configuration to create snapshot store.
 type SnapstoreConfig struct {
-	// Provider indicated the cloud provider.
-	Provider string `json:"provider,omitempty"`
-	// Container holds the name of bucket or container to which snapshot will be stored.
-	Container string `json:"container"`
-	// Prefix holds the prefix or directory under StorageContainer under which snapshot will be stored.
-	Prefix string `json:"prefix,omitempty"`
-	// Temporary Directory
-	TempDir string `json:"tempDir,omitempty"`
-	// MaxParallelChunkUploads holds the maximum number of parallel chunk uploads allowed.
-	MaxParallelChunkUploads uint `json:"maxParallelChunkUploads,omitempty"`
-	// MinChunkSize holds the minimum size for a multi-part chunk upload.
-	MinChunkSize int64 `json:"minChunkSize,omitempty"`
-	// IsSource determines if this SnapStore is the source for a copy operation
-	IsSource bool `json:"isSource,omitempty"`
-	// IsEmulatorEnabled indicates whether a storage emulator is being used for the snapstore.
-	IsEmulatorEnabled bool `json:"isEmulatorEnabled,omitempty"`
+	SecondaryContainer               string        `json:"secondaryContainer,omitempty"`
+	TempDir                          string        `json:"tempDir,omitempty"`
+	SecondaryProvider                string        `json:"secondaryProvider,omitempty"`
+	SecondaryPrefix                  string        `json:"secondaryPrefix,omitempty"`
+	Provider                         string        `json:"provider,omitempty"`
+	Container                        string        `json:"container"`
+	Prefix                           string        `json:"prefix,omitempty"`
+	MinChunkSize                     int64         `json:"minChunkSize,omitempty"`
+	BackupSyncRetryBackoff           time.Duration `json:"backupSyncRetryBackoff,omitempty"`
+	BackupSyncPeriod                 time.Duration `json:"backupSyncPeriod,omitempty"`
+	SecondaryMinChunkSize            int64         `json:"secondaryMinChunkSize,omitempty"`
+	MaxParallelChunkUploads          uint          `json:"maxParallelChunkUploads,omitempty"`
+	SecondaryMaxParallelChunkUploads uint          `json:"secondaryMaxParallelChunkUploads,omitempty"`
+	BackupSyncMaxRetries             int           `json:"backupSyncMaxRetries,omitempty"`
+	BackupSyncConcurrentCopies       int           `json:"backupSyncConcurrentCopies,omitempty"`
+	IsSource                         bool          `json:"isSource,omitempty"`
+	IsEmulatorEnabled                bool          `json:"isEmulatorEnabled,omitempty"`
+	IsSecondary                      bool          `json:"isSecondary,omitempty"`
+	BackupSyncEnabled                bool          `json:"backupSyncEnabled,omitempty"`
 }
 
 // AddFlags adds the flags to flagset.
@@ -218,6 +222,20 @@ func (c *SnapstoreConfig) addFlags(fs *flag.FlagSet, parameterPrefix string) {
 	fs.UintVar(&c.MaxParallelChunkUploads, parameterPrefix+"max-parallel-chunk-uploads", c.MaxParallelChunkUploads, "maximum number of parallel chunk uploads allowed")
 	fs.Int64Var(&c.MinChunkSize, parameterPrefix+"min-chunk-size", c.MinChunkSize, "Minimum size for multipart chunk upload")
 	fs.StringVar(&c.TempDir, parameterPrefix+"snapstore-temp-directory", c.TempDir, "temporary directory for processing")
+
+	// Secondary endpoint parameters
+	fs.StringVar(&c.SecondaryProvider, parameterPrefix+"secondary-storage-provider", c.SecondaryProvider, "secondary snapshot storage provider")
+	fs.StringVar(&c.SecondaryContainer, parameterPrefix+"secondary-store-container", c.SecondaryContainer, "secondary container which will be used as snapstore")
+	fs.StringVar(&c.SecondaryPrefix, parameterPrefix+"secondary-store-prefix", c.SecondaryPrefix, "secondary prefix or directory inside container under which snapstore is created")
+	fs.UintVar(&c.SecondaryMaxParallelChunkUploads, parameterPrefix+"secondary-max-parallel-chunk-uploads", c.SecondaryMaxParallelChunkUploads, "secondary maximum number of parallel chunk uploads allowed")
+	fs.Int64Var(&c.SecondaryMinChunkSize, parameterPrefix+"secondary-min-chunk-size", c.SecondaryMinChunkSize, "secondary minimum size for multipart chunk upload")
+
+	// Backup sync configuration flags
+	fs.DurationVar(&c.BackupSyncPeriod, parameterPrefix+"backup-sync-period", 3*time.Minute, "period for checking and copying new backups to secondary endpoint")
+	fs.IntVar(&c.BackupSyncMaxRetries, parameterPrefix+"backup-sync-max-retries", 5, "maximum number of retry attempts for failed backup copies")
+	fs.DurationVar(&c.BackupSyncRetryBackoff, parameterPrefix+"backup-sync-retry-backoff", 10*time.Second, "backoff duration between backup copy retry attempts")
+	fs.IntVar(&c.BackupSyncConcurrentCopies, parameterPrefix+"backup-sync-concurrent-copies", 10, "maximum number of concurrent backup copy operations")
+	fs.BoolVar(&c.BackupSyncEnabled, parameterPrefix+"backup-sync-enabled", false, "enable background backup synchronization to secondary endpoint")
 }
 
 // Validate validates the config.
@@ -253,4 +271,69 @@ func (c *SnapstoreConfig) MergeWith(other *SnapstoreConfig) {
 	if c.TempDir == "" {
 		c.TempDir = other.TempDir
 	}
+}
+
+// HasSecondaryEndpoint returns true if secondary endpoint is configured.
+func (c *SnapstoreConfig) HasSecondaryEndpoint() bool {
+	// Check if SecondaryContainer is explicitly set
+	if c.SecondaryContainer != "" {
+		return true
+	}
+	// Also check environment variable as fallback (similar to primary container logic)
+	return os.Getenv("SECONDARY_STORAGE_CONTAINER") != ""
+}
+
+// GetSecondaryConfig creates a SnapstoreConfig for the secondary endpoint.
+func (c *SnapstoreConfig) GetSecondaryConfig() *SnapstoreConfig {
+	if !c.HasSecondaryEndpoint() {
+		return nil
+	}
+
+	secondaryContainer := c.SecondaryContainer
+	// If SecondaryContainer is empty, check environment variable (similar to primary container logic)
+	if secondaryContainer == "" {
+		secondaryContainer = os.Getenv("SECONDARY_STORAGE_CONTAINER")
+	}
+
+	secondaryConfig := &SnapstoreConfig{
+		Provider:                c.SecondaryProvider,
+		Container:               secondaryContainer,
+		Prefix:                  c.SecondaryPrefix,
+		TempDir:                 c.TempDir, // Share temp directory
+		MaxParallelChunkUploads: c.SecondaryMaxParallelChunkUploads,
+		MinChunkSize:            c.SecondaryMinChunkSize,
+		IsSource:                false,
+		IsSecondary:             true, // Mark as secondary endpoint
+		IsEmulatorEnabled:       c.IsEmulatorEnabled,
+	}
+
+	// Set defaults if not specified
+	if secondaryConfig.Provider == "" {
+		secondaryConfig.Provider = c.Provider // Default to same provider as primary
+	}
+	if secondaryConfig.MaxParallelChunkUploads == 0 {
+		secondaryConfig.MaxParallelChunkUploads = c.MaxParallelChunkUploads
+	}
+	if secondaryConfig.MinChunkSize == 0 {
+		secondaryConfig.MinChunkSize = c.MinChunkSize
+	}
+
+	return secondaryConfig
+}
+
+// OperationResult represents the result of an operation on a specific endpoint.
+type OperationResult struct {
+	Error    error  `json:"error,omitempty"`
+	Endpoint string `json:"endpoint"`
+	Success  bool   `json:"success"`
+}
+
+// DualOperationResult represents the results of an operation on both endpoints.
+type DualOperationResult struct {
+	// Primary holds the result for the primary endpoint.
+	Primary OperationResult `json:"primary"`
+	// Secondary holds the result for the secondary endpoint.
+	Secondary OperationResult `json:"secondary"`
+	// OverallSuccess indicates if at least one endpoint operation succeeded.
+	OverallSuccess bool `json:"overallSuccess"`
 }

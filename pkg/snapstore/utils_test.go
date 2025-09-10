@@ -122,3 +122,88 @@ var _ = Describe("GetSnapstore", func() {
 		})
 	})
 })
+
+var _ = Describe("GetSnapstoreWithCopier", func() {
+	var (
+		config *brtypes.SnapstoreConfig
+	)
+
+	BeforeEach(func() {
+		config = &brtypes.SnapstoreConfig{
+			Provider:  brtypes.SnapstoreProviderLocal,
+			Prefix:    "test",
+			Container: "test-container",
+			TempDir:   "/tmp",
+		}
+	})
+
+	Context("with single endpoint", func() {
+		It("should return SnapstoreWithCopier with nil copier", func() {
+			snapstoreWithCopier, err := GetSnapstoreWithCopier(config)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(snapstoreWithCopier).ToNot(BeNil())
+			Expect(snapstoreWithCopier.Store).ToNot(BeNil())
+			Expect(snapstoreWithCopier.Copier).To(BeNil())
+		})
+	})
+
+	Context("with dual endpoints", func() {
+		BeforeEach(func() {
+			config.SecondaryProvider = brtypes.SnapstoreProviderLocal
+			config.SecondaryContainer = "secondary-container"
+			config.SecondaryPrefix = "secondary-prefix"
+		})
+
+		It("should return SnapstoreWithCopier with copier", func() {
+			snapstoreWithCopier, err := GetSnapstoreWithCopier(config)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(snapstoreWithCopier).ToNot(BeNil())
+			Expect(snapstoreWithCopier.Store).ToNot(BeNil())
+			Expect(snapstoreWithCopier.Copier).ToNot(BeNil())
+		})
+
+		It("should have correct primary and secondary stores in copier", func() {
+			snapstoreWithCopier, err := GetSnapstoreWithCopier(config)
+			Expect(err).ToNot(HaveOccurred())
+
+			// Check copier is configured correctly
+			copier := snapstoreWithCopier.Copier
+			Expect(copier).ToNot(BeNil())
+
+			// Both stores should be LocalSnapStore for this test
+			_, isPrimaryLocal := snapstoreWithCopier.Store.(*LocalSnapStore)
+			Expect(isPrimaryLocal).To(BeTrue())
+		})
+	})
+
+	Context("when secondary endpoint configuration is incomplete", func() {
+		BeforeEach(func() {
+			config.SecondaryProvider = brtypes.SnapstoreProviderLocal
+			// Missing SecondaryContainer
+		})
+
+		It("should return single snapstore without copier", func() {
+			snapstoreWithCopier, err := GetSnapstoreWithCopier(config)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(snapstoreWithCopier).ToNot(BeNil())
+			Expect(snapstoreWithCopier.Store).ToNot(BeNil())
+			Expect(snapstoreWithCopier.Copier).To(BeNil())
+		})
+	})
+
+	Context("when primary snapstore creation fails", func() {
+		BeforeEach(func() {
+			config.Provider = "invalid-provider"
+			config.SecondaryProvider = brtypes.SnapstoreProviderLocal
+			config.SecondaryContainer = "secondary-container"
+		})
+
+		It("should fall back to secondary when primary fails", func() {
+			snapstoreWithCopier, err := GetSnapstoreWithCopier(config)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(snapstoreWithCopier).ToNot(BeNil())
+			Expect(snapstoreWithCopier.Store).ToNot(BeNil()) // Should be secondary store
+			Expect(snapstoreWithCopier.Copier).To(BeNil())   // No copier since primary failed
+		})
+	})
+})
