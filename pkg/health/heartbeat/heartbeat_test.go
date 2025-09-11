@@ -332,6 +332,9 @@ var _ = Describe("Heartbeat", func() {
 				}, l)
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(l.Spec.HolderIdentity).ToNot(BeNil())
+				// Test if HolderIdentity is in the format <memberID>:<clusterID>:Leader
+				// where memberID and clusterID are in hexadecimal format.
+				Expect(*l.Spec.HolderIdentity).To(MatchRegexp("^[a-f0-9]+:[a-f0-9]+:Leader$"))
 				Expect(l.Annotations).ToNot(BeEmpty())
 				Expect(l.Annotations[heartbeat.PeerURLTLSEnabledKey]).To(Equal("true"))
 				err = clientSet.Delete(context.TODO(), l)
