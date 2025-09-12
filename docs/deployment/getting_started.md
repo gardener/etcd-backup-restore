@@ -20,8 +20,10 @@ The procedure to provide credentials to access the cloud provider object store v
    3. To enable Server-Side Encryption using Customer Managed Keys for `S3-compatible providers`, use `sseCustomerKey` and `sseCustomerAlgorithm` in the credentials file above. For example, `sseCustomerAlgorithm` could be set to `AES256`, and correspondingly the `sseCustomerKey` is set to a valid AES-256 key.
 
 * For `Google Cloud Storage`:
-   1. The service account json file should be provided in the `~/.gcp` as a `service-account-file.json` file.
-   2. The service account json file should be provided, and the file path should be made available as environment variable `GOOGLE_APPLICATION_CREDENTIALS`.
+   1. GCS supports two alternative authentication options:
+      1. Static credentials, they should be provided via a file in the `~/.gcp` folder named `service-account-file.json`.This file must have field named `type` with value `service_account`.
+      1. Workload Identity credentials, they should be provided via a file in the `~/.gcp` folder named `credentialsConfig` which have field named `type` with value `external_account`. Additionally, it is expected in the `~/.gcp` folder files named `projectID` and `token` to be provided, they contain the GCP project ID and the JWT respectively.
+   2. The service account json or the credentials config file should be provided, and the path to it should be made available as environment variable `GOOGLE_APPLICATION_CREDENTIALS`.
    3. If using a storage API [endpoint override](https://pkg.go.dev/cloud.google.com/go#hdr-Endpoint_Override), such as a [regional endpoint](https://cloud.google.com/storage/docs/regional-endpoints) or a local GCS emulator endpoint, then the endpoint must be made available via a file named `storageAPIEndpoint` residing in the `~/.gcp` directory.
 
 * For `Azure Blob storage`:
