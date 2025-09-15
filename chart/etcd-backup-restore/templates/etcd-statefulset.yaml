@@ -223,7 +223,11 @@ spec:
           value: "/var/etcd-backup"
   {{- else if eq .Values.backup.storageProvider "GCS" }}
         - name: "GOOGLE_APPLICATION_CREDENTIALS"
+          {{- if .Values.backup.tokenAuth.enabled }}
+          value: "/var/.gcp/credentialsConfig"
+          {{- else }}
           value: "/var/.gcp/serviceaccount.json"
+          {{- end }}
   {{- else if eq .Values.backup.storageProvider "Swift" }}
         - name: "OPENSTACK_APPLICATION_CREDENTIALS"
           value: "/var/etcd-backup"

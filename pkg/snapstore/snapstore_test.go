@@ -833,7 +833,7 @@ func createCredentialFilesInDirectory(directory string, filenames []string) (tim
 	for _, filename := range filenames {
 		fullFilePath = filepath.Join(directory, filename)
 		// creates and writes content to the file
-		err := os.WriteFile(fullFilePath, []byte("INITIAL CONTENT"), os.ModePerm)
+		err := os.WriteFile(fullFilePath, []byte(`{"content": "initial_content"}`), os.ModePerm)
 		if err != nil {
 			return time.Time{}, err
 		}
@@ -851,7 +851,7 @@ func modifyCredentialFileInDirectory(credentialDirectory, credentialFile string)
 	// sleep before the file is modified, file modification timestamp does not change otherwise on concourse
 	time.Sleep(time.Millisecond * 100)
 	credentialFilePath := filepath.Join(credentialDirectory, credentialFile)
-	return os.WriteFile(credentialFilePath, []byte("MODIFIED CONTENT"), os.ModePerm)
+	return os.WriteFile(credentialFilePath, []byte(`{"content": "modified_content"}`), os.ModePerm)
 }
 
 // generates a unique string that would be the contents of a snapshot
