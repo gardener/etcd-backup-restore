@@ -316,7 +316,7 @@ func (ssr *Snapshotter) takeFullSnapshot(isFinal bool) (*brtypes.Snapshot, error
 	}
 	if hasSecretUpdated {
 		var err error
-		ssr.store, err = snapstore.GetSnapstore(ssr.snapstoreConfig)
+		ssr.store, err = snapstore.GetResilientSnapstore(ssr.snapstoreConfig, ssr.logger)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create snapstore from configured storage provider: %v", err)
 		}
@@ -452,7 +452,7 @@ func (ssr *Snapshotter) TakeDeltaSnapshot() (*brtypes.Snapshot, error) {
 	}
 	if hasSecretUpdated {
 		var err error
-		ssr.store, err = snapstore.GetSnapstore(ssr.snapstoreConfig)
+		ssr.store, err = snapstore.GetResilientSnapstore(ssr.snapstoreConfig, ssr.logger)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create snapstore from configured storage provider: %v", err)
 		}

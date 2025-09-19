@@ -31,12 +31,16 @@ type ocsAuthOptions struct {
 
 // NewOCSSnapStore creates a new S3SnapStore from shared configuration with the specified bucket.
 func NewOCSSnapStore(config *brtypes.SnapstoreConfig) (*S3SnapStore, error) {
+	return newOCSSnapStoreWithIdentifier(config, "primary")
+}
+
+func newOCSSnapStoreWithIdentifier(config *brtypes.SnapstoreConfig, identifier string) (*S3SnapStore, error) {
 	credentials, err := getOCSAuthOptions(getEnvPrefixString(config.IsSource))
 	if err != nil {
 		return nil, err
 	}
 
-	return newGenericS3FromAuthOpt(config.Container, config.Prefix, config.TempDir, config.MaxParallelChunkUploads, config.MinChunkSize, ocsAuthOptionsToGenericS3(*credentials))
+	return newGenericS3FromAuthOptWithIdentifier(config.Container, config.Prefix, config.TempDir, config.MaxParallelChunkUploads, config.MinChunkSize, ocsAuthOptionsToGenericS3(*credentials), identifier)
 }
 
 func getOCSAuthOptions(prefix string) (*ocsAuthOptions, error) {

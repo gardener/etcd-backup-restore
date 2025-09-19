@@ -228,8 +228,8 @@ func (b *BackupRestoreServer) runServer(ctx context.Context, restoreOpts *brtype
 			var err error
 			var defragCallBack defragmentor.CallbackFunc
 			if runServerWithSnapshotter {
-				b.logger.Infof("Creating snapstore from provider: %s", b.config.SnapstoreConfig.Provider)
-				ss, err = snapstore.GetSnapstore(b.config.SnapstoreConfig)
+				b.logger.Infof("Creating resilient snapstore from provider: %s", b.config.SnapstoreConfig.Provider)
+				ss, err = snapstore.GetResilientSnapstore(b.config.SnapstoreConfig, b.logger)
 				if err != nil {
 					b.logger.Fatalf("failed to create snapstore from configured storage provider: %v", err)
 				}

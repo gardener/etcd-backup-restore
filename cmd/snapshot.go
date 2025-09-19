@@ -38,7 +38,7 @@ storing snapshots on various cloud storage providers as well as local disk locat
 
 			opts.complete()
 
-			ss, err := snapstore.GetSnapstore(opts.snapstoreConfig)
+			ss, err := snapstore.GetResilientSnapstore(opts.snapstoreConfig, logger)
 			if err != nil {
 				logger.Fatalf("Failed to create snapstore from configured storage provider: %v", err)
 			}

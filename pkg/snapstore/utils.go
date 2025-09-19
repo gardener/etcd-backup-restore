@@ -21,15 +21,209 @@ import (
 )
 
 const (
-	envStorageContainer       = "STORAGE_CONTAINER"
-	sourceEnvStorageContainer = "SOURCE_STORAGE_CONTAINER"
-	defaultLocalStore         = "default.bkp"
-	backupVersion             = backupVersionV2
-	sourcePrefixString        = "SOURCE_"
+	envStorageContainer          = "STORAGE_CONTAINER"
+	sourceEnvStorageContainer    = "SOURCE_STORAGE_CONTAINER"
+	secondaryEnvStorageContainer = "SECONDARY_STORAGE_CONTAINER"
+	defaultLocalStore            = "default.bkp"
+	backupVersion                = backupVersionV2
+	sourcePrefixString           = "SOURCE_"
+	secondaryPrefixString        = "SECONDARY_"
 )
 
 // GetSnapstore returns the snapstore object for give storageProvider with specified container
 func GetSnapstore(config *brtypes.SnapstoreConfig) (brtypes.SnapStore, error) {
+	// Check if dual endpoint is configured
+	if config.HasSecondaryEndpoint() {
+		return GetDualSnapstore(config)
+	}
+
+	return getSingleSnapstore(config)
+}
+
+// GetResilientSnapstore creates a snapstore with enhanced error handling for dual endpoints
+func GetResilientSnapstore(config *brtypes.SnapstoreConfig, logger *logrus.Entry) (brtypes.SnapStore, error) {
+	// Dump configuration on startup for debugging
+	logger.Infof("Snapstore configuration - Provider: %s, Container: %s, Prefix: %s",
+		config.Provider, config.Container, config.Prefix)
+	logger.Infof("Secondary endpoint configuration - HasSecondary: %t, SecondaryContainer: %s, SecondaryProvider: %s",
+		config.HasSecondaryEndpoint(), config.SecondaryContainer, config.SecondaryProvider)
+
+	// Also dump relevant environment variables that might affect secondary configuration
+	secondaryContainer := os.Getenv("SECONDARY_STORAGE_CONTAINER")
+	secondaryProvider := os.Getenv("SECONDARY_STORAGE_PROVIDER")
+	logger.Infof("Environment variables - SECONDARY_STORAGE_CONTAINER: %s, SECONDARY_STORAGE_PROVIDER: %s",
+		secondaryContainer, secondaryProvider)
+
+	// Check if dual endpoint is configured
+	if config.HasSecondaryEndpoint() {
+		logger.Infof("Creating dual snapstore with primary and secondary endpoints")
+		return createResilientDualSnapstore(config, logger)
+	}
+
+	logger.Infof("Creating single snapstore (no secondary endpoint configured)")
+	// Single endpoint - use standard creation with resilient wrapper for S3
+	return createResilientSingleSnapstore(config, logger)
+}
+
+// createResilientSingleSnapstore creates a single snapstore with resilient error handling
+func createResilientSingleSnapstore(config *brtypes.SnapstoreConfig, logger *logrus.Entry) (brtypes.SnapStore, error) {
+	return createResilientSingleSnapstoreWithIdentifier(config, logger, "primary")
+}
+
+func createResilientSingleSnapstoreWithIdentifier(config *brtypes.SnapstoreConfig, logger *logrus.Entry, identifier string) (brtypes.SnapStore, error) {
+	store, err := getSingleSnapstoreWithIdentifier(config, identifier)
+	if err != nil {
+		return nil, err
+	}
+
+	// Wrap S3 stores with resilient handling
+	if config.Provider == brtypes.SnapstoreProviderS3 {
+		if s3Store, ok := store.(*S3SnapStore); ok {
+			return &ResilientS3SnapStore{
+				S3SnapStore: s3Store,
+				logger:      logger.WithField("actor", "resilient-s3-snapstore"),
+			}, nil
+		}
+	}
+
+	return store, nil
+}
+
+// createResilientDualSnapstore creates a dual snapstore with resilient error handling
+func createResilientDualSnapstore(config *brtypes.SnapstoreConfig, logger *logrus.Entry) (brtypes.SnapStore, error) {
+	var primaryStore, secondaryStore brtypes.SnapStore
+	var primaryErr, secondaryErr error
+
+	logger.Infof("Creating dual snapstore - Primary: %s/%s, Secondary: %s/%s",
+		config.Provider, config.Container, config.SecondaryProvider, config.SecondaryContainer)
+
+	// Create primary snapstore
+	primaryStore, primaryErr = createResilientSingleSnapstore(config, logger)
+	if primaryErr != nil {
+		if isSnapstoreTransientError(primaryErr) {
+			logger.Warnf("Transient error creating primary snapstore: %v", primaryErr)
+		} else {
+			logger.Errorf("Fatal error creating primary snapstore: %v", primaryErr)
+		}
+	} else {
+		logger.Infof("Successfully created primary snapstore")
+	}
+
+	// Create secondary snapstore configuration
+	secondaryConfig := config.GetSecondaryConfig()
+	if secondaryConfig == nil {
+		logger.Warnf("No secondary configuration available - falling back to single snapstore")
+		if primaryErr != nil {
+			return nil, fmt.Errorf("primary snapstore failed and no secondary configured: %v", primaryErr)
+		}
+		return primaryStore, nil
+	}
+
+	logger.Infof("Creating secondary snapstore with config - Provider: %s, Container: %s",
+		secondaryConfig.Provider, secondaryConfig.Container)
+
+	// Create secondary snapstore
+	secondaryStore, secondaryErr = createResilientSingleSnapstoreWithIdentifier(secondaryConfig, logger, "secondary")
+	if secondaryErr != nil {
+		if isSnapstoreTransientError(secondaryErr) {
+			logger.Warnf("Transient error creating secondary snapstore: %v", secondaryErr)
+		} else {
+			logger.Errorf("Fatal error creating secondary snapstore: %v", secondaryErr)
+		}
+	} else {
+		logger.Infof("Successfully created secondary snapstore")
+	}
+
+	// Determine what to return based on success/failure of each endpoint
+	if primaryErr != nil && secondaryErr != nil {
+		// Both failed - only fail if errors are NOT transient, to allow for temporary network issues
+		if !isSnapstoreTransientError(primaryErr) && !isSnapstoreTransientError(secondaryErr) {
+			return nil, fmt.Errorf("failed to create both primary and secondary snapstores - Primary: %v, Secondary: %v", primaryErr, secondaryErr)
+		}
+		// If at least one error is transient, log but continue with degraded service
+		logger.Warnf("Both endpoints have errors but at least one is transient, creating limited dual store")
+	}
+
+	// Create dual store with whatever we have (nil stores will be handled gracefully)
+	if primaryStore != nil && secondaryStore != nil {
+		logger.Infof("Created dual snapstore with both primary and secondary endpoints")
+		return NewDualSnapStore(primaryStore, secondaryStore, logger), nil
+	} else if primaryStore != nil {
+		logger.Warnf("Only primary snapstore available, using single endpoint")
+		return primaryStore, nil
+	} else if secondaryStore != nil {
+		logger.Warnf("Only secondary snapstore available, using as primary")
+		return secondaryStore, nil
+	}
+
+	// Both stores are nil but we had transient errors
+	logger.Errorf("Both snapstores are nil due to transient errors")
+	return nil, fmt.Errorf("all endpoints temporarily unavailable - Primary: %v, Secondary: %v", primaryErr, secondaryErr)
+}
+
+// isSnapstoreTransientError checks if a snapstore creation error is transient
+func isSnapstoreTransientError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	errStr := err.Error()
+
+	// DNS resolution failures
+	if strings.Contains(errStr, "no such host") ||
+		strings.Contains(errStr, "dial tcp: lookup") ||
+		strings.Contains(errStr, "request send failed") {
+		return true
+	}
+
+	// Network connectivity issues
+	if strings.Contains(errStr, "connection refused") ||
+		strings.Contains(errStr, "connection timeout") ||
+		strings.Contains(errStr, "i/o timeout") {
+		return true
+	}
+
+	// AWS SDK specific errors that indicate network issues
+	if strings.Contains(errStr, "RequestError") ||
+		strings.Contains(errStr, "NoCredentialsErr") ||
+		strings.Contains(errStr, "dial tcp") {
+		return true
+	}
+
+	return false
+}
+
+// GetDualSnapstore creates a dual snapstore with primary and secondary endpoints
+func GetDualSnapstore(config *brtypes.SnapstoreConfig) (brtypes.SnapStore, error) {
+	// Create primary snapstore
+	primaryStore, err := getSingleSnapstore(config)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create primary snapstore: %v", err)
+	}
+
+	// Create secondary snapstore configuration
+	secondaryConfig := config.GetSecondaryConfig()
+	if secondaryConfig == nil {
+		return nil, fmt.Errorf("secondary configuration is invalid")
+	}
+
+	// Create secondary snapstore
+	secondaryStore, err := getSingleSnapstore(secondaryConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create secondary snapstore: %v", err)
+	}
+
+	// Create and return dual snapstore
+	logger := logrus.NewEntry(logrus.New())
+	return NewDualSnapStore(primaryStore, secondaryStore, logger), nil
+}
+
+// getSingleSnapstore returns the snapstore object for a single endpoint
+func getSingleSnapstore(config *brtypes.SnapstoreConfig) (brtypes.SnapStore, error) {
+	return getSingleSnapstoreWithIdentifier(config, "primary")
+}
+
+func getSingleSnapstoreWithIdentifier(config *brtypes.SnapstoreConfig, identifier string) (brtypes.SnapStore, error) {
 	if config.Prefix == "" {
 		config.Prefix = backupVersion
 	}
@@ -75,7 +269,7 @@ func GetSnapstore(config *brtypes.SnapstoreConfig) (brtypes.SnapStore, error) {
 		}
 		return NewLocalSnapStore(path.Join(homeDir, config.Container, config.Prefix))
 	case brtypes.SnapstoreProviderS3:
-		return NewS3SnapStore(config)
+		return newS3SnapStoreWithIdentifier(config, identifier)
 	case brtypes.SnapstoreProviderABS:
 		return NewABSSnapStore(config)
 	case brtypes.SnapstoreProviderGCS:
@@ -85,9 +279,9 @@ func GetSnapstore(config *brtypes.SnapstoreConfig) (brtypes.SnapStore, error) {
 	case brtypes.SnapstoreProviderOSS:
 		return NewOSSSnapStore(config)
 	case brtypes.SnapstoreProviderECS:
-		return NewECSSnapStore(config)
+		return newECSSnapStoreWithIdentifier(config, identifier)
 	case brtypes.SnapstoreProviderOCS:
-		return NewOCSSnapStore(config)
+		return newOCSSnapStoreWithIdentifier(config, identifier)
 	case brtypes.SnapstoreProviderFakeFailed:
 		return NewFailedSnapStore(), nil
 	default:
@@ -156,6 +350,16 @@ func collectChunkUploadError(chunkUploadCh chan<- chunk, resCh <-chan chunkUploa
 func getEnvPrefixString(isSource bool) string {
 	if isSource {
 		return sourcePrefixString
+	}
+	return ""
+}
+
+func getEnvPrefixStringForConfig(config *brtypes.SnapstoreConfig) string {
+	if config.IsSource {
+		return sourcePrefixString
+	}
+	if config.IsSecondary {
+		return secondaryPrefixString
 	}
 	return ""
 }
