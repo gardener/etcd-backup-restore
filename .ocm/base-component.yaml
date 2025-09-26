@@ -1,0 +1,13 @@
+labels:
+  - name: cloud.gardener.cnudie/responsibles
+    value:
+    - type: githubTeam
+      teamname: gardener/etcd-druid-maintainers
+
+main-source:
+  labels:
+    - name: cloud.gardener.cnudie/dso/scanning-hints/source_analysis/v1
+      value:
+        policy: skip
+        comment: |
+          we use gosec for sast scanning. See attached log.
