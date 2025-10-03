@@ -1,0 +1,23 @@
+# See the OWNERS docs at https://go.k8s.io/owners
+
+aliases:
+  etcd-backup-restore-reviewers:
+  - aaronfern
+  - anveshreddy18
+  - CaptainIRS
+  - ishan16696
+  - renormalize
+  - seshachalam-yv
+  - shreyas-s-rao
+  - Shreyas-s14
+  - unmarshall
+  etcd-backup-restore-approvers:
+  - aaronfern
+  - anveshreddy18
+  - CaptainIRS
+  - ishan16696
+  - renormalize
+  - seshachalam-yv
+  - shreyas-s-rao
+  - Shreyas-s14
+  - unmarshall
