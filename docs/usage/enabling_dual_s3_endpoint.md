@@ -168,44 +168,6 @@ Monitor these aspects for operational health:
 - Endpoint availability
 - Snapshot count consistency between endpoints
 
-## Best Practices
-
-### Configuration Recommendations
-
-1. **Different Providers**: Use different cloud providers for primary and secondary endpoints for better fault tolerance
-2. **Geographic Distribution**: Place endpoints in different regions or availability zones
-3. **Appropriate Sync Period**: Balance between data freshness and system load (recommended: 3-5 minutes)
-4. **Chunk Size Tuning**: Adjust chunk sizes based on network conditions and storage provider requirements
-
-### Operational Considerations
-
-1. **Network Bandwidth**: Ensure sufficient bandwidth between primary and secondary endpoints
-2. **Cost Management**: Consider data transfer costs when using different cloud providers
-3. **Access Permissions**: Ensure service accounts have appropriate permissions for both endpoints
-4. **Monitoring**: Set up alerts for sync failures and endpoint unavailability
-
-### Example Production Configuration
-
-```bash
-# Production dual-endpoint configuration
-etcd-backup-restore server \
-  --storage-provider="S3" \
-  --store-container="prod-etcd-backups-primary" \
-  --store-prefix="cluster-1/backups" \
-  --secondary-storage-provider="GCS" \
-  --secondary-store-container="prod-etcd-backups-secondary" \
-  --secondary-store-prefix="cluster-1/backups" \
-  --backup-sync-enabled=true \
-  --backup-sync-period="5m" \
-  --backup-sync-max-retries=3 \
-  --backup-sync-retry-backoff="30s" \
-  --backup-sync-concurrent-copies=5 \
-  --min-chunk-size=5242880 \                            # 5MB
-  --max-parallel-chunk-uploads=4 \
-  --secondary-min-chunk-size=10485760 \                 # 10MB
-  --secondary-max-parallel-chunk-uploads=6
-```
-
 ## Troubleshooting
 
 ### Common Issues
@@ -234,5 +196,3 @@ etcd-backup-restore snapshot list --storage-provider=S3 --store-container=my-buc
 # Test secondary endpoint connectivity
 etcd-backup-restore snapshot list --storage-provider=S3 --store-container=my-secondary-bucket
 ```
-
-The dual-endpoint feature provides robust backup redundancy while maintaining operational simplicity through automated synchronization and comprehensive error handling.

@@ -298,7 +298,7 @@ func (c *SnapstoreConfig) GetSecondaryConfig() *SnapstoreConfig {
 	secondaryConfig := &SnapstoreConfig{
 		Provider:                c.SecondaryProvider,
 		Container:               secondaryContainer,
-		Prefix:                  c.SecondaryPrefix,
+		Prefix:                  path.Join(c.SecondaryPrefix, backupFormatVersion),
 		TempDir:                 c.TempDir, // Share temp directory
 		MaxParallelChunkUploads: c.SecondaryMaxParallelChunkUploads,
 		MinChunkSize:            c.SecondaryMinChunkSize,
