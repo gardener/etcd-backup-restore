@@ -70,8 +70,23 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-
-          .ci/unit_test
+          mkdir -p /tmp/blobs.d
+          .ci/unit_test |& tee /tmp/blobs.d/test-results.txt
+          tar czf /tmp/blobs.d/test-results.tar.gz -C /tmp/blobs.d test-results.txt
+      - name: add-test-results-to-component-descriptor
+        uses: gardener/cc-utils/.github/actions/export-ocm-fragments@master
+        with:
+          blobs-directory: /tmp/blobs.d
+          ocm-resources: |
+            name: test-results
+            relation: local
+            access:
+              type: localBlob
+              localReference: test-results.tar.gz
+            labels:
+              - name: gardener.cloud/purposes
+                value:
+                  - test
 
   # integration-test:
   # TODO: integration-tests will need substantial re-work (not a default testmachinery-test, but
@@ -83,5 +98,26 @@ jobs:
       contents: read
     with:
       linter: gosec
-      run: .ci/check
+      run: |
+        set -euo pipefail
+        mkdir -p /tmp/blobs.d
+        .ci/check
+        tar czf /tmp/blobs.d/gosec-report.tar.gz gosec-report.sarif
       go-version: '1.25'
+    steps:
+      - name: add-gosec-report-to-component-descriptor
+        uses: gardener/cc-utils/.github/actions/export-ocm-fragments@master
+        with:
+          blobs-directory: /tmp/blobs.d
+          ocm-resources: |
+            name: gosec-report
+            relation: local
+            access:
+              type: localBlob
+              localReference: gosec-report.tar.gz
+            labels:
+              - name: gardener.cloud/purposes
+                value:
+                  - lint
+                  - sast
+                  - gosec
