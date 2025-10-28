@@ -1,6 +1,6 @@
 # Garbage Collection (GC) Feature
 
-The etcd-backup-restore project incorporates a Garbage Collection (GC) feature designed to manage storage space effectively by systematically discarding older backups. The [`RunGarbageCollector`](pkg/snapshot/snapshotter/garbagecollector.go) function controls this process, marking older backups as disposable and subsequently removing them based on predefined rules.
+The etcd-backup-restore project incorporates a Garbage Collection (GC) feature designed to manage storage space effectively by systematically discarding older backups. The [`RunGarbageCollector`](../../pkg/snapshot/snapshotter/garbagecollector.go) function controls this process, marking older backups as disposable and subsequently removing them based on predefined rules.
 
 ## GC Policies
 
