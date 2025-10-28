@@ -14,7 +14,7 @@ const (
 	ZlibCompressionPolicy = "zlib"
 
 	// DefaultCompression is constant used for whether to compress the snapshots or not.
-	DefaultCompression = false
+	DefaultCompression = true
 	// DefaultCompressionPolicy is constant for default compression algorithm(only if compression is enabled).
 	DefaultCompressionPolicy = "gzip"
 
