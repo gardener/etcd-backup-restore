@@ -604,6 +604,34 @@ func GetMemberClientURLs(configFile string) ([]string, error) {
 	return clientURLs, nil
 }
 
+// GetOtherMemberClientURLs retrieves the client URLs of all members other than the current etcd member
+// using the POD_NAME environment variable.
+func GetOtherMemberClientURLs(configFile string) ([]string, error) {
+	memberName, err := GetEnvVarOrError("POD_NAME")
+	if err != nil {
+		return nil, err
+	}
+
+	advURLsConfig, err := parseAdvertiseURLsConfig(configFile)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse advertise URLs config: %w", err)
+	}
+
+	clientURLs := []string{}
+	for member, urls := range advURLsConfig.AdvertiseClientURLs {
+		if member != memberName {
+			clientURLs = append(clientURLs, urls...)
+		}
+	}
+
+	for _, clientURL := range clientURLs {
+		if _, err := url.Parse(clientURL); err != nil {
+			return nil, fmt.Errorf("invalid client URL %s: %w", clientURL, err)
+		}
+	}
+	return clientURLs, nil
+}
+
 // IsPeerURLTLSEnabled checks whether all peer URLs are TLS-enabled (i.e., use the "https" scheme).
 func IsPeerURLTLSEnabled() (bool, error) {
 	memberPeerURLs, err := GetMemberPeerURLs(GetConfigFilePath())
