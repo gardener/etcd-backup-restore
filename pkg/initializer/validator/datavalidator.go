@@ -99,6 +99,12 @@ func (d *DataValidator) sanityCheck(failBelowRevision int64) (DataDirStatus, err
 			}
 		}
 
+		// Change file permissions to handle if file have broader permissions.
+		// Note: Do not remove this additional handling, see: https://github.com/gardener/etcd-backup-restore/issues/932#issuecomment-3466184228
+		if err := os.Chmod(path, 0600); err != nil {
+			d.Logger.Fatalf("can't change the permission of the `safe_guard` file because : %v", err)
+		}
+
 		// read the content of the file safe_guard and match it with the environment variable
 		content, err := os.ReadFile(path) // #nosec G304 -- this is a trusted safe_guard file written to by etcdbr.
 		if err != nil {
