@@ -20,16 +20,109 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+// SnapstoreWithCopier holds a snapstore and optional backup copier
+type SnapstoreWithCopier struct {
+	Store  brtypes.SnapStore
+	Copier *BackupCopier // nil if no secondary endpoint
+}
+
 const (
-	envStorageContainer       = "STORAGE_CONTAINER"
-	sourceEnvStorageContainer = "SOURCE_STORAGE_CONTAINER"
-	defaultLocalStore         = "default.bkp"
-	backupVersion             = backupVersionV2
-	sourcePrefixString        = "SOURCE_"
+	envStorageContainer          = "STORAGE_CONTAINER"
+	sourceEnvStorageContainer    = "SOURCE_STORAGE_CONTAINER"
+	secondaryEnvStorageContainer = "SECONDARY_STORAGE_CONTAINER"
+	defaultLocalStore            = "default.bkp"
+	backupVersion                = backupVersionV2
+	sourcePrefixString           = "SOURCE_"
+	secondaryPrefixString        = "SECONDARY_"
 )
 
 // GetSnapstore returns the snapstore object for give storageProvider with specified container
+// Note: For dual endpoints, this returns only the primary store. Use GetSnapstoreWithCopier for dual endpoint management.
 func GetSnapstore(config *brtypes.SnapstoreConfig) (brtypes.SnapStore, error) {
+	return getSingleSnapstore(config)
+}
+
+// GetSnapstoreWithCopier returns snapstore with optional backup copier for dual endpoints
+func GetSnapstoreWithCopier(config *brtypes.SnapstoreConfig) (*SnapstoreWithCopier, error) {
+	logger := logrus.NewEntry(logrus.New())
+	// Check if dual endpoint is configured
+	if config.HasSecondaryEndpoint() {
+		return createSnapstoreWithCopier(config, logger)
+	}
+
+	// Single endpoint
+	store, err := getSingleSnapstore(config)
+	if err != nil {
+		return nil, err
+	}
+	return &SnapstoreWithCopier{Store: store, Copier: nil}, nil
+}
+
+// createSnapstoreWithCopier creates a snapstore with optional backup copier for dual endpoints
+func createSnapstoreWithCopier(config *brtypes.SnapstoreConfig, logger *logrus.Entry) (*SnapstoreWithCopier, error) {
+	var primaryStore, secondaryStore brtypes.SnapStore
+	var primaryErr, secondaryErr error
+	logger.Infof("Creating snapstore with backup copier - Primary: %s/%s, Secondary: %s/%s",
+		config.Provider, config.Container, config.SecondaryProvider, config.SecondaryContainer)
+
+	// Create primary snapstore
+	primaryStore, primaryErr = getSingleSnapstore(config)
+	if primaryErr != nil {
+		logger.Errorf("Fatal error creating primary snapstore: %v", primaryErr)
+	} else {
+		logger.Infof("Successfully created primary snapstore")
+	}
+
+	// Create secondary snapstore configuration
+	secondaryConfig := config.GetSecondaryConfig()
+	if secondaryConfig == nil {
+		logger.Warnf("No secondary configuration available - using single snapstore")
+		if primaryErr != nil {
+			return nil, fmt.Errorf("primary snapstore failed and no secondary configured: %v", primaryErr)
+		}
+		return &SnapstoreWithCopier{Store: primaryStore, Copier: nil}, nil
+	}
+
+	logger.Infof("Creating secondary snapstore with config - Provider: %s, Container: %s",
+		secondaryConfig.Provider, secondaryConfig.Container)
+
+	// Create secondary snapstore
+	secondaryStore, secondaryErr = getSingleSnapstoreWithIdentifier(secondaryConfig, "secondary")
+	if secondaryErr != nil {
+		logger.Errorf("Fatal error creating secondary snapstore: %v", secondaryErr)
+	} else {
+		logger.Infof("Successfully created secondary snapstore")
+	}
+
+	// Determine what to return based on success/failure of each endpoint
+	if primaryErr != nil && secondaryErr != nil {
+		return nil, fmt.Errorf("failed to create both primary and secondary snapstores - Primary: %v, Secondary: %v", primaryErr, secondaryErr)
+	}
+
+	// Create snapstore with copier based on what we have
+	if primaryStore != nil && secondaryStore != nil {
+		logger.Infof("Created snapstore with backup copier for dual endpoints")
+		copier := NewBackupCopier(primaryStore, secondaryStore, DefaultBackupCopierConfig(), logger)
+		return &SnapstoreWithCopier{Store: primaryStore, Copier: copier}, nil
+	} else if primaryStore != nil {
+		logger.Warnf("Only primary snapstore available, using single endpoint")
+		return &SnapstoreWithCopier{Store: primaryStore, Copier: nil}, nil
+	} else if secondaryStore != nil {
+		logger.Warnf("Only secondary snapstore available, using as primary")
+		return &SnapstoreWithCopier{Store: secondaryStore, Copier: nil}, nil
+	}
+
+	// This should never happen
+	return nil, errors.New("unexpected error creating snapstore")
+}
+
+// getSingleSnapstore returns the snapstore object for a single endpoint
+func getSingleSnapstore(config *brtypes.SnapstoreConfig) (brtypes.SnapStore, error) {
+	return getSingleSnapstoreWithIdentifier(config, "primary")
+}
+
+// getSingleSnapstoreWithIdentifier returns a snapstore for a single endpoint with the specified identifier
+func getSingleSnapstoreWithIdentifier(config *brtypes.SnapstoreConfig, identifier string) (brtypes.SnapStore, error) {
 	if config.Prefix == "" {
 		config.Prefix = backupVersion
 	}
@@ -75,7 +168,7 @@ func GetSnapstore(config *brtypes.SnapstoreConfig) (brtypes.SnapStore, error) {
 		}
 		return NewLocalSnapStore(path.Join(homeDir, config.Container, config.Prefix))
 	case brtypes.SnapstoreProviderS3:
-		return NewS3SnapStore(config)
+		return NewS3SnapStore(config, identifier)
 	case brtypes.SnapstoreProviderABS:
 		return NewABSSnapStore(config)
 	case brtypes.SnapstoreProviderGCS:
@@ -85,9 +178,9 @@ func GetSnapstore(config *brtypes.SnapstoreConfig) (brtypes.SnapStore, error) {
 	case brtypes.SnapstoreProviderOSS:
 		return NewOSSSnapStore(config)
 	case brtypes.SnapstoreProviderECS:
-		return NewECSSnapStore(config)
+		return NewECSSnapStore(config, identifier)
 	case brtypes.SnapstoreProviderOCS:
-		return NewOCSSnapStore(config)
+		return NewOCSSnapStore(config, identifier)
 	case brtypes.SnapstoreProviderFakeFailed:
 		return NewFailedSnapStore(), nil
 	default:
@@ -153,6 +246,7 @@ func collectChunkUploadError(chunkUploadCh chan<- chunk, resCh <-chan chunkUploa
 	return nil
 }
 
+// getEnvPrefixString returns the environment variable prefix string based on source configuration
 func getEnvPrefixString(isSource bool) string {
 	if isSource {
 		return sourcePrefixString
@@ -160,6 +254,18 @@ func getEnvPrefixString(isSource bool) string {
 	return ""
 }
 
+// getEnvPrefixStringForConfig returns the environment variable prefix string based on snapstore configuration
+func getEnvPrefixStringForConfig(config *brtypes.SnapstoreConfig) string {
+	if config.IsSource {
+		return sourcePrefixString
+	}
+	if config.IsSecondary {
+		return secondaryPrefixString
+	}
+	return ""
+}
+
+// adaptPrefix adapts the snapstore prefix to match snapshot version compatibility
 func adaptPrefix(snap *brtypes.Snapshot, snapstorePrefix string) string {
 	if strings.Contains(snap.Prefix, "/"+backupVersionV1) && strings.Contains(snapstorePrefix, "/"+backupVersionV2) {
 		return strings.Replace(snapstorePrefix, "/"+backupVersionV2, "/"+backupVersionV1, 1)

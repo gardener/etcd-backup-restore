@@ -192,6 +192,7 @@ func (b *BackupRestoreServer) runServer(ctx context.Context, restoreOpts *brtype
 		snapstoreConfig *brtypes.SnapstoreConfig
 		ssr             *snapshotter.Snapshotter
 		ss              brtypes.SnapStore
+		copier          *snapstore.BackupCopier
 	)
 	ackCh := make(chan struct{})
 	ssrStopCh := make(chan struct{})
@@ -225,13 +226,21 @@ func (b *BackupRestoreServer) runServer(ctx context.Context, restoreOpts *brtype
 	leaderCallbacks := &brtypes.LeaderCallbacks{
 		OnStartedLeading: func(leCtx context.Context) {
 			ssrStopCh = make(chan struct{})
-			var err error
 			var defragCallBack defragmentor.CallbackFunc
 			if runServerWithSnapshotter {
 				b.logger.Infof("Creating snapstore from provider: %s", b.config.SnapstoreConfig.Provider)
-				ss, err = snapstore.GetSnapstore(b.config.SnapstoreConfig)
+				storeWithCopier, err := snapstore.GetSnapstoreWithCopier(b.config.SnapstoreConfig)
 				if err != nil {
 					b.logger.Fatalf("failed to create snapstore from configured storage provider: %v", err)
+				}
+
+				ss = storeWithCopier.Store
+				copier = storeWithCopier.Copier
+
+				// Start backup copier if available and sync is enabled
+				if copier != nil && b.config.SnapstoreConfig.BackupSyncEnabled {
+					b.logger.Info("Starting backup copier for dual endpoint...")
+					copier.Start(leCtx)
 				}
 
 				// Get the new snapshotter object
@@ -255,6 +264,13 @@ func (b *BackupRestoreServer) runServer(ctx context.Context, restoreOpts *brtype
 		OnStoppedLeading: func() {
 			if runServerWithSnapshotter {
 				b.logger.Info("backup-restore stops leading...")
+
+				// Stop backup copier if available
+				if copier != nil {
+					b.logger.Info("Stopping backup copier for dual endpoint...")
+					copier.Stop()
+				}
+
 				handler.SetSnapshotterToNil()
 
 				// TODO @ishan16696: For Multi-node etcd HTTP status need to be set to `StatusServiceUnavailable` only when backup-restore is in "StateUnknown".
