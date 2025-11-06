@@ -43,7 +43,7 @@ var _ = Describe("Running Copier", func() {
 		var err error
 		ss, ds, err = GetSourceAndDestinationStores(sourceSnapstoreConfig, destSnapstoreConfig)
 		Expect(err).ToNot(HaveOccurred())
-		copier = NewCopier(logger, ss, ds, -1, -1, 10, false, 0)
+		copier = NewCopierWithConfig(logger, ss, ds, destSnapstoreConfig, -1, -1, 10, false, 0)
 	})
 	AfterEach(func() {
 		err = os.RemoveAll(targetSnapstoreDir)

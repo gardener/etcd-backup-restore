@@ -43,6 +43,9 @@ func (ssr *Snapshotter) RunGarbageCollector(stopCh <-chan struct{}) {
 				continue
 			}
 
+			// Note: Garbage collection now runs on the primary snapstore only.
+			// The backup copier handles synchronization to secondary endpoints independently.
+
 			total := 0
 			ssr.logger.Info("GC: Executing garbage collection...")
 			// List all (tagged and untagged) snapshots to garbage collect them according to the garbage collection policy.

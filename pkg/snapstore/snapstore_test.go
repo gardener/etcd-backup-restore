@@ -166,7 +166,7 @@ var _ = Describe("Save, List, Fetch, Delete from mock snapstore", func() {
 			},
 			// Storage Provider S3 bucket with object lock enabled.
 			brtypes.SnapstoreProviderS3: {
-				SnapStore:              NewS3FromClient(s3ObjectLockedBucket, prefixV2, "/tmp", 5, brtypes.MinChunkSize, awsS3Client, SSECredentials{}),
+				SnapStore:              NewS3FromClient(s3ObjectLockedBucket, prefixV2, "/tmp", 5, brtypes.MinChunkSize, awsS3Client, SSECredentials{}, "test"),
 				objectCountPerSnapshot: 1,
 			},
 			// Storage Provider S3 bucket with object lock not enabled
@@ -176,7 +176,7 @@ var _ = Describe("Save, List, Fetch, Delete from mock snapstore", func() {
 					objects:          objectMap,
 					prefix:           prefixV2,
 					multiPartUploads: map[string]*[][]byte{},
-				}, SSECredentials{}),
+				}, SSECredentials{}, "test"),
 				objectCountPerSnapshot: 1,
 			},
 			// TODO: To be removed as storage provider OCS is using S3 compatible APIs,
@@ -186,7 +186,7 @@ var _ = Describe("Save, List, Fetch, Delete from mock snapstore", func() {
 					objects:          objectMap,
 					prefix:           prefixV2,
 					multiPartUploads: map[string]*[][]byte{},
-				}, SSECredentials{}),
+				}, SSECredentials{}, "test"),
 				objectCountPerSnapshot: 1,
 			},
 		}
@@ -613,7 +613,7 @@ var _ = Describe("Server Side Encryption Customer Managed Key for S3", func() {
   "region": "eu-west-1"
 }`), os.ModePerm)
 			Expect(err).ShouldNot(HaveOccurred())
-			_, err = NewS3SnapStore(&s3SnapstoreConfig)
+			_, err = NewS3SnapStore(&s3SnapstoreConfig, "test")
 			Expect(err).ShouldNot(HaveOccurred())
 		})
 	})
@@ -628,7 +628,7 @@ var _ = Describe("Server Side Encryption Customer Managed Key for S3", func() {
   "sseCustomerAlgorithm": "AES256"
 }`), os.ModePerm)
 			Expect(err).ShouldNot(HaveOccurred())
-			_, err = NewS3SnapStore(&s3SnapstoreConfig)
+			_, err = NewS3SnapStore(&s3SnapstoreConfig, "test")
 			Expect(err).Should(HaveOccurred())
 			// sseCustomerAlgorithm not present
 			err = os.WriteFile(credentialFilePath, []byte(`{
@@ -638,7 +638,7 @@ var _ = Describe("Server Side Encryption Customer Managed Key for S3", func() {
   "sseCustomerKey": "2b7e151628aed2a6abf7158809cf4f3c6afe5028f1959c27a11253edc6cf4f3c"
 }`), os.ModePerm)
 			Expect(err).ShouldNot(HaveOccurred())
-			_, err = NewS3SnapStore(&s3SnapstoreConfig)
+			_, err = NewS3SnapStore(&s3SnapstoreConfig, "test")
 			Expect(err).Should(HaveOccurred())
 		})
 		It("should return the snapstore without errors if both fields are provided", func() {
@@ -651,7 +651,7 @@ var _ = Describe("Server Side Encryption Customer Managed Key for S3", func() {
   "sseCustomerKey": "2b7e151628aed2a6abf7158809cf4f3c6afe5028f1959c27a11253edc6cf4f3c"
 }`), os.ModePerm)
 			Expect(err).ShouldNot(HaveOccurred())
-			_, err = NewS3SnapStore(&s3SnapstoreConfig)
+			_, err = NewS3SnapStore(&s3SnapstoreConfig, "test")
 			Expect(err).ShouldNot(HaveOccurred())
 		})
 	})
@@ -680,7 +680,7 @@ var _ = Describe("Configuring Checksum Handling", func() {
   "region": "eu-west-1"
 }`), os.ModePerm)
 			Expect(err).NotTo(HaveOccurred())
-			_, err = NewS3SnapStore(&s3SnapstoreConfig)
+			_, err = NewS3SnapStore(&s3SnapstoreConfig, "test")
 			Expect(err).NotTo(HaveOccurred())
 		})
 	})
@@ -695,7 +695,7 @@ var _ = Describe("Configuring Checksum Handling", func() {
   "responseChecksumValidation": "when_required"
 }`), os.ModePerm)
 			Expect(err).NotTo(HaveOccurred())
-			_, err = NewS3SnapStore(&s3SnapstoreConfig)
+			_, err = NewS3SnapStore(&s3SnapstoreConfig, "test")
 			Expect(err).NotTo(HaveOccurred())
 		})
 	})
@@ -710,7 +710,7 @@ var _ = Describe("Configuring Checksum Handling", func() {
   "requestChecksumCalculation": "foo"
 }`), os.ModePerm)
 			Expect(err).NotTo(HaveOccurred())
-			_, err = NewS3SnapStore(&s3SnapstoreConfig)
+			_, err = NewS3SnapStore(&s3SnapstoreConfig, "test")
 			Expect(err).To(MatchError(ContainSubstring("invalid value")))
 		})
 	})
@@ -761,7 +761,7 @@ var _ = Describe("Get Immutability time for S3 bucket", func() {
 
 	Context("S3 bucket with object lock enabled and object lock config defined", func() {
 		It("Should return retention period", func() {
-			snapStore := NewS3FromClient(s3ObjectLockedBucket, prefixV2, "/tmp", 5, brtypes.MinChunkSize, awsS3Client, SSECredentials{})
+			snapStore := NewS3FromClient(s3ObjectLockedBucket, prefixV2, "/tmp", 5, brtypes.MinChunkSize, awsS3Client, SSECredentials{}, "test")
 			isObjectLockEnabled, retentionPeriod, err := GetBucketImmutabilityTime(snapStore)
 			Expect(err).ShouldNot(HaveOccurred())
 			Expect(retentionPeriod).Should(Equal(aws.Int32(2)))
@@ -770,7 +770,7 @@ var _ = Describe("Get Immutability time for S3 bucket", func() {
 	})
 	Context("S3 bucket with object lock enabled but object lock config is not defined", func() {
 		It("Should return nil retention period", func() {
-			snapStore := NewS3FromClient(s3ObjectLockBucketButRulesNotDefined, prefixV2, "/tmp", 5, brtypes.MinChunkSize, awsS3Client, SSECredentials{})
+			snapStore := NewS3FromClient(s3ObjectLockBucketButRulesNotDefined, prefixV2, "/tmp", 5, brtypes.MinChunkSize, awsS3Client, SSECredentials{}, "test")
 			isObjectLockEnabled, retentionPeriod, err := GetBucketImmutabilityTime(snapStore)
 			Expect(err).ShouldNot(HaveOccurred())
 			Expect(retentionPeriod).Should(BeNil())
@@ -779,7 +779,7 @@ var _ = Describe("Get Immutability time for S3 bucket", func() {
 	})
 	Context("S3 bucket with object lock not enabled", func() {
 		It("Should return an error", func() {
-			snapStore := NewS3FromClient(s3NonObjectLockedBucket, prefixV2, "/tmp", 5, brtypes.MinChunkSize, awsS3Client, SSECredentials{})
+			snapStore := NewS3FromClient(s3NonObjectLockedBucket, prefixV2, "/tmp", 5, brtypes.MinChunkSize, awsS3Client, SSECredentials{}, "test")
 			isObjectLockEnabled, retentionPeriod, err := GetBucketImmutabilityTime(snapStore)
 			Expect(err).Should(HaveOccurred())
 			Expect(retentionPeriod).Should(BeNil())

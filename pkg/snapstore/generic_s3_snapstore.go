@@ -31,7 +31,7 @@ type s3AuthOptions struct {
 }
 
 // newGenericS3FromAuthOpt creates a new S3 snapstore object from the specified authentication options.
-func newGenericS3FromAuthOpt(bucket, prefix, tempDir string, maxParallelChunkUploads uint, minChunkSize int64, ao s3AuthOptions) (*S3SnapStore, error) {
+func newGenericS3FromAuthOpt(bucket, prefix, tempDir string, maxParallelChunkUploads uint, minChunkSize int64, ao s3AuthOptions, identifier string) (*S3SnapStore, error) {
 	httpClient := http.DefaultClient
 	if !ao.disableSSL {
 		httpClient.Transport = &http.Transport{
@@ -64,7 +64,11 @@ func newGenericS3FromAuthOpt(bucket, prefix, tempDir string, maxParallelChunkUpl
 		func(o *s3.Options) {
 			o.EndpointOptions.DisableHTTPS = ao.disableSSL
 			o.UsePathStyle = true
+			// Disable automatic request checksum calculation for better S3-compatible service compatibility
+			o.RequestChecksumCalculation = aws.RequestChecksumCalculationWhenRequired
+			// Disable automatic response checksum validation for better S3-compatible service compatibility
+			o.ResponseChecksumValidation = aws.ResponseChecksumValidationWhenRequired
 		},
 	)
-	return NewS3FromClient(bucket, prefix, tempDir, maxParallelChunkUploads, minChunkSize, cli, SSECredentials{}), nil
+	return NewS3FromClient(bucket, prefix, tempDir, maxParallelChunkUploads, minChunkSize, cli, SSECredentials{}, identifier), nil
 }

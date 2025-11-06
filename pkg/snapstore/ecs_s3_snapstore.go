@@ -20,12 +20,12 @@ const (
 )
 
 // NewECSSnapStore creates a new S3SnapStore from shared configuration with the specified bucket.
-func NewECSSnapStore(config *brtypes.SnapstoreConfig) (*S3SnapStore, error) {
+func NewECSSnapStore(config *brtypes.SnapstoreConfig, identifier string) (*S3SnapStore, error) {
 	ao, err := ecsAuthOptionsFromEnv()
 	if err != nil {
 		return nil, err
 	}
-	return newGenericS3FromAuthOpt(config.Container, config.Prefix, config.TempDir, config.MaxParallelChunkUploads, config.MinChunkSize, ao)
+	return newGenericS3FromAuthOpt(config.Container, config.Prefix, config.TempDir, config.MaxParallelChunkUploads, config.MinChunkSize, ao, identifier)
 }
 
 // ecsAuthOptionsFromEnv gets ECS provider configuration from environment variables.

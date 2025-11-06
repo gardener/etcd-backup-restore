@@ -42,9 +42,11 @@ import (
 
 const (
 	// Total number of chunks to be uploaded must be one less than maximum limit allowed.
-	s3NoOfChunk            int64 = 9999
-	awsCredentialDirectory       = "AWS_APPLICATION_CREDENTIALS"
-	awsCredentialJSONFile        = "AWS_APPLICATION_CREDENTIALS_JSON"
+	s3NoOfChunk                     int64 = 9999
+	awsCredentialDirectory                = "AWS_APPLICATION_CREDENTIALS"
+	awsCredentialJSONFile                 = "AWS_APPLICATION_CREDENTIALS_JSON"
+	secondaryAwsCredentialJSONFile        = "SECONDARY_AWS_APPLICATION_CREDENTIALS_JSON"
+	secondaryAwsCredentialDirectory       = "SECONDARY_AWS_APPLICATION_CREDENTIALS"
 )
 
 type awsCredentials struct {
@@ -73,33 +75,48 @@ type SSECredentials struct {
 
 // S3SnapStore is snapstore with AWS S3 object store as backend
 type S3SnapStore struct {
+	// Interface fields first
 	client s3api.Client
-	SSECredentials
+	// 8-byte fields
+	minChunkSize            int64
+	maxParallelChunkUploads uint
+	// String fields (pointer-sized on 64-bit systems)
 	prefix  string
 	bucket  string
 	tempDir string
-	// maxParallelChunkUploads hold the maximum number of parallel chunk uploads allowed.
-	maxParallelChunkUploads uint
-	minChunkSize            int64
+	// identifier is an optional field to identify the S3 snapstore instance in logs.
+	identifier string
+	// Embedded struct last to minimize padding
+	SSECredentials
 }
 
 // NewS3SnapStore create new S3SnapStore from shared configuration with specified bucket
-func NewS3SnapStore(config *brtypes.SnapstoreConfig) (*S3SnapStore, error) {
-	cfgOpts, cliOpts, sseCreds, err := getConfigOpts(getEnvPrefixString(config.IsSource))
+func NewS3SnapStore(config *brtypes.SnapstoreConfig, identifier string) (*S3SnapStore, error) {
+	cfgOpts, cliOpts, sseCreds, err := getConfigOpts(getEnvPrefixStringForConfig(config))
 	if err != nil {
 		return nil, err
 	}
 
 	cfg, err := awsconfig.LoadDefaultConfig(context.TODO(), cfgOpts...)
 	if err != nil {
-		return nil, fmt.Errorf("new AWS config failed: %w", err)
+		return nil, err
+	}
+
+	bucket := config.Container
+
+	// For secondary storage, check SECONDARY_STORAGE_CONTAINER if bucket is empty
+	if bucket == "" && getEnvPrefixStringForConfig(config) == secondaryPrefixString {
+		if secondaryBucket := os.Getenv("SECONDARY_STORAGE_CONTAINER"); secondaryBucket != "" {
+			bucket = secondaryBucket
+		}
 	}
 
 	cli := s3.NewFromConfig(cfg, cliOpts...)
-	return NewS3FromClient(config.Container, config.Prefix, config.TempDir, config.MaxParallelChunkUploads, config.MinChunkSize, cli, sseCreds), nil
+	return NewS3FromClient(bucket, config.Prefix, config.TempDir, config.MaxParallelChunkUploads, config.MinChunkSize, cli, sseCreds, identifier), nil
 }
 
 func getConfigOpts(prefixString string) ([]func(*awsconfig.LoadOptions) error, []func(*s3.Options), SSECredentials, error) {
+	// First check for JSON file with the given prefix
 	if filename, isSet := os.LookupEnv(prefixString + awsCredentialJSONFile); isSet {
 		creds, cliOpts, sseCreds, err := readAWSCredentialsJSONFile(filename)
 		if err != nil {
@@ -141,7 +158,66 @@ func readAWSCredentialsJSONFile(filename string) ([]func(*awsconfig.LoadOptions)
 	if err != nil {
 		return nil, nil, SSECredentials{}, err
 	}
-	return awsCredentialsFromConfig(awsConfig)
+
+	httpClient := http.DefaultClient
+	if awsConfig.InsecureSkipVerify != nil && *awsConfig.InsecureSkipVerify {
+		httpClient.Transport = &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: *awsConfig.InsecureSkipVerify}, // #nosec G402 -- InsecureSkipVerify is set by user input, and can be allowed to be set to true based on user's requirement.
+		}
+	}
+
+	if awsConfig.TrustedCaCert != nil {
+		caCertPool := x509.NewCertPool()
+		caCertPool.AppendCertsFromPEM([]byte(*awsConfig.TrustedCaCert))
+		httpClient.Transport = &http.Transport{
+			TLSClientConfig: &tls.Config{
+				RootCAs:            caCertPool,
+				InsecureSkipVerify: false,
+				MinVersion:         tls.VersionTLS13,
+			},
+		}
+	}
+
+	sseCreds, err := getSSECreds(awsConfig.SSECustomerKey, awsConfig.SSECustomerAlgorithm)
+	if err != nil {
+		return nil, nil, SSECredentials{}, err
+	}
+
+	var (
+		cfgOpts = []func(*awsconfig.LoadOptions) error{
+			awsconfig.WithRegion(awsConfig.Region),
+			awsconfig.WithHTTPClient(httpClient),
+		}
+		cliOpts             = []func(*s3.Options){}
+		credentialsProvider aws.CredentialsProvider
+	)
+
+	if awsConfig.AccessKeyID != "" {
+		credentialsProvider = credentials.NewStaticCredentialsProvider(awsConfig.AccessKeyID, awsConfig.SecretAccessKey, "")
+	} else {
+		credentialsProvider = stscreds.NewWebIdentityRoleProvider(sts.NewFromConfig(aws.Config{Region: awsConfig.Region}), awsConfig.RoleARN, stscreds.IdentityTokenFile(awsConfig.TokenPath))
+	}
+	cfgOpts = append(cfgOpts, awsconfig.WithCredentialsProvider(aws.NewCredentialsCache(credentialsProvider)))
+
+	if awsConfig.Endpoint != nil {
+		cfgOpts = append(cfgOpts, awsconfig.WithBaseEndpoint(*awsConfig.Endpoint))
+	}
+
+	if awsConfig.S3ForcePathStyle != nil {
+		cliOpts = append(cliOpts, func(o *s3.Options) {
+			o.UsePathStyle = *awsConfig.S3ForcePathStyle
+		})
+	}
+
+	// Add S3-compatible service compatibility options
+	cliOpts = append(cliOpts, func(o *s3.Options) {
+		// Disable automatic request checksum calculation for better S3-compatible service compatibility
+		o.RequestChecksumCalculation = aws.RequestChecksumCalculationWhenRequired
+		// Disable automatic response checksum validation for better S3-compatible service compatibility
+		o.ResponseChecksumValidation = aws.ResponseChecksumValidationWhenRequired
+	})
+
+	return cfgOpts, cliOpts, sseCreds, nil
 }
 
 // credentialsFromJSON obtains AWS credentials from a JSON value.
@@ -233,6 +309,14 @@ func awsCredentialsFromConfig(awsConfig *awsCredentials) ([]func(*awsconfig.Load
 			o.ResponseChecksumValidation = v
 		})
 	}
+
+	// Add S3-compatible service compatibility options
+	cliOpts = append(cliOpts, func(o *s3.Options) {
+		// Disable automatic request checksum calculation for better S3-compatible service compatibility
+		o.RequestChecksumCalculation = aws.RequestChecksumCalculationWhenRequired
+		// Disable automatic response checksum validation for better S3-compatible service compatibility
+		o.ResponseChecksumValidation = aws.ResponseChecksumValidationWhenRequired
+	})
 
 	return cfgOpts, cliOpts, sseCreds, nil
 }
@@ -366,7 +450,7 @@ func readAWSCredentialFromDir(dirname string) (*awsCredentials, error) {
 }
 
 // NewS3FromClient will create the new S3 snapstore object from S3 client
-func NewS3FromClient(bucket, prefix, tempDir string, maxParallelChunkUploads uint, minChunkSize int64, cli s3api.Client, sseCreds SSECredentials) *S3SnapStore {
+func NewS3FromClient(bucket, prefix, tempDir string, maxParallelChunkUploads uint, minChunkSize int64, cli s3api.Client, sseCreds SSECredentials, identifier string) *S3SnapStore {
 	return &S3SnapStore{
 		bucket:                  bucket,
 		prefix:                  prefix,
@@ -375,6 +459,7 @@ func NewS3FromClient(bucket, prefix, tempDir string, maxParallelChunkUploads uin
 		minChunkSize:            minChunkSize,
 		tempDir:                 tempDir,
 		SSECredentials:          sseCreds,
+		identifier:              identifier,
 	}
 }
 
@@ -391,6 +476,7 @@ func (s *S3SnapStore) Fetch(snap brtypes.Snapshot) (io.ReadCloser, error) {
 	}
 	if s.sseCustomerKey != "" {
 		// Customer managed Server Side Encryption
+		logrus.Debugf("[%s] Applying SSE-C credentials to GetObject request - algorithm: %s, key MD5: %s", s.identifier, s.sseCustomerAlgorithm, s.sseCustomerKeyMD5)
 		getObjectInput.SSECustomerAlgorithm = aws.String(s.sseCustomerAlgorithm)
 		getObjectInput.SSECustomerKey = aws.String(s.sseCustomerKey)
 		getObjectInput.SSECustomerKeyMD5 = aws.String(s.sseCustomerKeyMD5)
@@ -435,6 +521,7 @@ func (s *S3SnapStore) Save(snap brtypes.Snapshot, rc io.ReadCloser) (err error) 
 	}
 	if s.sseCustomerKey != "" {
 		// Customer managed Server Side Encryption
+		logrus.Infof("[%s] Applying SSE-C credentials to CreateMultipartUpload request - algorithm: %s, key MD5: %s", s.identifier, s.sseCustomerAlgorithm, s.sseCustomerKeyMD5)
 		createMultipartUploadInput.SSECustomerAlgorithm = aws.String(s.sseCustomerAlgorithm)
 		createMultipartUploadInput.SSECustomerKey = aws.String(s.sseCustomerKey)
 		createMultipartUploadInput.SSECustomerKeyMD5 = aws.String(s.sseCustomerKeyMD5)
@@ -538,6 +625,7 @@ func (s *S3SnapStore) uploadPart(snap *brtypes.Snapshot, file *os.File, uploadID
 
 	if s.sseCustomerKey != "" {
 		// Customer managed Server Side Encryption
+		logrus.Infof("[%s] Applying SSE-C credentials to UploadPart request - algorithm: %s, key MD5: %s", s.identifier, s.sseCustomerAlgorithm, s.sseCustomerKeyMD5)
 		uploadPartInput.SSECustomerAlgorithm = aws.String(s.sseCustomerAlgorithm)
 		uploadPartInput.SSECustomerKey = aws.String(s.sseCustomerKey)
 		uploadPartInput.SSECustomerKeyMD5 = aws.String(s.sseCustomerKeyMD5)
@@ -824,6 +912,7 @@ func isAWSConfigEmpty(config *awsCredentials) error {
 func getSSECreds(sseCustomerKey, sseCustomerAlgorithm *string) (SSECredentials, error) {
 	// SSE-C not utilized
 	if sseCustomerKey == nil && sseCustomerAlgorithm == nil {
+		logrus.Infof("SSE-C not configured - no key or algorithm provided")
 		return SSECredentials{}, nil
 	}
 
@@ -831,10 +920,33 @@ func getSSECreds(sseCustomerKey, sseCustomerAlgorithm *string) (SSECredentials, 
 		return SSECredentials{}, fmt.Errorf("both sseCustomerKey and sseCustomerAlgorithm are to be provided if customer managed SSE keys are to be used")
 	}
 
-	SSECustomerKeyMD5Bytes := md5.Sum([]byte(*sseCustomerKey)) // #nosec G401 -- S3 API supports only MD5 hash for SSE headers, as per https://docs.aws.amazon.com/AmazonS3/latest/userguide/ServerSideEncryptionCustomerKeys.html
+	logrus.Infof("Processing SSE-C configuration - algorithm: %s, key length: %d chars", *sseCustomerAlgorithm, len(*sseCustomerKey))
+
+	// Try to decode the key as base64 first, fall back to raw string if decoding fails
+	var keyBytes []byte
+	if decodedKey, err := base64.StdEncoding.DecodeString(*sseCustomerKey); err == nil {
+		if len(decodedKey) == 32 {
+			// Successfully decoded base64 key and it's the correct length (32 bytes for AES256)
+			logrus.Infof("Successfully decoded base64 SSE key - decoded length: %d bytes", len(decodedKey))
+			keyBytes = decodedKey
+		} else {
+			// Decoded successfully but wrong length
+			logrus.Warnf("Decoded base64 SSE key has wrong length: %d bytes (expected 32), falling back to raw string", len(decodedKey))
+			keyBytes = []byte(*sseCustomerKey)
+		}
+	} else {
+		// Failed to decode as base64, use the raw string as-is (for backward compatibility)
+		logrus.Infof("Using raw string as SSE key (base64 decode failed) - raw length: %d bytes", len(*sseCustomerKey))
+		keyBytes = []byte(*sseCustomerKey)
+	}
+
+	SSECustomerKeyMD5Bytes := md5.Sum(keyBytes) // #nosec G401 -- S3 API supports only MD5 hash for SSE headers, as per https://docs.aws.amazon.com/AmazonS3/latest/userguide/ServerSideEncryptionCustomerKeys.html
 	sseCustomerKeyMD5 := base64.StdEncoding.EncodeToString(SSECustomerKeyMD5Bytes[:])
+
+	logrus.Infof("Generated SSE credentials - final key length: %d bytes, MD5: %s", len(keyBytes), sseCustomerKeyMD5)
+
 	return SSECredentials{
-		sseCustomerKey:       *sseCustomerKey,
+		sseCustomerKey:       base64.StdEncoding.EncodeToString(keyBytes), // AWS SDK expects base64-encoded key
 		sseCustomerKeyMD5:    sseCustomerKeyMD5,
 		sseCustomerAlgorithm: *sseCustomerAlgorithm,
 	}, nil
