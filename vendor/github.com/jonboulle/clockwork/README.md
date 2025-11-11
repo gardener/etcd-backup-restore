@@ -36,7 +36,6 @@ Now you can easily test `myFunc` with a `FakeClock`:
 
 ```go
 func TestMyFunc(t *testing.T) {
-	ctx := context.Background()
 	c := clockwork.NewFakeClock()
 
 	// Start our sleepy function
@@ -47,12 +46,8 @@ func TestMyFunc(t *testing.T) {
 		wg.Done()
 	}()
 
-	// Ensure we wait until myFunc is waiting on the clock.
-	// Use a context to avoid blocking forever if something
-	// goes wrong.
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
-	c.BlockUntilContext(ctx, 1)
+	// Ensure we wait until myFunc is sleeping
+	c.BlockUntil(1)
 
 	assertState()
 
