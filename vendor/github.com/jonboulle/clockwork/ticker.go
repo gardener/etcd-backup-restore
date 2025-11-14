@@ -19,12 +19,7 @@ func (r realTicker) Chan() <-chan time.Time {
 }
 
 type fakeTicker struct {
-	// The channel associated with the firer, used to send expiration times.
-	c chan time.Time
-
-	// The time when the ticker expires. Only meaningful if the ticker is currently
-	// one of a FakeClock's waiters.
-	exp time.Time
+	firer
 
 	// reset and stop provide the implementation of the respective exported
 	// functions.
@@ -35,27 +30,13 @@ type fakeTicker struct {
 	d time.Duration
 }
 
-func newFakeTicker(fc *FakeClock, d time.Duration) *fakeTicker {
-	var ft *fakeTicker
-	ft = &fakeTicker{
-		c: make(chan time.Time, 1),
-		d: d,
-		reset: func(d time.Duration) {
-			fc.l.Lock()
-			defer fc.l.Unlock()
-			ft.d = d
-			fc.setExpirer(ft, d)
-		},
-		stop: func() { fc.stop(ft) },
-	}
-	return ft
+func (f *fakeTicker) Reset(d time.Duration) {
+	f.reset(d)
 }
 
-func (f *fakeTicker) Chan() <-chan time.Time { return f.c }
-
-func (f *fakeTicker) Reset(d time.Duration) { f.reset(d) }
-
-func (f *fakeTicker) Stop() { f.stop() }
+func (f *fakeTicker) Stop() {
+	f.stop()
+}
 
 func (f *fakeTicker) expire(now time.Time) *time.Duration {
 	// Never block on expiration.
@@ -65,7 +46,3 @@ func (f *fakeTicker) expire(now time.Time) *time.Duration {
 	}
 	return &f.d
 }
-
-func (f *fakeTicker) expiration() time.Time { return f.exp }
-
-func (f *fakeTicker) setExpiration(t time.Time) { f.exp = t }
