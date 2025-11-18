@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
-//go:build !windows
 // +build !windows
 
 package capnslog
@@ -33,7 +32,7 @@ import (
 func init() {
 	initHijack()
 
-	// Go `log` package uses os.Stderr.
+	// Go `log` pacakge uses os.Stderr.
 	SetFormatter(NewDefaultFormatter(os.Stderr))
 	SetGlobalLogLevel(INFO)
 }
