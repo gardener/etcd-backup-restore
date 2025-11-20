@@ -454,8 +454,8 @@ github.com/google/go-cmp/cmp/internal/diff
 github.com/google/go-cmp/cmp/internal/flags
 github.com/google/go-cmp/cmp/internal/function
 github.com/google/go-cmp/cmp/internal/value
-# github.com/google/pprof v0.0.0-20250403155104-27863c87afa6
-## explicit; go 1.23
+# github.com/google/pprof v0.0.0-20251114195745-4902fdda35c8
+## explicit; go 1.24.0
 github.com/google/pprof/profile
 # github.com/google/s2a-go v0.1.9
 ## explicit; go 1.20
@@ -638,12 +638,13 @@ github.com/munnerz/goautoneg
 # github.com/mxk/go-flowrate v0.0.0-20140419014527-cca7078d478f
 ## explicit
 github.com/mxk/go-flowrate/flowrate
-# github.com/onsi/ginkgo/v2 v2.27.1
+# github.com/onsi/ginkgo/v2 v2.27.2
 ## explicit; go 1.23.0
 github.com/onsi/ginkgo/v2
 github.com/onsi/ginkgo/v2/config
 github.com/onsi/ginkgo/v2/formatter
 github.com/onsi/ginkgo/v2/ginkgo
+github.com/onsi/ginkgo/v2/ginkgo/automaxprocs
 github.com/onsi/ginkgo/v2/ginkgo/build
 github.com/onsi/ginkgo/v2/ginkgo/command
 github.com/onsi/ginkgo/v2/ginkgo/generators
@@ -904,12 +905,6 @@ go.opentelemetry.io/otel/trace
 go.opentelemetry.io/otel/trace/embedded
 go.opentelemetry.io/otel/trace/internal/telemetry
 go.opentelemetry.io/otel/trace/noop
-# go.uber.org/automaxprocs v1.6.0
-## explicit; go 1.20
-go.uber.org/automaxprocs
-go.uber.org/automaxprocs/internal/cgroups
-go.uber.org/automaxprocs/internal/runtime
-go.uber.org/automaxprocs/maxprocs
 # go.uber.org/mock v0.6.0
 ## explicit; go 1.23.0
 go.uber.org/mock/gomock
@@ -954,7 +949,7 @@ golang.org/x/crypto/openpgp/packet
 golang.org/x/crypto/openpgp/s2k
 golang.org/x/crypto/pbkdf2
 golang.org/x/crypto/scrypt
-# golang.org/x/mod v0.29.0
+# golang.org/x/mod v0.30.0
 ## explicit; go 1.24.0
 golang.org/x/mod/semver
 # golang.org/x/net v0.47.0
@@ -1032,7 +1027,7 @@ golang.org/x/text/unicode/norm
 # golang.org/x/time v0.12.0
 ## explicit; go 1.23.0
 golang.org/x/time/rate
-# golang.org/x/tools v0.38.0
+# golang.org/x/tools v0.39.0
 ## explicit; go 1.24.0
 golang.org/x/tools/cover
 golang.org/x/tools/go/ast/edge
@@ -1238,7 +1233,7 @@ google.golang.org/grpc/xds/internal/xdsclient/xdslbregistry
 google.golang.org/grpc/xds/internal/xdsclient/xdslbregistry/converter
 google.golang.org/grpc/xds/internal/xdsclient/xdsresource
 google.golang.org/grpc/xds/internal/xdsclient/xdsresource/version
-# google.golang.org/protobuf v1.36.8
+# google.golang.org/protobuf v1.36.10
 ## explicit; go 1.23
 google.golang.org/protobuf/encoding/protodelim
 google.golang.org/protobuf/encoding/protojson
