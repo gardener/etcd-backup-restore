@@ -811,3 +811,7 @@ func (ssr *Snapshotter) GetFullSnapshotMaxTimeWindow(fullSnapScheduleSpec string
 
 	return defaultFullSnapMaxTimeWindow
 }
+
+func (s *Snapshotter) GetStore() brtypes.SnapStore {
+	return s.store
+}
