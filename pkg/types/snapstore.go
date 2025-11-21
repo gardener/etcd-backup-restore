@@ -211,6 +211,11 @@ func (c *SnapstoreConfig) AddSourceFlags(fs *flag.FlagSet) {
 	c.addFlags(fs, "source-")
 }
 
+// AddSecondaryFlags adds the flags to flagset using `secondary-` prefix for all parameters
+func (c *SnapstoreConfig) AddSecondaryFlags(fs *flag.FlagSet) {
+	c.addFlags(fs, "secondary-")
+}
+
 func (c *SnapstoreConfig) addFlags(fs *flag.FlagSet, parameterPrefix string) {
 	fs.StringVar(&c.Provider, parameterPrefix+"storage-provider", c.Provider, "snapshot storage provider")
 	fs.StringVar(&c.Container, parameterPrefix+"store-container", c.Container, "container which will be used as snapstore")

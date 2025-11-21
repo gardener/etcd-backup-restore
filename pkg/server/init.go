@@ -17,13 +17,14 @@ import (
 	flag "github.com/spf13/pflag"
 )
 
-// NewBackupRestoreComponentConfig returns the backup-restore componenet config.
+// NewBackupRestoreComponentConfig returns the backup-restore component config.
 func NewBackupRestoreComponentConfig() *BackupRestoreComponentConfig {
 	return &BackupRestoreComponentConfig{
 		EtcdConnectionConfig:     brtypes.NewEtcdConnectionConfig(),
 		ServerConfig:             NewHTTPServerConfig(),
 		SnapshotterConfig:        snapshotter.NewSnapshotterConfig(),
 		SnapstoreConfig:          snapstore.NewSnapstoreConfig(),
+		SecondarySnapstoreConfig: nil,
 		CompressionConfig:        compressor.NewCompressorConfig(),
 		RestorationConfig:        brtypes.NewRestorationConfig(),
 		DefragmentationSchedule:  defaultDefragmentationSchedule,
@@ -31,6 +32,7 @@ func NewBackupRestoreComponentConfig() *BackupRestoreComponentConfig {
 		LeaderElectionConfig:     brtypes.NewLeaderElectionConfig(),
 		ExponentialBackoffConfig: brtypes.NewExponentialBackOffConfig(),
 		UseEtcdWrapper:           usageOfEtcdWrapperEnabled,
+		BackupSyncEnabled:        false,
 	}
 }
 
@@ -45,10 +47,11 @@ func (c *BackupRestoreComponentConfig) AddFlags(fs *flag.FlagSet) {
 	c.HealthConfig.AddFlags(fs)
 	c.LeaderElectionConfig.AddFlags(fs)
 	c.ExponentialBackoffConfig.AddFlags(fs)
-
+	c.SecondarySnapstoreConfig.AddSecondaryFlags(fs)
 	// Miscellaneous
 	fs.StringVar(&c.DefragmentationSchedule, "defragmentation-schedule", c.DefragmentationSchedule, "schedule to defragment etcd data directory")
 	fs.BoolVar(&c.UseEtcdWrapper, "use-etcd-wrapper", c.UseEtcdWrapper, "to enable backup-restore to use etcd-wrapper related functionality. Note: enable this flag only if etcd-wrapper is deployed.")
+	fs.BoolVar(&c.BackupSyncEnabled, "backup-sync-enabled", c.BackupSyncEnabled, "enable backup-sync feature")
 }
 
 // Validate validates the config.
@@ -83,12 +86,23 @@ func (c *BackupRestoreComponentConfig) Validate() error {
 	if err := c.ExponentialBackoffConfig.Validate(); err != nil {
 		return err
 	}
+	if c.BackupSyncEnabled {
+		if c.SecondarySnapstoreConfig == nil {
+			return fmt.Errorf("secondary snapstore config is required when backup-sync is enabled")
+		}
+		if err := c.SecondarySnapstoreConfig.Validate(); err != nil {
+			return fmt.Errorf("a valid secondary snapstore config is required when backup-sync is enabled: %w", err)
+		}
+	}
 	return nil
 }
 
 // Complete completes the config.
 func (c *BackupRestoreComponentConfig) Complete() {
 	c.SnapstoreConfig.Complete()
+	if c.SecondarySnapstoreConfig != nil {
+		c.SecondarySnapstoreConfig.Complete()
+	}
 }
 
 // HTTPServerConfig holds the server config.
