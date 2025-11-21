@@ -13,7 +13,7 @@ jobs:
   build:
     uses: ./.github/workflows/build.yaml
     permissions:
-      contents: write
+      contents: read
       id-token: write
       packages: write
     with:
