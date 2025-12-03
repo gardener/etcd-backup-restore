@@ -235,7 +235,7 @@ func (b *BackupRestoreServer) runServer(ctx context.Context, restoreOpts *brtype
 					b.logger.Fatalf("failed to create snapstore from configured storage provider: %v", err)
 				}
 
-				if b.config.BackupSyncEnabled && b.config.SecondarySnapstoreConfig != nil {
+				if b.config.BackupSyncEnabled {
 					b.logger.Infof("Starting backup copier..")
 					secondary, err := snapstore.GetSnapstore(b.config.SecondarySnapstoreConfig)
 					if err != nil {

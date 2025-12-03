@@ -24,7 +24,7 @@ func NewBackupRestoreComponentConfig() *BackupRestoreComponentConfig {
 		ServerConfig:             NewHTTPServerConfig(),
 		SnapshotterConfig:        snapshotter.NewSnapshotterConfig(),
 		SnapstoreConfig:          snapstore.NewSnapstoreConfig(),
-		SecondarySnapstoreConfig: nil,
+		SecondarySnapstoreConfig: snapstore.NewSnapstoreConfig(),
 		CompressionConfig:        compressor.NewCompressorConfig(),
 		RestorationConfig:        brtypes.NewRestorationConfig(),
 		DefragmentationSchedule:  defaultDefragmentationSchedule,
@@ -87,9 +87,6 @@ func (c *BackupRestoreComponentConfig) Validate() error {
 		return err
 	}
 	if c.BackupSyncEnabled {
-		if c.SecondarySnapstoreConfig == nil {
-			return fmt.Errorf("secondary snapstore config is required when backup-sync is enabled")
-		}
 		if err := c.SecondarySnapstoreConfig.Validate(); err != nil {
 			return fmt.Errorf("a valid secondary snapstore config is required when backup-sync is enabled: %w", err)
 		}
@@ -100,7 +97,7 @@ func (c *BackupRestoreComponentConfig) Validate() error {
 // Complete completes the config.
 func (c *BackupRestoreComponentConfig) Complete() {
 	c.SnapstoreConfig.Complete()
-	if c.SecondarySnapstoreConfig != nil {
+	if c.BackupSyncEnabled {
 		c.SecondarySnapstoreConfig.Complete()
 	}
 }
