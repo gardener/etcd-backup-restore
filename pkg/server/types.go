@@ -5,6 +5,8 @@
 package server
 
 import (
+	"time"
+
 	"github.com/gardener/etcd-backup-restore/pkg/compressor"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 )
@@ -12,6 +14,7 @@ import (
 const (
 	defaultServerPort              = 8080
 	defaultDefragmentationSchedule = "0 0 */3 * *"
+	defaultBackupSyncTimeout       = 1 * time.Hour
 	// to enable backup-restore to use etcd-wrapper related functionality.
 	usageOfEtcdWrapperEnabled = false
 )
@@ -30,6 +33,7 @@ type BackupRestoreComponentConfig struct {
 	ExponentialBackoffConfig *brtypes.ExponentialBackoffConfig `json:"exponentialBackoffConfig,omitempty"`
 	DefragmentationSchedule  string                            `json:"defragmentationSchedule"`
 	BackupSyncEnabled        bool                              `json:"backupSyncEnabled,omitempty"`
+	BackupSyncTimeout        time.Duration                     `json:"backupSyncTimeout,omitempty"`
 	UseEtcdWrapper           bool                              `json:"useEtcdWrapper,omitempty"`
 }
 

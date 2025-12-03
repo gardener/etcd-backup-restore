@@ -247,7 +247,7 @@ func (b *BackupRestoreServer) runServer(ctx context.Context, restoreOpts *brtype
 					}
 
 					cp := copier.NewCopier(b.logger, ss, secondary, -1, -1, 10, false, 0)
-					if err := cp.SyncBackups(ctx, 30*time.Second); err != nil {
+					if err := cp.SyncBackups(ctx, b.config.BackupSyncTimeout); err != nil {
 						b.logger.Fatalf("failed to sync backups: %v", err)
 					}
 					go backupssr.RunGarbageCollector(backupGcStop)

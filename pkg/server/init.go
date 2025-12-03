@@ -28,6 +28,7 @@ func NewBackupRestoreComponentConfig() *BackupRestoreComponentConfig {
 		CompressionConfig:        compressor.NewCompressorConfig(),
 		RestorationConfig:        brtypes.NewRestorationConfig(),
 		DefragmentationSchedule:  defaultDefragmentationSchedule,
+		BackupSyncTimeout:        defaultBackupSyncTimeout,
 		HealthConfig:             brtypes.NewHealthConfig(),
 		LeaderElectionConfig:     brtypes.NewLeaderElectionConfig(),
 		ExponentialBackoffConfig: brtypes.NewExponentialBackOffConfig(),
@@ -50,6 +51,7 @@ func (c *BackupRestoreComponentConfig) AddFlags(fs *flag.FlagSet) {
 	c.SecondarySnapstoreConfig.AddSecondaryFlags(fs)
 	// Miscellaneous
 	fs.StringVar(&c.DefragmentationSchedule, "defragmentation-schedule", c.DefragmentationSchedule, "schedule to defragment etcd data directory")
+	fs.DurationVar(&c.BackupSyncTimeout, "backup-sync-timeout", c.BackupSyncTimeout, "timeout for periodic backup sync operations (defaults to 1h)")
 	fs.BoolVar(&c.UseEtcdWrapper, "use-etcd-wrapper", c.UseEtcdWrapper, "to enable backup-restore to use etcd-wrapper related functionality. Note: enable this flag only if etcd-wrapper is deployed.")
 	fs.BoolVar(&c.BackupSyncEnabled, "backup-sync-enabled", c.BackupSyncEnabled, "enable backup-sync feature")
 }
@@ -85,6 +87,9 @@ func (c *BackupRestoreComponentConfig) Validate() error {
 	}
 	if err := c.ExponentialBackoffConfig.Validate(); err != nil {
 		return err
+	}
+	if c.BackupSyncTimeout < 0 {
+		return fmt.Errorf("backup sync timeout must not be negative")
 	}
 	if c.BackupSyncEnabled {
 		if err := c.SecondarySnapstoreConfig.Validate(); err != nil {
