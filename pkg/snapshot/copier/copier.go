@@ -276,7 +276,7 @@ func (c *Copier) syncBackups(ctx context.Context, interval time.Duration) {
 	defer ticker.Stop()
 	// start an initial sync first
 	if err := c.CopyBackups(ctx); err != nil {
-		c.logger.Errorf("could not copy backups: %v", err)
+		c.logger.Errorf("could not perform the initial copy of backups: %v", err)
 	}
 	for {
 		select {
