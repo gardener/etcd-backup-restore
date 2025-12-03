@@ -55,10 +55,10 @@ quota-backend-bytes: 1073741824
 listen-client-urls: http://0.0.0.0:2379
 advertise-client-urls:
   ` + podName + `:
-    - http://0.0.0.0:2379
+    - http://` + etcd.Clients[0].Addr().String() + `
 initial-advertise-peer-urls:
   ` + podName + `:
-    - http://etcd-main-peer.default:2380
+    - http://` + etcd.Peers[0].Addr().String() + `
 initial-cluster: etcd1=http://0.0.0.0:2380
 initial-cluster-token: new
 initial-cluster-state: new
