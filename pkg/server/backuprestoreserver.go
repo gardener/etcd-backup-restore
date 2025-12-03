@@ -235,19 +235,19 @@ func (b *BackupRestoreServer) runServer(ctx context.Context, restoreOpts *brtype
 					b.logger.Fatalf("failed to create snapstore from configured storage provider: %v", err)
 				}
 
-				if b.config.BackupSyncEnabled {
-					b.logger.Infof("Starting backup copier..")
-					secondary, err := snapstore.GetSnapstore(b.config.SecondarySnapstoreConfig)
+				if b.config.SecondarySnapstoreConfig.BackupSyncEnabled {
+					b.logger.Infof("Starting periodic backup copier..")
+					secondary, err := snapstore.GetSnapstore(b.config.SecondarySnapstoreConfig.StoreConfig)
 					if err != nil {
 						b.logger.Fatalf("failed to create secondary snapstore from configured storage provider: %v", err)
 					}
-					backupssr, err := snapshotter.NewSnapshotter(b.logger, b.config.SnapshotterConfig, ss, b.config.EtcdConnectionConfig, b.config.CompressionConfig, b.config.HealthConfig, b.config.SecondarySnapstoreConfig)
+					backupssr, err := snapshotter.NewSnapshotter(b.logger, b.config.SnapshotterConfig, ss, b.config.EtcdConnectionConfig, b.config.CompressionConfig, b.config.HealthConfig, b.config.SecondarySnapstoreConfig.StoreConfig)
 					if err != nil {
 						b.logger.Fatalf("failed to create snapshot backup copier: %v", err)
 					}
 
 					cp := copier.NewCopier(b.logger, ss, secondary, -1, -1, 10, false, 0)
-					if err := cp.SyncBackups(ctx, b.config.BackupSyncTimeout); err != nil {
+					if err := cp.SyncBackups(ctx, b.config.SecondarySnapstoreConfig.SyncPeriod); err != nil {
 						b.logger.Fatalf("failed to sync backups: %v", err)
 					}
 					go backupssr.RunGarbageCollector(backupGcStop)

@@ -24,16 +24,14 @@ func NewBackupRestoreComponentConfig() *BackupRestoreComponentConfig {
 		ServerConfig:             NewHTTPServerConfig(),
 		SnapshotterConfig:        snapshotter.NewSnapshotterConfig(),
 		SnapstoreConfig:          snapstore.NewSnapstoreConfig(),
-		SecondarySnapstoreConfig: snapstore.NewSnapstoreConfig(),
+		SecondarySnapstoreConfig: snapstore.NewSecondarySnapstoreConfig(),
 		CompressionConfig:        compressor.NewCompressorConfig(),
 		RestorationConfig:        brtypes.NewRestorationConfig(),
 		DefragmentationSchedule:  defaultDefragmentationSchedule,
-		BackupSyncTimeout:        defaultBackupSyncTimeout,
 		HealthConfig:             brtypes.NewHealthConfig(),
 		LeaderElectionConfig:     brtypes.NewLeaderElectionConfig(),
 		ExponentialBackoffConfig: brtypes.NewExponentialBackOffConfig(),
 		UseEtcdWrapper:           usageOfEtcdWrapperEnabled,
-		BackupSyncEnabled:        false,
 	}
 }
 
@@ -48,12 +46,10 @@ func (c *BackupRestoreComponentConfig) AddFlags(fs *flag.FlagSet) {
 	c.HealthConfig.AddFlags(fs)
 	c.LeaderElectionConfig.AddFlags(fs)
 	c.ExponentialBackoffConfig.AddFlags(fs)
-	c.SecondarySnapstoreConfig.AddSecondaryFlags(fs)
+	c.SecondarySnapstoreConfig.AddFlags(fs)
 	// Miscellaneous
 	fs.StringVar(&c.DefragmentationSchedule, "defragmentation-schedule", c.DefragmentationSchedule, "schedule to defragment etcd data directory")
-	fs.DurationVar(&c.BackupSyncTimeout, "backup-sync-timeout", c.BackupSyncTimeout, "timeout for periodic backup sync operations (defaults to 1h)")
 	fs.BoolVar(&c.UseEtcdWrapper, "use-etcd-wrapper", c.UseEtcdWrapper, "to enable backup-restore to use etcd-wrapper related functionality. Note: enable this flag only if etcd-wrapper is deployed.")
-	fs.BoolVar(&c.BackupSyncEnabled, "backup-sync-enabled", c.BackupSyncEnabled, "enable backup-sync feature")
 }
 
 // Validate validates the config.
@@ -88,13 +84,9 @@ func (c *BackupRestoreComponentConfig) Validate() error {
 	if err := c.ExponentialBackoffConfig.Validate(); err != nil {
 		return err
 	}
-	if c.BackupSyncTimeout < 0 {
-		return fmt.Errorf("backup sync timeout must not be negative")
-	}
-	if c.BackupSyncEnabled {
-		if err := c.SecondarySnapstoreConfig.Validate(); err != nil {
-			return fmt.Errorf("a valid secondary snapstore config is required when backup-sync is enabled: %w", err)
-		}
+
+	if err := c.SecondarySnapstoreConfig.Validate(); err != nil {
+		return err
 	}
 	return nil
 }
@@ -102,9 +94,7 @@ func (c *BackupRestoreComponentConfig) Validate() error {
 // Complete completes the config.
 func (c *BackupRestoreComponentConfig) Complete() {
 	c.SnapstoreConfig.Complete()
-	if c.BackupSyncEnabled {
-		c.SecondarySnapstoreConfig.Complete()
-	}
+	c.SecondarySnapstoreConfig.Complete()
 }
 
 // HTTPServerConfig holds the server config.

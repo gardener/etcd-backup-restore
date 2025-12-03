@@ -5,6 +5,8 @@
 package snapstore
 
 import (
+	"time"
+
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 )
 
@@ -14,5 +16,13 @@ func NewSnapstoreConfig() *brtypes.SnapstoreConfig {
 		MaxParallelChunkUploads: 5,
 		MinChunkSize:            brtypes.MinChunkSize,
 		TempDir:                 "/tmp",
+	}
+}
+
+func NewSecondarySnapstoreConfig() *brtypes.SecondarySnapstoreConfig {
+	return &brtypes.SecondarySnapstoreConfig{
+		StoreConfig:       NewSnapstoreConfig(),
+		SyncPeriod:        1 * time.Hour,
+		BackupSyncEnabled: false,
 	}
 }

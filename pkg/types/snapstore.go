@@ -211,11 +211,6 @@ func (c *SnapstoreConfig) AddSourceFlags(fs *flag.FlagSet) {
 	c.addFlags(fs, "source-")
 }
 
-// AddSecondaryFlags adds the flags to flagset using `secondary-` prefix for all parameters
-func (c *SnapstoreConfig) AddSecondaryFlags(fs *flag.FlagSet) {
-	c.addFlags(fs, "secondary-")
-}
-
 func (c *SnapstoreConfig) addFlags(fs *flag.FlagSet, parameterPrefix string) {
 	fs.StringVar(&c.Provider, parameterPrefix+"storage-provider", c.Provider, "snapshot storage provider")
 	fs.StringVar(&c.Container, parameterPrefix+"store-container", c.Container, "container which will be used as snapstore")
@@ -258,4 +253,27 @@ func (c *SnapstoreConfig) MergeWith(other *SnapstoreConfig) {
 	if c.TempDir == "" {
 		c.TempDir = other.TempDir
 	}
+}
+
+type SecondarySnapstoreConfig struct {
+	StoreConfig       *SnapstoreConfig
+	BackupSyncEnabled bool          `json:"backupSyncEnabled,omitempty"`
+	SyncPeriod        time.Duration `json:"syncPeriod,omitempty"`
+}
+
+func (c *SecondarySnapstoreConfig) AddFlags(fs *flag.FlagSet) {
+	c.StoreConfig.addFlags(fs, "secondary-")
+	fs.BoolVar(&c.BackupSyncEnabled, "backup-sync-enabled", c.BackupSyncEnabled, "enable secondary backup-sync feature")
+	fs.DurationVar(&c.SyncPeriod, "backup-sync-period", c.SyncPeriod, "period for periodic backup sync operations")
+}
+
+func (c *SecondarySnapstoreConfig) Validate() error {
+	if c.BackupSyncEnabled {
+		return c.StoreConfig.Validate()
+	}
+	return nil
+}
+
+func (c *SecondarySnapstoreConfig) Complete() {
+	c.StoreConfig.Complete()
 }
