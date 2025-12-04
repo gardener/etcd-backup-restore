@@ -85,7 +85,7 @@ type S3SnapStore struct {
 
 // NewS3SnapStore create new S3SnapStore from shared configuration with specified bucket
 func NewS3SnapStore(config *brtypes.SnapstoreConfig) (*S3SnapStore, error) {
-	cfgOpts, cliOpts, sseCreds, err := getConfigOpts(getEnvPrefixString(config.IsSource))
+	cfgOpts, cliOpts, sseCreds, err := getConfigOpts(getEnvPrefixString(config))
 	if err != nil {
 		return nil, err
 	}

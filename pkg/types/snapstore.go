@@ -199,6 +199,10 @@ type SnapstoreConfig struct {
 	IsSource bool `json:"isSource,omitempty"`
 	// IsEmulatorEnabled indicates whether a storage emulator is being used for the snapstore.
 	IsEmulatorEnabled bool `json:"isEmulatorEnabled,omitempty"`
+
+	// EnvPrefix is the prefix to be used for environment variables.
+	// It is used to differentiate between primary and secondary snapstore configs.
+	EnvPrefix string `json:"envPrefix,omitempty"`
 }
 
 // AddFlags adds the flags to flagset.
@@ -263,8 +267,8 @@ type SecondarySnapstoreConfig struct {
 
 func (c *SecondarySnapstoreConfig) AddFlags(fs *flag.FlagSet) {
 	c.StoreConfig.addFlags(fs, "secondary-")
-	fs.BoolVar(&c.BackupSyncEnabled, "backup-sync-enabled", c.BackupSyncEnabled, "enable secondary backup-sync feature")
-	fs.DurationVar(&c.SyncPeriod, "backup-sync-period", c.SyncPeriod, "period for periodic backup sync operations")
+	fs.BoolVar(&c.BackupSyncEnabled, "secondary-backup-sync-enabled", c.BackupSyncEnabled, "enable secondary backup-sync feature")
+	fs.DurationVar(&c.SyncPeriod, "secondary-backup-sync-period", c.SyncPeriod, "period for periodic backup sync operations")
 }
 
 func (c *SecondarySnapstoreConfig) Validate() error {
@@ -275,5 +279,6 @@ func (c *SecondarySnapstoreConfig) Validate() error {
 }
 
 func (c *SecondarySnapstoreConfig) Complete() {
+	c.StoreConfig.EnvPrefix = "SECONDARY_"
 	c.StoreConfig.Complete()
 }

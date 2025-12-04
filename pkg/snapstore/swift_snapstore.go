@@ -78,7 +78,7 @@ const (
 
 // NewSwiftSnapStore create new SwiftSnapStore from shared configuration with specified bucket
 func NewSwiftSnapStore(config *brtypes.SnapstoreConfig) (*SwiftSnapStore, error) {
-	clientOpts, err := getClientOpts(config.IsSource)
+	clientOpts, err := getClientOpts(config)
 	if err != nil {
 		return nil, err
 	}
@@ -107,8 +107,8 @@ func NewSwiftSnapStore(config *brtypes.SnapstoreConfig) (*SwiftSnapStore, error)
 
 }
 
-func getClientOpts(isSource bool) (*clientconfig.ClientOpts, error) {
-	prefix := getEnvPrefixString(isSource)
+func getClientOpts(config *brtypes.SnapstoreConfig) (*clientconfig.ClientOpts, error) {
+	prefix := getEnvPrefixString(config)
 	if filename, isSet := os.LookupEnv(prefix + swiftCredentialJSONFile); isSet {
 		clientOpts, err := readSwiftCredentialsJSON(filename)
 		if err != nil {
@@ -145,7 +145,7 @@ func getClientOpts(isSource bool) (*clientconfig.ClientOpts, error) {
 	// If a neither a swiftCredentialFile nor a swiftCredentialJSONFile was found, fall back to
 	// retrieving credentials from environment variables.
 	// If the snapstore is used as source during a copy operation all environment variables have a SOURCE_OS_ prefix.
-	if isSource {
+	if config.IsSource {
 		return &clientconfig.ClientOpts{EnvPrefix: envPrefixSource}, nil
 	}
 

@@ -37,6 +37,8 @@ func GetSnapstore(config *brtypes.SnapstoreConfig) (brtypes.SnapStore, error) {
 	if config.Container == "" {
 		if config.IsSource {
 			config.Container = os.Getenv(sourceEnvStorageContainer)
+		} else if config.EnvPrefix != "" {
+			config.Container = os.Getenv(config.EnvPrefix + envStorageContainer)
 		} else {
 			config.Container = os.Getenv(envStorageContainer)
 		}
@@ -153,9 +155,12 @@ func collectChunkUploadError(chunkUploadCh chan<- chunk, resCh <-chan chunkUploa
 	return nil
 }
 
-func getEnvPrefixString(isSource bool) string {
-	if isSource {
+func getEnvPrefixString(config *brtypes.SnapstoreConfig) string {
+	if config.IsSource {
 		return sourcePrefixString
+	}
+	if config.EnvPrefix != "" {
+		return config.EnvPrefix
 	}
 	return ""
 }

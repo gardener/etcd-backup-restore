@@ -53,7 +53,7 @@ type OSSSnapStore struct {
 
 // NewOSSSnapStore create new OSSSnapStore from shared configuration with specified bucket
 func NewOSSSnapStore(config *brtypes.SnapstoreConfig) (*OSSSnapStore, error) {
-	ao, err := getAuthOptions(getEnvPrefixString(config.IsSource))
+	ao, err := getAuthOptions(getEnvPrefixString(config))
 	if err != nil {
 		return nil, err
 	}
