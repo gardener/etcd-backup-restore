@@ -60,6 +60,9 @@ const (
 	// ExcludeSnapshotMetadataKey is the tag that is to be added on snapshots in the object store if they are not to be included in SnapStore's List output.
 	// Note: applicable for storage provider: ABS, GCS and S3.
 	ExcludeSnapshotMetadataKey = "x-etcd-snapshot-exclude"
+
+	// DefaultSecondaryBackupSyncPeriod is the default period for secondary backup sync operations.
+	DefaultSecondaryBackupSyncPeriod = 1 * time.Hour
 )
 
 var (

@@ -5,16 +5,13 @@
 package server
 
 import (
-	"time"
-
 	"github.com/gardener/etcd-backup-restore/pkg/compressor"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 )
 
 const (
-	defaultServerPort               = 8080
-	defaultDefragmentationSchedule  = "0 0 */3 * *"
-	defaultSecondayBackupSyncPeriod = 1 * time.Hour
+	defaultServerPort              = 8080
+	defaultDefragmentationSchedule = "0 0 */3 * *"
 	// to enable backup-restore to use etcd-wrapper related functionality.
 	usageOfEtcdWrapperEnabled = false
 )

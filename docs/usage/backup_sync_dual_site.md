@@ -162,63 +162,6 @@ env:
   value: /home/.azure/secondary-credentials.json
 ```
 
-## How It Works
-
-### Initialization
-
-1. When the backup-restore server starts and becomes the leader, it checks if `--backup-sync-enabled=true`
-2. If enabled, it initializes both primary and secondary snapstores
-3. A `Copier` instance is created to manage synchronization
-4. The copier starts a background goroutine that runs periodically
-
-### Synchronization Process
-
-The copier performs the following steps during each sync cycle:
-
-1. **List Source Snapshots**: Retrieve all snapshots from the primary snapstore
-2. **List Destination Snapshots**: Retrieve existing snapshots from the secondary snapstore
-3. **Identify Missing Snapshots**: Compare and identify snapshots that exist in primary but not in secondary
-4. **Parallel Copy**: Copy missing snapshots using configured parallelism
-5. **Error Handling**: Log errors for failed copies without stopping the sync process
-6. **Wait for Next Cycle**: Sleep until the next sync period
-
-### Snapshot Filtering
-
-The copier intelligently handles snapshots:
-
-- Skips snapshots that already exist in the secondary store
-- Removes the `.final` suffix when comparing snapshot names
-- Copies both full and delta snapshots
-- Maintains the same snapshot naming and structure
-
-### Code Reference
-
-The synchronization logic is implemented in `pkg/snapshot/copier/copier.go`:
-
-```go
-func (c *Copier) syncBackups(ctx context.Context, interval time.Duration) {
-    ticker := time.NewTicker(interval)
-    defer ticker.Stop()
-    
-    // Perform initial sync
-    if err := c.CopyBackups(ctx); err != nil {
-        c.logger.Errorf("could not perform initial copy: %v", err)
-    }
-    
-    // Continue periodic syncs
-    for {
-        select {
-        case <-ctx.Done():
-            return
-        case <-ticker.C:
-            if err := c.CopyBackups(ctx); err != nil {
-                c.logger.Errorf("could not copy backups: %v", err)
-            }
-        }
-    }
-}
-```
-
 ## Monitoring and Verification
 
 ### Logs
@@ -290,17 +233,6 @@ If secondary backups fall significantly behind:
      --secondary-store-container=secondary-bucket
    ```
 
-## Leader Election Considerations
+## Garbage Collection for Secondary Buckets
 
-Backup synchronization only runs on the **leading** backup-restore sidecar:
-
-- When a pod becomes leader, it starts the copier
-- When a pod loses leadership, it stops the copier
-- Only one instance performs synchronization at a time
-- This prevents duplicate copy operations and conflicts
-
-### Behavior During Leader Changes
-
-1. **Old Leader**: Copier receives stop signal and gracefully shuts down
-2. **New Leader**: Initializes copier and starts synchronization
-3. **Gap Handling**: Next sync cycle catches up on any missed snapshots
+When using dual-site backup synchronization, garbage collection operates independently on both primary and secondary snapstores.
