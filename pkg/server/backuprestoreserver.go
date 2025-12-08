@@ -474,7 +474,7 @@ func (b *BackupRestoreServer) runEtcdProbeLoopWithSnapshotter(ctx context.Contex
 			// Start garbage collector
 			gcStopCh := make(chan struct{})
 			b.logger.Info("Starting the garbage collector...")
-			go ssr.RunGarbageCollector(gcStopCh)
+			ssr.RunGarbageCollector(gcStopCh)
 
 			// Start snapshotter
 			b.logger.Infof("Starting snapshotter...")
