@@ -204,8 +204,6 @@ type SnapstoreConfig struct {
 	MinChunkSize int64 `json:"minChunkSize,omitempty"`
 	// IsSource determines if this SnapStore is the source for a copy operation
 	IsSource bool `json:"isSource,omitempty"`
-	// IsEmulatorEnabled indicates whether a storage emulator is being used for the snapstore.
-	IsEmulatorEnabled bool `json:"isEmulatorEnabled,omitempty"`
 }
 
 // AddFlags adds the flags to flagset.
