@@ -7,6 +7,7 @@ package types
 import (
 	"fmt"
 	"io"
+	"net/url"
 	"path"
 	"strconv"
 	"strings"
@@ -192,6 +193,8 @@ type SnapstoreConfig struct {
 	Provider string `json:"provider,omitempty"`
 	// Container holds the name of bucket or container to which snapshot will be stored.
 	Container string `json:"container"`
+	// Endpoint denotes the storage endpoint that will be used to override the provider's default.
+	Endpoint string `json:"endpoint,omitempty"`
 	// Prefix holds the prefix or directory under StorageContainer under which snapshot will be stored.
 	Prefix string `json:"prefix,omitempty"`
 	// Temporary Directory
@@ -222,6 +225,7 @@ func (c *SnapstoreConfig) AddSourceFlags(fs *flag.FlagSet) {
 func (c *SnapstoreConfig) addFlags(fs *flag.FlagSet, parameterPrefix string) {
 	fs.StringVar(&c.Provider, parameterPrefix+"storage-provider", c.Provider, "snapshot storage provider")
 	fs.StringVar(&c.Container, parameterPrefix+"store-container", c.Container, "container which will be used as snapstore")
+	fs.StringVar(&c.Endpoint, parameterPrefix+"store-endpoint", c.Endpoint, "endpoint of the container that will be used as snapstore")
 	fs.StringVar(&c.Prefix, parameterPrefix+"store-prefix", c.Prefix, "prefix or directory inside container under which snapstore is created")
 	fs.UintVar(&c.MaxParallelChunkUploads, parameterPrefix+"max-parallel-chunk-uploads", c.MaxParallelChunkUploads, "maximum number of parallel chunk uploads allowed")
 	fs.Int64Var(&c.MinChunkSize, parameterPrefix+"min-chunk-size", c.MinChunkSize, "Minimum size for multipart chunk upload")
@@ -235,6 +239,11 @@ func (c *SnapstoreConfig) Validate() error {
 	}
 	if c.MinChunkSize < MinChunkSize {
 		return fmt.Errorf("min chunk size for multi-part chunk upload should be greater than or equal to 5 MiB")
+	}
+	if c.Endpoint != "" {
+		if _, err := url.Parse(c.Endpoint); err != nil {
+			return fmt.Errorf("endpoint override specified must be a valid URL: %w", err)
+		}
 	}
 	return nil
 }
