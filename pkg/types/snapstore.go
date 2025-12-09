@@ -270,7 +270,7 @@ type SecondarySnapstoreConfig struct {
 
 func (c *SecondarySnapstoreConfig) AddFlags(fs *flag.FlagSet) {
 	c.StoreConfig.addFlags(fs, "secondary-")
-	fs.BoolVar(&c.BackupSyncEnabled, "secondary-backup-sync-enabled", c.BackupSyncEnabled, "enable secondary backup-sync feature")
+	fs.BoolVar(&c.BackupSyncEnabled, "secondary-backup-sync-enabled", c.BackupSyncEnabled, "enable secondary backup-sync feature [alpha]")
 	fs.DurationVar(&c.SyncPeriod, "secondary-backup-sync-period", c.SyncPeriod, "period for periodic backup sync operations")
 }
 
