@@ -127,7 +127,8 @@ type EtcdDataPopulationResponse struct {
 
 // PopulateEtcd sequentially puts key-value pairs into the embedded etcd, from key <keyFrom> (including) to <keyTo> (excluding). Every key divisible by 10 will be
 // be added and deleted immediately. So, for such key you will observer two events on etcd PUT and DELETE and key not being present in etcd at end.
-func PopulateEtcd(ctx context.Context, logger *logrus.Entry, endpoints []string, keyFrom, keyTo int, response *EtcdDataPopulationResponse) {
+// A valid username and password must be provided if etcd auth is enabled.
+func PopulateEtcd(ctx context.Context, logger *logrus.Entry, endpoints []string, username, password string, keyFrom, keyTo int, response *EtcdDataPopulationResponse) {
 	if response == nil {
 		response = &EtcdDataPopulationResponse{}
 	}
@@ -136,6 +137,8 @@ func PopulateEtcd(ctx context.Context, logger *logrus.Entry, endpoints []string,
 	cli, err := clientv3.New(clientv3.Config{
 		Endpoints:   endpoints,
 		DialTimeout: 10 * time.Second,
+		Username:    username,
+		Password:    password,
 	})
 	if err != nil {
 		response.Err = fmt.Errorf("unable to start etcd client: %v", err)
@@ -182,9 +185,39 @@ func PopulateEtcd(ctx context.Context, logger *logrus.Entry, endpoints []string,
 }
 
 // PopulateEtcdWithWaitGroup sequentially puts key-value pairs into the embedded etcd, until stopped via context. Use `wg.Wait()` to make sure that etcd population has stopped completely.
-func PopulateEtcdWithWaitGroup(ctx context.Context, wg *sync.WaitGroup, logger *logrus.Entry, endpoints []string, resp *EtcdDataPopulationResponse) {
+// A valid username and password must be provided if etcd auth is enabled.
+func PopulateEtcdWithWaitGroup(ctx context.Context, wg *sync.WaitGroup, logger *logrus.Entry, endpoints []string, username, password string, resp *EtcdDataPopulationResponse) {
 	defer wg.Done()
-	PopulateEtcd(ctx, logger, endpoints, 0, math.MaxInt64, resp)
+	PopulateEtcd(ctx, logger, endpoints, username, password, 0, math.MaxInt64, resp)
+}
+
+// CreateRootUserAndEnableAuth does the following on an existing etcd cluster that has auth disabled:
+//   - Create a new user using the provided name and password.
+//   - Grant "root" role to the created user.
+//   - Enable auth in etcd.
+func CreateRootUserAndEnableAuth(ctx context.Context, endpoints []string, username, password string) error {
+	cli, err := clientv3.New(clientv3.Config{
+		Endpoints:   endpoints,
+		DialTimeout: 10 * time.Second,
+	})
+	if err != nil {
+		return err
+	}
+	defer cli.Close()
+
+	if _, err := cli.Auth.UserAdd(ctx, username, password); err != nil {
+		return err
+	}
+
+	if _, err := cli.Auth.UserGrantRole(ctx, username, "root"); err != nil {
+		return err
+	}
+
+	if _, err := cli.Auth.AuthEnable(ctx); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // ContextWithWaitGroup returns a copy of parent with a new Done channel. The returned
@@ -219,7 +252,8 @@ func ContextWithWaitGroupFollwedByGracePeriod(parent context.Context, wg *sync.W
 }
 
 // RunSnapshotter creates a snapshotter object and runs it for a duration specified by 'snapshotterDurationSeconds'
-func RunSnapshotter(logger *logrus.Entry, snapstoreConfig brtypes.SnapstoreConfig, deltaSnapshotPeriod time.Duration, endpoints []string, stopCh <-chan struct{}, startWithFullSnapshot bool, compressionConfig *compressor.CompressionConfig) error {
+// A valid username and password must be provided if etcd auth is enabled.
+func RunSnapshotter(logger *logrus.Entry, snapstoreConfig brtypes.SnapstoreConfig, deltaSnapshotPeriod time.Duration, endpoints []string, username, password string, stopCh <-chan struct{}, startWithFullSnapshot bool, compressionConfig *compressor.CompressionConfig) error {
 	store, err := snapstore.GetSnapstore(&snapstoreConfig)
 	if err != nil {
 		return err
@@ -228,6 +262,8 @@ func RunSnapshotter(logger *logrus.Entry, snapstoreConfig brtypes.SnapstoreConfi
 	etcdConnectionConfig := brtypes.NewEtcdConnectionConfig()
 	etcdConnectionConfig.ConnectionTimeout.Duration = 10 * time.Second
 	etcdConnectionConfig.Endpoints = endpoints
+	etcdConnectionConfig.Username = username
+	etcdConnectionConfig.Password = password
 
 	snapshotterConfig := &brtypes.SnapshotterConfig{
 		FullSnapshotSchedule:     "0 0 1 1 *",
@@ -249,16 +285,32 @@ func RunSnapshotter(logger *logrus.Entry, snapstoreConfig brtypes.SnapstoreConfi
 }
 
 // CheckDataConsistency starts an embedded etcd and checks for correctness of the values stored in etcd against the keys 'keyFrom' through 'keyTo'
-func CheckDataConsistency(ctx context.Context, dir string, keyTo int, logger *logrus.Entry) error {
+// A valid username and password must be provided if etcd auth is enabled.
+func CheckDataConsistency(ctx context.Context, dir string, keyTo int, username, password string, logger *logrus.Entry) error {
 	etcd, err := StartEmbeddedEtcd(ctx, dir, logger, DefaultEtcdName, EmbeddedEtcdPortNo)
 	if err != nil {
 		return fmt.Errorf("unable to start embedded etcd server: %v", err)
 	}
 	defer etcd.Close()
+
+	// If auth is enabled, we expect a username and password to be provided.
+	// Otherwise, there must be no username or password.
+	if etcd.Server.AuthStore().IsAuthEnabled() {
+		if username == "" || password == "" {
+			return fmt.Errorf("a username and password must be set when auth is enabled")
+		}
+	} else {
+		if username != "" || password != "" {
+			return fmt.Errorf("a username or password should not be set when auth is disabled")
+		}
+	}
+
 	endpoints := []string{etcd.Clients[0].Addr().String()}
 	cli, err := clientv3.New(clientv3.Config{
 		Endpoints:   endpoints,
 		DialTimeout: 10 * time.Second,
+		Username:    username,
+		Password:    password,
 	})
 	if err != nil {
 		return fmt.Errorf("unable to start etcd client: %v", err)

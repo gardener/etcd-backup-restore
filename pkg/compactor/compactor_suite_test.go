@@ -71,7 +71,7 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 	resp := &utils.EtcdDataPopulationResponse{}
 	wg := &sync.WaitGroup{}
 	wg.Add(1)
-	go utils.PopulateEtcdWithWaitGroup(populatorCtx, wg, logger, endpoints, resp)
+	go utils.PopulateEtcdWithWaitGroup(populatorCtx, wg, logger, endpoints, "", "", resp)
 
 	// Take snapshots (Full + Delta) of the ETCD database
 	deltaSnapshotPeriod := time.Second
@@ -80,7 +80,7 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 	compressionConfig.Enabled = true
 	compressionConfig.CompressionPolicy = "gzip"
 	snapstoreConfig := brtypes.SnapstoreConfig{Container: testSnapshotDir, Provider: "Local"}
-	err = utils.RunSnapshotter(logger, snapstoreConfig, deltaSnapshotPeriod, endpoints, ctx.Done(), true, compressionConfig)
+	err = utils.RunSnapshotter(logger, snapstoreConfig, deltaSnapshotPeriod, endpoints, "", "", ctx.Done(), true, compressionConfig)
 	Expect(err).ShouldNot(HaveOccurred())
 
 	// Wait until the populator finishes with populating ETCD

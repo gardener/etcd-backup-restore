@@ -67,14 +67,14 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 	resp := &utils.EtcdDataPopulationResponse{}
 	wg := &sync.WaitGroup{}
 	wg.Add(1)
-	go utils.PopulateEtcdWithWaitGroup(populatorCtx, wg, logger, endpoints, resp)
+	go utils.PopulateEtcdWithWaitGroup(populatorCtx, wg, logger, endpoints, "", "", resp)
 
 	deltaSnapshotPeriod := time.Second
 	ctx := utils.ContextWithWaitGroupFollwedByGracePeriod(populatorCtx, wg, deltaSnapshotPeriod+2*time.Second)
 
 	compressionConfig := compressor.NewCompressorConfig()
 	snapstoreConfig := brtypes.SnapstoreConfig{Container: snapstoreDir, Provider: "Local"}
-	err = utils.RunSnapshotter(logger, snapstoreConfig, deltaSnapshotPeriod, endpoints, ctx.Done(), true, compressionConfig)
+	err = utils.RunSnapshotter(logger, snapstoreConfig, deltaSnapshotPeriod, endpoints, "", "", ctx.Done(), true, compressionConfig)
 	Expect(err).ShouldNot(HaveOccurred())
 
 	keyTo = resp.KeyTo

@@ -190,7 +190,7 @@ var _ = Describe("Running Compactor", func() {
 				err = restorer.RestoreAndStopEtcd(*restoreOpts, nil)
 
 				Expect(err).ShouldNot(HaveOccurred())
-				err = utils.CheckDataConsistency(testCtx, restoreOpts.Config.DataDir, keyTo, logger)
+				err = utils.CheckDataConsistency(testCtx, restoreOpts.Config.DataDir, keyTo, "", "", logger)
 				Expect(err).ShouldNot(HaveOccurred())
 			})
 		})
@@ -269,7 +269,7 @@ var _ = Describe("Running Compactor", func() {
 				err = restorer.RestoreAndStopEtcd(*restoreOpts, nil)
 
 				Expect(err).ShouldNot(HaveOccurred())
-				err = utils.CheckDataConsistency(testCtx, restoreOpts.Config.DataDir, keyTo, logger)
+				err = utils.CheckDataConsistency(testCtx, restoreOpts.Config.DataDir, keyTo, "", "", logger)
 				Expect(err).ShouldNot(HaveOccurred())
 			})
 		})

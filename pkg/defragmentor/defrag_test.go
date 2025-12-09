@@ -132,7 +132,7 @@ var _ = Describe("Defrag", func() {
 			resp := &utils.EtcdDataPopulationResponse{}
 			wg := &sync.WaitGroup{}
 			wg.Add(1)
-			go utils.PopulateEtcdWithWaitGroup(populatorCtx, wg, logger, endpoints, resp)
+			go utils.PopulateEtcdWithWaitGroup(populatorCtx, wg, logger, endpoints, "", "", resp)
 			Expect(resp.Err).ShouldNot(HaveOccurred())
 
 			// Wait unitil the populator finishes with populating ETCD
