@@ -223,7 +223,8 @@ func StartEmbeddedEtcd(logger *logrus.Entry, ro *brtypes.RestoreOptions) (*Embed
 	case <-e.Server.ReadyNotify():
 		logger.Infof("Embedded server is ready to listen client at: %s", e.Clients[0].Addr())
 	case <-time.After(60 * time.Second):
-		e.Close() // trigger a shutdown
+		e.Server.Stop() // trigger a shutdown
+		e.Close()
 		return nil, fmt.Errorf("server took too long to start")
 	}
 
