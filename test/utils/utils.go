@@ -293,15 +293,15 @@ func CheckDataConsistency(ctx context.Context, dir string, keyTo int, username, 
 	}
 	defer etcd.Close()
 
-	// If auth is enabled, we expect a username and password to be provided.
-	// Otherwise, there must be no username or password.
+	// If auth is enabled then username and password must be provided.
+	// Otherwise, no username or password should be provided.
 	if etcd.Server.AuthStore().IsAuthEnabled() {
 		if username == "" || password == "" {
-			return fmt.Errorf("a username and password must be set when auth is enabled")
+			return fmt.Errorf("a username and password must be set as etcd auth found to be enabled")
 		}
 	} else {
 		if username != "" || password != "" {
-			return fmt.Errorf("a username or password should not be set when auth is disabled")
+			return fmt.Errorf("a username or password should not be set as etcd auth found to be disabled")
 		}
 	}
 

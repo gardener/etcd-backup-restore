@@ -166,7 +166,7 @@ type EmbeddedEtcd struct {
 }
 
 // Close closes the etcd embedded server. If auth was disabled during startup,
-// we enable it again before closing.
+// it will re-enable auth before closing the server.
 func (e *EmbeddedEtcd) Close() {
 	if e.authWasDisabled {
 		if err := e.Etcd.Server.AuthStore().AuthEnable(); err != nil {
