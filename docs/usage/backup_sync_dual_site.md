@@ -180,9 +180,10 @@ INFO[0004] Backups copied
 ### Verification Steps
 
 1. **Check Primary Backups**:
-   ```bash
-   etcdbrctl snapshot list --storage-provider=S3 --store-container=primary-bucket
-   ```
+
+```bash
+aws s3 ls s3://<bucket_name> --recursive
+```
 
 2. **Check Secondary Backups**:
    ```bash

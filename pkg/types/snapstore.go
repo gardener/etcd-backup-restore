@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gardener/etcd-backup-restore/pkg/wrappers"
 	flag "github.com/spf13/pflag"
 )
 
@@ -263,14 +264,14 @@ func (c *SnapstoreConfig) MergeWith(other *SnapstoreConfig) {
 
 type SecondarySnapstoreConfig struct {
 	StoreConfig       *SnapstoreConfig
-	BackupSyncEnabled bool          `json:"backupSyncEnabled,omitempty"`
-	SyncPeriod        time.Duration `json:"syncPeriod,omitempty"`
+	BackupSyncEnabled bool              `json:"backupSyncEnabled,omitempty"`
+	SyncPeriod        wrappers.Duration `json:"syncPeriod,omitempty"`
 }
 
 func (c *SecondarySnapstoreConfig) AddFlags(fs *flag.FlagSet) {
 	c.StoreConfig.addFlags(fs, "secondary-")
-	fs.BoolVar(&c.BackupSyncEnabled, "secondary-backup-sync-enabled", c.BackupSyncEnabled, "enable secondary backup-sync feature [alpha]")
-	fs.DurationVar(&c.SyncPeriod, "secondary-backup-sync-period", c.SyncPeriod, "period for periodic backup sync operations")
+	fs.BoolVar(&c.BackupSyncEnabled, "secondary-backup-sync-enabled", c.BackupSyncEnabled, "enable secondary backup-sync feature")
+	fs.DurationVar(&c.SyncPeriod.Duration, "secondary-backup-sync-period", c.SyncPeriod.Duration, "period for periodic backup sync operations")
 }
 
 func (c *SecondarySnapstoreConfig) Validate() error {

@@ -6,6 +6,7 @@ package snapstore
 
 import (
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
+	"github.com/gardener/etcd-backup-restore/pkg/wrappers"
 )
 
 // NewSnapstoreConfig returns the snapstore config.
@@ -20,7 +21,7 @@ func NewSnapstoreConfig() *brtypes.SnapstoreConfig {
 func NewSecondarySnapstoreConfig() *brtypes.SecondarySnapstoreConfig {
 	return &brtypes.SecondarySnapstoreConfig{
 		StoreConfig:       NewSnapstoreConfig(),
-		SyncPeriod:        brtypes.DefaultSecondaryBackupSyncPeriod,
+		SyncPeriod:        wrappers.Duration{Duration: brtypes.DefaultSecondaryBackupSyncPeriod},
 		BackupSyncEnabled: false,
 	}
 }
