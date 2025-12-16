@@ -230,7 +230,7 @@ var _ = Describe("Running Datavalidator", func() {
 			endpoints := []string{etcd.Clients[0].Addr().String()}
 			// populate etcd but with lesser data than previous populate call, so that the new db has a lower revision
 			resp := &utils.EtcdDataPopulationResponse{}
-			utils.PopulateEtcd(testCtx, logger, endpoints, 0, int(keyTo/2), resp)
+			utils.PopulateEtcd(testCtx, logger, endpoints, "", "", 0, int(keyTo/2), resp)
 			Expect(resp.Err).ShouldNot(HaveOccurred())
 			etcd.Close()
 
@@ -270,7 +270,7 @@ var _ = Describe("Running Datavalidator", func() {
 
 			resp := &utils.EtcdDataPopulationResponse{}
 			// populate the etcd with some more keys
-			utils.PopulateEtcd(testCtx, logger, endpoints, 0, int(keyTo/2), resp)
+			utils.PopulateEtcd(testCtx, logger, endpoints, "", "", 0, int(keyTo/2), resp)
 			Expect(resp.Err).ShouldNot(HaveOccurred())
 
 			//run the snapshotter

@@ -30,7 +30,6 @@ import (
 	"github.com/sirupsen/logrus"
 	"go.etcd.io/etcd/clientv3"
 	"go.etcd.io/etcd/clientv3/snapshot"
-	"go.etcd.io/etcd/embed"
 	"go.etcd.io/etcd/mvcc/mvccpb"
 	"go.uber.org/zap"
 )
@@ -68,7 +67,6 @@ func (r *Restorer) RestoreAndStopEtcd(ro brtypes.RestoreOptions, m member.Contro
 	embeddedEtcd, err := r.Restore(ro, m)
 	defer func() {
 		if embeddedEtcd != nil {
-			embeddedEtcd.Server.Stop()
 			embeddedEtcd.Close()
 		}
 	}()
@@ -76,7 +74,7 @@ func (r *Restorer) RestoreAndStopEtcd(ro brtypes.RestoreOptions, m member.Contro
 }
 
 // Restore restores the etcd data directory as per specified restore options but returns the ETCD server that it statrted.
-func (r *Restorer) Restore(ro brtypes.RestoreOptions, m member.Control) (*embed.Etcd, error) {
+func (r *Restorer) Restore(ro brtypes.RestoreOptions, m member.Control) (*miscellaneous.EmbeddedEtcd, error) {
 	r.logger.Infof("Creating temporary directory %s for persisting full and delta snapshots locally.", ro.Config.TempSnapshotsDir)
 	err := os.MkdirAll(ro.Config.TempSnapshotsDir, 0700)
 	if err != nil {

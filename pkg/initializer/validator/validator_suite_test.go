@@ -69,7 +69,7 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 	resp := &utils.EtcdDataPopulationResponse{}
 	wg := &sync.WaitGroup{}
 	wg.Add(1)
-	go utils.PopulateEtcdWithWaitGroup(populatorCtx, wg, logger, endpoints, resp)
+	go utils.PopulateEtcdWithWaitGroup(populatorCtx, wg, logger, endpoints, "", "", resp)
 
 	deltaSnapshotPeriod := 5 * time.Second
 	ctx := utils.ContextWithWaitGroupFollwedByGracePeriod(populatorCtx, wg, deltaSnapshotPeriod+2*time.Second)

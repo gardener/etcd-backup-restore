@@ -91,10 +91,7 @@ func (cp *Compactor) Compact(ctx context.Context, opts *brtypes.CompactOptions) 
 		}
 	}
 
-	defer func() {
-		embeddedEtcd.Server.Stop()
-		embeddedEtcd.Close()
-	}()
+	defer embeddedEtcd.Close()
 
 	ep := []string{embeddedEtcd.Clients[0].Addr().String()}
 

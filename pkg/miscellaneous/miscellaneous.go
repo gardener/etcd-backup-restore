@@ -32,6 +32,7 @@ import (
 	"go.etcd.io/etcd/etcdserver/api/v3rpc/rpctypes"
 	"go.etcd.io/etcd/etcdserver/etcdserverpb"
 	"go.etcd.io/etcd/pkg/types"
+	"go.uber.org/zap"
 	appsv1 "k8s.io/api/apps/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -155,8 +156,32 @@ func getStructuredBackupList(snapList brtypes.SnapList) []backup {
 	return backups
 }
 
+// EmbeddedEtcd contains a running etcd server and its listeners.
+type EmbeddedEtcd struct {
+	*embed.Etcd
+
+	// authWasDisabled tracks if auth was disabled during startup and we need to
+	// enable it again before closing the server.
+	authWasDisabled bool
+}
+
+// Close closes the etcd embedded server. If auth was disabled during startup,
+// it will re-enable auth before closing the server.
+func (e *EmbeddedEtcd) Close() {
+	if e.authWasDisabled {
+		if err := e.Etcd.Server.AuthStore().AuthEnable(); err != nil {
+			e.Etcd.GetLogger().Error("failed to enable auth again", zap.Error(err))
+		}
+	}
+
+	e.Etcd.Server.Stop()
+	e.Etcd.Close()
+}
+
 // StartEmbeddedEtcd starts the embedded etcd server.
-func StartEmbeddedEtcd(logger *logrus.Entry, ro *brtypes.RestoreOptions) (*embed.Etcd, error) {
+// Etcd auth is automatically disabled if needed: clients do not need to provide any credentials when sending requests.
+// If auth was disabled, it's automatically enabled again when server is closed.
+func StartEmbeddedEtcd(logger *logrus.Entry, ro *brtypes.RestoreOptions) (*EmbeddedEtcd, error) {
 	cfg := embed.NewConfig()
 	cfg.Dir = filepath.Join(ro.Config.DataDir)
 	DefaultListenPeerURLs := "http://localhost:0"
@@ -202,7 +227,16 @@ func StartEmbeddedEtcd(logger *logrus.Entry, ro *brtypes.RestoreOptions) (*embed
 		e.Close()
 		return nil, fmt.Errorf("server took too long to start")
 	}
-	return e, nil
+
+	embeddedEtcd := &EmbeddedEtcd{Etcd: e}
+
+	if e.Server.AuthStore().IsAuthEnabled() {
+		// Disable auth and record this action so that we can enable it again later.
+		embeddedEtcd.authWasDisabled = true
+		e.Server.AuthStore().AuthDisable()
+	}
+
+	return embeddedEtcd, nil
 }
 
 // GetKubernetesClientSetOrError creates and returns a kubernetes clientset or an error if creation fails

@@ -371,10 +371,7 @@ func (d *DataValidator) checkFullRevisionConsistency(dataDir string, latestSnaps
 		d.Logger.Infof("unable to start embedded etcd: %v", err)
 		return DataDirectoryCorrupt, err
 	}
-	defer func() {
-		e.Server.Stop()
-		e.Close()
-	}()
+	defer e.Close()
 
 	clientFactory := etcdutil.NewClientFactory(nil, brtypes.EtcdConnectionConfig{
 		Endpoints:         []string{e.Clients[0].Addr().String()},

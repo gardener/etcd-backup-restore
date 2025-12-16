@@ -279,7 +279,7 @@ var _ = Describe("Snapshotter", func() {
 							wg := &sync.WaitGroup{}
 							wg.Add(1)
 							// populating etcd so that snapshots will be taken
-							go utils.PopulateEtcdWithWaitGroup(populatorCtx, wg, logger, etcdConnectionConfig.Endpoints, nil)
+							go utils.PopulateEtcdWithWaitGroup(populatorCtx, wg, logger, etcdConnectionConfig.Endpoints, "", "", nil)
 							ssrCtx := utils.ContextWithWaitGroup(testCtx, wg)
 							err = ssr.Run(ssrCtx.Done(), false)
 							Expect(err).ShouldNot(HaveOccurred())
@@ -309,7 +309,7 @@ var _ = Describe("Snapshotter", func() {
 							wg := &sync.WaitGroup{}
 							wg.Add(1)
 							// populating etcd so that snapshots will be taken
-							go utils.PopulateEtcdWithWaitGroup(populatorCtx, wg, logger, etcdConnectionConfig.Endpoints, nil)
+							go utils.PopulateEtcdWithWaitGroup(populatorCtx, wg, logger, etcdConnectionConfig.Endpoints, "", "", nil)
 
 							ssr, err = NewSnapshotter(logger, snapshotterConfig, store, etcdConnectionConfig, compressionConfig, healthConfig, snapstoreConfig)
 							Expect(err).ShouldNot(HaveOccurred())
