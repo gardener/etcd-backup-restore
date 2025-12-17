@@ -51,10 +51,6 @@ const (
 	// FinalSuffix is the suffix appended to the names of final snapshots.
 	FinalSuffix = ".final"
 
-	// ChunkDirSuffix is the suffix appended to the name of chunk snapshot folder when using fakegcs emulator for testing.
-	// Refer to this github issue for more details: https://github.com/fsouza/fake-gcs-server/issues/1434
-	ChunkDirSuffix = ".chunk"
-
 	backupFormatVersion = "v2"
 
 	// MinChunkSize is set to 5Mib since it is lower chunk size limit for AWS.

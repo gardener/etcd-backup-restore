@@ -157,7 +157,7 @@ var _ = Describe("Save, List, Fetch, Delete from mock snapstore", func() {
 				objectCountPerSnapshot: 1,
 			},
 			brtypes.SnapstoreProviderGCS: {
-				SnapStore:              NewGCSSnapStoreFromClient(bucket, prefixV2, "/tmp", 5, brtypes.MinChunkSize, "", gcsClient),
+				SnapStore:              NewGCSSnapStoreFromClient(bucket, prefixV2, "/tmp", 5, brtypes.MinChunkSize, gcsClient),
 				objectCountPerSnapshot: 1,
 			},
 			brtypes.SnapstoreProviderOSS: {
