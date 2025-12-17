@@ -15,7 +15,6 @@ import (
 	"path"
 	"path/filepath"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -37,8 +36,6 @@ import (
 const (
 	absCredentialDirectory = "AZURE_APPLICATION_CREDENTIALS"      // #nosec G101 -- This is not a hardcoded password, but only a path to the credentials.
 	absCredentialJSONFile  = "AZURE_APPLICATION_CREDENTIALS_JSON" // #nosec G101 -- This is not a hardcoded password, but only a path to the credentials.
-	// AzuriteEndpoint is the environment variable which indicates the endpoint at which the Azurite emulator is hosted
-	AzuriteEndpoint = "AZURE_STORAGE_API_ENDPOINT"
 )
 
 // AzureBlockBlobClientI defines the methods that are invoked from the Azure Block Blob API.
@@ -91,11 +88,10 @@ type ABSSnapStore struct {
 }
 
 type absCredentials struct {
-	Domain          *string `json:"domain,omitempty"`
-	BucketName      string  `json:"bucketName"`
-	StorageAccount  string  `json:"storageAccount"`
-	StorageKey      string  `json:"storageKey"`
-	EmulatorEnabled bool    `json:"emulatorEnabled,omitempty"`
+	Domain         *string `json:"domain,omitempty"`
+	BucketName     string  `json:"bucketName"`
+	StorageAccount string  `json:"storageAccount"`
+	StorageKey     string  `json:"storageKey"`
 }
 
 // NewABSSnapStore creates a new ABSSnapStore using a shared configuration and a specified bucket
@@ -110,22 +106,14 @@ func NewABSSnapStore(config *brtypes.SnapstoreConfig) (*ABSSnapStore, error) {
 		return nil, fmt.Errorf("failed to create sharedKeyCredential: %w", err)
 	}
 
-	emulatorEnabled := config.IsEmulatorEnabled || absCreds.EmulatorEnabled
-	domain := brtypes.AzureBlobStorageGlobalDomain
-	if absCreds.Domain != nil {
-		domain = *absCreds.Domain
-	} else {
-		// if emulator is enabled, but custom domain for the emulator is not provided, throw error
-		if emulatorEnabled {
-			return nil, fmt.Errorf("emulator enabled, but `domain` not provided")
-		}
+	// Construct the ABS Container endpoint.
+	// TODO: @renormalize support for passing Domain through the credential file must be removed in v0.42.0.
+	domain := ptr.Deref(absCreds.Domain, brtypes.AzureBlobStorageGlobalDomain)
+	containerURL := fmt.Sprintf("https://%s.%s/%s", absCreds.StorageAccount, domain, config.Container)
+	// endpoint specified as a CLI flag takes precedence over configuration passed in the credential file.
+	if config.Endpoint != "" {
+		containerURL = config.Endpoint
 	}
-
-	blobServiceURL, err := ConstructBlobServiceURL(absCreds.StorageAccount, domain, emulatorEnabled)
-	if err != nil {
-		return nil, fmt.Errorf("failed to construct the blob service URL with error: %w", err)
-	}
-	containerURL := fmt.Sprintf("%s/%s", blobServiceURL, config.Container)
 
 	client, err := container.NewClientWithSharedKeyCredential(containerURL, sharedKeyCredential, &container.ClientOptions{
 		ClientOptions: azcore.ClientOptions{
@@ -149,17 +137,6 @@ func NewABSSnapStore(config *brtypes.SnapstoreConfig) (*ABSSnapStore, error) {
 	}
 
 	return NewABSSnapStoreFromClient(config.Container, config.Prefix, config.TempDir, config.MaxParallelChunkUploads, config.MinChunkSize, &AzureContainerClient{client}), nil
-}
-
-// ConstructBlobServiceURL constructs the Blob Service URL based on the activation status of the Azurite Emulator.
-// The `domain` must either be the default Azure global blob storage domain, or a specific domain for Azurite (without HTTP scheme).
-func ConstructBlobServiceURL(storageAccount, domain string, emulatorEnabled bool) (string, error) {
-	if emulatorEnabled {
-		// TODO: going forward, use Azurite with HTTPS (TLS) communication
-		// by using [production-style URLs](https://github.com/Azure/Azurite?tab=readme-ov-file#production-style-url)
-		return fmt.Sprintf("http://%s/%s", domain, storageAccount), nil
-	}
-	return fmt.Sprintf("https://%s.%s", storageAccount, domain), nil
 }
 
 func getCredentials(prefixString string) (*absCredentials, error) {
@@ -244,16 +221,6 @@ func readABSCredentialFiles(dirname string) (*absCredentials, error) {
 				return nil, err
 			}
 			absConfig.Domain = ptr.To(string(data))
-		} else if file.Name() == "emulatorEnabled" {
-			data, err := os.ReadFile(path.Join(dirname, file.Name())) // #nosec G304 -- this is a trusted file, obtained via mounted secret.
-			if err != nil {
-				return nil, err
-			}
-			emulatorEnabled, err := strconv.ParseBool(string(data))
-			if err != nil {
-				return nil, err
-			}
-			absConfig.EmulatorEnabled = emulatorEnabled
 		}
 	}
 
