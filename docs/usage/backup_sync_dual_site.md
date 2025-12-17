@@ -178,12 +178,10 @@ INFO[0004] Backups copied
 ```
 
 ### Verification Steps
-The examples assume AWS S3 is the backend storage provider. Replace the commands with the appropriate ones for your provider
+The examples assume AWS S3 is the backend storage provider. Backups present in other storage provider's bucket like Azure, GCS, Swift etc can be listed using their respective API calls or via their dashboards
 
 1. **Check Primary Backups**:
-
 ```bash
-aws s3 ls s3://<primary_bucket_name> --recursive
 aws s3 ls s3://<primary_bucket_name> --recursive
 ```
 

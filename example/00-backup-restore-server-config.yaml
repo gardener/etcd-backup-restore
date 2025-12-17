@@ -39,7 +39,7 @@ snapstoreConfig:
 #     envPrefix: SECONDARY_
 #     maxParallelChunkUploads: 5
 #     minChunkSize: 5242880
-#     prefix: v2
+#     prefix: "etcd-test"
 #     provider: Local
 #     tempDir: /tmp
 #   backupSyncEnabled: true
