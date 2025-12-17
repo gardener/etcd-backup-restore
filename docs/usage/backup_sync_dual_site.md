@@ -178,17 +178,19 @@ INFO[0004] Backups copied
 ```
 
 ### Verification Steps
+The examples assume AWS S3 is the backend storage provider. Replace the commands with the appropriate ones for your provider
 
 1. **Check Primary Backups**:
 
 ```bash
-aws s3 ls s3://<bucket_name> --recursive
+aws s3 ls s3://<primary_bucket_name> --recursive
+aws s3 ls s3://<primary_bucket_name> --recursive
 ```
 
 2. **Check Secondary Backups**:
-   ```bash
-   etcdbrctl snapshot list --storage-provider=ABS --store-container=secondary-bucket
-   ```
+```bash
+aws s3 ls s3://<secondary_bucket_name> --recursive
+```
 
 3. **Compare Counts**: Verify that the number of snapshots in both locations matches (accounting for sync delay)
 

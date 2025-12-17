@@ -33,6 +33,18 @@ snapstoreConfig:
   maxParallelChunkUploads: 5
   tempDir: "/tmp"
 
+# secondarySnapstoreConfig:
+#   StoreConfig:
+#     container: secondary-bucket
+#     envPrefix: SECONDARY_
+#     maxParallelChunkUploads: 5
+#     minChunkSize: 5242880
+#     prefix: v2
+#     provider: Local
+#     tempDir: /tmp
+#   backupSyncEnabled: true
+#   syncPeriod: 5m
+
 restorationConfig:
   initialCluster: "default=http://localhost:2380"
   initialClusterToken: "etcd-cluster"
