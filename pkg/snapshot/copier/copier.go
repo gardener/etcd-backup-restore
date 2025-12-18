@@ -41,11 +41,10 @@ type Copier struct {
 	maxBackups                  int
 	maxBackupAge                int
 	maxParallelCopyOperations   int
-	waitForFinalSnapshot        bool
 	waitForFinalSnapshotTimeout time.Duration
 	mu                          sync.Mutex
 	running                     bool
-	stopCh                      chan struct{}
+	waitForFinalSnapshot        bool
 }
 
 // NewCopier creates a new copier.
@@ -251,6 +250,7 @@ func (c *Copier) doWaitForFinalSnapshot(ctx context.Context, interval time.Durat
 	}
 }
 
+// SyncBackups periodically synchronizes backups to the secondary snapstore.
 func (c *Copier) SyncBackups(ctx context.Context, interval time.Duration) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -287,20 +287,6 @@ func (c *Copier) syncBackups(ctx context.Context, interval time.Duration) {
 			if err := c.CopyBackups(ctx); err != nil {
 				c.logger.Errorf("could not copy backups: %v", err)
 			}
-		case <-c.stopCh:
-			c.logger.Info("Backup copier is shutting down")
-			return
 		}
 	}
-}
-
-// Stop stops the background copier goroutine
-func (c *Copier) Stop() {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if !c.running {
-		return
-	}
-	close(c.stopCh)
-	c.running = false
 }

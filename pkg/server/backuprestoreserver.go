@@ -246,8 +246,8 @@ func (b *BackupRestoreServer) runServer(ctx context.Context, restoreOpts *brtype
 						b.logger.Fatalf("failed to create snapshot backup copier: %v", err)
 					}
 
-					cp := copier.NewCopier(b.logger, ss, secondary, -1, -1, 10, false, 0)
-					if err := cp.SyncBackups(ctx, b.config.SecondarySnapstoreConfig.SyncPeriod.Duration); err != nil {
+					cp = copier.NewCopier(b.logger, ss, secondary, -1, -1, 10, false, 0)
+					if err := cp.SyncBackups(leCtx, b.config.SecondarySnapstoreConfig.SyncPeriod.Duration); err != nil {
 						b.logger.Fatalf("failed to sync backups: %v", err)
 					}
 					go backupssr.RunGarbageCollector(backupGcStop)
@@ -274,10 +274,6 @@ func (b *BackupRestoreServer) runServer(ctx context.Context, restoreOpts *brtype
 		OnStoppedLeading: func() {
 			if runServerWithSnapshotter {
 				b.logger.Info("backup-restore stops leading...")
-				if cp != nil {
-					b.logger.Infof("Stopping backup copier.")
-					cp.Stop()
-				}
 				close(backupGcStop)
 				handler.SetSnapshotterToNil()
 
