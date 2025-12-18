@@ -31,7 +31,7 @@ type ocsAuthOptions struct {
 
 // NewOCSSnapStore creates a new S3SnapStore from shared configuration with the specified bucket.
 func NewOCSSnapStore(config *brtypes.SnapstoreConfig) (*S3SnapStore, error) {
-	credentials, err := getOCSAuthOptions(getEnvPrefixString(config.IsSource))
+	credentials, err := getOCSAuthOptions(getEnvPrefixString(config))
 	if err != nil {
 		return nil, err
 	}

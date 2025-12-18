@@ -17,13 +17,14 @@ import (
 	flag "github.com/spf13/pflag"
 )
 
-// NewBackupRestoreComponentConfig returns the backup-restore componenet config.
+// NewBackupRestoreComponentConfig returns the backup-restore component config.
 func NewBackupRestoreComponentConfig() *BackupRestoreComponentConfig {
 	return &BackupRestoreComponentConfig{
 		EtcdConnectionConfig:     brtypes.NewEtcdConnectionConfig(),
 		ServerConfig:             NewHTTPServerConfig(),
 		SnapshotterConfig:        snapshotter.NewSnapshotterConfig(),
 		SnapstoreConfig:          snapstore.NewSnapstoreConfig(),
+		SecondarySnapstoreConfig: snapstore.NewSecondarySnapstoreConfig(),
 		CompressionConfig:        compressor.NewCompressorConfig(),
 		RestorationConfig:        brtypes.NewRestorationConfig(),
 		DefragmentationSchedule:  defaultDefragmentationSchedule,
@@ -45,7 +46,7 @@ func (c *BackupRestoreComponentConfig) AddFlags(fs *flag.FlagSet) {
 	c.HealthConfig.AddFlags(fs)
 	c.LeaderElectionConfig.AddFlags(fs)
 	c.ExponentialBackoffConfig.AddFlags(fs)
-
+	c.SecondarySnapstoreConfig.AddFlags(fs)
 	// Miscellaneous
 	fs.StringVar(&c.DefragmentationSchedule, "defragmentation-schedule", c.DefragmentationSchedule, "schedule to defragment etcd data directory")
 	fs.BoolVar(&c.UseEtcdWrapper, "use-etcd-wrapper", c.UseEtcdWrapper, "to enable backup-restore to use etcd-wrapper related functionality. Note: enable this flag only if etcd-wrapper is deployed.")
@@ -83,12 +84,17 @@ func (c *BackupRestoreComponentConfig) Validate() error {
 	if err := c.ExponentialBackoffConfig.Validate(); err != nil {
 		return err
 	}
+
+	if err := c.SecondarySnapstoreConfig.Validate(); err != nil {
+		return err
+	}
 	return nil
 }
 
 // Complete completes the config.
 func (c *BackupRestoreComponentConfig) Complete() {
 	c.SnapstoreConfig.Complete()
+	c.SecondarySnapstoreConfig.Complete()
 }
 
 // HTTPServerConfig holds the server config.

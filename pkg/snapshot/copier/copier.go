@@ -43,6 +43,9 @@ type Copier struct {
 	maxParallelCopyOperations   int
 	waitForFinalSnapshot        bool
 	waitForFinalSnapshotTimeout time.Duration
+	mu                          sync.Mutex
+	running                     bool
+	stopCh                      chan struct{}
 }
 
 // NewCopier creates a new copier.
@@ -246,4 +249,58 @@ func (c *Copier) doWaitForFinalSnapshot(ctx context.Context, interval time.Durat
 		case <-time.After(interval):
 		}
 	}
+}
+
+func (c *Copier) SyncBackups(ctx context.Context, interval time.Duration) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.running {
+		c.logger.Info("Backup copier is already running")
+		return nil
+	}
+
+	c.running = true
+	c.logger.Info("Starting backup copier...")
+
+	go c.syncBackups(ctx, interval)
+	return nil
+}
+
+func (c *Copier) syncBackups(ctx context.Context, interval time.Duration) {
+	defer func() {
+		c.mu.Lock()
+		c.running = false
+		c.mu.Unlock()
+	}()
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	// start an initial sync first
+	if err := c.CopyBackups(ctx); err != nil {
+		c.logger.Errorf("could not perform the initial copy of backups: %v", err)
+	}
+	for {
+		select {
+		case <-ctx.Done():
+			c.logger.Info("Backup copier is shutting down")
+			return
+		case <-ticker.C:
+			if err := c.CopyBackups(ctx); err != nil {
+				c.logger.Errorf("could not copy backups: %v", err)
+			}
+		case <-c.stopCh:
+			c.logger.Info("Backup copier is shutting down")
+			return
+		}
+	}
+}
+
+// Stop stops the background copier goroutine
+func (c *Copier) Stop() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if !c.running {
+		return
+	}
+	close(c.stopCh)
+	c.running = false
 }

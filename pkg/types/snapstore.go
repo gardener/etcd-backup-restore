@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gardener/etcd-backup-restore/pkg/wrappers"
 	flag "github.com/spf13/pflag"
 )
 
@@ -60,6 +61,9 @@ const (
 	// ExcludeSnapshotMetadataKey is the tag that is to be added on snapshots in the object store if they are not to be included in SnapStore's List output.
 	// Note: applicable for storage provider: ABS, GCS and S3.
 	ExcludeSnapshotMetadataKey = "x-etcd-snapshot-exclude"
+
+	// DefaultSecondaryBackupSyncPeriod is the default period for secondary backup sync operations.
+	DefaultSecondaryBackupSyncPeriod = 1 * time.Hour
 )
 
 var (
@@ -199,6 +203,9 @@ type SnapstoreConfig struct {
 	IsSource bool `json:"isSource,omitempty"`
 	// IsEmulatorEnabled indicates whether a storage emulator is being used for the snapstore.
 	IsEmulatorEnabled bool `json:"isEmulatorEnabled,omitempty"`
+	// EnvPrefix is the prefix to be used for environment variables.
+	// It is used to differentiate between primary and secondary snapstore configs.
+	EnvPrefix string `json:"envPrefix,omitempty"`
 }
 
 // AddFlags adds the flags to flagset.
@@ -253,4 +260,28 @@ func (c *SnapstoreConfig) MergeWith(other *SnapstoreConfig) {
 	if c.TempDir == "" {
 		c.TempDir = other.TempDir
 	}
+}
+
+type SecondarySnapstoreConfig struct {
+	StoreConfig       *SnapstoreConfig
+	BackupSyncEnabled bool              `json:"backupSyncEnabled,omitempty"`
+	SyncPeriod        wrappers.Duration `json:"syncPeriod,omitempty"`
+}
+
+func (c *SecondarySnapstoreConfig) AddFlags(fs *flag.FlagSet) {
+	c.StoreConfig.addFlags(fs, "secondary-")
+	fs.BoolVar(&c.BackupSyncEnabled, "secondary-backup-sync-enabled", c.BackupSyncEnabled, "enable secondary backup-sync feature")
+	fs.DurationVar(&c.SyncPeriod.Duration, "secondary-backup-sync-period", c.SyncPeriod.Duration, "period for periodic backup sync operations")
+}
+
+func (c *SecondarySnapstoreConfig) Validate() error {
+	if c.BackupSyncEnabled {
+		return c.StoreConfig.Validate()
+	}
+	return nil
+}
+
+func (c *SecondarySnapstoreConfig) Complete() {
+	c.StoreConfig.EnvPrefix = "SECONDARY_"
+	c.StoreConfig.Complete()
 }

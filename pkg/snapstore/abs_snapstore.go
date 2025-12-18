@@ -100,7 +100,7 @@ type absCredentials struct {
 
 // NewABSSnapStore creates a new ABSSnapStore using a shared configuration and a specified bucket
 func NewABSSnapStore(config *brtypes.SnapstoreConfig) (*ABSSnapStore, error) {
-	absCreds, err := getCredentials(getEnvPrefixString(config.IsSource))
+	absCreds, err := getCredentials(getEnvPrefixString(config))
 	if err != nil {
 		return nil, fmt.Errorf("failed to get credentials: %w", err)
 	}

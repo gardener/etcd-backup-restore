@@ -24,6 +24,7 @@ import (
 	"github.com/gardener/etcd-backup-restore/pkg/member"
 	"github.com/gardener/etcd-backup-restore/pkg/metrics"
 	"github.com/gardener/etcd-backup-restore/pkg/miscellaneous"
+	"github.com/gardener/etcd-backup-restore/pkg/snapshot/copier"
 	"github.com/gardener/etcd-backup-restore/pkg/snapshot/snapshotter"
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
@@ -192,11 +193,12 @@ func (b *BackupRestoreServer) runServer(ctx context.Context, restoreOpts *brtype
 		snapstoreConfig *brtypes.SnapstoreConfig
 		ssr             *snapshotter.Snapshotter
 		ss              brtypes.SnapStore
+		cp              *copier.Copier
 	)
+	backupGcStop := make(chan struct{})
 	ackCh := make(chan struct{})
 	ssrStopCh := make(chan struct{})
 	mmStopCh := make(chan struct{})
-
 	if runServerWithSnapshotter {
 		snapstoreConfig = b.config.SnapstoreConfig
 	}
@@ -221,7 +223,6 @@ func (b *BackupRestoreServer) runServer(ctx context.Context, restoreOpts *brtype
 	if err := b.updatePeerURLIfChanged(ctx, handler.EnableTLS, b.logger.Logger); err != nil {
 		b.logger.Errorf("failed to update member peer url: %v", err)
 	}
-
 	leaderCallbacks := &brtypes.LeaderCallbacks{
 		OnStartedLeading: func(leCtx context.Context) {
 			ssrStopCh = make(chan struct{})
@@ -232,6 +233,24 @@ func (b *BackupRestoreServer) runServer(ctx context.Context, restoreOpts *brtype
 				ss, err = snapstore.GetSnapstore(b.config.SnapstoreConfig)
 				if err != nil {
 					b.logger.Fatalf("failed to create snapstore from configured storage provider: %v", err)
+				}
+
+				if b.config.SecondarySnapstoreConfig.BackupSyncEnabled {
+					b.logger.Infof("Starting periodic backup copier..")
+					secondary, err := snapstore.GetSnapstore(b.config.SecondarySnapstoreConfig.StoreConfig)
+					if err != nil {
+						b.logger.Fatalf("failed to create secondary snapstore from configured storage provider: %v", err)
+					}
+					backupssr, err := snapshotter.NewSnapshotter(b.logger, b.config.SnapshotterConfig, ss, b.config.EtcdConnectionConfig, b.config.CompressionConfig, b.config.HealthConfig, b.config.SecondarySnapstoreConfig.StoreConfig)
+					if err != nil {
+						b.logger.Fatalf("failed to create snapshot backup copier: %v", err)
+					}
+
+					cp := copier.NewCopier(b.logger, ss, secondary, -1, -1, 10, false, 0)
+					if err := cp.SyncBackups(ctx, b.config.SecondarySnapstoreConfig.SyncPeriod.Duration); err != nil {
+						b.logger.Fatalf("failed to sync backups: %v", err)
+					}
+					go backupssr.RunGarbageCollector(backupGcStop)
 				}
 
 				// Get the new snapshotter object
@@ -255,6 +274,11 @@ func (b *BackupRestoreServer) runServer(ctx context.Context, restoreOpts *brtype
 		OnStoppedLeading: func() {
 			if runServerWithSnapshotter {
 				b.logger.Info("backup-restore stops leading...")
+				if cp != nil {
+					b.logger.Infof("Stopping backup copier.")
+					cp.Stop()
+				}
+				close(backupGcStop)
 				handler.SetSnapshotterToNil()
 
 				// TODO @ishan16696: For Multi-node etcd HTTP status need to be set to `StatusServiceUnavailable` only when backup-restore is in "StateUnknown".

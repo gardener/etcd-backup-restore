@@ -137,7 +137,7 @@ func NewGCSSnapStore(config *brtypes.SnapstoreConfig) (*GCSSnapStore, error) {
 }
 
 func getGCSStorageAPIEndpoint(config *brtypes.SnapstoreConfig) (string, error) {
-	if gcsApplicationCredentialsPath, isSet := os.LookupEnv(getEnvPrefixString(config.IsSource) + envStoreCredentials); isSet {
+	if gcsApplicationCredentialsPath, isSet := os.LookupEnv(getEnvPrefixString(config) + envStoreCredentials); isSet {
 		storageAPIEndpointFilePath := path.Join(path.Dir(gcsApplicationCredentialsPath), fileNameStorageAPIEndpoint)
 		if _, err := os.Stat(storageAPIEndpointFilePath); err != nil {
 			// if the file does not exist, then there is no override for the storage API endpoint
@@ -153,7 +153,7 @@ func getGCSStorageAPIEndpoint(config *brtypes.SnapstoreConfig) (string, error) {
 }
 
 func isEmulatorEnabled(config *brtypes.SnapstoreConfig) bool {
-	if gcsApplicationCredentialsPath, isSet := os.LookupEnv(getEnvPrefixString(config.IsSource) + envStoreCredentials); isSet {
+	if gcsApplicationCredentialsPath, isSet := os.LookupEnv(getEnvPrefixString(config) + envStoreCredentials); isSet {
 		emulatorEnabledFilePath := path.Join(path.Dir(gcsApplicationCredentialsPath), fileNameEmulatorEnabled)
 		emulatorEnabledString, err := os.ReadFile(emulatorEnabledFilePath) // #nosec G304 -- this is a trusted file, obtained from mounted secret.
 		if err != nil {
@@ -410,7 +410,7 @@ func GetGCSCredentialsLastModifiedTime() (time.Time, error) {
 }
 
 func validateGCSCredential(config *brtypes.SnapstoreConfig) error {
-	gcsApplicationCredentialFilePath, isSet := os.LookupEnv(getEnvPrefixString(config.IsSource) + envStoreCredentials)
+	gcsApplicationCredentialFilePath, isSet := os.LookupEnv(getEnvPrefixString(config) + envStoreCredentials)
 	if !isSet {
 		return nil
 	}
