@@ -195,6 +195,9 @@ type SnapstoreConfig struct {
 	Prefix string `json:"prefix,omitempty"`
 	// Temporary Directory
 	TempDir string `json:"tempDir,omitempty"`
+	// EnvPrefix is the prefix to be used for environment variables.
+	// It is used to differentiate between primary and secondary snapstore configs.
+	EnvPrefix string `json:"envPrefix,omitempty"`
 	// MaxParallelChunkUploads holds the maximum number of parallel chunk uploads allowed.
 	MaxParallelChunkUploads uint `json:"maxParallelChunkUploads,omitempty"`
 	// MinChunkSize holds the minimum size for a multi-part chunk upload.
@@ -203,9 +206,6 @@ type SnapstoreConfig struct {
 	IsSource bool `json:"isSource,omitempty"`
 	// IsEmulatorEnabled indicates whether a storage emulator is being used for the snapstore.
 	IsEmulatorEnabled bool `json:"isEmulatorEnabled,omitempty"`
-	// EnvPrefix is the prefix to be used for environment variables.
-	// It is used to differentiate between primary and secondary snapstore configs.
-	EnvPrefix string `json:"envPrefix,omitempty"`
 }
 
 // AddFlags adds the flags to flagset.
@@ -262,18 +262,21 @@ func (c *SnapstoreConfig) MergeWith(other *SnapstoreConfig) {
 	}
 }
 
+// SecondarySnapstoreConfig defines the configuration to enable and create secondary snapshot store.
 type SecondarySnapstoreConfig struct {
 	StoreConfig       *SnapstoreConfig
 	BackupSyncEnabled bool              `json:"backupSyncEnabled,omitempty"`
 	SyncPeriod        wrappers.Duration `json:"syncPeriod,omitempty"`
 }
 
+// AddFlags adds the flags to flagset and also adds `secondary-` prefix for all snapstore parameters.
 func (c *SecondarySnapstoreConfig) AddFlags(fs *flag.FlagSet) {
 	c.StoreConfig.addFlags(fs, "secondary-")
 	fs.BoolVar(&c.BackupSyncEnabled, "secondary-backup-sync-enabled", c.BackupSyncEnabled, "enable secondary backup-sync feature")
 	fs.DurationVar(&c.SyncPeriod.Duration, "secondary-backup-sync-period", c.SyncPeriod.Duration, "period for periodic backup sync operations")
 }
 
+// Validate validates the config.
 func (c *SecondarySnapstoreConfig) Validate() error {
 	if c.BackupSyncEnabled {
 		return c.StoreConfig.Validate()
@@ -281,6 +284,7 @@ func (c *SecondarySnapstoreConfig) Validate() error {
 	return nil
 }
 
+// Complete completes the config.
 func (c *SecondarySnapstoreConfig) Complete() {
 	c.StoreConfig.EnvPrefix = "SECONDARY_"
 	c.StoreConfig.Complete()

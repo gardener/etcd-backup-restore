@@ -18,6 +18,7 @@ func NewSnapstoreConfig() *brtypes.SnapstoreConfig {
 	}
 }
 
+// NewSecondarySnapstoreConfig returns the secondary-snapstore config.
 func NewSecondarySnapstoreConfig() *brtypes.SecondarySnapstoreConfig {
 	return &brtypes.SecondarySnapstoreConfig{
 		StoreConfig:       NewSnapstoreConfig(),
