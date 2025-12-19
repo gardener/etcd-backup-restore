@@ -236,6 +236,7 @@ func (b *BackupRestoreServer) runServer(ctx context.Context, restoreOpts *brtype
 				}
 
 				if b.config.SecondarySnapstoreConfig.BackupSyncEnabled {
+					backupGcStop = make(chan struct{})
 					b.logger.Infof("Starting periodic backup copier..")
 					secondary, err := snapstore.GetSnapstore(b.config.SecondarySnapstoreConfig.StoreConfig)
 					if err != nil {
@@ -274,7 +275,9 @@ func (b *BackupRestoreServer) runServer(ctx context.Context, restoreOpts *brtype
 		OnStoppedLeading: func() {
 			if runServerWithSnapshotter {
 				b.logger.Info("backup-restore stops leading...")
-				close(backupGcStop)
+				if b.config.SecondarySnapstoreConfig.BackupSyncEnabled {
+					close(backupGcStop)
+				}
 				handler.SetSnapshotterToNil()
 
 				// TODO @ishan16696: For Multi-node etcd HTTP status need to be set to `StatusServiceUnavailable` only when backup-restore is in "StateUnknown".
