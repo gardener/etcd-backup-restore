@@ -508,7 +508,7 @@ var _ = Describe("Miscellaneous Tests", func() {
 			})
 		})
 
-		Context("In case of Scaling up from single node to multi-node etcd with no scale-up annotation set", func() {
+		Context("In case of Scaling up from single node to multi-node etcd", func() {
 			BeforeEach(func() {
 				sts.Spec = appsv1.StatefulSetSpec{
 					Replicas: ptr.To(int32(3)),
@@ -527,32 +527,6 @@ var _ = Describe("Miscellaneous Tests", func() {
 				clusterState, err := GetInitialClusterStateIfScaleup(testCtx, *logger, clientSet, podName, namespace)
 				Expect(err).ToNot(HaveOccurred())
 				Expect(clusterState).Should(PointTo(Equal(ClusterStateExisting)))
-			})
-		})
-
-		Context("scaling of single node to multi-node etcd with scale-up annotation set", func() {
-			BeforeEach(func() {
-				sts.Spec = appsv1.StatefulSetSpec{
-					Replicas: ptr.To(int32(3)),
-				}
-				sts.Status = appsv1.StatefulSetStatus{
-					UpdatedReplicas: 3,
-				}
-				sts.Annotations = map[string]string{
-					ScaledToMultiNodeAnnotationKey: "",
-				}
-			})
-
-			It("should return existing cluster", func() {
-				clientSet := GetFakeKubernetesClientSet()
-
-				err := clientSet.Create(testCtx, sts)
-				Expect(err).ShouldNot(HaveOccurred())
-
-				clusterState, err := GetInitialClusterStateIfScaleup(testCtx, *logger, clientSet, podName, namespace)
-				Expect(err).ToNot(HaveOccurred())
-				Expect(clusterState).Should(PointTo(Equal(ClusterStateExisting)))
-
 			})
 		})
 

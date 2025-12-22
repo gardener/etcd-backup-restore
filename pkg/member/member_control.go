@@ -50,7 +50,7 @@ type Control interface {
 	AddMemberAsLearner(context.Context) error
 
 	// IsClusterScaledUp determines whether a etcd cluster is getting scale-up or not.
-	IsClusterScaledUp(context.Context, client.Client) (bool, error)
+	IsClusterScaledUp(context.Context) (bool, error)
 
 	// IsMemberInCluster checks is the current members peer URL is already part of the etcd cluster.
 	IsMemberInCluster(context.Context) (bool, error)
@@ -315,12 +315,10 @@ func (m *memberControl) IsLearnerPresent(ctx context.Context) (bool, error) {
 }
 
 // IsClusterScaledUp determines whether a etcd cluster is getting scale-up or not and returns a boolean
-func (m *memberControl) IsClusterScaledUp(ctx context.Context, clientSet client.Client) (bool, error) {
+func (m *memberControl) IsClusterScaledUp(ctx context.Context) (bool, error) {
 	m.logger.Info("Checking whether etcd cluster is marked for scale-up")
 
-	// First, try to determine scale-up case by checking whether member is already part of cluster or not.
-	// In case of failure in checking the presence of member in a cluster then
-	// check for `ScaledToMultiNodeAnnotationKey` annotation in etcd statefulset.
+	// Try to determine scale-up case by checking whether member is already part of cluster or not.
 
 	var err error
 	if isEtcdMemberPresent, err := m.IsMemberInCluster(ctx); err == nil {
@@ -328,14 +326,6 @@ func (m *memberControl) IsClusterScaledUp(ctx context.Context, clientSet client.
 	}
 	m.logger.Errorf("unable to check presence of member in cluster: %v", err)
 
-	etcdsts, err := miscellaneous.GetStatefulSet(ctx, clientSet, m.podNamespace, m.podName)
-	if err != nil {
-		m.logger.Errorf("unable to fetch etcd statefulset: %v", err)
-	} else {
-		if miscellaneous.IsAnnotationPresent(etcdsts, miscellaneous.ScaledToMultiNodeAnnotationKey) {
-			return true, nil
-		}
-	}
 	return false, nil
 }
 

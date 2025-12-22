@@ -214,7 +214,7 @@ auto-compaction-retention: 30m`
 				},
 			}
 		})
-		Context("When scale-up annotation is not present in statefulset, cluster is up and member is not part of the list", func() {
+		Context("When cluster is up and member is not part of the list", func() {
 			It("should return true", func() {
 				podName := "default-0"
 				os.Setenv("POD_NAME", podName)
@@ -224,20 +224,20 @@ auto-compaction-retention: 30m`
 				err := clientSet.Create(testCtx, sts)
 				Expect(err).ShouldNot(HaveOccurred())
 
-				isScaleUp, err := m.IsClusterScaledUp(testCtx, clientSet)
+				isScaleUp, err := m.IsClusterScaledUp(testCtx)
 				Expect(isScaleUp).Should(BeTrue())
 				Expect(err).ShouldNot(HaveOccurred())
 				os.Unsetenv("POD_NAME")
 			})
 		})
 
-		Context("When scale-up annotation is not present in statefulset, cluster is up and member is already a part of cluster", func() {
+		Context("When cluster is up and member is already a part of cluster", func() {
 			It("should return false", func() {
 				clientSet := miscellaneous.GetFakeKubernetesClientSet()
 				err := clientSet.Create(testCtx, sts)
 				Expect(err).ShouldNot(HaveOccurred())
 
-				isScaleUp, err := m.IsClusterScaledUp(testCtx, clientSet)
+				isScaleUp, err := m.IsClusterScaledUp(testCtx)
 				Expect(isScaleUp).Should(BeFalse())
 				Expect(err).ShouldNot(HaveOccurred())
 			})
