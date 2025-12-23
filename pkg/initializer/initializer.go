@@ -63,7 +63,7 @@ func (e *EtcdInitializer) Initialize(mode validator.Mode, failBelowRevision int6
 		} else {
 			logger.Info("member heartbeat is not present")
 			logger.Info("backup-restore will start the scale-up check")
-			isScaleup, err := m.IsClusterScaledUp(ctx, clientSet)
+			isScaleup, err := m.IsClusterScaledUp(ctx)
 			if err != nil {
 				logger.Errorf("scale-up not detected: %v", err)
 			} else if isScaleup {

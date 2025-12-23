@@ -11,15 +11,12 @@ import (
 	"time"
 
 	"github.com/gardener/etcd-backup-restore/pkg/member"
-	"github.com/gardener/etcd-backup-restore/pkg/miscellaneous"
 	mockfactory "github.com/gardener/etcd-backup-restore/pkg/mock/etcdutil/client"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 
 	"go.etcd.io/etcd/clientv3"
 	"go.etcd.io/etcd/etcdserver/etcdserverpb"
 	"go.uber.org/mock/gomock"
-	appsv1 "k8s.io/api/apps/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -197,47 +194,27 @@ auto-compaction-retention: 30m`
 
 	Describe("Cluster marked for scale-up", func() {
 		var (
-			sts             *appsv1.StatefulSet
-			m               member.Control
-			statefulSetName = "etcd-test"
+			m member.Control
 		)
 		BeforeEach(func() {
 			m = member.NewMemberControl(etcdConnectionConfig)
-			sts = &appsv1.StatefulSet{
-				TypeMeta: metav1.TypeMeta{
-					Kind:       "StatefulSet",
-					APIVersion: "apps/v1",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      statefulSetName,
-					Namespace: podNamespace,
-				},
-			}
 		})
-		Context("When scale-up annotation is not present in statefulset, cluster is up and member is not part of the list", func() {
+		Context("When cluster is up and member is not part of the list", func() {
 			It("should return true", func() {
 				podName := "default-0"
 				os.Setenv("POD_NAME", podName)
 				m = member.NewMemberControl(etcdConnectionConfig)
 
-				clientSet := miscellaneous.GetFakeKubernetesClientSet()
-				err := clientSet.Create(testCtx, sts)
-				Expect(err).ShouldNot(HaveOccurred())
-
-				isScaleUp, err := m.IsClusterScaledUp(testCtx, clientSet)
+				isScaleUp, err := m.IsClusterScaledUp(testCtx)
 				Expect(isScaleUp).Should(BeTrue())
 				Expect(err).ShouldNot(HaveOccurred())
 				os.Unsetenv("POD_NAME")
 			})
 		})
 
-		Context("When scale-up annotation is not present in statefulset, cluster is up and member is already a part of cluster", func() {
+		Context("When cluster is up and member is already a part of cluster", func() {
 			It("should return false", func() {
-				clientSet := miscellaneous.GetFakeKubernetesClientSet()
-				err := clientSet.Create(testCtx, sts)
-				Expect(err).ShouldNot(HaveOccurred())
-
-				isScaleUp, err := m.IsClusterScaledUp(testCtx, clientSet)
+				isScaleUp, err := m.IsClusterScaledUp(testCtx)
 				Expect(isScaleUp).Should(BeFalse())
 				Expect(err).ShouldNot(HaveOccurred())
 			})
