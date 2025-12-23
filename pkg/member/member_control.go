@@ -318,7 +318,7 @@ func (m *memberControl) IsLearnerPresent(ctx context.Context) (bool, error) {
 func (m *memberControl) IsClusterScaledUp(ctx context.Context) (bool, error) {
 	m.logger.Info("Checking whether etcd cluster is marked for scale-up")
 
-	// Try to determine scale-up case by checking whether member is already part of cluster or not.
+	// Determine scale-up by checking member presence. If member is not present in cluster, it's a scale-up.
 
 	var err error
 	if isEtcdMemberPresent, err := m.IsMemberInCluster(ctx); err == nil {
