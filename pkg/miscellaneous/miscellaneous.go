@@ -34,7 +34,6 @@ import (
 	"go.etcd.io/etcd/pkg/types"
 	"go.uber.org/zap"
 	appsv1 "k8s.io/api/apps/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/util/retry"
 	"k8s.io/utils/ptr"
@@ -53,9 +52,6 @@ const (
 	ClusterStateNew = "new"
 	// ClusterStateExisting defines the "existing" state of etcd cluster.
 	ClusterStateExisting = "existing"
-
-	// ScaledToMultiNodeAnnotationKey defines annotation key for scale-up to multi-node cluster.
-	ScaledToMultiNodeAnnotationKey = "gardener.cloud/scaled-to-multi-node"
 
 	https = "https"
 
@@ -480,19 +476,10 @@ func GetInitialClusterStateIfScaleup(ctx context.Context, logger logrus.Entry, c
 		return nil, err
 	}
 
-	if IsAnnotationPresent(etcdSts, ScaledToMultiNodeAnnotationKey) {
-		return ptr.To(ClusterStateExisting), nil
-	}
-
 	if *etcdSts.Spec.Replicas > 1 && *etcdSts.Spec.Replicas > etcdSts.Status.UpdatedReplicas {
 		return ptr.To(ClusterStateExisting), nil
 	}
 	return nil, nil
-}
-
-// IsAnnotationPresent checks the presence of given annotation in a given statefulset.
-func IsAnnotationPresent(sts *appsv1.StatefulSet, annotation string) bool {
-	return metav1.HasAnnotation(sts.ObjectMeta, annotation)
 }
 
 // GetStatefulSet gets the StatefulSet with the name podName in podNamespace namespace. It will return if there is any error or the StatefulSet is not found.
