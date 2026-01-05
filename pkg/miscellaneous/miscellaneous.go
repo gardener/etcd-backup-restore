@@ -368,7 +368,7 @@ func ProbeEtcd(ctx context.Context, clientFactory etcdClient.Factory, logger *lo
 
 	if _, err := clientKV.Get(ctx, "foo"); err != nil {
 		logger.Errorf("Failed to connect to etcd KV client: %v", err)
-		return err
+		return fmt.Errorf("failed to probe etcd: %w", err)
 	}
 	return nil
 }
@@ -477,6 +477,7 @@ func GetInitialClusterStateIfScaleup(ctx context.Context, logger logrus.Entry, c
 	}
 
 	if *etcdSts.Spec.Replicas > 1 && *etcdSts.Spec.Replicas > etcdSts.Status.UpdatedReplicas {
+		logger.Info("etcd statefulset fields", "replicas:", *etcdSts.Spec.Replicas, "updatedReplicas:", etcdSts.Status.UpdatedReplicas)
 		return ptr.To(ClusterStateExisting), nil
 	}
 	return nil, nil

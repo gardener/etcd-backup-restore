@@ -161,7 +161,7 @@ func (m *memberControl) IsMemberInCluster(_ context.Context) (_ bool, err error)
 	err = retry.OnError(backoff, func(err error) bool {
 		return err != nil
 	}, func() error {
-		etcdProbeCtx, cancel := context.WithTimeout(context.TODO(), EtcdTimeout)
+		etcdProbeCtx, cancel := context.WithTimeout(context.Background(), EtcdTimeout)
 		defer cancel()
 		return miscellaneous.ProbeEtcd(etcdProbeCtx, m.clientFactory, &m.logger)
 	})
@@ -172,7 +172,7 @@ func (m *memberControl) IsMemberInCluster(_ context.Context) (_ bool, err error)
 	cli, err := m.clientFactory.NewCluster()
 	if err != nil {
 		m.logger.Errorf("failed to build etcd cluster client")
-		return false, err
+		return false, fmt.Errorf("failed to probe etcd cluster: %w", err)
 	}
 	defer cli.Close()
 
@@ -181,7 +181,7 @@ func (m *memberControl) IsMemberInCluster(_ context.Context) (_ bool, err error)
 	err = retry.OnError(backoff, func(err error) bool {
 		return err != nil
 	}, func() error {
-		memListCtx, cancel := context.WithTimeout(context.TODO(), EtcdTimeout)
+		memListCtx, cancel := context.WithTimeout(context.Background(), EtcdTimeout)
 		defer cancel()
 		etcdMemberList, err = cli.MemberList(memListCtx)
 		return err
@@ -320,8 +320,11 @@ func (m *memberControl) IsClusterScaledUp(ctx context.Context) (bool, error) {
 
 	// Determine scale-up by checking member presence. If member is not present in cluster, it's a scale-up.
 
-	var err error
-	if isEtcdMemberPresent, err := m.IsMemberInCluster(ctx); err == nil {
+	var (
+		isEtcdMemberPresent bool
+		err                 error
+	)
+	if isEtcdMemberPresent, err = m.IsMemberInCluster(ctx); err == nil {
 		return !isEtcdMemberPresent, nil
 	}
 	m.logger.Errorf("unable to check presence of member in cluster: %v", err)
