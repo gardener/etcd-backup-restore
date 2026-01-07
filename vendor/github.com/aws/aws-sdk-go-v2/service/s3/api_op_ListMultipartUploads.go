@@ -99,6 +99,10 @@ import (
 //
 // [AbortMultipartUpload]
 //
+// You must URL encode any signed header values that contain spaces. For example,
+// if your header value is my file.txt , containing two spaces after my , you must
+// URL encode this value to my%20%20file.txt .
+//
 // [Uploading Objects Using Multipart Upload]: https://docs.aws.amazon.com/AmazonS3/latest/dev/uploadobjusingmpu.html
 // [Concepts for directory buckets in Local Zones]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/s3-lzs-for-directory-buckets.html
 // [ListParts]: https://docs.aws.amazon.com/AmazonS3/latest/API/API_ListParts.html
@@ -171,6 +175,9 @@ type ListMultipartUploadsInput struct {
 	// result element, CommonPrefixes . If you don't specify the prefix parameter, then
 	// the substring starts at the beginning of the key. The keys that are grouped
 	// under CommonPrefixes result element are not returned elsewhere in the response.
+	//
+	// CommonPrefixes is filtered out from results if it is not lexicographically
+	// greater than the key-marker.
 	//
 	// Directory buckets - For directory buckets, / is the only supported delimiter.
 	Delimiter *string
@@ -324,9 +331,12 @@ type ListMultipartUploadsOutput struct {
 	Prefix *string
 
 	// If present, indicates that the requester was successfully charged for the
-	// request.
+	// request. For more information, see [Using Requester Pays buckets for storage transfers and usage]in the Amazon Simple Storage Service user
+	// guide.
 	//
 	// This functionality is not supported for directory buckets.
+	//
+	// [Using Requester Pays buckets for storage transfers and usage]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/RequesterPaysBuckets.html
 	RequestCharged types.RequestCharged
 
 	// Together with key-marker, specifies the multipart upload after which listing
@@ -454,16 +464,13 @@ func (c *Client) addOperationListMultipartUploadsMiddlewares(stack *middleware.S
 	if err = addSerializeImmutableHostnameBucketMiddleware(stack, options); err != nil {
 		return err
 	}
-	if err = addSpanInitializeStart(stack); err != nil {
+	if err = addInterceptBeforeRetryLoop(stack, options); err != nil {
 		return err
 	}
-	if err = addSpanInitializeEnd(stack); err != nil {
+	if err = addInterceptAttempt(stack, options); err != nil {
 		return err
 	}
-	if err = addSpanBuildRequestStart(stack); err != nil {
-		return err
-	}
-	if err = addSpanBuildRequestEnd(stack); err != nil {
+	if err = addInterceptors(stack, options); err != nil {
 		return err
 	}
 	return nil

@@ -17,6 +17,16 @@ import (
 	"time"
 )
 
+// End of support notice: As of October 1, 2025, Amazon S3 has discontinued
+// support for Email Grantee Access Control Lists (ACLs). If you attempt to use an
+// Email Grantee ACL in a request after October 1, 2025, the request will receive
+// an HTTP 405 (Method Not Allowed) error.
+//
+// This change affects the following Amazon Web Services Regions: US East (N.
+// Virginia), US West (N. California), US West (Oregon), Asia Pacific (Singapore),
+// Asia Pacific (Sydney), Asia Pacific (Tokyo), Europe (Ireland), and South America
+// (São Paulo).
+//
 // Adds an object to a bucket.
 //
 //   - Amazon S3 never adds partial objects; if you receive a success response,
@@ -119,6 +129,10 @@ import (
 // [CopyObject]
 //
 // [DeleteObject]
+//
+// You must URL encode any signed header values that contain spaces. For example,
+// if your header value is my file.txt , containing two spaces after my , you must
+// URL encode this value to my%20%20file.txt .
 //
 // [Concepts for directory buckets in Local Zones]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/s3-lzs-for-directory-buckets.html
 // [Amazon S3 Object Lock]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/object-lock.html
@@ -541,7 +555,7 @@ type PutObjectInput struct {
 	SSEKMSKeyId *string
 
 	// The server-side encryption algorithm that was used when you store this object
-	// in Amazon S3 (for example, AES256 , aws:kms , aws:kms:dsse ).
+	// in Amazon S3 or Amazon FSx.
 	//
 	//   - General purpose buckets - You have four mutually exclusive options to
 	//   protect data using server-side encryption in Amazon S3, depending on how you
@@ -583,6 +597,13 @@ type PutObjectInput struct {
 	//   request. So in the Zonal endpoint API calls (except [CopyObject]and [UploadPartCopy]), the encryption
 	//   request headers must match the default encryption configuration of the directory
 	//   bucket.
+	//
+	//   - S3 access points for Amazon FSx - When accessing data stored in Amazon FSx
+	//   file systems using S3 access points, the only valid server side encryption
+	//   option is aws:fsx . All Amazon FSx file systems have encryption configured by
+	//   default and are encrypted at rest. Data is automatically encrypted before being
+	//   written to the file system, and automatically decrypted as it is read. These
+	//   processes are handled transparently by Amazon FSx.
 	//
 	// [Using Server-Side Encryption]: https://docs.aws.amazon.com/AmazonS3/latest/dev/UsingServerSideEncryption.html
 	// [Specifying server-side encryption with KMS for new object uploads]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/s3-express-specifying-kms-encryption.html
@@ -661,7 +682,7 @@ type PutObjectOutput struct {
 	BucketKeyEnabled *bool
 
 	// The Base64 encoded, 32-bit CRC32 checksum of the object. This checksum is only
-	// be present if the checksum was uploaded with the object. When you use an API
+	// present if the checksum was uploaded with the object. When you use an API
 	// operation on an object that was uploaded using multipart uploads, this value may
 	// not be a direct checksum value of the full object. Instead, it's a calculation
 	// based on the checksum values of each individual part. For more information about
@@ -691,8 +712,8 @@ type PutObjectOutput struct {
 	// [Checking object integrity in the Amazon S3 User Guide]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html
 	ChecksumCRC64NVME *string
 
-	// The Base64 encoded, 160-bit SHA1 digest of the object. This will only be
-	// present if the object was uploaded with the object. When you use the API
+	// The Base64 encoded, 160-bit SHA1 digest of the object. This checksum is only
+	// present if the checksum was uploaded with the object. When you use the API
 	// operation on an object that was uploaded using multipart uploads, this value may
 	// not be a direct checksum value of the full object. Instead, it's a calculation
 	// based on the checksum values of each individual part. For more information about
@@ -702,8 +723,8 @@ type PutObjectOutput struct {
 	// [Checking object integrity]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html#large-object-checksums
 	ChecksumSHA1 *string
 
-	// The Base64 encoded, 256-bit SHA256 digest of the object. This will only be
-	// present if the object was uploaded with the object. When you use an API
+	// The Base64 encoded, 256-bit SHA256 digest of the object. This checksum is only
+	// present if the checksum was uploaded with the object. When you use an API
 	// operation on an object that was uploaded using multipart uploads, this value may
 	// not be a direct checksum value of the full object. Instead, it's a calculation
 	// based on the checksum values of each individual part. For more information about
@@ -747,9 +768,12 @@ type PutObjectOutput struct {
 	Expiration *string
 
 	// If present, indicates that the requester was successfully charged for the
-	// request.
+	// request. For more information, see [Using Requester Pays buckets for storage transfers and usage]in the Amazon Simple Storage Service user
+	// guide.
 	//
 	// This functionality is not supported for directory buckets.
+	//
+	// [Using Requester Pays buckets for storage transfers and usage]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/RequesterPaysBuckets.html
 	RequestCharged types.RequestCharged
 
 	// If server-side encryption with a customer-provided encryption key was
@@ -777,7 +801,10 @@ type PutObjectOutput struct {
 	SSEKMSKeyId *string
 
 	// The server-side encryption algorithm used when you store this object in Amazon
-	// S3.
+	// S3 or Amazon FSx.
+	//
+	// When accessing data stored in Amazon FSx file systems using S3 access points,
+	// the only valid server side encryption option is aws:fsx .
 	ServerSideEncryption types.ServerSideEncryption
 
 	//  The size of the object in bytes. This value is only be present if you append
@@ -926,16 +953,13 @@ func (c *Client) addOperationPutObjectMiddlewares(stack *middleware.Stack, optio
 	if err = addSerializeImmutableHostnameBucketMiddleware(stack, options); err != nil {
 		return err
 	}
-	if err = addSpanInitializeStart(stack); err != nil {
+	if err = addInterceptBeforeRetryLoop(stack, options); err != nil {
 		return err
 	}
-	if err = addSpanInitializeEnd(stack); err != nil {
+	if err = addInterceptAttempt(stack, options); err != nil {
 		return err
 	}
-	if err = addSpanBuildRequestStart(stack); err != nil {
-		return err
-	}
-	if err = addSpanBuildRequestEnd(stack); err != nil {
+	if err = addInterceptors(stack, options); err != nil {
 		return err
 	}
 	return nil
