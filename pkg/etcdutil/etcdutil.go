@@ -19,6 +19,7 @@ import (
 	"github.com/gardener/etcd-backup-restore/pkg/errors"
 	"github.com/gardener/etcd-backup-restore/pkg/etcdutil/client"
 	"github.com/gardener/etcd-backup-restore/pkg/metrics"
+	"github.com/gardener/etcd-backup-restore/pkg/miscellaneous"
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 
@@ -102,8 +103,20 @@ func GetTLSClientForEtcd(tlsConfig *brtypes.EtcdConnectionConfig, options *clien
 	}
 
 	endpoints := tlsConfig.Endpoints
-	if options.UseServiceEndpoints && len(tlsConfig.ServiceEndpoints) > 0 {
-		endpoints = tlsConfig.ServiceEndpoints
+	if options.UseServiceEndpoints {
+		if len(tlsConfig.ServiceEndpoints) > 0 {
+			endpoints = tlsConfig.ServiceEndpoints
+		} else {
+			configFilePath := miscellaneous.GetConfigFilePath()
+			var err error
+			endpoints, err = miscellaneous.GetAllMemberClientURLs(configFilePath)
+			if err != nil {
+				return nil, fmt.Errorf("failed to get etcd endpoints from config file %s: %v", configFilePath, err)
+			}
+			if len(endpoints) == 0 {
+				endpoints = tlsConfig.Endpoints
+			}
+		}
 	}
 
 	cfg := &clientv3.Config{
