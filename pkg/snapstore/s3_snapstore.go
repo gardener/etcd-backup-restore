@@ -90,6 +90,10 @@ func NewS3SnapStore(config *brtypes.SnapstoreConfig) (*S3SnapStore, error) {
 		return nil, err
 	}
 
+	if config.Endpoint != "" {
+		cfgOpts = append(cfgOpts, awsconfig.WithBaseEndpoint(config.Endpoint))
+	}
+
 	cfg, err := awsconfig.LoadDefaultConfig(context.TODO(), cfgOpts...)
 	if err != nil {
 		return nil, fmt.Errorf("new AWS config failed: %w", err)
@@ -206,6 +210,7 @@ func awsCredentialsFromConfig(awsConfig *awsCredentials) ([]func(*awsconfig.Load
 	}
 	cfgOpts = append(cfgOpts, awsconfig.WithCredentialsProvider(aws.NewCredentialsCache(credentialsProvider)))
 
+	// TODO: @renormalize support for passing Endpoint through the credential file must be removed in v0.42.0.
 	if awsConfig.Endpoint != nil {
 		cfgOpts = append(cfgOpts, awsconfig.WithBaseEndpoint(*awsConfig.Endpoint))
 	}
