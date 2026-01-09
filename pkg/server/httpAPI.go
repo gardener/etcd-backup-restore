@@ -92,6 +92,12 @@ type HTTPHandler struct {
 	AckState                  uint32
 	EnableTLS                 bool
 	EnableProfiling           bool
+	isLeader                  bool
+}
+
+// IsLeader returns true if this instance is the leader
+func (h *HTTPHandler) IsLeader() bool {
+	return h.isLeader
 }
 
 func (h *HTTPHandler) OnStoppedLeading() {
@@ -738,6 +744,10 @@ func IsBackupRestoreHealthy(backupRestoreURL string, TLSEnabled bool, rootCA str
 }
 
 func (h *HTTPHandler) serveSnapshotsReencrypt(rw http.ResponseWriter, req *http.Request) {
+	if !h.IsLeader() {
+		h.delegateReqToLeader(rw, req)
+		return
+	}
 	h.checkAndSetSecurityHeaders(rw)
 	h.Logger.Info("Received request to re-encrypt all snapshots.")
 
@@ -761,6 +771,10 @@ func (h *HTTPHandler) serveSnapshotsReencrypt(rw http.ResponseWriter, req *http.
 
 // Update serveSnapshotsEncryptionStatus to return structured JSON
 func (h *HTTPHandler) serveSnapshotsEncryptionStatus(rw http.ResponseWriter, req *http.Request) {
+	if !h.IsLeader() {
+		h.delegateReqToLeader(rw, req)
+		return
+	}
 	h.checkAndSetSecurityHeaders(rw)
 	h.Logger.Info("Received request for SSE-C key usage status.")
 	if h.Snapshotter == nil || len(h.StorageProvider) == 0 {
@@ -793,6 +807,10 @@ func (h *HTTPHandler) serveSnapshotsEncryptionStatus(rw http.ResponseWriter, req
 }
 
 func (h *HTTPHandler) serveSnapshotsScan(rw http.ResponseWriter, req *http.Request) {
+	if !h.IsLeader() {
+		h.delegateReqToLeader(rw, req)
+		return
+	}
 	h.checkAndSetSecurityHeaders(rw)
 	h.Logger.Info("Received request to scan all snapshots for encryption status.")
 
@@ -818,6 +836,7 @@ func (h *HTTPHandler) serveSnapshotsScan(rw http.ResponseWriter, req *http.Reque
 
 // Add this method to your HTTPHandler or wherever you handle leadership changes
 func (h *HTTPHandler) OnLeadershipChanged(isLeader bool) {
+	h.isLeader = isLeader
 	if !isLeader {
 		// We lost leadership, clear cached SSE key usage data
 		h.Logger.Info("Lost leadership, clearing SSE key usage cache")
