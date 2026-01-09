@@ -71,8 +71,10 @@ The system supports multiple SSE-C keys to enable key rotation and backward comp
 }
 ```
 
+3. **Key Expiration**: You can remove keys from the list, etcd-backup-restore will automatically reload the file as if you were adding keys. But beware, you should never remove keys which are still in use. It is recommended to rotate the keys by some time-based schema, which should respect, that older keys might be needed. For example if you have oldest full snapshot 4 weeks old, then you should never delete keys which were added within that period. It can happen, that you get in situation, that you would need to rotate the keys earlier. For such case there is a possibility to reencrypt all objects in the snapstore to make sure that all stored snapshots are encrypted by the most recent key. After succesfull reencryption it is ok, to remove the deprecated key. If in doubt, see the [Get Encryption Status](#get-encryption-status).
+
 ## Flags and Configuration
-SSE-C is configured by providing json file `sseCustomerKeyConf` in AWS_SSE_CUSTOMER_KEY_AWS_APPLICATION_CREDENTIALS_JSON path.
+SSE-C is configured by providing json file `sseCustomerKeyConf` in AWS_APPLICATION_CREDENTIALS_JSON path.
 
 ### Configuration Behavior
 
@@ -84,7 +86,7 @@ SSE-C is configured by providing json file `sseCustomerKeyConf` in AWS_SSE_CUSTO
 
 ### Get Encryption Status
 
-Returns the current encryption status of all known backup files. This can be out of date if the app didn't yet wrote/read all the files in the store. In such cases you can start asynchronous scan by the `POST /snapshot/scan` endpoint described below.
+Returns the current encryption status of all known backup files. This can be out of date if the app didn't yet write/read all the files in the store. In such cases you can start asynchronous scan by the `POST /snapshot/scan` endpoint described below.
 
 **Endpoint:** `GET /snapshot/encstatus`
 
