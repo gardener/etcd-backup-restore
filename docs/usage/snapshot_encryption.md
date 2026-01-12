@@ -90,10 +90,6 @@ Returns the current encryption status of all known backup files. This can be out
 
 **Endpoint:** `GET /snapshot/encstatus`
 
-**Requirements:** 
-- Only available on leader instances
-- Returns 403 Forbidden on non-leader instances
-
 **Response Format:**
 ```json
 {
@@ -128,10 +124,6 @@ Scans all backup files to determine their encryption status.
 
 **Endpoint:** `POST /snapshot/scan`
 
-**Requirements:** 
-- Only available on leader instances
-- Returns 403 Forbidden on non-leader instances
-
 **Response:** 
 ```
 HTTP 202 Accepted
@@ -145,10 +137,6 @@ The scan runs asynchronously and updates the encryption status registry. Use the
 Re-encrypts all backups using the current (first) SSE-C key.
 
 **Endpoint:** `POST /snapshot/reencrypt`
-
-**Requirements:**
-- Only available on leader instances
-- Returns 403 Forbidden on non-leader instances
 
 **Response:**
 ```
@@ -280,11 +268,6 @@ curl http://backup-restore-service:8080/snapshot/encstatus | jq '.files | to_ent
 
 2. **"unknown" status**: Encryption status not yet determined
    - Run a scan: `POST /snapshot/scan`
-   - Check that the service has leader role
-
-3. **403 Forbidden on API calls**: 
-   - Ensure the instance has leader role
-   - Check leadership election logs
 
 4. **Re-encryption failures**:
    - Check available disk space
