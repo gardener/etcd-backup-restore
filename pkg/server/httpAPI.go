@@ -756,17 +756,17 @@ func (h *HTTPHandler) serveSnapshotsReencrypt(rw http.ResponseWriter, req *http.
 		h.Logger.Errorf("Unable to create snapstore for re-encryption: %v", err)
 		return
 	}
-	s3store, ok := store.(*snapstore.S3SnapStore)
-	if !ok {
-		h.Logger.Errorf("Re-encryption is only supported for S3SnapStore")
-		return
-	}
-	go func() {
-		s3store.ReencryptAllSnapshots(h.Logger)
-	}()
-
-	rw.WriteHeader(http.StatusAccepted)
-	rw.Write([]byte("Re-encryption of all snapshots started.\n"))
+	       switch s := store.(type) {
+	       case *snapstore.S3SnapStore:
+		       go func() {
+			       s.ReencryptAllSnapshots(h.Logger)
+		       }()
+		       rw.WriteHeader(http.StatusAccepted)
+		       rw.Write([]byte("Re-encryption of all snapshots started.\n"))
+	       default:
+		       h.Logger.Errorf("Re-encryption is only supported for S3SnapStore")
+		       return
+	       }
 }
 
 // Update serveSnapshotsEncryptionStatus to return structured JSON
@@ -784,24 +784,22 @@ func (h *HTTPHandler) serveSnapshotsEncryptionStatus(rw http.ResponseWriter, req
 	}
 
 	store := h.Snapshotter.GetStore()
-	s3store, ok := store.(*snapstore.S3SnapStore)
-	if !ok {
+	switch s := store.(type) {
+	case *snapstore.S3SnapStore:
+		usage, upToDate := s.GetSSEKeyUsageWithStatus()
+		response := map[string]interface{}{
+			"upToDate": upToDate,
+			"files":    usage,
+		}
+		rw.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(rw).Encode(response); err != nil {
+			h.Logger.Errorf("Failed to encode SSE key usage: %v", err)
+			rw.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+	default:
 		h.Logger.Errorf("Encryption status is only supported for S3SnapStore")
 		rw.WriteHeader(http.StatusNotImplemented)
-		return
-	}
-
-	usage, upToDate := s3store.GetSSEKeyUsageWithStatus()
-
-	response := map[string]interface{}{
-		"upToDate": upToDate,
-		"files":    usage,
-	}
-
-	rw.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(rw).Encode(response); err != nil {
-		h.Logger.Errorf("Failed to encode SSE key usage: %v", err)
-		rw.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 }
@@ -814,38 +812,38 @@ func (h *HTTPHandler) serveSnapshotsScan(rw http.ResponseWriter, req *http.Reque
 	h.checkAndSetSecurityHeaders(rw)
 	h.Logger.Info("Received request to scan all snapshots for encryption status.")
 
-	go func() {
-		store := h.Snapshotter.GetStore()
-		s3store, ok := store.(*snapstore.S3SnapStore)
-		if !ok {
-			h.Logger.Errorf("Snapshot scanning is only supported for S3SnapStore")
-			return
-		}
-
-		err := s3store.ScanAllSnapshots(h.Logger)
-		if err != nil {
-			h.Logger.Errorf("Failed to scan snapshots: %v", err)
-			return
-		}
-		h.Logger.Info("Snapshot scan completed successfully.")
-	}()
-
-	rw.WriteHeader(http.StatusAccepted)
-	rw.Write([]byte("Snapshot scan started.\n"))
+	       go func() {
+		       store := h.Snapshotter.GetStore()
+		       switch s := store.(type) {
+		       case *snapstore.S3SnapStore:
+			       err := s.ScanAllSnapshots(h.Logger)
+			       if err != nil {
+				       h.Logger.Errorf("Failed to scan snapshots: %v", err)
+				       return
+			       }
+			       h.Logger.Info("Snapshot scan completed successfully.")
+		       default:
+			       h.Logger.Errorf("Snapshot scanning is only supported for S3SnapStore")
+			       return
+		       }
+	       }()
+	       rw.WriteHeader(http.StatusAccepted)
+	       rw.Write([]byte("Snapshot scan started.\n"))
 }
 
 // Add this method to your HTTPHandler or wherever you handle leadership changes
 func (h *HTTPHandler) OnLeadershipChanged(isLeader bool) {
 	h.isLeader = isLeader
-	if !isLeader {
-		// We lost leadership, clear cached SSE key usage data
-		h.Logger.Info("Lost leadership, clearing SSE key usage cache")
-		if h.Snapshotter != nil && h.Snapshotter.GetStore() != nil {
-			if s3store, ok := h.Snapshotter.GetStore().(*snapstore.S3SnapStore); ok {
-				s3store.ClearSSEKeyUsageData()
-			}
-		}
-	} else {
-		h.Logger.Info("Gained leadership")
-	}
+	       if !isLeader {
+		       // We lost leadership, clear cached SSE key usage data
+		       h.Logger.Info("Lost leadership, clearing SSE key usage cache")
+		       if h.Snapshotter != nil && h.Snapshotter.GetStore() != nil {
+			       switch s := h.Snapshotter.GetStore().(type) {
+			       case *snapstore.S3SnapStore:
+				       s.ClearSSEKeyUsageData()
+			       }
+		       }
+	       } else {
+		       h.Logger.Info("Gained leadership")
+	       }
 }
