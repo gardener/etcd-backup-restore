@@ -7,6 +7,7 @@ package types
 import (
 	"fmt"
 	"io"
+	"os"
 	"path"
 	"strconv"
 	"strings"
@@ -241,6 +242,23 @@ func (c *SnapstoreConfig) Validate() error {
 
 // Complete completes the config.
 func (c *SnapstoreConfig) Complete() {
+	// Build environment variable names based on prefix
+	envPrefix := c.EnvPrefix
+	providerEnvVar := envPrefix + "STORAGE_PROVIDER"
+	prefixEnvVar := envPrefix + "STORE_PREFIX"
+
+	// Apply environment variables if flags are not set
+	if c.Provider == "" {
+		if envProvider := os.Getenv(providerEnvVar); envProvider != "" {
+			c.Provider = envProvider
+		}
+	}
+	if c.Prefix == "" {
+		if envStorePrefix := os.Getenv(prefixEnvVar); envStorePrefix != "" {
+			c.Prefix = envStorePrefix
+		}
+	}
+
 	c.Prefix = path.Join(c.Prefix, backupFormatVersion)
 
 	if c.TempDir == "" {
