@@ -92,12 +92,6 @@ type HTTPHandler struct {
 	AckState                  uint32
 	EnableTLS                 bool
 	EnableProfiling           bool
-	isLeader                  bool
-}
-
-// IsLeader returns true if this instance is the leader
-func (h *HTTPHandler) IsLeader() bool {
-	return h.isLeader
 }
 
 func (h *HTTPHandler) OnStoppedLeading() {
@@ -744,10 +738,15 @@ func IsBackupRestoreHealthy(backupRestoreURL string, TLSEnabled bool, rootCA str
 }
 
 func (h *HTTPHandler) serveSnapshotsReencrypt(rw http.ResponseWriter, req *http.Request) {
-	if !h.IsLeader() {
-		h.delegateReqToLeader(rw, req)
+	if h.Snapshotter == nil {
+		if len(h.StorageProvider) > 0 {
+			h.delegateReqToLeader(rw, req)
+			return
+		}
+		h.Logger.Warnf("Ignoring re-encryption request as snapshotter is not configured")
 		return
 	}
+
 	h.checkAndSetSecurityHeaders(rw)
 	h.Logger.Info("Received request to re-encrypt all snapshots.")
 
@@ -771,8 +770,12 @@ func (h *HTTPHandler) serveSnapshotsReencrypt(rw http.ResponseWriter, req *http.
 
 // Update serveSnapshotsEncryptionStatus to return structured JSON
 func (h *HTTPHandler) serveSnapshotsEncryptionStatus(rw http.ResponseWriter, req *http.Request) {
-	if !h.IsLeader() {
-		h.delegateReqToLeader(rw, req)
+	if h.Snapshotter == nil {
+		if len(h.StorageProvider) > 0 {
+			h.delegateReqToLeader(rw, req)
+			return
+		}
+		h.Logger.Warnf("Ignoring encryption status request as snapshotter is not configured")
 		return
 	}
 	h.checkAndSetSecurityHeaders(rw)
@@ -805,8 +808,12 @@ func (h *HTTPHandler) serveSnapshotsEncryptionStatus(rw http.ResponseWriter, req
 }
 
 func (h *HTTPHandler) serveSnapshotsScan(rw http.ResponseWriter, req *http.Request) {
-	if !h.IsLeader() {
-		h.delegateReqToLeader(rw, req)
+	if h.Snapshotter == nil {
+		if len(h.StorageProvider) > 0 {
+			h.delegateReqToLeader(rw, req)
+			return
+		}
+		h.Logger.Warnf("Ignoring snapshot scan request as snapshotter is not configured")
 		return
 	}
 	h.checkAndSetSecurityHeaders(rw)
@@ -828,12 +835,15 @@ func (h *HTTPHandler) serveSnapshotsScan(rw http.ResponseWriter, req *http.Reque
 		}
 	}()
 	rw.WriteHeader(http.StatusAccepted)
-	rw.Write([]byte("Snapshot scan started.\n"))
+
+	if _, err := rw.Write([]byte("Snapshot scan started.\n")); err != nil {
+		h.Logger.Errorf("Failed to write response: %v", err)
+		return
+	}
 }
 
 // Add this method to your HTTPHandler or wherever you handle leadership changes
 func (h *HTTPHandler) OnLeadershipChanged(isLeader bool) {
-	h.isLeader = isLeader
 	if !isLeader {
 		// We lost leadership, clear cached SSE key usage data
 		h.Logger.Info("Lost leadership, clearing SSE key usage cache")
