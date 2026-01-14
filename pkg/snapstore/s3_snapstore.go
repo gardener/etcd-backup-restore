@@ -219,7 +219,10 @@ func NewS3SnapStore(config *brtypes.SnapstoreConfig) (*S3SnapStore, error) {
 		return nil, fmt.Errorf("new AWS config failed: %w", err)
 	}
 
-	checkSSECredsValidity(sseCreds)
+	err = checkSSECredsValidity(sseCreds)
+	if err != nil {
+		return nil, fmt.Errorf("invalid SSE credentials: %w", err)
+	}
 
 	cli := s3.NewFromConfig(cfg, cliOpts...)
 	return NewS3FromClient(config.Container, config.Prefix, config.TempDir, config.MaxParallelChunkUploads, config.MinChunkSize, cli, sseCreds), nil

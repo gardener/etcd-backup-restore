@@ -758,10 +758,18 @@ func (h *HTTPHandler) serveSnapshotsReencrypt(rw http.ResponseWriter, req *http.
 	switch s := store.(type) {
 	case *snapstore.S3SnapStore:
 		go func() {
-			s.ReencryptAllSnapshots(h.Logger)
+			err := s.ReencryptAllSnapshots(h.Logger)
+			if err != nil {
+				h.Logger.Errorf("Failed to re-encrypt snapshots: %v", err)
+			} else {
+				h.Logger.Info("Re-encryption of all snapshots completed successfully.")
+			}
 		}()
 		rw.WriteHeader(http.StatusAccepted)
-		rw.Write([]byte("Re-encryption of all snapshots started.\n"))
+		_, err := rw.Write([]byte("Re-encryption of all snapshots started.\n"))
+		if err != nil {
+			h.Logger.Errorf("Failed to write response: %v", err)
+		}
 	default:
 		h.Logger.Errorf("Re-encryption is only supported for S3SnapStore")
 		return
