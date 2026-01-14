@@ -1,12 +1,12 @@
 # SSE-C (Server-Side Encryption with Customer-Provided Keys) Support
 
-ETCD backup-restore supports AWS S3 Server-Side Encryption with Customer-Provided Keys (SSE-C) for securing backup snapshots. This allows you to maintain full control over encryption keys while leveraging S3's server-side encryption capabilities.
+etcd-backup-restore supports AWS S3 Server-Side Encryption with Customer-Provided Keys (SSE-C) for securing backup snapshots. This allows you to maintain full control over encryption keys while leveraging S3's server-side encryption capabilities.
 
 ## Configuration
 
 ### Secret Format
 
-SSE-C configuration is provided via Kubernetes secret with the following JSON structure:
+SSE-C configuration is provided via Kubernetes secret with the following JSON structure (as a part of the credential secret provided to etcd-backup-restore):
 
 ```json
 {
@@ -27,7 +27,7 @@ SSE-C configuration is provided via Kubernetes secret with the following JSON st
 
 #### Field Descriptions
 
-- **`algorithm`** (string, required): SSE-C algorithm to use. Currently only `"AES256"` is supported.
+- **`algorithm`** (string, required): SSE-C algorithm to use. Currently, only `"AES256"` is supported.
 - **`disableEncryptionForWriting`** (boolean, optional, default: `false`): When `true`, new backups will not be encrypted, but existing encrypted backups can still be read using the provided keys.
 - **`keys`** (array, required): List of encryption keys. The first key is used for writing new backups.
   - **`id`** (string, required): Unique identifier for the key (used for tracking and logging).
@@ -74,7 +74,8 @@ The system supports multiple SSE-C keys to enable key rotation and backward comp
 3. **Key Expiration**: You can remove keys from the list; etcd-backup-restore will automatically reload the file as it does when adding keys. However, never remove keys that are still in use. Rotate keys on a time-based schedule that accounts for the possibility that older keys are still needed. For example, if the oldest full snapshot is 4 weeks old, do not delete keys added within that period. If you must rotate keys earlier, re-encrypt all objects in the snapstore to ensure all snapshots are encrypted with the most recent key. After a successful re-encryption, it is safe to remove the deprecated key. If in doubt, see the [Get Encryption Status](#get-encryption-status).
 
 ## Flags and Configuration
-SSE-C is configured by providing json file `sseCustomerKeyConf` in AWS_APPLICATION_CREDENTIALS_JSON path.
+
+SSE-C is configured under `sseCustomerKeyConf` as a part of the credential file at the AWS_APPLICATION_CREDENTIALS_JSON path.
 
 ### Configuration Behavior
 
