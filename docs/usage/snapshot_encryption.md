@@ -71,7 +71,7 @@ The system supports multiple SSE-C keys to enable key rotation and backward comp
 }
 ```
 
-3. **Key Expiration**: You can remove keys from the list, etcd-backup-restore will automatically reload the file as if you were adding keys. But beware, you should never remove keys which are still in use. It is recommended to rotate the keys by some time-based schema, which should respect, that older keys might be needed. For example if you have oldest full snapshot 4 weeks old, then you should never delete keys which were added within that period. It can happen, that you get in situation, that you would need to rotate the keys earlier. For such case there is a possibility to reencrypt all objects in the snapstore to make sure that all stored snapshots are encrypted by the most recent key. After succesfull reencryption it is ok, to remove the deprecated key. If in doubt, see the [Get Encryption Status](#get-encryption-status).
+3. **Key Expiration**: You can remove keys from the list; etcd-backup-restore will automatically reload the file as it does when adding keys. However, never remove keys that are still in use. Rotate keys on a time-based schedule that accounts for the possibility that older keys are still needed. For example, if the oldest full snapshot is 4 weeks old, do not delete keys added within that period. If you must rotate keys earlier, re-encrypt all objects in the snapstore to ensure all snapshots are encrypted with the most recent key. After a successful re-encryption, it is safe to remove the deprecated key. If in doubt, see the [Get Encryption Status](#get-encryption-status).
 
 ## Flags and Configuration
 SSE-C is configured by providing json file `sseCustomerKeyConf` in AWS_APPLICATION_CREDENTIALS_JSON path.
