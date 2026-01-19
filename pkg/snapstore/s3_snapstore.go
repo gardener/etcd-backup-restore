@@ -90,8 +90,8 @@ func NewS3SnapStore(config *brtypes.SnapstoreConfig) (*S3SnapStore, error) {
 		return nil, err
 	}
 
-	if config.Endpoint != "" {
-		cfgOpts = append(cfgOpts, awsconfig.WithBaseEndpoint(config.Endpoint))
+	if config.EndpointOverride != "" {
+		cfgOpts = append(cfgOpts, awsconfig.WithBaseEndpoint(config.EndpointOverride))
 	}
 
 	cfg, err := awsconfig.LoadDefaultConfig(context.TODO(), cfgOpts...)

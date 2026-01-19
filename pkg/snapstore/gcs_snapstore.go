@@ -33,10 +33,10 @@ import (
 )
 
 const (
-	envStoreCredentials       = "GOOGLE_APPLICATION_CREDENTIALS" // #nosec G101 -- This is not a hardcoded password, but only the environment variable to the credentials.
-	envSourceStoreCredentials = "SOURCE_GOOGLE_APPLICATION_CREDENTIALS"
-
-	fileNameStorageAPIEndpoint = "storageAPIEndpoint"
+	envStoreCredentials          = "GOOGLE_APPLICATION_CREDENTIALS" // #nosec G101 -- This is not a hardcoded password, but only the environment variable to the credentials.
+	envSourceStoreCredentials    = "SOURCE_GOOGLE_APPLICATION_CREDENTIALS"
+	envGoogleStorageEmulatorHost = "STORAGE_EMULATOR_HOST"
+	fileNameStorageAPIEndpoint   = "storageAPIEndpoint"
 	// serviceAccountCredentialType is the type of the credentials contained in the serviceaccount.json file.
 	serviceAccountCredentialType = "service_account"
 	// externalAccountCredentialType is the type of credentials contained in the credentialsConfig file.
@@ -89,12 +89,39 @@ func NewGCSSnapStore(config *brtypes.SnapstoreConfig) (*GCSSnapStore, error) {
 		return nil, err
 	}
 	// endpoint specified as a CLI flag takes precedence over configuration passed in the credential file.
-	if config.Endpoint != "" {
-		endpoint = config.Endpoint
+	if config.EndpointOverride != "" {
+		endpoint = config.EndpointOverride
 	}
+
+	opts, err := configureClientOptions(config, endpoint)
+	if err != nil {
+		return nil, fmt.Errorf("failed to configure client options for GCS client with error: %w", err)
+	}
+
+	cli, err := storage.NewClient(ctx, opts...)
+	if err != nil {
+		return nil, err
+	}
+	gcsClient := stiface.AdaptClient(cli)
+
+	return NewGCSSnapStoreFromClient(config.Container, config.Prefix, config.TempDir, config.MaxParallelChunkUploads, config.MinChunkSize, gcsClient), nil
+}
+
+// configureClientOptions configures the options for the GCS client. It checks if `http` is specified in the endpoint, in which case it configures the client to work with emulators.
+func configureClientOptions(config *brtypes.SnapstoreConfig, endpoint string) ([]option.ClientOption, error) {
 	var opts []option.ClientOption // no need to explicitly set store credentials here since the Google SDK picks it up from the standard environment variable
 	if endpoint != "" {
 		opts = append(opts, option.WithEndpoint(endpoint))
+	}
+
+	// `http` communication is disallowed by GCS APIs, so we assume an emulator is being used when communication is over `http`.
+	// The GCS SDK requires envGoogleStorageEmulatorHost to be set to the emulator's endpoint.
+	if strings.Contains(endpoint, "http://") {
+		err := os.Setenv(envGoogleStorageEmulatorHost, endpoint)
+		if err != nil {
+			return nil, fmt.Errorf("failed to set the environment variable for the fake GCS emulator: %v", err)
+		}
+		opts = append(opts, option.WithoutAuthentication())
 	}
 
 	if config.IsSource {
@@ -105,13 +132,7 @@ func NewGCSSnapStore(config *brtypes.SnapstoreConfig) (*GCSSnapStore, error) {
 		opts = append(opts, option.WithCredentialsFile(filename))
 	}
 
-	cli, err := storage.NewClient(ctx, opts...)
-	if err != nil {
-		return nil, err
-	}
-	gcsClient := stiface.AdaptClient(cli)
-
-	return NewGCSSnapStoreFromClient(config.Container, config.Prefix, config.TempDir, config.MaxParallelChunkUploads, config.MinChunkSize, gcsClient), nil
+	return opts, nil
 }
 
 func getGCSStorageAPIEndpointFromFile(config *brtypes.SnapstoreConfig) (string, error) {

@@ -111,8 +111,8 @@ func NewABSSnapStore(config *brtypes.SnapstoreConfig) (*ABSSnapStore, error) {
 	domain := ptr.Deref(absCreds.Domain, brtypes.AzureBlobStorageGlobalDomain)
 	containerURL := fmt.Sprintf("https://%s.%s/%s", absCreds.StorageAccount, domain, config.Container)
 	// endpoint specified as a CLI flag takes precedence over configuration passed in the credential file.
-	if config.Endpoint != "" {
-		containerURL = config.Endpoint
+	if config.EndpointOverride != "" {
+		containerURL = config.EndpointOverride
 	}
 
 	client, err := container.NewClientWithSharedKeyCredential(containerURL, sharedKeyCredential, &container.ClientOptions{
