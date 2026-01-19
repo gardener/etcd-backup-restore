@@ -271,7 +271,6 @@ func (b *BackupRestoreServer) runServer(ctx context.Context, restoreOpts *brtype
 			if b.config.HealthConfig.EtcdMemberGCEnabled {
 				go membergarbagecollector.RunMemberGarbageCollectorPeriodically(leCtx, b.config.HealthConfig, b.logger, b.config.EtcdConnectionConfig)
 			}
-			handler.OnStartedLeading()
 		},
 		OnStoppedLeading: func() {
 			if runServerWithSnapshotter {

@@ -94,12 +94,15 @@ type HTTPHandler struct {
 	EnableProfiling           bool
 }
 
+// OnStoppedLeading is called when the instance loses leadership to wipe the cached SSE key usage data.
 func (h *HTTPHandler) OnStoppedLeading() {
-	h.OnLeadershipChanged(false)
-}
-
-func (h *HTTPHandler) OnStartedLeading() {
-	h.OnLeadershipChanged(true)
+	h.Logger.Info("Lost leadership, clearing SSE key usage cache")
+	if h.Snapshotter != nil && h.Snapshotter.GetStore() != nil {
+		switch s := h.Snapshotter.GetStore().(type) {
+		case *snapstore.S3SnapStore:
+			s.ClearSSEKeyUsageData()
+		}
+	}
 }
 
 // healthCheck contains the HealthStatus of backup restore.
@@ -797,7 +800,7 @@ func (h *HTTPHandler) serveSnapshotsEncryptionStatus(rw http.ResponseWriter, req
 	store := h.Snapshotter.GetStore()
 	switch s := store.(type) {
 	case *snapstore.S3SnapStore:
-		usage, upToDate := s.GetSSEKeyUsageWithStatus()
+		usage, upToDate := s.GetSSEKeyUsage()
 		response := map[string]interface{}{
 			"upToDate": upToDate,
 			"files":    usage,
@@ -847,21 +850,5 @@ func (h *HTTPHandler) serveSnapshotsScan(rw http.ResponseWriter, req *http.Reque
 	if _, err := rw.Write([]byte("Snapshot scan started.\n")); err != nil {
 		h.Logger.Errorf("Failed to write response: %v", err)
 		return
-	}
-}
-
-// Add this method to your HTTPHandler or wherever you handle leadership changes
-func (h *HTTPHandler) OnLeadershipChanged(isLeader bool) {
-	if !isLeader {
-		// We lost leadership, clear cached SSE key usage data
-		h.Logger.Info("Lost leadership, clearing SSE key usage cache")
-		if h.Snapshotter != nil && h.Snapshotter.GetStore() != nil {
-			switch s := h.Snapshotter.GetStore().(type) {
-			case *snapstore.S3SnapStore:
-				s.ClearSSEKeyUsageData()
-			}
-		}
-	} else {
-		h.Logger.Info("Gained leadership")
 	}
 }

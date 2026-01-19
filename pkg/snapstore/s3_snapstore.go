@@ -87,26 +87,26 @@ type SSECredentials struct {
 
 // S3SnapStore is snapstore with AWS S3 object store as backend
 type S3SnapStore struct {
-	client s3api.Client
-	SSECredentials
+	client  s3api.Client
 	prefix  string
 	bucket  string
 	tempDir string
+	SSECredentials
+	minChunkSize int64
 	// maxParallelChunkUploads hold the maximum number of parallel chunk uploads allowed.
 	maxParallelChunkUploads uint
-	minChunkSize            int64
 }
 
-type SSEKeyUsageRegistry struct{}
+type sseKeyUsageRegistry struct{}
 
-func GetSSEKeyUsageRegistry() *SSEKeyUsageRegistry {
-	return &SSEKeyUsageRegistry{}
+func getSSEKeyUsageRegistry() *sseKeyUsageRegistry {
+	return &sseKeyUsageRegistry{}
 }
 
 // RecordKeyUsage records which key was used for a specific snapshot
 // Use keyID = "unencrypted" for files not encrypted with SSE-C
 // Use keyID = actual key ID for files encrypted with SSE-C
-func (r *SSEKeyUsageRegistry) RecordKeyUsage(bucketPrefix, snapshotKey, keyID string) {
+func (r *sseKeyUsageRegistry) RecordKeyUsage(bucketPrefix, snapshotKey, keyID string) {
 	globalSSEKeyUsageMutex.Lock()
 	defer globalSSEKeyUsageMutex.Unlock()
 	fullKey := bucketPrefix + "/" + snapshotKey
@@ -114,17 +114,17 @@ func (r *SSEKeyUsageRegistry) RecordKeyUsage(bucketPrefix, snapshotKey, keyID st
 }
 
 // RecordNoEncryption records that a file is not encrypted with SSE-C
-func (r *SSEKeyUsageRegistry) RecordNoEncryption(bucketPrefix, snapshotKey string) {
+func (r *sseKeyUsageRegistry) RecordNoEncryption(bucketPrefix, snapshotKey string) {
 	r.RecordKeyUsage(bucketPrefix, snapshotKey, "unencrypted")
 }
 
 // RecordBrokenFile records that a file is broken and cannot be decrypted
-func (r *SSEKeyUsageRegistry) RecordBrokenFile(bucketPrefix, snapshotKey string) {
+func (r *sseKeyUsageRegistry) RecordBrokenFile(bucketPrefix, snapshotKey string) {
 	r.RecordKeyUsage(bucketPrefix, snapshotKey, "broken")
 }
 
 // GetKeyUsage returns the key ID used for a specific snapshot
-func (r *SSEKeyUsageRegistry) GetKeyUsage(bucketPrefix, snapshotKey string) (string, bool) {
+func (r *sseKeyUsageRegistry) GetKeyUsage(bucketPrefix, snapshotKey string) (string, bool) {
 	globalSSEKeyUsageMutex.RLock()
 	defer globalSSEKeyUsageMutex.RUnlock()
 	fullKey := bucketPrefix + "/" + snapshotKey
@@ -133,7 +133,7 @@ func (r *SSEKeyUsageRegistry) GetKeyUsage(bucketPrefix, snapshotKey string) (str
 }
 
 // GetAllUsage returns a copy of all key usage data for a specific bucket/prefix
-func (r *SSEKeyUsageRegistry) GetAllUsage(bucketPrefix string) map[string]string {
+func (r *sseKeyUsageRegistry) GetAllUsage(bucketPrefix string) map[string]string {
 	globalSSEKeyUsageMutex.RLock()
 	defer globalSSEKeyUsageMutex.RUnlock()
 
@@ -150,7 +150,7 @@ func (r *SSEKeyUsageRegistry) GetAllUsage(bucketPrefix string) map[string]string
 }
 
 // GetUsageWithStatus returns key usage data and sync status for a specific bucket/prefix
-func (r *SSEKeyUsageRegistry) GetUsageWithStatus(bucketPrefix string) (map[string]string, bool) {
+func (r *sseKeyUsageRegistry) GetUsageWithStatus(bucketPrefix string) (map[string]string, bool) {
 	globalSSEKeyUsageMutex.RLock()
 	defer globalSSEKeyUsageMutex.RUnlock()
 
@@ -169,14 +169,14 @@ func (r *SSEKeyUsageRegistry) GetUsageWithStatus(bucketPrefix string) (map[strin
 }
 
 // IsUpToDate returns the sync status for a specific bucket/prefix
-func (r *SSEKeyUsageRegistry) IsUpToDate(bucketPrefix string) bool {
+func (r *sseKeyUsageRegistry) IsUpToDate(bucketPrefix string) bool {
 	globalSSEKeyUsageMutex.RLock()
 	defer globalSSEKeyUsageMutex.RUnlock()
 	return globalSSEKeySyncStatus[bucketPrefix]
 }
 
 // SyncWithSnapshots ensures the registry only contains entries for existing snapshots
-func (r *SSEKeyUsageRegistry) SyncWithSnapshots(bucketPrefix string, snapList brtypes.SnapList) {
+func (r *sseKeyUsageRegistry) SyncWithSnapshots(bucketPrefix string, snapList brtypes.SnapList) {
 	globalSSEKeyUsageMutex.Lock()
 	defer globalSSEKeyUsageMutex.Unlock()
 
@@ -617,7 +617,7 @@ func (s *S3SnapStore) Fetch(snap brtypes.Snapshot) (io.ReadCloser, error) {
 			return nil, fmt.Errorf("failed to read snapshot from s3: %v", err)
 		}
 		// Record that this file is not encrypted with SSE-C
-		registry := GetSSEKeyUsageRegistry()
+		registry := getSSEKeyUsageRegistry()
 		snapshotKey := path.Join(snap.SnapDir, snap.SnapName)
 		registry.RecordNoEncryption(s.getBucketPrefix(), snapshotKey)
 	} else {
@@ -647,7 +647,7 @@ func (s *S3SnapStore) Fetch(snap brtypes.Snapshot) (io.ReadCloser, error) {
 					continue
 				}
 				// Record the key used for this file in global registry
-				registry := GetSSEKeyUsageRegistry()
+				registry := getSSEKeyUsageRegistry()
 				snapshotKey := path.Join(snap.SnapDir, snap.SnapName)
 				registry.RecordKeyUsage(s.getBucketPrefix(), snapshotKey, s.sseCustomerKeyIDs[i])
 				success = true
@@ -779,7 +779,7 @@ func (s *S3SnapStore) Save(snap brtypes.Snapshot, rc io.ReadCloser) (err error) 
 		return fmt.Errorf("failed uploading chunk, id: %d, offset: %d, error: %v", snapshotErr.chunk.id, snapshotErr.chunk.offset, snapshotErr.err)
 	}
 	// At the end of successful save, record key usage
-	registry := GetSSEKeyUsageRegistry()
+	registry := getSSEKeyUsageRegistry()
 	snapshotKey := path.Join(snap.SnapDir, snap.SnapName)
 
 	if !s.disableEncryptionForWriting && len(s.sseCustomerKeyIDs) > 0 {
@@ -851,8 +851,8 @@ func (s *S3SnapStore) partUploader(wg *sync.WaitGroup, stopCh <-chan struct{}, s
 	}
 }
 
+// List returns the list of snapshots available in store
 func (s *S3SnapStore) List(includeAll bool) (brtypes.SnapList, error) {
-	// List returns a sorted list of snapshot files present in the object store.
 	// If Bucket versioning is not enabled for S3 bucket:
 	//   - It returns a sorted list of all snapshot files present in the object store.
 	//
@@ -1012,7 +1012,7 @@ func (s *S3SnapStore) List(includeAll bool) (brtypes.SnapList, error) {
 	sort.Sort(snapList)
 
 	// Ensure sseKeyUsage map is in sync with the listed snapshots
-	registry := GetSSEKeyUsageRegistry()
+	registry := getSSEKeyUsageRegistry()
 	registry.SyncWithSnapshots(s.getBucketPrefix(), snapList)
 
 	return snapList, nil
@@ -1237,13 +1237,9 @@ func (s *S3SnapStore) ReencryptAllSnapshots(logger *logrus.Entry) error {
 	return nil
 }
 
-func (s *S3SnapStore) GetSSEKeyUsage() map[string]string {
-	registry := GetSSEKeyUsageRegistry()
-	return registry.GetAllUsage(s.getBucketPrefix())
-}
-
-func (s *S3SnapStore) GetSSEKeyUsageWithStatus() (map[string]string, bool) {
-	registry := GetSSEKeyUsageRegistry()
+// GetSSEKeyUsage returns the map of snapshot keys to SSE-C key IDs used for encryption along with sync status
+func (s *S3SnapStore) GetSSEKeyUsage() (map[string]string, bool) {
+	registry := getSSEKeyUsageRegistry()
 	return registry.GetUsageWithStatus(s.getBucketPrefix())
 }
 
@@ -1254,11 +1250,11 @@ type sseKeyEntry struct {
 
 type sseKeyConfig struct {
 	Algorithm                   string        `json:"algorithm"`
-	DisableEncryptionForWriting bool          `json:"disableEncryptionForWriting"`
 	Keys                        []sseKeyEntry `json:"keys"`
+	DisableEncryptionForWriting bool          `json:"disableEncryptionForWriting"`
 }
 
-// Add method to scan all files and determine their encryption status
+// ScanAllSnapshots scans all snapshots in the store to determine their encryption status
 func (s *S3SnapStore) ScanAllSnapshots(logger *logrus.Entry) error {
 	snapshots, err := s.List(false)
 	if err != nil {
@@ -1266,7 +1262,7 @@ func (s *S3SnapStore) ScanAllSnapshots(logger *logrus.Entry) error {
 		return err
 	}
 
-	registry := GetSSEKeyUsageRegistry()
+	registry := getSSEKeyUsageRegistry()
 
 	for _, snap := range snapshots {
 		objKey := path.Join(snap.Prefix, snap.SnapDir, snap.SnapName)
@@ -1320,7 +1316,7 @@ func (s *S3SnapStore) ScanAllSnapshots(logger *logrus.Entry) error {
 }
 
 // Add method to clear all data for a specific bucket/prefix
-func (r *SSEKeyUsageRegistry) ClearBucketData(bucketPrefix string) {
+func (r *sseKeyUsageRegistry) ClearBucketData(bucketPrefix string) {
 	globalSSEKeyUsageMutex.Lock()
 	defer globalSSEKeyUsageMutex.Unlock()
 
@@ -1335,8 +1331,8 @@ func (r *SSEKeyUsageRegistry) ClearBucketData(bucketPrefix string) {
 	globalSSEKeySyncStatus[bucketPrefix] = false
 }
 
-// Add method to S3SnapStore to clear its data
+// ClearSSEKeyUsageData clears the SSE key usage data for this S3SnapStore instance
 func (s *S3SnapStore) ClearSSEKeyUsageData() {
-	registry := GetSSEKeyUsageRegistry()
+	registry := getSSEKeyUsageRegistry()
 	registry.ClearBucketData(s.getBucketPrefix())
 }
