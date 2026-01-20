@@ -219,7 +219,7 @@ func (c *SnapstoreConfig) AddSourceFlags(fs *flag.FlagSet) {
 func (c *SnapstoreConfig) addFlags(fs *flag.FlagSet, parameterPrefix string) {
 	fs.StringVar(&c.Provider, parameterPrefix+"storage-provider", c.Provider, "snapshot storage provider")
 	fs.StringVar(&c.Container, parameterPrefix+"store-container", c.Container, "container which will be used as snapstore")
-	fs.StringVar(&c.EndpointOverride, parameterPrefix+"store-endpoint-override", c.EndpointOverride, "endpoint that will be used to override the default of the container that is used as snapstore")
+	fs.StringVar(&c.EndpointOverride, parameterPrefix+"store-endpoint-override", c.EndpointOverride, "endpoint that will be used to override the default endpoint of the storage provider")
 	fs.StringVar(&c.Prefix, parameterPrefix+"store-prefix", c.Prefix, "prefix or directory inside container under which snapstore is created")
 	fs.UintVar(&c.MaxParallelChunkUploads, parameterPrefix+"max-parallel-chunk-uploads", c.MaxParallelChunkUploads, "maximum number of parallel chunk uploads allowed")
 	fs.Int64Var(&c.MinChunkSize, parameterPrefix+"min-chunk-size", c.MinChunkSize, "Minimum size for multipart chunk upload")

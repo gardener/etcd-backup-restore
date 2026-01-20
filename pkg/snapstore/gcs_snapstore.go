@@ -88,7 +88,11 @@ func NewGCSSnapStore(config *brtypes.SnapstoreConfig) (*GCSSnapStore, error) {
 	if err != nil {
 		return nil, err
 	}
-	// endpoint specified as a CLI flag takes precedence over configuration passed in the credential file.
+	if endpoint != "" {
+		logrus.Warnf("Passing endpoint override through the credential file is now deprecated. Please use the --store-endpoint-override flag instead.")
+	}
+
+	// endpoint override specified as a CLI flag takes precedence over configuration passed in the credential file.
 	if config.EndpointOverride != "" {
 		endpoint = config.EndpointOverride
 	}
@@ -116,7 +120,11 @@ func configureClientOptions(config *brtypes.SnapstoreConfig, endpoint string) ([
 
 	// `http` communication is disallowed by GCS APIs, so we assume an emulator is being used when communication is over `http`.
 	// The GCS SDK requires envGoogleStorageEmulatorHost to be set to the emulator's endpoint.
-	if strings.Contains(endpoint, "http://") {
+	url, err := url.Parse(endpoint)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse endpoint URL with error: %w", err)
+	}
+	if url.Scheme == "http" {
 		err := os.Setenv(envGoogleStorageEmulatorHost, endpoint)
 		if err != nil {
 			return nil, fmt.Errorf("failed to set the environment variable for the fake GCS emulator: %v", err)

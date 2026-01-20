@@ -108,9 +108,14 @@ func NewABSSnapStore(config *brtypes.SnapstoreConfig) (*ABSSnapStore, error) {
 
 	// Construct the ABS Container endpoint.
 	// TODO: @renormalize support for passing Domain through the credential file must be removed in v0.42.0.
-	domain := ptr.Deref(absCreds.Domain, brtypes.AzureBlobStorageGlobalDomain)
+	domain := brtypes.AzureBlobStorageGlobalDomain
+	if absCreds.Domain != nil {
+		logrus.Warnf("Passing endpoint override through the credential file is now deprecated. Please use the --store-endpoint-override flag instead.")
+		domain = *absCreds.Domain
+	}
 	containerURL := fmt.Sprintf("https://%s.%s/%s", absCreds.StorageAccount, domain, config.Container)
-	// endpoint specified as a CLI flag takes precedence over configuration passed in the credential file.
+
+	// endpoint override specified as a CLI flag takes precedence over configuration passed in the credential file.
 	if config.EndpointOverride != "" {
 		containerURL = config.EndpointOverride
 	}
