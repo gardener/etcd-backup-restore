@@ -89,7 +89,7 @@ func NewGCSSnapStore(config *brtypes.SnapstoreConfig) (*GCSSnapStore, error) {
 		return nil, err
 	}
 	if endpoint != "" {
-		logrus.Warnf("Passing endpoint override through the credential file is now deprecated. Please use the --store-endpoint-override flag instead.")
+		logrus.Warnf("Passing endpoint override through the credential file is now deprecated. Please use the `--store-endpoint-override` flag instead.")
 	}
 
 	// endpoint override specified as a CLI flag takes precedence over configuration passed in the credential file.

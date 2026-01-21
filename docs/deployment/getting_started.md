@@ -18,7 +18,7 @@ The procedure to provide credentials to access the cloud provider object store v
       1. Web Identity Role: `roleARN` and `tokenPath` must be set.
    2. For `S3-compatible providers` such as MinIO, `s3ForcePathStyle`, `insecureSkipVerify`, `trustedCaCert`, `requestChecksumCalculation` and `responseChecksumValidation`, can also be made available in an above file to configure the S3 client to communicate to a non-AWS provider.
    3. To enable Server-Side Encryption using Customer Managed Keys for `S3-compatible providers`, use `sseCustomerKey` and `sseCustomerAlgorithm` in the credentials file above. For example, `sseCustomerAlgorithm` could be set to `AES256`, and correspondingly the `sseCustomerKey` is set to a valid AES-256 key.
-   4. To override the endpoint of the S3 compatible API, use the `--store-endpoint-override` flag and pass the corresponding URL. This should be used for S3 compatible providers like Ceph, MinIO, etc., or while using the localstack S3 emulator.
+   4. To override the endpoint of the S3 compatible API, use the `--store-endpoint-override` flag and pass the corresponding URL. This can be used for S3 compatible providers like Ceph, MinIO, etc., or while using the localstack S3 emulator.
 
 * For `Google Cloud Storage`:
    1. GCS supports two alternative authentication options:
