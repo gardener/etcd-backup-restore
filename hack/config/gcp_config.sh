@@ -13,7 +13,6 @@ if [[ -z "${GCP_PROJECT_ID:-}" || -z "${GOOGLE_APPLICATION_CREDENTIALS:-}" ]]; t
   # Use fake GCS emulator if none of the GCP environment variables are set
   export GOOGLE_EMULATOR_HOST="fake-gcs.default:8000"
   GCP_SERVICE_ACCOUNT_JSON="place-your-service-account-json-here"
-  FAKEGCS_LOCAL_URL="http://localhost:8000/storage/v1/"
   USE_FAKEGCS=true
 else
   USE_FAKEGCS=false
@@ -22,8 +21,8 @@ fi
 if [[ "${USE_FAKEGCS}" == "true" ]]; then
   rm -rf /tmp/.gcp
   mkdir -p /tmp/.gcp
-  echo -n "${FAKEGCS_LOCAL_URL}"         > /tmp/.gcp/storageAPIEndpoint
-  echo -n "true"                         > /tmp/.gcp/emulatorEnabled
+  export EMULATOR_URL="http://localhost:8000/storage/v1/"
+  export GOOGLE_ENDPOINT_OVERRIDE="http://${GOOGLE_EMULATOR_HOST}/storage/v1/"
   # Create a dummy service account JSON file
   cat <<EOF > /tmp/.gcp/service-account.json
   {

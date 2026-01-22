@@ -51,24 +51,28 @@ const (
 	providerGCP   = "gcp"
 
 	// AWS related variables
-	envAWSCreds           = "AWS_APPLICATION_CREDENTIALS" // #nosec G101 -- This is not a hardcoded password, but only the environment variable to the credentials.
-	envLocalStackHost     = "LOCALSTACK_HOST"
-	fileS3AccessKeyID     = "accessKeyID"
-	fileS3SecretAccessKey = "secretAccessKey"
-	fileS3Region          = "region"
+	envAWSCreds            = "AWS_APPLICATION_CREDENTIALS" // #nosec G101 -- This is not a hardcoded password, but only the environment variable to the credentials.
+	envAWSEndpointOverride = "AWS_ENDPOINT_OVERRIDE"
+	fileS3AccessKeyID      = "accessKeyID"
+	fileS3SecretAccessKey  = "secretAccessKey"
+	fileS3Region           = "region"
 	// GCP related variables
-	envGoogleCreds = "GOOGLE_APPLICATION_CREDENTIALS" // #nosec G101 -- This is not a hardcoded password, but only the environment variable to the credentials.
-	envFakeGCSHost = "GOOGLE_EMULATOR_HOST"
+	envGoogleCreds            = "GOOGLE_APPLICATION_CREDENTIALS" // #nosec G101 -- This is not a hardcoded password, but only the environment variable to the credentials.
+	envGoogleEndpointOverride = "GOOGLE_ENDPOINT_OVERRIDE"
 	// Azure related variables
-	envAzureCreds           = "AZURE_APPLICATION_CREDENTIALS" // #nosec G101 -- This is not a hardcoded password, but only the environment variable to the credentials.
-	envAzuriteDomain        = "AZURITE_DOMAIN"
-	fileAzureStorageAccount = "storageAccount"
-	fileAzureStorageKey     = "storageKey"
+	envAzureCreds            = "AZURE_APPLICATION_CREDENTIALS" // #nosec G101 -- This is not a hardcoded password, but only the environment variable to the credentials.
+	envAzureEndpointOverride = "AZURE_ENDPOINT_OVERRIDE"
+	fileAzureStorageAccount  = "storageAccount"
+	fileAzureStorageKey      = "storageKey"
+	// Generic emulator variables
+	envEmulatorURL = "EMULATOR_URL"
 )
 
 type storage struct {
-	secretData map[string]interface{}
-	provider   string
+	secretData       map[string]interface{}
+	provider         string
+	emulatorURL      string
+	endpointOverride string
 }
 
 type testProvider struct {
@@ -92,22 +96,25 @@ func getProvider(providerName string) (testProvider, error) {
 			"secretAccessKey": s3SecretAccessKey,
 			"region":          s3Region,
 		}
-		localStackHost := getEnvOrFallback(envLocalStackHost, "")
-		if localStackHost != "" {
-			secretData["endpoint"] = fmt.Sprintf("http://%s", localStackHost)
+		emulatorURL := getEnvOrFallback(envEmulatorURL, "")
+		if emulatorURL != "" {
 			secretData["s3ForcePathStyle"] = "true"
 		}
+		endpointOverride := getEnvOrFallback(envAWSEndpointOverride, "")
 		provider = testProvider{
 			name: "aws",
 			storage: &storage{
-				provider:   brtypes.SnapstoreProviderS3,
-				secretData: secretData,
+				provider:         brtypes.SnapstoreProviderS3,
+				secretData:       secretData,
+				emulatorURL:      emulatorURL,
+				endpointOverride: endpointOverride,
 			},
 		}
 	case providerGCP:
 		secretData := map[string]interface{}{}
-		fakeGCSHost := getEnvOrFallback(envFakeGCSHost, "")
-		if fakeGCSHost == "" {
+		emulatorURL := getEnvOrFallback(envEmulatorURL, "")
+		endpointOverride := getEnvOrFallback(envGoogleEndpointOverride, "")
+		if emulatorURL == "" {
 			file, err := os.ReadFile(os.Getenv(envGoogleCreds))
 			if err != nil {
 				return testProvider{}, err
@@ -115,8 +122,6 @@ func getProvider(providerName string) (testProvider, error) {
 			jsonStr := string(file)
 			secretData["serviceAccountJson"] = jsonStr
 		} else {
-			secretData["emulatorEnabled"] = "true"
-			secretData["storageAPIEndpoint"] = fmt.Sprintf("http://%s/storage/v1/", fakeGCSHost)
 			secretData["serviceAccountJson"] = `{
 				"project_id": "dummy-project-id",
 				"type": "service_account"
@@ -125,8 +130,10 @@ func getProvider(providerName string) (testProvider, error) {
 		provider = testProvider{
 			name: "gcp",
 			storage: &storage{
-				provider:   brtypes.SnapstoreProviderGCS,
-				secretData: secretData,
+				provider:         brtypes.SnapstoreProviderGCS,
+				secretData:       secretData,
+				emulatorURL:      emulatorURL,
+				endpointOverride: endpointOverride,
 			},
 		}
 	case providerAzure:
@@ -140,16 +147,15 @@ func getProvider(providerName string) (testProvider, error) {
 			"storageAccount": azureStorageAccount,
 			"storageKey":     azureStorageKey,
 		}
-		azuriteDomain := getEnvOrFallback(envAzuriteDomain, "")
-		if azuriteDomain != "" {
-			secretData["emulatorEnabled"] = "true"
-			secretData["domain"] = azuriteDomain
-		}
+		emulatorURL := getEnvOrFallback(envEmulatorURL, "")
+		endpointOverride := getEnvOrFallback(envAzureEndpointOverride, "")
 		provider = testProvider{
 			name: "azure",
 			storage: &storage{
-				provider:   brtypes.SnapstoreProviderABS,
-				secretData: secretData,
+				provider:         brtypes.SnapstoreProviderABS,
+				secretData:       secretData,
+				emulatorURL:      emulatorURL,
+				endpointOverride: endpointOverride,
 			},
 		}
 	default:
@@ -443,11 +449,12 @@ func executeContainerCommand(kubeconfigPath, podNamespace, podName, containerNam
 	return strings.TrimSpace(stdout.String()), strings.TrimSpace(stderr.String()), nil
 }
 
-func getSnapstore(storageProvider, storageContainer, storePrefix string) (brtypes.SnapStore, error) {
+func getSnapstore(storageProvider, storageContainer, storePrefix, endpoint string) (brtypes.SnapStore, error) {
 	snapstoreConfig := &brtypes.SnapstoreConfig{
-		Provider:  storageProvider,
-		Container: storageContainer,
-		Prefix:    storePrefix,
+		Provider:         storageProvider,
+		Container:        storageContainer,
+		Prefix:           storePrefix,
+		EndpointOverride: endpoint,
 	}
 	store, err := snapstore.GetSnapstore(snapstoreConfig)
 	if err != nil {

@@ -20,7 +20,7 @@ spec:
         - name: fake-gcs-server
           image: fsouza/fake-gcs-server:1.52.3
           imagePullPolicy: IfNotPresent
-          args: ["-scheme", "both", "-public-host" , "fake-gcs.default:8000"]
+          args: ["-scheme", "both", "-public-host" , "fake-gcs.default:8000", "-backend", "memory"]
           ports:
             - containerPort: 4443
               hostPort: 4443

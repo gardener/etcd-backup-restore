@@ -28,6 +28,6 @@ echo -n "${STORAGE_ACCOUNT}"      > "${AZURE_APPLICATION_CREDENTIALS}/storageAcc
 echo -n "${STORAGE_KEY}"          > "${AZURE_APPLICATION_CREDENTIALS}/storageKey"
 
 if [[ "${USE_AZURITE}" == "true" ]]; then
-  echo -n "${AZURITE_DOMAIN_LOCAL}" > "${AZURE_APPLICATION_CREDENTIALS}/domain"
-  echo -n "true"                    > "${AZURE_APPLICATION_CREDENTIALS}/emulatorEnabled"
+  export EMULATOR_URL="http://${AZURITE_DOMAIN_LOCAL}/${STORAGE_ACCOUNT}/"
+  export AZURE_ENDPOINT_OVERRIDE="http://${AZURITE_DOMAIN}/${STORAGE_ACCOUNT}/"
 fi
