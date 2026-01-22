@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"path"
 	"path/filepath"
@@ -117,7 +118,10 @@ func NewABSSnapStore(config *brtypes.SnapstoreConfig) (*ABSSnapStore, error) {
 
 	// endpoint override specified as a CLI flag takes precedence over configuration passed in the credential file.
 	if config.EndpointOverride != "" {
-		containerURL = config.EndpointOverride
+		containerURL, err = url.JoinPath(config.EndpointOverride, config.Container)
+		if err != nil {
+			return nil, fmt.Errorf("failed to join container with endpoint override with error: %w", err)
+		}
 	}
 
 	client, err := container.NewClientWithSharedKeyCredential(containerURL, sharedKeyCredential, &container.ClientOptions{
