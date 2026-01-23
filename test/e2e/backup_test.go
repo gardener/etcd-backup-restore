@@ -29,7 +29,7 @@ var _ = Describe("Backup", func() {
 		etcdEndpointName = fmt.Sprintf("%s-%s-etcd-client", releaseNamePrefix, providerName)
 	)
 	BeforeEach(func() {
-		store, err = getSnapstore(storageProvider, storageContainer, storePrefix)
+		store, err = getSnapstore(storageProvider, storageContainer, storePrefix, emulatorURL)
 		Expect(err).ShouldNot(HaveOccurred())
 		logger.Infof("waiting for %s pod to be running", podName)
 		err = waitForPodToBeRunning(typedClient, podName, releaseNamespace)

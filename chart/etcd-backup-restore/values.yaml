@@ -84,6 +84,9 @@ backup:
   # Supported values are ABS,GCS,S3,Swift,OSS,OCS,ECS,Local, empty means no backup.
   storageProvider: ""
 
+  # endpoint that will be used to override the default endpoint of the storage provider
+  # endpointOverride: ""
+
   # compression defines the specification to compress the snapshots(full as well as delta).
   # it only supports 3 compression Policy: gzip(default), zlib, lzw.
   compression:

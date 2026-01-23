@@ -49,6 +49,7 @@ var (
 	releaseNamespace string
 	providerName     string
 	storePrefix      = fmt.Sprintf("%s-etcd", releaseNamePrefix)
+	emulatorURL      string
 )
 
 func TestE2E(t *testing.T) {
@@ -76,7 +77,8 @@ var _ = BeforeSuite(func() {
 
 	logger.Infof("provider: %s", provider.name)
 	storageProvider = provider.storage.provider
-	store, err := getSnapstore(storageProvider, storageContainer, storePrefix)
+	emulatorURL = provider.storage.emulatorURL
+	store, err := getSnapstore(storageProvider, storageContainer, storePrefix, emulatorURL)
 	Expect(err).ShouldNot(HaveOccurred())
 
 	// purge any existing backups in bucket
@@ -124,8 +126,10 @@ var _ = BeforeSuite(func() {
 			"garbageCollectionPolicy":        "LimitBased",
 			"garbageCollectionPeriod":        "30s",
 			"defragmentationSchedule":        "*/1 * * * *",
+			"endpointOverride":               provider.storage.endpointOverride,
 		},
 	}
+
 	err = helmDeployChart(logger, timeoutPeriod, kubeconfigPath, chartPath, fmt.Sprintf("%s-%s", releaseNamePrefix, providerName), releaseNamespace, chartValues, true)
 	if err != nil {
 		fmt.Printf("error deploying helm chart for provider %s: %v\n", providerName, err)

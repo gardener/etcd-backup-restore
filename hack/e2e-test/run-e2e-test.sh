@@ -62,7 +62,7 @@ function cleanup_aws_container() {
       return 1
     fi
     echo "Successfully deleted AWS test bucket."
-    unset LOCALSTACK_HOST AWS_DEFAULT_REGION
+    unset EMULATOR_URL AWS_DEFAULT_REGION
     echo "Cleaning up AWS infrastructure completed."
 }
 
@@ -134,7 +134,7 @@ function create_aws_container() {
       # Block public access to the S3 bucket
       aws s3api put-public-access-block --bucket ${TEST_ID} --public-access-block-configuration "BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true" || accumulated_exit_code=1
       # Deny non-HTTPS requests to the S3 bucket, except for localstack which is exposed on an HTTP endpoint
-      if [[ -z "${LOCALSTACK_HOST:-}" ]]; then
+      if [[ -z "${EMULATOR_URL:-}" ]]; then
         aws s3api put-bucket-policy --bucket ${TEST_ID} --policy "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Deny\",\"Principal\":\"*\",\"Action\":\"s3:*\",\"Resource\":[\"arn:aws:s3:::${TEST_ID}\",\"arn:aws:s3:::${TEST_ID}/*\"],\"Condition\":{\"Bool\":{\"aws:SecureTransport\":\"false\"},\"NumericLessThan\":{\"s3:TlsVersion\":\"1.2\"}}}]}" || accumulated_exit_code=1
       fi
       if [ $accumulated_exit_code -ne 0 ]; then
@@ -165,7 +165,7 @@ For real AWS provider:
     AWS_DEFAULT_REGION      Region in which the test bucket is created.
 
 For testing with Localstack:
-    LOCALSTACK_HOST         Host of the localstack service.
+    EMULATOR_URL            Host of the localstack service.
     AWS_ENDPOINT_URL_S3     Endpoint URL of the localstack service.
     AWS_ACCESS_KEY_ID       Dummy access key of the AWS user.
     AWS_SECRET_ACCESS_KEY   Dummy secret key of the AWS user.
@@ -176,13 +176,13 @@ EOM
 
 # setup_aws_e2e sets up the AWS infrastructure for the e2e tests including deploying localstack and/or installing the awscli
 function setup_aws_e2e() {    
-    if [[ -n ${LOCALSTACK_HOST:-""} ]]; then
+    if [[ -n ${EMULATOR_URL:-""} ]]; then
       make deploy-localstack $KUBECONFIG
     else
       if [[ -z ${AWS_DEFAULT_REGION:-""} ]]; then
           usage_aws
       fi
-      echo "LOCALSTACK_HOST is not set. Using real AWS infra for testing."
+      echo "EMULATOR_URL is not set. Using real AWS infra for testing."
     fi
     setup_awscli
 }

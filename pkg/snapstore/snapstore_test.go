@@ -18,7 +18,6 @@ import (
 
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 
-	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/container"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	s3types "github.com/aws/aws-sdk-go-v2/service/s3/types"
@@ -157,7 +156,7 @@ var _ = Describe("Save, List, Fetch, Delete from mock snapstore", func() {
 				objectCountPerSnapshot: 1,
 			},
 			brtypes.SnapstoreProviderGCS: {
-				SnapStore:              NewGCSSnapStoreFromClient(bucket, prefixV2, "/tmp", 5, brtypes.MinChunkSize, "", gcsClient),
+				SnapStore:              NewGCSSnapStoreFromClient(bucket, prefixV2, "/tmp", 5, brtypes.MinChunkSize, gcsClient),
 				objectCountPerSnapshot: 1,
 			},
 			brtypes.SnapstoreProviderOSS: {
@@ -564,32 +563,6 @@ var _ = Describe("Dynamic access credential rotation test for each provider", fu
 			})
 		})
 	}
-})
-
-var _ = Describe("Blob Service URL construction for Azure", func() {
-	var credentials *container.SharedKeyCredential
-	domain := "test.domain"
-	BeforeEach(func() {
-		var err error
-		// test strings
-		storageAccount, storageKey := "testAccountName", "dGVzdEFjY291bnRLZXk="
-		credentials, err = container.NewSharedKeyCredential(storageAccount, storageKey)
-		Expect(err).ShouldNot(HaveOccurred())
-	})
-	Context("when emulatorEnabled field is not set or set to false", func() {
-		It("should return the default blob service URL with HTTPS scheme", func() {
-			blobServiceURL, err := ConstructBlobServiceURL(credentials.AccountName(), domain, false)
-			Expect(err).ShouldNot(HaveOccurred())
-			Expect(blobServiceURL).Should(Equal(fmt.Sprintf("https://%s.%s", credentials.AccountName(), domain)))
-		})
-	})
-	Context("when emulatorEnabled field is set to true", func() {
-		It("should return the Azurite blob service URL with HTTP scheme", func() {
-			blobServiceURL, err := ConstructBlobServiceURL(credentials.AccountName(), domain, true)
-			Expect(err).ShouldNot(HaveOccurred())
-			Expect(blobServiceURL).Should(Equal(fmt.Sprintf("http://%s/%s", domain, credentials.AccountName())))
-		})
-	})
 })
 
 var _ = Describe("Server Side Encryption Customer Managed Key for S3", func() {

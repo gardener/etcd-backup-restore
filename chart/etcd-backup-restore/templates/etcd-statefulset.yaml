@@ -119,6 +119,7 @@ spec:
         # Snapstore flags
         - --storage-provider={{ .Values.backup.storageProvider }}
         - --store-prefix={{ .Release.Name }}-etcd
+        - --store-endpoint-override={{ .Values.backup.endpointOverride }}
         # Snapshot flags
         - --schedule={{ .Values.backup.schedule }}
         - --delta-snapshot-period={{ .Values.backup.deltaSnapshotPeriod }}

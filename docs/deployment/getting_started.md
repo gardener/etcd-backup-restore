@@ -16,19 +16,20 @@ The procedure to provide credentials to access the cloud provider object store v
    1. The secret file should be provided, and the file path should be made available as an environment variable: `AWS_APPLICATION_CREDENTIALS`. AWS S3 supports two alternative authentication options:
       1. Static credentials: `accessKeyID` and `secretAccessKey` must be set.
       1. Web Identity Role: `roleARN` and `tokenPath` must be set.
-   2. For `S3-compatible providers` such as MinIO, `endpoint`, `s3ForcePathStyle`, `insecureSkipVerify`, `trustedCaCert`, `requestChecksumCalculation` and `responseChecksumValidation`, can also be made available in an above file to configure the S3 client to communicate to a non-AWS provider.
+   2. For `S3-compatible providers` such as MinIO, `s3ForcePathStyle`, `insecureSkipVerify`, `trustedCaCert`, `requestChecksumCalculation` and `responseChecksumValidation`, can also be made available in an above file to configure the S3 client to communicate to a non-AWS provider.
    3. To enable Server-Side Encryption using Customer Managed Keys for `S3-compatible providers`, use `sseCustomerKey` and `sseCustomerAlgorithm` in the credentials file above. For example, `sseCustomerAlgorithm` could be set to `AES256`, and correspondingly the `sseCustomerKey` is set to a valid AES-256 key.
+   4. To override the endpoint of the S3 compatible API, use the `--store-endpoint-override` flag and pass the corresponding URL. This can be used for S3 compatible providers like Ceph, MinIO, etc., or while using the localstack S3 emulator. For example, if the localstack emulator is running on your host along with etcd-backup-restore, `--store-endpoint-override=http://localhost:4566` should be passed.
 
 * For `Google Cloud Storage`:
    1. GCS supports two alternative authentication options:
       1. Static credentials, they should be provided via a file in the `~/.gcp` folder named `service-account-file.json`.This file must have field named `type` with value `service_account`.
       1. Workload Identity credentials, they should be provided via a file in the `~/.gcp` folder named `credentialsConfig` which have field named `type` with value `external_account`. Additionally, it is expected in the `~/.gcp` folder files named `projectID` and `token` to be provided, they contain the GCP project ID and the JWT respectively.
    2. The service account json or the credentials config file should be provided, and the path to it should be made available as environment variable `GOOGLE_APPLICATION_CREDENTIALS`.
-   3. If using a storage API [endpoint override](https://pkg.go.dev/cloud.google.com/go#hdr-Endpoint_Override), such as a [regional endpoint](https://cloud.google.com/storage/docs/regional-endpoints) or a local GCS emulator endpoint, then the endpoint must be made available via a file named `storageAPIEndpoint` residing in the `~/.gcp` directory.
+   3. If using a storage API [endpoint override](https://pkg.go.dev/cloud.google.com/go#hdr-Endpoint_Override), such as a [regional endpoint](https://cloud.google.com/storage/docs/regional-endpoints) or a local GCS emulator endpoint, the endpoint must be passed through the `--store-endpoint-override` flag. For example, if the fake-gcs-emulator is running on your host along with etcd-backup-restore, `--store-endpoint-override=http://localhost:8000/storage/v1/` should be passed.
 
 * For `Azure Blob storage`:
    1. The JSON secret file should be provided, and the file path should be made available as an environment variable: `AZURE_APPLICATION_CREDENTIALS`.
-   2. The Azure Blob Storage domain can be overridden by providing it via an optional field `domain` in the above-mentioned JSON secret file.
+   2. The Azure Blob Storage domain can be overridden by passing the overriding endpoint through the `--store-endpoint-override` flag. This is to be used if the endpoint of your Azure API is not the default (like Azure China or Azure Government), or while using the Azurite emulator. For example, if Azurite is running on your host along with etcd-backup-restore, `--store-endpoint-override=http://localhost:10000/${STORAGE_ACCOUNT}` should be passed.
 
 * For `Openstack Swift`:
   1. The secret file should be provided, and the file path should be made available as an environment variable: `OPENSTACK_APPLICATION_CREDENTIALS`.
