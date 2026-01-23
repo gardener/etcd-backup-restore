@@ -93,7 +93,7 @@ type Snapshotter struct {
 	watchCh                      clientv3.WatchChan
 	etcdWatchClient              *clientv3.Watcher
 	cancelWatch                  context.CancelFunc
-	SsrStateMutex                *sync.Mutex
+	SsrStateMutex                *sync.RWMutex
 	config                       *brtypes.SnapshotterConfig
 	events                       []byte
 	PrevDeltaSnapshots           brtypes.SnapList
@@ -151,7 +151,7 @@ func NewSnapshotter(logger *logrus.Entry, config *brtypes.SnapshotterConfig, sto
 		PrevFullSnapshot:          fullSnap,
 		PrevDeltaSnapshots:        deltaSnapList,
 		SsrState:                  brtypes.SnapshotterInactive,
-		SsrStateMutex:             &sync.Mutex{},
+		SsrStateMutex:             &sync.RWMutex{},
 		fullSnapshotReqCh:         make(chan bool),
 		deltaSnapshotReqCh:        make(chan struct{}),
 		fullSnapshotAckCh:         make(chan result),
@@ -204,10 +204,8 @@ func (ssr *Snapshotter) Run(stopCh <-chan struct{}, startWithFullSnapshot bool) 
 // TriggerFullSnapshot sends the events to take full snapshot. This is to
 // trigger full snapshot externally out of regular schedule.
 func (ssr *Snapshotter) TriggerFullSnapshot(_ context.Context, isFinal bool) (*brtypes.Snapshot, error) {
-	ssr.SsrStateMutex.Lock()
-	defer ssr.SsrStateMutex.Unlock()
 
-	if ssr.SsrState != brtypes.SnapshotterActive {
+	if !ssr.GetSnapshotterState() {
 		return nil, fmt.Errorf("snapshotter is not active")
 	}
 	ssr.logger.Info("Triggering out of schedule full snapshot...")
@@ -219,10 +217,8 @@ func (ssr *Snapshotter) TriggerFullSnapshot(_ context.Context, isFinal bool) (*b
 // TriggerDeltaSnapshot sends the events to take delta snapshot. This is to
 // trigger delta snapshot externally out of regular schedule.
 func (ssr *Snapshotter) TriggerDeltaSnapshot() (*brtypes.Snapshot, error) {
-	ssr.SsrStateMutex.Lock()
-	defer ssr.SsrStateMutex.Unlock()
 
-	if ssr.SsrState != brtypes.SnapshotterActive {
+	if !ssr.GetSnapshotterState() {
 		return nil, fmt.Errorf("snapshotter is not active")
 	}
 	if ssr.config.DeltaSnapshotPeriod.Duration < brtypes.DeltaSnapshotIntervalThreshold {
@@ -238,7 +234,6 @@ func (ssr *Snapshotter) TriggerDeltaSnapshot() (*brtypes.Snapshot, error) {
 // not have any effect.
 func (ssr *Snapshotter) stop(fullSnapshotLeaseStopCh chan struct{}) {
 	ssr.logger.Info("Closing the Snapshotter...")
-
 	if ssr.fullSnapshotTimer != nil {
 		ssr.fullSnapshotTimer.Stop()
 		ssr.fullSnapshotTimer = nil
@@ -250,7 +245,6 @@ func (ssr *Snapshotter) stop(fullSnapshotLeaseStopCh chan struct{}) {
 	if ssr.HealthConfig.SnapshotLeaseRenewalEnabled {
 		fullSnapshotLeaseStopCh <- emptyStruct
 	}
-	ssr.SetSnapshotterInactive()
 	ssr.closeEtcdClient()
 }
 
@@ -266,6 +260,13 @@ func (ssr *Snapshotter) SetSnapshotterActive() {
 	ssr.SsrStateMutex.Lock()
 	defer ssr.SsrStateMutex.Unlock()
 	ssr.SsrState = brtypes.SnapshotterActive
+}
+
+// GetSnapshotterState returns the snapshotter state.
+func (ssr *Snapshotter) GetSnapshotterState() brtypes.SnapshotterState {
+	ssr.SsrStateMutex.RLock()
+	defer ssr.SsrStateMutex.RUnlock()
+	return ssr.SsrState
 }
 
 func (ssr *Snapshotter) closeEtcdClient() {
@@ -628,7 +629,10 @@ func newEvent(e *clientv3.Event) *event {
 
 func (ssr *Snapshotter) snapshotEventHandler(stopCh <-chan struct{}) error {
 	leaseUpdateCtx, leaseUpdateCancel := context.WithCancel(context.TODO())
-	defer leaseUpdateCancel()
+	defer func() {
+		leaseUpdateCancel()
+		ssr.SetSnapshotterInactive()
+	}()
 	ssr.logger.Info("Starting the Snapshot EventHandler.")
 	for {
 		select {
