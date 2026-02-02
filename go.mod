@@ -31,10 +31,10 @@ require (
 	go.uber.org/zap v1.27.0
 	google.golang.org/api v0.229.0
 	helm.sh/helm/v3 v3.18.5
-	k8s.io/api v0.34.2
-	k8s.io/apimachinery v0.34.2
-	k8s.io/client-go v0.34.2
-	k8s.io/utils v0.0.0-20251002143259-bc988d571ff4
+	k8s.io/api v0.34.3
+	k8s.io/apimachinery v0.34.3
+	k8s.io/client-go v0.34.3
+	k8s.io/utils v0.0.0-20260108192941-914a6e750570
 	sigs.k8s.io/controller-runtime v0.21.0
 	sigs.k8s.io/yaml v1.6.0
 )
