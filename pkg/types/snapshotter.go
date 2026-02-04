@@ -24,10 +24,8 @@ const (
 	// DefaultMaxBackups is default number of maximum backups for limit based garbage collection policy.
 	DefaultMaxBackups = 7
 
-	// SnapshotterInactive is set when the snapshotter has not started taking snapshots.
-	SnapshotterInactive SnapshotterState = 0
 	// SnapshotterActive is set when the snapshotter has started taking snapshots.
-	SnapshotterActive SnapshotterState = 1
+	SnapshotterActive = true
 
 	// DefaultDeltaSnapMemoryLimit is default memory limit for delta snapshots.
 	DefaultDeltaSnapMemoryLimit = 10 * 1024 * 1024 //10Mib
@@ -42,9 +40,6 @@ const (
 	// DeltaSnapshotIntervalThreshold is interval between delta snapshot
 	DeltaSnapshotIntervalThreshold = time.Second
 )
-
-// SnapshotterState denotes the state the snapshotter would be in.
-type SnapshotterState int
 
 // SnapshotterConfig holds the snapshotter config.
 type SnapshotterConfig struct {
