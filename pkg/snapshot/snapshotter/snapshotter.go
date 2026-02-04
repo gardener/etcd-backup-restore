@@ -98,7 +98,7 @@ type Snapshotter struct {
 	events                       []byte
 	PrevDeltaSnapshots           brtypes.SnapList
 	lastEventRevision            int64
-	SsrState                     brtypes.SnapshotterState
+	SnapshotterStateActive       bool
 	PrevFullSnapshotSucceeded    bool
 }
 
@@ -150,7 +150,7 @@ func NewSnapshotter(logger *logrus.Entry, config *brtypes.SnapshotterConfig, sto
 		PrevSnapshot:              prevSnapshot,
 		PrevFullSnapshot:          fullSnap,
 		PrevDeltaSnapshots:        deltaSnapList,
-		SsrState:                  brtypes.SnapshotterInactive,
+		SnapshotterStateActive:    !brtypes.SnapshotterActive,
 		SsrStateMutex:             &sync.RWMutex{},
 		fullSnapshotReqCh:         make(chan bool),
 		deltaSnapshotReqCh:        make(chan struct{}),
@@ -205,7 +205,7 @@ func (ssr *Snapshotter) Run(stopCh <-chan struct{}, startWithFullSnapshot bool) 
 // trigger full snapshot externally out of regular schedule.
 func (ssr *Snapshotter) TriggerFullSnapshot(_ context.Context, isFinal bool) (*brtypes.Snapshot, error) {
 
-	if !ssr.GetSnapshotterState() {
+	if !ssr.IsSnapshotterStateActive() {
 		return nil, fmt.Errorf("snapshotter is not active")
 	}
 	ssr.logger.Info("Triggering out of schedule full snapshot...")
@@ -218,7 +218,7 @@ func (ssr *Snapshotter) TriggerFullSnapshot(_ context.Context, isFinal bool) (*b
 // trigger delta snapshot externally out of regular schedule.
 func (ssr *Snapshotter) TriggerDeltaSnapshot() (*brtypes.Snapshot, error) {
 
-	if !ssr.GetSnapshotterState() {
+	if !ssr.IsSnapshotterStateActive() {
 		return nil, fmt.Errorf("snapshotter is not active")
 	}
 	if ssr.config.DeltaSnapshotPeriod.Duration < brtypes.DeltaSnapshotIntervalThreshold {
@@ -252,21 +252,21 @@ func (ssr *Snapshotter) stop(fullSnapshotLeaseStopCh chan struct{}) {
 func (ssr *Snapshotter) SetSnapshotterInactive() {
 	ssr.SsrStateMutex.Lock()
 	defer ssr.SsrStateMutex.Unlock()
-	ssr.SsrState = brtypes.SnapshotterInactive
+	ssr.SnapshotterStateActive = (!brtypes.SnapshotterActive)
 }
 
 // SetSnapshotterActive set the snapshotter state to active.
 func (ssr *Snapshotter) SetSnapshotterActive() {
 	ssr.SsrStateMutex.Lock()
 	defer ssr.SsrStateMutex.Unlock()
-	ssr.SsrState = brtypes.SnapshotterActive
+	ssr.SnapshotterStateActive = brtypes.SnapshotterActive
 }
 
-// GetSnapshotterState returns the snapshotter state.
-func (ssr *Snapshotter) GetSnapshotterState() brtypes.SnapshotterState {
+// IsSnapshotterStateActive checks the snapshotter state active or not.
+func (ssr *Snapshotter) IsSnapshotterStateActive() bool {
 	ssr.SsrStateMutex.RLock()
 	defer ssr.SsrStateMutex.RUnlock()
-	return ssr.SsrState
+	return ssr.SnapshotterStateActive
 }
 
 func (ssr *Snapshotter) closeEtcdClient() {
