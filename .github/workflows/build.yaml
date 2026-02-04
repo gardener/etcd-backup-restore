@@ -70,8 +70,23 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-
-          .ci/unit_test
+          mkdir -p /tmp/blobs.d
+          .ci/unit_test |& tee /tmp/blobs.d/unit-test-log.txt
+          tar czf /tmp/blobs.d/unit-test-log.tar.gz /tmp/blobs.d/unit-test-log.txt
+      - name: add-test-results-to-component-descriptor
+        uses: gardener/cc-utils/.github/actions/export-ocm-fragments@master
+        with:
+          blobs-directory: /tmp/blobs.d
+          ocm-resources: |
+            name: test-results
+            relation: local
+            access:
+              type: localBlob
+              localReference: unit-test-log.tar.gz
+            labels:
+              - name: gardener.cloud/purposes
+                value:
+                  - test
 
   # integration-test:
   # TODO: integration-tests will need substantial re-work (not a default testmachinery-test, but
