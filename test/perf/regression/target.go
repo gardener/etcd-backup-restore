@@ -40,7 +40,7 @@ func (t *target) setup() error {
 	t.logger.Info("Setting up target...")
 
 	if strings.TrimSpace(t.etcdImage) == "" || strings.TrimSpace(t.etcdbrImage) == "" {
-		return fmt.Errorf("Cannot test with invalid images. etcdImage: %s, etcdbrImage: %s", t.etcdImage, t.etcdbrImage)
+		return fmt.Errorf("cannot test with invalid images. etcdImage: %s, etcdbrImage: %s", t.etcdImage, t.etcdbrImage)
 	}
 
 	if err := t.createNamespace(); err != nil {
@@ -163,7 +163,7 @@ func (t *target) getGroupVersionResource(u *unstructured.Unstructured) (*schema.
 		}
 	}
 
-	return nil, fmt.Errorf("Not GroupVersionResource found for GroupVersionKind: %s", gvk)
+	return nil, fmt.Errorf("not GroupVersionResource found for GroupVersionKind: %s", gvk)
 }
 
 func (t *target) isPodRunning(podSelector string) (bool, error) {
@@ -184,9 +184,9 @@ func (t *target) isPodRunning(podSelector string) (bool, error) {
 		nNotReady := len(p.Status.ContainerStatuses)
 		for _, cs := range p.Status.ContainerStatuses {
 			if cs.State.Terminated != nil {
-				return false, fmt.Errorf("Container %s the namespace %s terminated unexpectedly", cs.Name, t.namespace)
+				return false, fmt.Errorf("container %s the namespace %s terminated unexpectedly", cs.Name, t.namespace)
 			} else if !cs.Ready {
-				return false, fmt.Errorf("Container %s in the namespace %s is not ready", cs.Name, t.namespace)
+				return false, fmt.Errorf("container %s in the namespace %s is not ready", cs.Name, t.namespace)
 			} else {
 				nNotReady--
 				t.logger.Infof("Container %sin the namespace %s is ready", cs.Name, t.namespace)
@@ -198,7 +198,7 @@ func (t *target) isPodRunning(podSelector string) (bool, error) {
 		}
 	}
 
-	return false, fmt.Errorf("No pods found for the selector %s", podSelector)
+	return false, fmt.Errorf("no pods found for the selector %s", podSelector)
 }
 
 func (t *target) watchForJob(ctx context.Context, jobSelector string, readyCh chan<- interface{}) error {
@@ -232,14 +232,14 @@ func (t *target) doWatchForJob(ctx context.Context, jobSelector string, readyCh 
 
 			switch event.Type {
 			case watch.Deleted:
-				return false, fmt.Errorf("Unexpected event type %s in the namespace %s", event.Type, t.namespace)
+				return false, fmt.Errorf("unexpected event type %s in the namespace %s", event.Type, t.namespace)
 			case watch.Error:
-				return false, fmt.Errorf("Unexpected event type %s in the namespace %s", event.Type, t.namespace)
+				return false, fmt.Errorf("unexpected event type %s in the namespace %s", event.Type, t.namespace)
 			}
 
 			switch j := event.Object.(type) {
 			default:
-				return false, fmt.Errorf("Unexpected event object of type %T in the namespace %s: %v", j, t.namespace, j)
+				return false, fmt.Errorf("unexpected event object of type %T in the namespace %s: %v", j, t.namespace, j)
 			case *batchv1.Job:
 				if j.Status.Succeeded < 1 {
 					continue
