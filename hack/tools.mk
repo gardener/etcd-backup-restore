@@ -29,7 +29,7 @@ KIND_VERSION              ?= v0.27.0
 KUBECTL_VERSION           ?= v1.32.3
 GOIMPORTS_REVISER_VERSION ?= v3.9.1
 GO_ADD_LICENSE_VERSION    ?= v1.1.1
-GOLANGCI_LINT_VERSION     ?= v1.64.8
+GOLANGCI_LINT_VERSION     ?= v2.8.0
 
 # Use this "function" to add the version file as a prerequisite for the tool target: e.g.
 #   $(HELM): $(call tool_version_file,$(HELM),$(HELM_VERSION))
@@ -78,4 +78,4 @@ $(GO_ADD_LICENSE):
 $(GOLANGCI_LINT):
 	# CGO_ENABLED has to be set to 1 in order for golangci-lint to be able to load plugins
 	# see https://github.com/golangci/golangci-lint/issues/1276
-	GOBIN=$(abspath $(TOOLS_BIN_DIR)) CGO_ENABLED=1 go install github.com/golangci/golangci-lint/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
+	GOBIN=$(abspath $(TOOLS_BIN_DIR)) CGO_ENABLED=1 go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
