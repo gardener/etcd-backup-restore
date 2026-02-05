@@ -247,7 +247,7 @@ func DeepCopySnapList(in SnapList) SnapList {
 
 // DeepCopyNewClientFactory returns a deep copy
 func DeepCopyNewClientFactory(in NewClientFactoryFunc) NewClientFactoryFunc {
-	var out NewClientFactoryFunc = in
+	var out = in
 	return out
 }
 

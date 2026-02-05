@@ -58,7 +58,7 @@ func (cp *Compactor) Compact(ctx context.Context, opts *brtypes.CompactOptions) 
 	cp.logger.Info("Start compacting")
 
 	// Deepcopy restoration options ro to avoid any mutation of the passing object
-	compactorRestoreOptions := opts.RestoreOptions.DeepCopy()
+	compactorRestoreOptions := (opts.RestoreOptions).DeepCopy()
 
 	// If no base snapshot is found, abort compaction as there would be nothing to compact
 	if compactorRestoreOptions.BaseSnapshot == nil {

@@ -72,9 +72,9 @@ auto-compaction-retention: 30m`
 	})
 
 	AfterEach(func() {
-		os.Unsetenv("POD_NAME")
-		os.Unsetenv("ETCD_CONF")
-		os.Unsetenv("POD_NAMESPACE")
+		_ = os.Unsetenv("POD_NAME")
+		_ = os.Unsetenv("ETCD_CONF")
+		_ = os.Unsetenv("POD_NAMESPACE")
 	})
 
 	Describe("Creating NewMemberControl", func() {
@@ -118,7 +118,7 @@ auto-compaction-retention: 30m`
 
 				Expect(present).To(BeFalse())
 				Expect(err).To(BeNil())
-				os.Unsetenv("POD_NAME")
+				_ = os.Unsetenv("POD_NAME")
 			})
 		})
 	})
@@ -208,7 +208,7 @@ auto-compaction-retention: 30m`
 				isScaleUp, err := m.IsClusterScaledUp(testCtx)
 				Expect(isScaleUp).Should(BeTrue())
 				Expect(err).ShouldNot(HaveOccurred())
-				os.Unsetenv("POD_NAME")
+				_ = os.Unsetenv("POD_NAME")
 			})
 		})
 

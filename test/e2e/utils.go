@@ -467,9 +467,10 @@ func getSnapstore(storageProvider, storageContainer, storePrefix, endpoint strin
 func getTotalFullAndDeltaSnapshotCounts(snapList brtypes.SnapList) (int, int) {
 	var numFulls, numDeltas int
 	for _, snap := range snapList {
-		if snap.Kind == brtypes.SnapshotKindFull {
+		switch snap.Kind {
+		case brtypes.SnapshotKindFull:
 			numFulls++
-		} else if snap.Kind == brtypes.SnapshotKindDelta {
+		case brtypes.SnapshotKindDelta:
 			numDeltas++
 		}
 	}

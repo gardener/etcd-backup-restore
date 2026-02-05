@@ -34,7 +34,7 @@ func NewSnapshot(kind string, startRevision, lastRevision int64, compressionSuff
 func ParseSnapshot(snapPath string) (*brtypes.Snapshot, error) {
 	logrus.Debugf("Snap path: %s", snapPath)
 	var err error
-	var backupVersion string = ""
+	var backupVersion = ""
 	s := &brtypes.Snapshot{}
 	// First try if the path contains v1
 	lastIndex := strings.LastIndex(snapPath, "v1/")
@@ -63,7 +63,7 @@ func ParseSnapshot(snapPath string) (*brtypes.Snapshot, error) {
 		return nil, fmt.Errorf("invalid snapshot name: %s", snapPath)
 	}
 
-	var snapName, snapDir string = "", ""
+	var snapName, snapDir = "", ""
 	// Get snap name from the tokens
 	// Consider the token before snap name
 	// If it's v1, then consider the token as snapDir
