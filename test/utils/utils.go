@@ -205,15 +205,15 @@ func CreateRootUserAndEnableAuth(ctx context.Context, endpoints []string, userna
 	}
 	defer cli.Close()
 
-	if _, err := cli.Auth.UserAdd(ctx, username, password); err != nil {
+	if _, err := cli.UserAdd(ctx, username, password); err != nil {
 		return err
 	}
 
-	if _, err := cli.Auth.UserGrantRole(ctx, username, "root"); err != nil {
+	if _, err := cli.UserGrantRole(ctx, username, "root"); err != nil {
 		return err
 	}
 
-	if _, err := cli.Auth.AuthEnable(ctx); err != nil {
+	if _, err := cli.AuthEnable(ctx); err != nil {
 		return err
 	}
 

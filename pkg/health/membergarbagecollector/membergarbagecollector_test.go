@@ -41,8 +41,8 @@ var _ = Describe("Membergarbagecollector", func() {
 			os.Setenv("POD_NAMESPACE", "test-namespace")
 		})
 		AfterEach(func() {
-			os.Unsetenv("POD_NAME")
-			os.Unsetenv("POD_NAMESPACE")
+			_ = os.Unsetenv("POD_NAME")
+			_ = os.Unsetenv("POD_NAMESPACE")
 		})
 
 		It("should not return error with valid configuration", func() {
@@ -68,8 +68,8 @@ var _ = Describe("Membergarbagecollector", func() {
 		})
 		AfterEach(func() {
 			ctrl.Finish()
-			os.Unsetenv("POD_NAME")
-			os.Unsetenv("POD_NAMESPACE")
+			_ = os.Unsetenv("POD_NAME")
+			_ = os.Unsetenv("POD_NAMESPACE")
 		})
 
 		Context("With three member pods present", func() {
