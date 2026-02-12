@@ -245,7 +245,7 @@ func (ssr *Snapshotter) stop(fullSnapshotLeaseStopCh chan struct{}) {
 	if ssr.HealthConfig.SnapshotLeaseRenewalEnabled {
 		fullSnapshotLeaseStopCh <- emptyStruct
 	}
-	ssr.closeEtcdClient()
+	ssr.CloseEtcdClient()
 }
 
 // SetSnapshotterInactive set the snapshotter state to Inactive.
@@ -269,7 +269,10 @@ func (ssr *Snapshotter) IsSnapshotterStateActive() bool {
 	return ssr.SnapshotterStateActive
 }
 
-func (ssr *Snapshotter) closeEtcdClient() {
+// CloseEtcdClient closes the Etcd watch client.
+func (ssr *Snapshotter) CloseEtcdClient() {
+	ssr.logger.Info("Closing the etcd watch client.")
+
 	if ssr.cancelWatch != nil {
 		ssr.cancelWatch()
 		ssr.cancelWatch = nil
@@ -280,7 +283,7 @@ func (ssr *Snapshotter) closeEtcdClient() {
 
 	if ssr.etcdWatchClient != nil {
 		if err := (*ssr.etcdWatchClient).Close(); err != nil {
-			ssr.logger.Warnf("Error while closing etcd watch client connection, %v", err)
+			ssr.logger.Fatalf("unable to close the etcd watch client: %v", err)
 		}
 		ssr.etcdWatchClient = nil
 	}
@@ -307,7 +310,7 @@ func (ssr *Snapshotter) TakeFullSnapshotAndResetTimer(isFinal bool) (*brtypes.Sn
 func (ssr *Snapshotter) takeFullSnapshot(isFinal bool) (*brtypes.Snapshot, error) {
 	defer ssr.cleanupInMemoryEvents()
 	// close previous watch and client.
-	ssr.closeEtcdClient()
+	ssr.CloseEtcdClient()
 
 	// Update the snapstore object before taking a full snapshot if the credentials have changed
 	// Refer: https://github.com/gardener/etcd-backup-restore/issues/449
@@ -514,7 +517,7 @@ func (ssr *Snapshotter) TakeDeltaSnapshot() (*brtypes.Snapshot, error) {
 // CollectEventsSincePrevSnapshot takes the first delta snapshot on etcd startup.
 func (ssr *Snapshotter) CollectEventsSincePrevSnapshot(stopCh <-chan struct{}) (bool, error) {
 	// close any previous watch and client.
-	ssr.closeEtcdClient()
+	ssr.CloseEtcdClient()
 
 	clientFactory := etcdutil.NewFactory(*ssr.etcdConnectionConfig)
 	clientKV, err := clientFactory.NewKV()
