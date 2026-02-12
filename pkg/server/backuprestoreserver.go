@@ -439,6 +439,8 @@ func (b *BackupRestoreServer) runEtcdProbeLoopWithSnapshotter(ctx context.Contex
 			if !ssr.IsFullSnapshotRequiredAtStartup(fullSnapshotMaxTimeWindowInHours) {
 				ssrStopped, err := ssr.CollectEventsSincePrevSnapshot(ssrStopCh)
 				if ssrStopped {
+					// Note: It's important to close the etcd watch client.
+					ssr.CloseEtcdClient()
 					b.logger.Info("Snapshotter stopped.")
 					ackCh <- emptyStruct
 					b.logger.Info("Shutting down...")
