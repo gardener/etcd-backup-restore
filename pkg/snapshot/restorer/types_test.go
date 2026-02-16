@@ -11,7 +11,7 @@ import (
 
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 
-	"go.etcd.io/etcd/pkg/types"
+	"go.etcd.io/etcd/client/pkg/v3/types"
 
 	_ "github.com/gardener/etcd-backup-restore/pkg/snapshot/restorer"
 

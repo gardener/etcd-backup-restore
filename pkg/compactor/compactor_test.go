@@ -19,7 +19,7 @@ import (
 	"github.com/gardener/etcd-backup-restore/pkg/wrappers"
 	"github.com/gardener/etcd-backup-restore/test/utils"
 
-	"go.etcd.io/etcd/pkg/types"
+	"go.etcd.io/etcd/client/pkg/v3/types"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"

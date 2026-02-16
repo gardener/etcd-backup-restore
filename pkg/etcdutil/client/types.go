@@ -7,7 +7,7 @@ package client
 import (
 	"io"
 
-	"go.etcd.io/etcd/clientv3"
+	clientv3 "go.etcd.io/etcd/client/v3"
 )
 
 // ClusterCloser adds io.Closer to the clientv3.Cluster interface to enable closing the underlying resources.

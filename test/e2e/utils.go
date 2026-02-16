@@ -18,7 +18,7 @@ import (
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 
 	"github.com/sirupsen/logrus"
-	"go.etcd.io/etcd/etcdserver/etcdserverpb"
+	"go.etcd.io/etcd/api/v3/etcdserverpb"
 	helmaction "helm.sh/helm/v3/pkg/action"
 	helmchart "helm.sh/helm/v3/pkg/chart"
 	helmloader "helm.sh/helm/v3/pkg/chart/loader"

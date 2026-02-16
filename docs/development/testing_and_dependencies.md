@@ -45,7 +45,7 @@ The e2e tests for etcd-backup-restore are cluster-based tests located in the tes
 
 ### Performance regression tests
 
-Furthermore, you can check any regression in performance in terms of memory consumption and CPU utilization, bby running the provided performance regression tests.
+Furthermore, you can check any regression in performance in terms of memory consumption and CPU utilization, by running the provided performance regression tests.
 
 ```sh
 make perf-regression-test
@@ -54,5 +54,5 @@ make perf-regression-test
 :warning: Prerequisite for this command is to set the following environment variables:
 
 - PERF_TEST_KUBECONFIG: kubeconfig to the cluster on which you wish to run the test
-- ETCD_VERSION: optional, defaults to `v3.4.34`
+- ETCD_VERSION: optional, defaults to `v3.5.26`
 - ETCDBR_VERSION: etcd-backup-restore version to test against

@@ -28,9 +28,9 @@ import (
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 
 	"github.com/sirupsen/logrus"
-	"go.etcd.io/etcd/clientv3"
-	"go.etcd.io/etcd/clientv3/snapshot"
-	"go.etcd.io/etcd/mvcc/mvccpb"
+	clientv3 "go.etcd.io/etcd/client/v3"
+	"go.etcd.io/etcd/etcdutl/v3/snapshot"
+	"go.etcd.io/etcd/api/v3/mvccpb"
 	"go.uber.org/zap"
 )
 
