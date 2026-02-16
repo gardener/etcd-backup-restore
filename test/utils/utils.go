@@ -21,8 +21,8 @@ import (
 	"github.com/gardener/etcd-backup-restore/pkg/wrappers"
 
 	"github.com/sirupsen/logrus"
-	"go.etcd.io/etcd/clientv3"
-	"go.etcd.io/etcd/embed"
+	clientv3 "go.etcd.io/etcd/client/v3"
+	"go.etcd.io/etcd/server/v3/embed"
 )
 
 const (
@@ -46,8 +46,6 @@ func StartEmbeddedEtcd(ctx context.Context, etcdDir string, logger *logrus.Entry
 		cfg.Name = DefaultEtcdName
 	}
 	cfg.Dir = etcdDir
-	cfg.EnableV2 = false
-	cfg.Debug = false
 	cfg.GRPCKeepAliveTimeout = 0
 	cfg.SnapshotCount = 10
 	DefaultListenPeerURLs := "http://localhost:" + getPeerPortNo(port)
