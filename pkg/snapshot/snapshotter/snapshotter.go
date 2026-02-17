@@ -269,7 +269,10 @@ func (ssr *Snapshotter) IsSnapshotterStateActive() bool {
 	return ssr.SnapshotterStateActive
 }
 
+// closeEtcdClient closes the Etcd watch client.
 func (ssr *Snapshotter) closeEtcdClient() {
+	ssr.logger.Info("Closing the etcd watch client.")
+
 	if ssr.cancelWatch != nil {
 		ssr.cancelWatch()
 		ssr.cancelWatch = nil
@@ -280,7 +283,7 @@ func (ssr *Snapshotter) closeEtcdClient() {
 
 	if ssr.etcdWatchClient != nil {
 		if err := (*ssr.etcdWatchClient).Close(); err != nil {
-			ssr.logger.Warnf("Error while closing etcd watch client connection, %v", err)
+			ssr.logger.Fatalf("unable to close the etcd watch client: %v", err)
 		}
 		ssr.etcdWatchClient = nil
 	}
@@ -584,6 +587,8 @@ func (ssr *Snapshotter) CollectEventsSincePrevSnapshot(stopCh <-chan struct{}) (
 			}
 		case <-stopCh:
 			ssr.cleanupInMemoryEvents()
+			// Note: It's important to close the etcd watch client.
+			ssr.closeEtcdClient()
 			return true, nil
 		}
 	}
