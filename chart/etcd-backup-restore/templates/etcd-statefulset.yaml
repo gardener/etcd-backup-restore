@@ -181,6 +181,7 @@ spec:
 {{- if .Values.backup.etcdQuotaBytes }}
         - --embedded-etcd-quota-bytes={{ int $.Values.backup.etcdQuotaBytes }}
 {{- end }}
+        - --next-cluster-version-compatible={{ .Values.backup.nextClusterVersionCompatible }}
         - --etcd-connection-timeout={{ .Values.backup.etcdConnectionTimeout }}
         - --etcd-connection-timeout-leader-election={{ .Values.backup.leaderElection.etcdConnectionTimeout }}
         - --reelection-period={{ .Values.backup.leaderElection.reelectionPeriod }}
