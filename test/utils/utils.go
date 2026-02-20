@@ -73,6 +73,7 @@ func StartEmbeddedEtcd(ctx context.Context, etcdDir string, logger *logrus.Entry
 	cfg.AdvertisePeerUrls = []url.URL{*apurl}
 	cfg.AdvertiseClientUrls = []url.URL{*acurl}
 	cfg.InitialCluster = cfg.InitialClusterFromName(cfg.Name)
+	cfg.UnsafeNoFsync = true
 	cfg.Logger = "zap"
 	cfg.AutoCompactionMode = "periodic"
 	cfg.AutoCompactionRetention = "0"
