@@ -23,15 +23,15 @@ var _ = Describe("restorer types", func() {
 	var (
 		makeRestorationConfig = func(s string, b bool, i int) *brtypes.RestorationConfig {
 			return &brtypes.RestorationConfig{
-				InitialCluster:              s,
-				InitialClusterToken:         s,
-				DataDir:                     s,
-				TempSnapshotsDir:            s,
-				InitialAdvertisePeerURLs:    []string{s, s},
-				Name:                        s,
-				SkipHashCheck:               b,
-				MaxFetchers:                 uint(i),
-				EmbeddedEtcdQuotaBytes:      int64(i),
+				InitialCluster:               s,
+				InitialClusterToken:          s,
+				DataDir:                      s,
+				TempSnapshotsDir:             s,
+				InitialAdvertisePeerURLs:     []string{s, s},
+				Name:                         s,
+				SkipHashCheck:                b,
+				MaxFetchers:                  uint(i),
+				EmbeddedEtcdQuotaBytes:       int64(i),
 				NextClusterVersionCompatible: true,
 			}
 		}

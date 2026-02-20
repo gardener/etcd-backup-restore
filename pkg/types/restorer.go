@@ -50,41 +50,41 @@ type RestoreOptions struct {
 // RestorationConfig holds the restoration configuration.
 // Note: Please ensure DeepCopy and DeepCopyInto are properly implemented.
 type RestorationConfig struct {
-	InitialCluster           string   `json:"initialCluster"`
-	InitialClusterToken      string   `json:"initialClusterToken,omitempty"`
-	DataDir                  string   `json:"dataDir,omitempty"`
-	TempSnapshotsDir         string   `json:"tempDir,omitempty"`
-	Name                     string   `json:"name"`
-	AutoCompactionRetention  string   `json:"autoCompactionRetention,omitempty"`
-	AutoCompactionMode       string   `json:"autoCompactionMode,omitempty"`
-	InitialAdvertisePeerURLs []string `json:"initialAdvertisePeerURLs"`
-	MaxTxnOps                uint     `json:"MaxTxnOps,omitempty"`
-	MaxRequestBytes          uint     `json:"MaxRequestBytes,omitempty"`
-	MaxCallSendMsgSize       int      `json:"maxCallSendMsgSize,omitempty"`
-	EmbeddedEtcdQuotaBytes        int64 `json:"embeddedEtcdQuotaBytes,omitempty"`
-	MaxFetchers                   uint  `json:"maxFetchers,omitempty"`
-	SkipHashCheck                 bool  `json:"skipHashCheck,omitempty"`
-	NextClusterVersionCompatible  bool  `json:"nextClusterVersionCompatible,omitempty"`
+	InitialCluster               string   `json:"initialCluster"`
+	InitialClusterToken          string   `json:"initialClusterToken,omitempty"`
+	DataDir                      string   `json:"dataDir,omitempty"`
+	TempSnapshotsDir             string   `json:"tempDir,omitempty"`
+	Name                         string   `json:"name"`
+	AutoCompactionRetention      string   `json:"autoCompactionRetention,omitempty"`
+	AutoCompactionMode           string   `json:"autoCompactionMode,omitempty"`
+	InitialAdvertisePeerURLs     []string `json:"initialAdvertisePeerURLs"`
+	MaxTxnOps                    uint     `json:"MaxTxnOps,omitempty"`
+	MaxRequestBytes              uint     `json:"MaxRequestBytes,omitempty"`
+	MaxCallSendMsgSize           int      `json:"maxCallSendMsgSize,omitempty"`
+	EmbeddedEtcdQuotaBytes       int64    `json:"embeddedEtcdQuotaBytes,omitempty"`
+	MaxFetchers                  uint     `json:"maxFetchers,omitempty"`
+	SkipHashCheck                bool     `json:"skipHashCheck,omitempty"`
+	NextClusterVersionCompatible bool     `json:"nextClusterVersionCompatible,omitempty"`
 }
 
 // NewRestorationConfig returns the restoration config.
 func NewRestorationConfig() *RestorationConfig {
 	return &RestorationConfig{
-		InitialCluster:           initialClusterFromName(defaultName),
-		InitialClusterToken:      defaultInitialClusterToken,
-		DataDir:                  fmt.Sprintf("%s.etcd", defaultName),
-		TempSnapshotsDir:         fmt.Sprintf("%s.restoration.tmp", defaultName),
-		InitialAdvertisePeerURLs: []string{defaultInitialAdvertisePeerURLs},
-		Name:                     defaultName,
-		SkipHashCheck:            false,
-		MaxFetchers:              defaultMaxFetchers,
-		MaxCallSendMsgSize:       defaultMaxCallSendMsgSize,
-		MaxRequestBytes:          defaultMaxRequestBytes,
-		MaxTxnOps:                defaultMaxTxnOps,
-		EmbeddedEtcdQuotaBytes:        int64(defaultEmbeddedEtcdQuotaBytes),
-		AutoCompactionMode:            defaultAutoCompactionMode,
-		AutoCompactionRetention:       defaultAutoCompactionRetention,
-		NextClusterVersionCompatible:  true,
+		InitialCluster:               initialClusterFromName(defaultName),
+		InitialClusterToken:          defaultInitialClusterToken,
+		DataDir:                      fmt.Sprintf("%s.etcd", defaultName),
+		TempSnapshotsDir:             fmt.Sprintf("%s.restoration.tmp", defaultName),
+		InitialAdvertisePeerURLs:     []string{defaultInitialAdvertisePeerURLs},
+		Name:                         defaultName,
+		SkipHashCheck:                false,
+		MaxFetchers:                  defaultMaxFetchers,
+		MaxCallSendMsgSize:           defaultMaxCallSendMsgSize,
+		MaxRequestBytes:              defaultMaxRequestBytes,
+		MaxTxnOps:                    defaultMaxTxnOps,
+		EmbeddedEtcdQuotaBytes:       int64(defaultEmbeddedEtcdQuotaBytes),
+		AutoCompactionMode:           defaultAutoCompactionMode,
+		AutoCompactionRetention:      defaultAutoCompactionRetention,
+		NextClusterVersionCompatible: true,
 	}
 }
 
