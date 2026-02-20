@@ -6,9 +6,11 @@ package cmd
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/gardener/etcd-backup-restore/pkg/initializer"
 	"github.com/gardener/etcd-backup-restore/pkg/initializer/validator"
+	"github.com/gardener/etcd-backup-restore/pkg/miscellaneous"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 
 	"github.com/go-logr/logr"
@@ -37,6 +39,20 @@ func NewInitializeCommand(_ context.Context) *cobra.Command {
 
 			opts.complete()
 
+			etcdConfigPath := miscellaneous.GetConfigFilePath()
+
+			config, err := miscellaneous.ReadConfigFileAsMap(etcdConfigPath)
+			if err != nil {
+				logger.WithFields(logrus.Fields{
+					"configFile": etcdConfigPath,
+				}).Fatalf("failed to read etcd config file: %v", err)
+			}
+
+			initialClusterSize, err := miscellaneous.GetClusterSize(fmt.Sprint(config["initial-cluster"]))
+			if err != nil {
+				logger.Fatal("Please provide initial cluster value for embedded ETCD")
+			}
+
 			clusterUrlsMap, err := types.NewURLsMap(opts.restorerOptions.restorationConfig.InitialCluster)
 			if err != nil {
 				logger.Fatalf("failed creating url map for restore cluster: %v", err)
@@ -58,9 +74,10 @@ func NewInitializeCommand(_ context.Context) *cobra.Command {
 			}
 
 			restoreOptions := &brtypes.RestoreOptions{
-				Config:      opts.restorerOptions.restorationConfig,
-				ClusterURLs: clusterUrlsMap,
-				PeerURLs:    peerUrls,
+				Config:              opts.restorerOptions.restorationConfig,
+				ClusterURLs:         clusterUrlsMap,
+				OriginalClusterSize: initialClusterSize,
+				PeerURLs:            peerUrls,
 			}
 
 			etcdInitializer, err := initializer.NewInitializer(restoreOptions, opts.restorerOptions.snapstoreConfig, opts.etcdConnectionConfig, logger)
