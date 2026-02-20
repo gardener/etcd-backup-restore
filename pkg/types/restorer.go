@@ -65,6 +65,7 @@ type RestorationConfig struct {
 	MaxFetchers                  uint     `json:"maxFetchers,omitempty"`
 	SkipHashCheck                bool     `json:"skipHashCheck,omitempty"`
 	NextClusterVersionCompatible bool     `json:"nextClusterVersionCompatible,omitempty"`
+	UnsafeNoFsync                bool     `json:"unsafeNoFsync,omitempty"`
 }
 
 // NewRestorationConfig returns the restoration config.
@@ -85,6 +86,7 @@ func NewRestorationConfig() *RestorationConfig {
 		AutoCompactionMode:           defaultAutoCompactionMode,
 		AutoCompactionRetention:      defaultAutoCompactionRetention,
 		NextClusterVersionCompatible: true,
+		UnsafeNoFsync:                false,
 	}
 }
 
@@ -105,6 +107,7 @@ func (c *RestorationConfig) AddFlags(fs *flag.FlagSet) {
 	fs.StringVar(&c.AutoCompactionMode, "auto-compaction-mode", c.AutoCompactionMode, "mode for auto-compaction: 'periodic' for duration based retention. 'revision' for revision number based retention.")
 	fs.StringVar(&c.AutoCompactionRetention, "auto-compaction-retention", c.AutoCompactionRetention, "Auto-compaction retention length.")
 	fs.BoolVar(&c.NextClusterVersionCompatible, "next-cluster-version-compatible", c.NextClusterVersionCompatible, "enable compatibility with next etcd cluster version (e.g., allow etcd 3.4 to open data from etcd 3.5)")
+	fs.BoolVar(&c.UnsafeNoFsync, "unsafe-no-fsync", c.UnsafeNoFsync, "disables all uses of fsync in the embedded etcd used for applying delta snapshots")
 }
 
 // Validate validates the config.
