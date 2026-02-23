@@ -15,8 +15,8 @@ import (
 	mocketcdutil "github.com/gardener/etcd-backup-restore/pkg/mock/etcdutil/client"
 	"github.com/gardener/etcd-backup-restore/pkg/wrappers"
 
-	"go.etcd.io/etcd/clientv3"
-	"go.etcd.io/etcd/etcdserver/etcdserverpb"
+	"go.etcd.io/etcd/api/v3/etcdserverpb"
+	clientv3 "go.etcd.io/etcd/client/v3"
 	"go.uber.org/mock/gomock"
 	appsv1 "k8s.io/api/apps/v1"
 	coordv1 "k8s.io/api/coordination/v1"

@@ -32,7 +32,7 @@ function setup_test_environment() {
 
 function setup_etcd(){
   echo "Downloading and installing etcd..."
-  export ETCD_VER=v3.4.34
+  export ETCD_VER=v3.5.26
   if [[ $(uname) == 'Darwin' ]]; then
     curl -L https://storage.googleapis.com/etcd/${ETCD_VER}/etcd-${ETCD_VER}-darwin-amd64.zip -o etcd-${ETCD_VER}-darwin-amd64.zip
     unzip etcd-${ETCD_VER}-darwin-amd64.zip > /dev/null

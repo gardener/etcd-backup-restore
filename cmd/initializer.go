@@ -14,7 +14,7 @@ import (
 	"github.com/go-logr/logr"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
-	"go.etcd.io/etcd/pkg/types"
+	"go.etcd.io/etcd/client/pkg/v3/types"
 	runtimelog "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
