@@ -50,39 +50,41 @@ type RestoreOptions struct {
 // RestorationConfig holds the restoration configuration.
 // Note: Please ensure DeepCopy and DeepCopyInto are properly implemented.
 type RestorationConfig struct {
-	InitialCluster           string   `json:"initialCluster"`
-	InitialClusterToken      string   `json:"initialClusterToken,omitempty"`
-	DataDir                  string   `json:"dataDir,omitempty"`
-	TempSnapshotsDir         string   `json:"tempDir,omitempty"`
-	Name                     string   `json:"name"`
-	AutoCompactionRetention  string   `json:"autoCompactionRetention,omitempty"`
-	AutoCompactionMode       string   `json:"autoCompactionMode,omitempty"`
-	InitialAdvertisePeerURLs []string `json:"initialAdvertisePeerURLs"`
-	MaxTxnOps                uint     `json:"MaxTxnOps,omitempty"`
-	MaxRequestBytes          uint     `json:"MaxRequestBytes,omitempty"`
-	MaxCallSendMsgSize       int      `json:"maxCallSendMsgSize,omitempty"`
-	EmbeddedEtcdQuotaBytes   int64    `json:"embeddedEtcdQuotaBytes,omitempty"`
-	MaxFetchers              uint     `json:"maxFetchers,omitempty"`
-	SkipHashCheck            bool     `json:"skipHashCheck,omitempty"`
+	InitialCluster               string   `json:"initialCluster"`
+	InitialClusterToken          string   `json:"initialClusterToken,omitempty"`
+	DataDir                      string   `json:"dataDir,omitempty"`
+	TempSnapshotsDir             string   `json:"tempDir,omitempty"`
+	Name                         string   `json:"name"`
+	AutoCompactionRetention      string   `json:"autoCompactionRetention,omitempty"`
+	AutoCompactionMode           string   `json:"autoCompactionMode,omitempty"`
+	InitialAdvertisePeerURLs     []string `json:"initialAdvertisePeerURLs"`
+	MaxTxnOps                    uint     `json:"MaxTxnOps,omitempty"`
+	MaxRequestBytes              uint     `json:"MaxRequestBytes,omitempty"`
+	MaxCallSendMsgSize           int      `json:"maxCallSendMsgSize,omitempty"`
+	EmbeddedEtcdQuotaBytes       int64    `json:"embeddedEtcdQuotaBytes,omitempty"`
+	MaxFetchers                  uint     `json:"maxFetchers,omitempty"`
+	SkipHashCheck                bool     `json:"skipHashCheck,omitempty"`
+	NextClusterVersionCompatible bool     `json:"nextClusterVersionCompatible,omitempty"`
 }
 
 // NewRestorationConfig returns the restoration config.
 func NewRestorationConfig() *RestorationConfig {
 	return &RestorationConfig{
-		InitialCluster:           initialClusterFromName(defaultName),
-		InitialClusterToken:      defaultInitialClusterToken,
-		DataDir:                  fmt.Sprintf("%s.etcd", defaultName),
-		TempSnapshotsDir:         fmt.Sprintf("%s.restoration.tmp", defaultName),
-		InitialAdvertisePeerURLs: []string{defaultInitialAdvertisePeerURLs},
-		Name:                     defaultName,
-		SkipHashCheck:            false,
-		MaxFetchers:              defaultMaxFetchers,
-		MaxCallSendMsgSize:       defaultMaxCallSendMsgSize,
-		MaxRequestBytes:          defaultMaxRequestBytes,
-		MaxTxnOps:                defaultMaxTxnOps,
-		EmbeddedEtcdQuotaBytes:   int64(defaultEmbeddedEtcdQuotaBytes),
-		AutoCompactionMode:       defaultAutoCompactionMode,
-		AutoCompactionRetention:  defaultAutoCompactionRetention,
+		InitialCluster:               initialClusterFromName(defaultName),
+		InitialClusterToken:          defaultInitialClusterToken,
+		DataDir:                      fmt.Sprintf("%s.etcd", defaultName),
+		TempSnapshotsDir:             fmt.Sprintf("%s.restoration.tmp", defaultName),
+		InitialAdvertisePeerURLs:     []string{defaultInitialAdvertisePeerURLs},
+		Name:                         defaultName,
+		SkipHashCheck:                false,
+		MaxFetchers:                  defaultMaxFetchers,
+		MaxCallSendMsgSize:           defaultMaxCallSendMsgSize,
+		MaxRequestBytes:              defaultMaxRequestBytes,
+		MaxTxnOps:                    defaultMaxTxnOps,
+		EmbeddedEtcdQuotaBytes:       int64(defaultEmbeddedEtcdQuotaBytes),
+		AutoCompactionMode:           defaultAutoCompactionMode,
+		AutoCompactionRetention:      defaultAutoCompactionRetention,
+		NextClusterVersionCompatible: true,
 	}
 }
 
@@ -102,6 +104,7 @@ func (c *RestorationConfig) AddFlags(fs *flag.FlagSet) {
 	fs.Int64Var(&c.EmbeddedEtcdQuotaBytes, "embedded-etcd-quota-bytes", c.EmbeddedEtcdQuotaBytes, "maximum backend quota for the embedded etcd used for applying delta snapshots")
 	fs.StringVar(&c.AutoCompactionMode, "auto-compaction-mode", c.AutoCompactionMode, "mode for auto-compaction: 'periodic' for duration based retention. 'revision' for revision number based retention.")
 	fs.StringVar(&c.AutoCompactionRetention, "auto-compaction-retention", c.AutoCompactionRetention, "Auto-compaction retention length.")
+	fs.BoolVar(&c.NextClusterVersionCompatible, "next-cluster-version-compatible", c.NextClusterVersionCompatible, "enable compatibility with next etcd cluster version (e.g., allow etcd 3.4 to open data from etcd 3.5)")
 }
 
 // Validate validates the config.
