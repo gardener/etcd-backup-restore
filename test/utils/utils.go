@@ -50,6 +50,7 @@ func StartEmbeddedEtcd(ctx context.Context, etcdDir string, logger *logrus.Entry
 	cfg.Debug = false
 	cfg.GRPCKeepAliveTimeout = 0
 	cfg.SnapshotCount = 10
+	cfg.NextClusterVersionCompatible = true
 	DefaultListenPeerURLs := "http://localhost:" + getPeerPortNo(port)
 	DefaultListenClientURLs := "http://localhost:" + getClientPortNo(port)
 	DefaultInitialAdvertisePeerURLs := DefaultListenPeerURLs

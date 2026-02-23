@@ -41,3 +41,6 @@ data:
     # keep one day of history
     auto-compaction-mode: periodic
     auto-compaction-retention: "24"
+    
+    # Enable compatibility with next etcd cluster version
+    next-cluster-version-compatible: true

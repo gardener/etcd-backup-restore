@@ -76,6 +76,9 @@ backup:
   # etcdQuotaBytes used to Raise alarms when backend DB size exceeds the given quota bytes
   etcdQuotaBytes: 8589934592 #8GB
 
+  # nextClusterVersionCompatible enables compatibility with next etcd cluster version
+  nextClusterVersionCompatible: true
+
   # storageContainer is name of the container or bucket name used for storage.
   # Directory name in case of local storage provider.
   storageContainer: "etcd-bucket"

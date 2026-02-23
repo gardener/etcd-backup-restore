@@ -79,3 +79,5 @@ initial-cluster: etcd-events-0=https://etcd-events-0.etcd-events-peer.namespace.
 auto-compaction-mode: periodic
 # auto-compaction-retention defines Auto compaction retention length for etcd.
 auto-compaction-retention: 30m
+# Enable compatibility with next etcd cluster version
+next-cluster-version-compatible: true

@@ -88,6 +88,9 @@ data:
     {{- end }}
     {{- end }}
 
+    # Enable compatibility with next etcd cluster version
+    next-cluster-version-compatible: {{ .Values.backup.nextClusterVersionCompatible }}
+
 {{- if .Values.tls.etcd }}
     client-transport-security:
       # Path to the etcd server TLS cert file.
