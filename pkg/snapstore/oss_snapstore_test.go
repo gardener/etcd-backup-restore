@@ -125,7 +125,7 @@ func (m *mockOSSBucket) CompleteMultipartUpload(imur oss.InitiateMultipartUpload
 
 	sort.Sort(uploadParts(parts))
 	data := *m.multiPartUploads[imur.UploadID]
-	var prevPartId int = 0
+	var prevPartId = 0
 	var object []byte
 	for _, part := range parts {
 		if part.PartNumber <= prevPartId {

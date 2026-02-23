@@ -69,7 +69,7 @@ func (cmd *Cmd) RunCmdWithFlags() error {
 				break
 			}
 			if len(line) > 0 {
-				if _, err = logWriter.WriteString(fmt.Sprintf("%s\n", line)); err != nil {
+				if _, err = fmt.Fprintf(logWriter, "%s\n", line); err != nil {
 					cmd.Logger.Errorf("failed to write to log file for command %s: %v", cmd.Task, err)
 				}
 				if err = logWriter.Flush(); err != nil {
@@ -87,7 +87,7 @@ func (cmd *Cmd) RunCmdWithFlags() error {
 				break
 			}
 			if len(line) > 0 {
-				if _, err = logWriter.WriteString(fmt.Sprintf("%s\n", line)); err != nil {
+				if _, err = fmt.Fprintf(logWriter, "%s\n", line); err != nil {
 					cmd.Logger.Errorf("failed to write to log file for command %s: %v", cmd.Task, err)
 				}
 				if err = logWriter.Flush(); err != nil {

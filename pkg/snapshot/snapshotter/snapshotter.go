@@ -429,7 +429,7 @@ func (ssr *Snapshotter) takeDeltaSnapshotAndResetTimer() (*brtypes.Snapshot, err
 	} else {
 		ssr.logger.Infof("Stopping delta snapshot...")
 		ssr.deltaSnapshotTimer.Stop()
-		ssr.logger.Infof("Resetting delta snapshot to run after %s.", ssr.config.DeltaSnapshotPeriod.Duration.String())
+		ssr.logger.Infof("Resetting delta snapshot to run after %s.", ssr.config.DeltaSnapshotPeriod.String())
 		ssr.deltaSnapshotTimer.Reset(ssr.config.DeltaSnapshotPeriod.Duration)
 	}
 	return s, nil
@@ -784,7 +784,7 @@ func (ssr *Snapshotter) WasScheduledFullSnapshotMissed(timeWindow float64) bool 
 	now := time.Now()
 	nextSnapSchedule := ssr.schedule.Next(now)
 
-	if miscellaneous.GetPrevScheduledSnapTime(nextSnapSchedule, timeWindow) == ssr.PrevFullSnapshot.CreatedOn {
+	if miscellaneous.GetPrevScheduledSnapTime(nextSnapSchedule, timeWindow).Equal(ssr.PrevFullSnapshot.CreatedOn) {
 		ssr.logger.Info("previous full snapshot was taken at scheduled time, skipping the full snapshot at startup")
 		return false
 	}
