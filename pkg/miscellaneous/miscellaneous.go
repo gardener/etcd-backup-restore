@@ -211,6 +211,7 @@ func StartEmbeddedEtcd(logger *logrus.Entry, ro *brtypes.RestoreOptions) (*Embed
 	cfg.AutoCompactionMode = ro.Config.AutoCompactionMode
 	cfg.AutoCompactionRetention = ro.Config.AutoCompactionRetention
 	cfg.NextClusterVersionCompatible = ro.Config.NextClusterVersionCompatible
+	cfg.UnsafeNoFsync = ro.Config.UnsafeNoFsync
 	cfg.Logger = "zap"
 	e, err := embed.StartEtcd(cfg)
 	if err != nil {
