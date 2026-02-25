@@ -94,6 +94,17 @@ type HTTPHandler struct {
 	EnableProfiling           bool
 }
 
+// OnStoppedLeading is called when the instance loses leadership to wipe the cached SSE key usage data.
+func (h *HTTPHandler) OnStoppedLeading() {
+	h.Logger.Info("Lost leadership, clearing SSE key usage cache")
+	if h.Snapshotter != nil && h.Snapshotter.GetStore() != nil {
+		switch s := h.Snapshotter.GetStore().(type) {
+		case *snapstore.S3SnapStore:
+			s.ClearSSEKeyUsageData()
+		}
+	}
+}
+
 // healthCheck contains the HealthStatus of backup restore.
 type healthCheck struct {
 	HealthStatus bool `json:"health"`
@@ -139,6 +150,9 @@ func (h *HTTPHandler) RegisterHandler() {
 	mux.HandleFunc("/snapshot/full", h.serveFullSnapshotTrigger)
 	mux.HandleFunc("/snapshot/delta", h.serveDeltaSnapshotTrigger)
 	mux.HandleFunc("/snapshot/latest", h.serveLatestSnapshotMetadata)
+	mux.HandleFunc("/snapshot/reencrypt", h.serveSnapshotsReencrypt)
+	mux.HandleFunc("/snapshot/encstatus", h.serveSnapshotsEncryptionStatus)
+	mux.HandleFunc("/snapshot/scan", h.serveSnapshotsScan)
 	mux.HandleFunc("/config", h.serveConfig)
 	mux.HandleFunc("/healthz", h.serveHealthz)
 	mux.Handle("/metrics", promhttp.Handler())
@@ -724,4 +738,117 @@ func IsBackupRestoreHealthy(backupRestoreURL string, TLSEnabled bool, rootCA str
 		return false, err
 	}
 	return health.HealthStatus, nil
+}
+
+func (h *HTTPHandler) serveSnapshotsReencrypt(rw http.ResponseWriter, req *http.Request) {
+	if h.Snapshotter == nil {
+		if len(h.StorageProvider) > 0 {
+			h.delegateReqToLeader(rw, req)
+			return
+		}
+		h.Logger.Warnf("Ignoring re-encryption request as snapshotter is not configured")
+		return
+	}
+
+	h.checkAndSetSecurityHeaders(rw)
+	h.Logger.Info("Received request to re-encrypt all snapshots.")
+
+	store, err := snapstore.GetSnapstore(h.SnapstoreConfig)
+	if err != nil {
+		h.Logger.Errorf("Unable to create snapstore for re-encryption: %v", err)
+		return
+	}
+	switch s := store.(type) {
+	case *snapstore.S3SnapStore:
+		go func() {
+			err := s.ReencryptAllSnapshots(h.Logger)
+			if err != nil {
+				h.Logger.Errorf("Failed to re-encrypt snapshots: %v", err)
+			} else {
+				h.Logger.Info("Re-encryption of all snapshots completed successfully.")
+			}
+		}()
+		rw.WriteHeader(http.StatusAccepted)
+		_, err := rw.Write([]byte("Re-encryption of all snapshots started.\n"))
+		if err != nil {
+			h.Logger.Errorf("Failed to write response: %v", err)
+		}
+	default:
+		h.Logger.Errorf("Re-encryption is only supported for S3SnapStore")
+		return
+	}
+}
+
+// Update serveSnapshotsEncryptionStatus to return structured JSON
+func (h *HTTPHandler) serveSnapshotsEncryptionStatus(rw http.ResponseWriter, req *http.Request) {
+	if h.Snapshotter == nil {
+		if len(h.StorageProvider) > 0 {
+			h.delegateReqToLeader(rw, req)
+			return
+		}
+		h.Logger.Warnf("Ignoring encryption status request as snapshotter is not configured")
+		return
+	}
+	h.checkAndSetSecurityHeaders(rw)
+	h.Logger.Info("Received request for SSE-C key usage status.")
+	if h.Snapshotter == nil || len(h.StorageProvider) == 0 {
+		h.Logger.Errorf("This request can only be served by leader.")
+		rw.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	store := h.Snapshotter.GetStore()
+	switch s := store.(type) {
+	case *snapstore.S3SnapStore:
+		usage, upToDate := s.GetSSEKeyUsage()
+		response := map[string]interface{}{
+			"upToDate": upToDate,
+			"files":    usage,
+		}
+		rw.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(rw).Encode(response); err != nil {
+			h.Logger.Errorf("Failed to encode SSE key usage: %v", err)
+			rw.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+	default:
+		h.Logger.Errorf("Encryption status is only supported for S3SnapStore")
+		rw.WriteHeader(http.StatusNotImplemented)
+		return
+	}
+}
+
+func (h *HTTPHandler) serveSnapshotsScan(rw http.ResponseWriter, req *http.Request) {
+	if h.Snapshotter == nil {
+		if len(h.StorageProvider) > 0 {
+			h.delegateReqToLeader(rw, req)
+			return
+		}
+		h.Logger.Warnf("Ignoring snapshot scan request as snapshotter is not configured")
+		return
+	}
+	h.checkAndSetSecurityHeaders(rw)
+	h.Logger.Info("Received request to scan all snapshots for encryption status.")
+
+	go func() {
+		store := h.Snapshotter.GetStore()
+		switch s := store.(type) {
+		case *snapstore.S3SnapStore:
+			err := s.ScanAllSnapshots(h.Logger)
+			if err != nil {
+				h.Logger.Errorf("Failed to scan snapshots: %v", err)
+				return
+			}
+			h.Logger.Info("Snapshot scan completed successfully.")
+		default:
+			h.Logger.Errorf("Snapshot scanning is only supported for S3SnapStore")
+			return
+		}
+	}()
+	rw.WriteHeader(http.StatusAccepted)
+
+	if _, err := rw.Write([]byte("Snapshot scan started.\n")); err != nil {
+		h.Logger.Errorf("Failed to write response: %v", err)
+		return
+	}
 }

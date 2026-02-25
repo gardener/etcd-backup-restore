@@ -577,7 +577,7 @@ var _ = Describe("Server Side Encryption Customer Managed Key for S3", func() {
 		credentialFilePath = filepath.Join(credentialDirectory, "credentials.json")
 		GinkgoT().Setenv("AWS_APPLICATION_CREDENTIALS_JSON", credentialFilePath)
 	})
-	Context("when no SSE-C keys are provided", func() {
+	Context("when SSE-C is not enabled", func() {
 		It("should return the snapstore without errors", func() {
 			// SSE-C fields not present
 			err := os.WriteFile(credentialFilePath, []byte(`{
@@ -592,7 +592,6 @@ var _ = Describe("Server Side Encryption Customer Managed Key for S3", func() {
 	})
 	Context("when SSE-C is enabled", func() {
 		It("should return an error if both fields for SSE-C are not provided", func() {
-			// both SSE-C fields are not present
 			// sseCustomerKey not present
 			err := os.WriteFile(credentialFilePath, []byte(`{
   "accessKeyID": "XXXXXXXXXXXXXXXXXXXX",
@@ -622,6 +621,30 @@ var _ = Describe("Server Side Encryption Customer Managed Key for S3", func() {
   "region": "eu-west-1",
   "sseCustomerAlgorithm": "AES256",
   "sseCustomerKey": "2b7e151628aed2a6abf7158809cf4f3c6afe5028f1959c27a11253edc6cf4f3c"
+}`), os.ModePerm)
+			Expect(err).ShouldNot(HaveOccurred())
+			_, err = NewS3SnapStore(&s3SnapstoreConfig)
+			Expect(err).ShouldNot(HaveOccurred())
+		})
+		It("should return the snapstore without errors if valid SSEcustomerKeyConf is provided", func() {
+			err := os.WriteFile(credentialFilePath, []byte(`{
+  "accessKeyID": "XXXXXXXXXXXXXXXXXXXX",
+  "secretAccessKey": "XXXXXXXXXXXXXXXXXXXX",
+  "region": "eu-west-1",
+  "sseCustomerKeyConf": {
+    "algorithm": "AES256",
+    "disableEncryptionForWriting": false,
+    "keys": [
+      {
+        "id": "primary-key-2024",
+        "value": "2b7e151628aed2a6abf7158809cf4f3c6afe5028f1959c27a11253edc6cf4f3c"
+      },
+	  {
+        "id": "primary-key-2025",
+        "value": "1a7e151628aed2a6abf7158809cf4f3c6afe5028f1959c27a11253edc6cf4f3c"
+      }
+    ]
+  }
 }`), os.ModePerm)
 			Expect(err).ShouldNot(HaveOccurred())
 			_, err = NewS3SnapStore(&s3SnapstoreConfig)
