@@ -87,6 +87,47 @@ var _ = Describe("Miscellaneous Tests", func() {
 				Expect(deltaSnapList).To(BeEmpty())
 			})
 		})
+
+		Describe("#GetNLatestFullSnapshots", func() {
+			It("should not return anything if there are no snapshots", func() {
+				ds = NewDummyStore(brtypes.SnapList{})
+
+				fullSnapList, err := GetNLatestFullSnapshots(ds, 3)
+				Expect(err).NotTo(HaveOccurred())
+
+				Expect(fullSnapList).To(BeEmpty())
+			})
+
+			It("should return error if latest 0 snapshots are specified to be returned", func() {
+				fullSnapList, err := GetNLatestFullSnapshots(ds, 0)
+				Expect(err).To(MatchError(ContainSubstring("invalid value for n: 0, n must be greater than 0")))
+
+				Expect(fullSnapList).To(BeNil())
+			})
+
+			It("should return error if less than 0 snapshots are specified to be returned", func() {
+				fullSnapList, err := GetNLatestFullSnapshots(ds, -1)
+				Expect(err).To(MatchError(ContainSubstring("invalid value for n: -1, n must be greater than 0")))
+
+				Expect(fullSnapList).To(BeNil())
+			})
+
+			It("should return the last 3 snapshots", func() {
+				fullSnapList, err := GetNLatestFullSnapshots(ds, 3)
+				Expect(err).NotTo(HaveOccurred())
+
+				Expect(fullSnapList).To(ConsistOf(snapList[len(snapList)-2], snapList[len(snapList)-4], snapList[len(snapList)-6]))
+			})
+
+			It("should return only the available snapshots if more are selected", func() {
+				ds = NewDummyStore(snapList[:2])
+
+				fullSnapList, err := GetNLatestFullSnapshots(ds, 3)
+				Expect(err).NotTo(HaveOccurred())
+
+				Expect(fullSnapList).To(ConsistOf(snapList[0]))
+			})
+		})
 	})
 
 	Describe("Filtering snapshots", func() {
