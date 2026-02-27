@@ -64,29 +64,46 @@ type advertiseURLsConfig struct {
 	InitialAdvertisePeerURLs map[string][]string `json:"initial-advertise-peer-urls"`
 }
 
-// GetLatestFullSnapshotAndDeltaSnapList returns the latest snapshot
-func GetLatestFullSnapshotAndDeltaSnapList(store brtypes.SnapStore) (*brtypes.Snapshot, brtypes.SnapList, error) {
+// GetNLatestFullSnapshotsAndDeltaSnapList returns the latest N full snapshots and delta snapshots from the store.
+func GetNLatestFullSnapshotsAndDeltaSnapList(store brtypes.SnapStore, n int) (brtypes.SnapList, brtypes.SnapList, error) {
+	if n <= 0 {
+		return nil, nil, nil
+	}
+
 	var (
-		fullSnapshot  *brtypes.Snapshot
-		deltaSnapList brtypes.SnapList
+		fullSnapshotList brtypes.SnapList
+		deltaSnapList    brtypes.SnapList
 	)
+
 	snapList, err := store.List(false)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	for index := len(snapList); index > 0; index-- {
+	for index := len(snapList); index > 0 && len(fullSnapshotList) < n; index-- {
 		if snapList[index-1].IsChunk {
 			continue
 		}
 		if snapList[index-1].Kind == brtypes.SnapshotKindFull {
-			fullSnapshot = snapList[index-1]
-			break
+			fullSnapshotList = append(fullSnapshotList, snapList[index-1])
+			continue
 		}
 		deltaSnapList = append(deltaSnapList, snapList[index-1])
 	}
 
 	sort.Sort(deltaSnapList) // ensures that the delta snapshot list is well formed
+	return fullSnapshotList, deltaSnapList, nil
+}
+
+// GetLatestFullSnapshotAndDeltaSnapList returns the latest snapshot.
+func GetLatestFullSnapshotAndDeltaSnapList(store brtypes.SnapStore) (*brtypes.Snapshot, brtypes.SnapList, error) {
+	fullSnapList, deltaSnapList, err := GetNLatestFullSnapshotsAndDeltaSnapList(store, 1)
+
+	var fullSnapShot *brtypes.Snapshot
+	if len(fullSnapList) > 0 {
+		fullSnapShot = fullSnapList[0]
+	}
+
 	metrics.SnapstoreLatestDeltasTotal.With(prometheus.Labels{}).Set(float64(len(deltaSnapList)))
 	if len(deltaSnapList) == 0 {
 		metrics.SnapstoreLatestDeltasRevisionsTotal.With(prometheus.Labels{}).Set(0)
@@ -94,7 +111,8 @@ func GetLatestFullSnapshotAndDeltaSnapList(store brtypes.SnapStore) (*brtypes.Sn
 		revisionDiff := deltaSnapList[len(deltaSnapList)-1].LastRevision - deltaSnapList[0].StartRevision
 		metrics.SnapstoreLatestDeltasRevisionsTotal.With(prometheus.Labels{}).Set(float64(revisionDiff))
 	}
-	return fullSnapshot, deltaSnapList, nil
+
+	return fullSnapShot, deltaSnapList, err
 }
 
 type backup struct {

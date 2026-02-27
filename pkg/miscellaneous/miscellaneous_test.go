@@ -87,6 +87,52 @@ var _ = Describe("Miscellaneous Tests", func() {
 				Expect(deltaSnapList).To(BeEmpty())
 			})
 		})
+
+		Describe("#GetNLatestFullSnapshotsAndDeltaSnapList", func() {
+			It("should not return anything if there are no snapshots", func() {
+				ds = NewDummyStore(brtypes.SnapList{})
+
+				fullSnapList, deltaSnapList, err := GetNLatestFullSnapshotsAndDeltaSnapList(ds, 3)
+				Expect(err).NotTo(HaveOccurred())
+
+				Expect(fullSnapList).To(BeEmpty())
+				Expect(deltaSnapList).To(BeEmpty())
+			})
+
+			It("should not return anything if latest 0 snapshot are specified to be returned", func() {
+				fullSnapList, deltaSnapList, err := GetNLatestFullSnapshotsAndDeltaSnapList(ds, 0)
+				Expect(err).NotTo(HaveOccurred())
+
+				Expect(fullSnapList).To(BeEmpty())
+				Expect(deltaSnapList).To(BeEmpty())
+			})
+
+			It("should not return anything if less than 0 snapshot are specified to be returned", func() {
+				fullSnapList, deltaSnapList, err := GetNLatestFullSnapshotsAndDeltaSnapList(ds, -1)
+				Expect(err).NotTo(HaveOccurred())
+
+				Expect(fullSnapList).To(BeEmpty())
+				Expect(deltaSnapList).To(BeEmpty())
+			})
+
+			It("should return the last 3 snapshots", func() {
+				fullSnapList, deltaSnapList, err := GetNLatestFullSnapshotsAndDeltaSnapList(ds, 3)
+				Expect(err).NotTo(HaveOccurred())
+
+				Expect(fullSnapList).To(ConsistOf(snapList[len(snapList)-2], snapList[len(snapList)-4], snapList[len(snapList)-6]))
+				Expect(deltaSnapList).To(ConsistOf(snapList[len(snapList)-1], snapList[len(snapList)-3], snapList[len(snapList)-5]))
+			})
+
+			It("should return only the available snapshots if more are selected", func() {
+				ds = NewDummyStore(snapList[:2])
+
+				fullSnapList, deltaSnapList, err := GetNLatestFullSnapshotsAndDeltaSnapList(ds, 3)
+				Expect(err).NotTo(HaveOccurred())
+
+				Expect(fullSnapList).To(ConsistOf(snapList[0]))
+				Expect(deltaSnapList).To(ConsistOf(snapList[1]))
+			})
+		})
 	})
 
 	Describe("Filtering snapshots", func() {
