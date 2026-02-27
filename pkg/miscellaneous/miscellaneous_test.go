@@ -62,6 +62,33 @@ var _ = Describe("Miscellaneous Tests", func() {
 		cl = mockfactory.NewMockClusterCloser(ctrl)
 	})
 
+	Describe("Getting latest snapshots", func() {
+		BeforeEach(func() {
+			snapList = generateSnapshotList(generatedSnaps)
+			ds = NewDummyStore(snapList)
+		})
+
+		Describe("#GetLatestFullSnapshotAndDeltaSnapList", func() {
+			It("should return the last snapshot and delta snapshot", func() {
+				snap, deltaSnapList, err := GetLatestFullSnapshotAndDeltaSnapList(ds)
+				Expect(err).NotTo(HaveOccurred())
+
+				Expect(snap).To(Equal(snapList[len(snapList)-2]))
+				Expect(deltaSnapList).To(ConsistOf(snapList[len(snapList)-1]))
+			})
+
+			It("should not return anything if there are no snapshots", func() {
+				ds = NewDummyStore(brtypes.SnapList{})
+
+				snap, deltaSnapList, err := GetLatestFullSnapshotAndDeltaSnapList(ds)
+				Expect(err).NotTo(HaveOccurred())
+
+				Expect(snap).To(BeNil())
+				Expect(deltaSnapList).To(BeEmpty())
+			})
+		})
+	})
+
 	Describe("Filtering snapshots", func() {
 		BeforeEach(func() {
 			snapList = generateSnapshotList(generatedSnaps)
@@ -961,19 +988,19 @@ func NewDummyStore(snapList brtypes.SnapList) DummyStore {
 	return DummyStore{SnapList: snapList}
 }
 
-func (ds *DummyStore) List(_ bool) (brtypes.SnapList, error) {
+func (ds DummyStore) List(_ bool) (brtypes.SnapList, error) {
 	return ds.SnapList, nil
 }
 
-func (ds *DummyStore) Delete(_ brtypes.Snapshot) error {
+func (ds DummyStore) Delete(_ brtypes.Snapshot) error {
 	return nil
 }
 
-func (ds *DummyStore) Save(_ brtypes.Snapshot, _ io.ReadCloser) error {
+func (ds DummyStore) Save(_ brtypes.Snapshot, _ io.ReadCloser) error {
 	return nil
 }
 
-func (ds *DummyStore) Fetch(_ brtypes.Snapshot) (io.ReadCloser, error) {
+func (ds DummyStore) Fetch(_ brtypes.Snapshot) (io.ReadCloser, error) {
 	return nil, nil
 }
 
