@@ -234,12 +234,19 @@ func (c *Copier) doWaitForFinalSnapshot(ctx context.Context, interval time.Durat
 	defer c.logger.Debug("Stopping waiting for final full snapshot")
 
 	for {
-		fullSnapshot, _, err := miscellaneous.GetLatestFullSnapshotAndDeltaSnapList(ss)
+		// We need the latest 4 full snapshots to determine if a final snapshot was taken, because there
+		// could be a race between the instruction to take a final full snapshot and etcd-backup-restore
+		// taking a regular full snapshot, a full snapshot when it is started or a full snapshot when it
+		// is stopped. Therefore, the final full snapshot could potentially not be the latest full snapshot.
+		fullSnapshotList, _, err := miscellaneous.GetNLatestFullSnapshotsAndDeltaSnapList(ss, 4)
 		if err != nil {
 			return nil, err
 		}
-		if fullSnapshot != nil && fullSnapshot.IsFinal {
-			return fullSnapshot, nil
+
+		for _, fullSnapshot := range fullSnapshotList {
+			if fullSnapshot != nil && fullSnapshot.IsFinal {
+				return fullSnapshot, nil
+			}
 		}
 
 		select {
