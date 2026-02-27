@@ -58,7 +58,7 @@ update-dependencies:
 	@make revendor
 
 .PHONY: verify
-verify: check test
+verify: check test-unit
 
 .PHONY: clean
 clean:
