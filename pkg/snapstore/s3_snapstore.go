@@ -50,7 +50,7 @@ const (
 type awsCredentials struct {
 	SSECustomerAlgorithm       *string `json:"sseCustomerAlgorithm,omitempty"`
 	SSECustomerKey             *string `json:"sseCustomerKey,omitempty"`
-	Endpoint                   *string `json:"endpoint,omitempty"`
+
 	S3ForcePathStyle           *bool   `json:"s3ForcePathStyle,omitempty"`
 	InsecureSkipVerify         *bool   `json:"insecureSkipVerify,omitempty"`
 	TrustedCaCert              *string `json:"trustedCaCert,omitempty"`
@@ -210,12 +210,6 @@ func awsCredentialsFromConfig(awsConfig *awsCredentials) ([]func(*awsconfig.Load
 	}
 	cfgOpts = append(cfgOpts, awsconfig.WithCredentialsProvider(aws.NewCredentialsCache(credentialsProvider)))
 
-	// TODO: @renormalize support for passing Endpoint through the credential file must be removed in v0.42.0.
-	if awsConfig.Endpoint != nil {
-		logrus.Warnf("Passing endpoint override through the credential file is now deprecated. Please use the `--store-endpoint-override` flag instead.")
-		cfgOpts = append(cfgOpts, awsconfig.WithBaseEndpoint(*awsConfig.Endpoint))
-	}
-
 	if awsConfig.S3ForcePathStyle != nil {
 		cliOpts = append(cliOpts, func(o *s3.Options) {
 			o.UsePathStyle = *awsConfig.S3ForcePathStyle
@@ -298,12 +292,6 @@ func readAWSCredentialFromDir(dirname string) (*awsCredentials, error) {
 				return nil, err
 			}
 			awsConfig.SecretAccessKey = string(data)
-		case "endpoint":
-			data, err := os.ReadFile(filepath.Join(dirname, "endpoint")) // #nosec G304 -- this is a trusted file, obtained via user input.
-			if err != nil {
-				return nil, err
-			}
-			awsConfig.Endpoint = ptr.To(string(data))
 		case "s3ForcePathStyle":
 			data, err := os.ReadFile(filepath.Join(dirname, "s3ForcePathStyle")) // #nosec G304 -- this is a trusted file, obtained via user input.
 			if err != nil {
