@@ -64,7 +64,6 @@ type RestorationConfig struct {
 	EmbeddedEtcdQuotaBytes       int64    `json:"embeddedEtcdQuotaBytes,omitempty"`
 	MaxFetchers                  uint     `json:"maxFetchers,omitempty"`
 	SkipHashCheck                bool     `json:"skipHashCheck,omitempty"`
-	NextClusterVersionCompatible bool     `json:"nextClusterVersionCompatible,omitempty"`
 }
 
 // NewRestorationConfig returns the restoration config.
@@ -84,7 +83,6 @@ func NewRestorationConfig() *RestorationConfig {
 		EmbeddedEtcdQuotaBytes:       int64(defaultEmbeddedEtcdQuotaBytes),
 		AutoCompactionMode:           defaultAutoCompactionMode,
 		AutoCompactionRetention:      defaultAutoCompactionRetention,
-		NextClusterVersionCompatible: true,
 	}
 }
 
@@ -104,7 +102,6 @@ func (c *RestorationConfig) AddFlags(fs *flag.FlagSet) {
 	fs.Int64Var(&c.EmbeddedEtcdQuotaBytes, "embedded-etcd-quota-bytes", c.EmbeddedEtcdQuotaBytes, "maximum backend quota for the embedded etcd used for applying delta snapshots")
 	fs.StringVar(&c.AutoCompactionMode, "auto-compaction-mode", c.AutoCompactionMode, "mode for auto-compaction: 'periodic' for duration based retention. 'revision' for revision number based retention.")
 	fs.StringVar(&c.AutoCompactionRetention, "auto-compaction-retention", c.AutoCompactionRetention, "Auto-compaction retention length.")
-	fs.BoolVar(&c.NextClusterVersionCompatible, "next-cluster-version-compatible", c.NextClusterVersionCompatible, "enable compatibility with next etcd cluster version (e.g., allow etcd 3.4 to open data from etcd 3.5)")
 }
 
 // Validate validates the config.

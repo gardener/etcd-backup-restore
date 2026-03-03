@@ -364,7 +364,6 @@ func (d *DataValidator) checkFullRevisionConsistency(dataDir string, latestSnaps
 			EmbeddedEtcdQuotaBytes:       d.Config.EmbeddedEtcdQuotaBytes,
 			MaxRequestBytes:              defaultMaxRequestBytes,
 			MaxTxnOps:                    defaultMaxTxnOps,
-			NextClusterVersionCompatible: true,
 		},
 	}
 	e, err := miscellaneous.StartEmbeddedEtcd(logrus.NewEntry(d.Logger), ro)

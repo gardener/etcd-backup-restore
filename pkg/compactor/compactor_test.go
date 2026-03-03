@@ -98,7 +98,6 @@ var _ = Describe("Running Compactor", func() {
 					MaxTxnOps:                    maxTxnOps,
 					MaxCallSendMsgSize:           maxCallSendMsgSize,
 					EmbeddedEtcdQuotaBytes:       embeddedEtcdQuotaBytes,
-					NextClusterVersionCompatible: true,
 				},
 				ClusterURLs: clusterUrlsMap,
 				PeerURLs:    peerUrls,

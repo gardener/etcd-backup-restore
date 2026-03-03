@@ -111,7 +111,6 @@ var _ = Describe("Running Restorer", func() {
 					EmbeddedEtcdQuotaBytes:       embeddedEtcdQuotaBytes,
 					AutoCompactionMode:           autoCompactionMode,
 					AutoCompactionRetention:      autoCompactionRetention,
-					NextClusterVersionCompatible: true,
 				},
 				BaseSnapshot:  baseSnapshot,
 				DeltaSnapList: deltaSnapList,
@@ -271,7 +270,6 @@ var _ = Describe("Running Restorer", func() {
 				EmbeddedEtcdQuotaBytes:       embeddedEtcdQuotaBytes,
 				AutoCompactionMode:           autoCompactionMode,
 				AutoCompactionRetention:      autoCompactionRetention,
-				NextClusterVersionCompatible: true,
 			}
 		})
 
@@ -893,7 +891,6 @@ var _ = Describe("Running Restorer when both v1 and v2 directory structures are 
 			EmbeddedEtcdQuotaBytes:       embeddedEtcdQuotaBytes,
 			AutoCompactionMode:           autoCompactionMode,
 			AutoCompactionRetention:      autoCompactionRetention,
-			NextClusterVersionCompatible: true,
 		}
 
 		resp = &utils.EtcdDataPopulationResponse{}
@@ -1170,7 +1167,6 @@ var _ = Describe("Running Restorer when base snapshot has etcd auth enabled", fu
 			EmbeddedEtcdQuotaBytes:       embeddedEtcdQuotaBytes,
 			AutoCompactionMode:           autoCompactionMode,
 			AutoCompactionRetention:      autoCompactionRetention,
-			NextClusterVersionCompatible: true,
 		}
 	})
 

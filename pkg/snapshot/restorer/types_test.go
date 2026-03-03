@@ -32,7 +32,6 @@ var _ = Describe("restorer types", func() {
 				SkipHashCheck:                b,
 				MaxFetchers:                  uint(i),
 				EmbeddedEtcdQuotaBytes:       int64(i),
-				NextClusterVersionCompatible: true,
 			}
 		}
 		makeSnap = func(s string, i int, t time.Time, b bool) *brtypes.Snapshot {
