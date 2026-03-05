@@ -78,10 +78,9 @@ func GetNLatestFullSnapshots(store brtypes.SnapStore, n int) (brtypes.SnapList, 
 
 	var fullSnapshotList brtypes.SnapList
 	for index := len(snapList); index > 0 && len(fullSnapshotList) < n; index-- {
-		if snapList[index-1].Kind != brtypes.SnapshotKindFull {
-			continue
+		if snapList[index-1].Kind == brtypes.SnapshotKindFull {
+			fullSnapshotList = append(fullSnapshotList, snapList[index-1])
 		}
-		fullSnapshotList = append(fullSnapshotList, snapList[index-1])
 	}
 
 	return fullSnapshotList, nil
