@@ -24,10 +24,10 @@ import (
 	"github.com/sirupsen/logrus"
 	bolt "go.etcd.io/bbolt"
 	clientv3 "go.etcd.io/etcd/client/v3"
+	"go.etcd.io/etcd/raft/v3/raftpb"
 	"go.etcd.io/etcd/server/v3/etcdserver/api/snap"
 	"go.etcd.io/etcd/server/v3/wal"
 	"go.etcd.io/etcd/server/v3/wal/walpb"
-	"go.etcd.io/etcd/raft/v3/raftpb"
 	"go.uber.org/zap"
 )
 
@@ -362,10 +362,10 @@ func (d *DataValidator) checkFullRevisionConsistency(dataDir string, latestSnaps
 	d.Logger.Info("Starting embedded etcd server...")
 	ro := &brtypes.RestoreOptions{
 		Config: &brtypes.RestorationConfig{
-			DataDir:                      dataDir,
-			EmbeddedEtcdQuotaBytes:       d.Config.EmbeddedEtcdQuotaBytes,
-			MaxRequestBytes:              defaultMaxRequestBytes,
-			MaxTxnOps:                    defaultMaxTxnOps,
+			DataDir:                dataDir,
+			EmbeddedEtcdQuotaBytes: d.Config.EmbeddedEtcdQuotaBytes,
+			MaxRequestBytes:        defaultMaxRequestBytes,
+			MaxTxnOps:              defaultMaxTxnOps,
 		},
 	}
 	e, err := miscellaneous.StartEmbeddedEtcd(logrus.NewEntry(d.Logger), ro)

@@ -6,7 +6,6 @@ package restorer_test
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"path"
 	"path/filepath"
