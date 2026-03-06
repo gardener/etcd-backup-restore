@@ -820,3 +820,8 @@ func (ssr *Snapshotter) GetFullSnapshotMaxTimeWindow(fullSnapScheduleSpec string
 
 	return defaultFullSnapMaxTimeWindow
 }
+
+// GetStore returns the snapstore used by the snapshotter.
+func (s *Snapshotter) GetStore() brtypes.SnapStore {
+	return s.store
+}
