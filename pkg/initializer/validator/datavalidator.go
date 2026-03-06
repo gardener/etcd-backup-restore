@@ -254,10 +254,9 @@ func (d *DataValidator) verifySnapDir() (*raftpb.Snapshot, error) {
 
 func verifyWALDir(logger *zap.Logger, waldir string, snap walpb.Snapshot) error {
 	var err error
-
+	var hardState *raftpb.HardState
 	repaired := false
 	for {
-		var hardState *raftpb.HardState
 		if hardState, err = wal.Verify(logger, waldir, snap); err != nil {
 			// we can only repair ErrUnexpectedEOF and we never repair twice.
 			if repaired || err != io.ErrUnexpectedEOF {
