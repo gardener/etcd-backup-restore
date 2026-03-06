@@ -8,10 +8,10 @@ set -o nounset
 set -o pipefail
 
 export ETCDBR_IMAGE="europe-docker.pkg.dev/gardener-project/public/gardener/etcdbrctl"
-#TODO: (@Shreyas-s14) change the below image once the PR for etcd-wrapper is merged.
-export ETCD_WRAPPER_IMAGE="shreyas14/wrapper"
+#TODO: (@Shreyas-s14) change the below image once etcd-wrapper is released.
+export ETCD_WRAPPER_IMAGE="europe-docker.pkg.dev/gardener-project/snapshots/gardener/etcd-wrapper"
 export ETCDBR_VERSION="dev-latest" # This version gets built from the current branch, loaded into the kind cluster and used for the e2e tests
-export ETCD_WRAPPER_VERSION="amd64"
+export ETCD_WRAPPER_VERSION="v0.7.0-da33bcc9befc2a6d81ea43ddb88c0b2b2cd26041"
 
 TEST_PROVIDERS=${1:-"aws"}
 

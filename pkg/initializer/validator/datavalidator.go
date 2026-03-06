@@ -257,7 +257,8 @@ func verifyWALDir(logger *zap.Logger, waldir string, snap walpb.Snapshot) error 
 
 	repaired := false
 	for {
-		if _, err = wal.Verify(logger, waldir, snap); err != nil {
+		var hardState *raftpb.HardState
+		if hardState, err = wal.Verify(logger, waldir, snap); err != nil {
 			// we can only repair ErrUnexpectedEOF and we never repair twice.
 			if repaired || err != io.ErrUnexpectedEOF {
 				fmt.Printf("read wal error (%v) and cannot be repaired.\n", err)
@@ -272,6 +273,7 @@ func verifyWALDir(logger *zap.Logger, waldir string, snap walpb.Snapshot) error 
 
 			continue
 		}
+		logger.Info("WAL verification succeeded", zap.Uint64("term", hardState.Term), zap.Uint64("commit", hardState.Commit))
 		break
 	}
 	return err

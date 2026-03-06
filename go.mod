@@ -38,12 +38,12 @@ require (
 
 require (
 	go.etcd.io/bbolt v1.3.12
-	go.etcd.io/etcd/api/v3 v3.5.26
-	go.etcd.io/etcd/client/pkg/v3 v3.5.26
-	go.etcd.io/etcd/client/v3 v3.5.26
-	go.etcd.io/etcd/etcdutl/v3 v3.5.26
-	go.etcd.io/etcd/raft/v3 v3.5.26
-	go.etcd.io/etcd/server/v3 v3.5.26
+	go.etcd.io/etcd/api/v3 v3.5.27
+	go.etcd.io/etcd/client/pkg/v3 v3.5.27
+	go.etcd.io/etcd/client/v3 v3.5.27
+	go.etcd.io/etcd/etcdutl/v3 v3.5.27
+	go.etcd.io/etcd/raft/v3 v3.5.27
+	go.etcd.io/etcd/server/v3 v3.5.27
 )
 
 require (
@@ -179,8 +179,8 @@ require (
 	github.com/xiang90/probing v0.0.0-20221125231312-a49e3df8f510 // indirect
 	github.com/xlab/treeprint v1.2.0 // indirect
 	github.com/zeebo/errs v1.4.0 // indirect
-	go.etcd.io/etcd/client/v2 v2.305.26 // indirect
-	go.etcd.io/etcd/pkg/v3 v3.5.26 // indirect
+	go.etcd.io/etcd/client/v2 v2.305.27 // indirect
+	go.etcd.io/etcd/pkg/v3 v3.5.27 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.opentelemetry.io/contrib/detectors/gcp v1.36.0 // indirect
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.63.0 // indirect

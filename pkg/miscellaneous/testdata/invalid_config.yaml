@@ -8,7 +8,6 @@ client-transport-security:
   key-file: /var/etcd/ssl/client/server/tls.key
   trusted-ca-file: /var/etcd/ssl/client/ca/bundle.crt
 data-dir: /var/etcd/data/new.etcd
-enable-v2: false
 initial-advertise-peer-urls: https@etcd-events-peer@shoot--dev--test@2380
 initial-cluster: "etcd-events-0=https://etcd-events-0.etcd-events-peer.shoot--dev--test.svc:2380,etcd-events-1=https://etcd-events-1.etcd-events-peer.shoot--dev--test.svc:2380,etcd-events-2=https://etcd-events-2.etcd-events-peer.shoot--dev--test.svc:2380"
 initial-cluster-state: new

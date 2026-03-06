@@ -85,7 +85,6 @@ var _ = SynchronizedBeforeSuite(func() []byte {
 var _ = SynchronizedAfterSuite(func() {}, cleanUp)
 
 func cleanUp() {
-	fmt.Println("Entered cleanup")
 	err = os.RemoveAll(etcdDir)
 	Expect(err).ShouldNot(HaveOccurred())
 

@@ -36,7 +36,6 @@ data:
     quota-backend-bytes: 8589934592
     
     # Accept etcd V2 client requests
-    enable-v2: false
     
     # keep one day of history
     auto-compaction-mode: periodic
