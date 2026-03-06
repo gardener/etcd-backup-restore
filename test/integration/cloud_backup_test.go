@@ -132,7 +132,6 @@ name: etcd1
 data-dir: ` + os.Getenv("ETCD_DATA_DIR") + `
 metrics: extensive
 snapshot-count: 75000
-enable-v2: false
 quota-backend-bytes: 1073741824
 listen-client-urls: http://0.0.0.0:2379
 advertise-client-urls:

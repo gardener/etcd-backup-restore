@@ -23,11 +23,11 @@ import (
 
 	"github.com/sirupsen/logrus"
 	bolt "go.etcd.io/bbolt"
-	"go.etcd.io/etcd/clientv3"
-	"go.etcd.io/etcd/etcdserver/api/snap"
-	"go.etcd.io/etcd/raft/raftpb"
-	"go.etcd.io/etcd/wal"
-	"go.etcd.io/etcd/wal/walpb"
+	clientv3 "go.etcd.io/etcd/client/v3"
+	"go.etcd.io/etcd/raft/v3/raftpb"
+	"go.etcd.io/etcd/server/v3/etcdserver/api/snap"
+	"go.etcd.io/etcd/server/v3/wal"
+	"go.etcd.io/etcd/server/v3/wal/walpb"
 	"go.uber.org/zap"
 )
 
@@ -254,10 +254,10 @@ func (d *DataValidator) verifySnapDir() (*raftpb.Snapshot, error) {
 
 func verifyWALDir(logger *zap.Logger, waldir string, snap walpb.Snapshot) error {
 	var err error
-
+	var hardState *raftpb.HardState
 	repaired := false
 	for {
-		if err = wal.Verify(logger, waldir, snap); err != nil {
+		if hardState, err = wal.Verify(logger, waldir, snap); err != nil {
 			// we can only repair ErrUnexpectedEOF and we never repair twice.
 			if repaired || err != io.ErrUnexpectedEOF {
 				fmt.Printf("read wal error (%v) and cannot be repaired.\n", err)
@@ -272,6 +272,7 @@ func verifyWALDir(logger *zap.Logger, waldir string, snap walpb.Snapshot) error 
 
 			continue
 		}
+		logger.Info("WAL verification succeeded", zap.Uint64("term", hardState.Term), zap.Uint64("commit", hardState.Commit))
 		break
 	}
 	return err
@@ -360,11 +361,10 @@ func (d *DataValidator) checkFullRevisionConsistency(dataDir string, latestSnaps
 	d.Logger.Info("Starting embedded etcd server...")
 	ro := &brtypes.RestoreOptions{
 		Config: &brtypes.RestorationConfig{
-			DataDir:                      dataDir,
-			EmbeddedEtcdQuotaBytes:       d.Config.EmbeddedEtcdQuotaBytes,
-			MaxRequestBytes:              defaultMaxRequestBytes,
-			MaxTxnOps:                    defaultMaxTxnOps,
-			NextClusterVersionCompatible: true,
+			DataDir:                dataDir,
+			EmbeddedEtcdQuotaBytes: d.Config.EmbeddedEtcdQuotaBytes,
+			MaxRequestBytes:        defaultMaxRequestBytes,
+			MaxTxnOps:              defaultMaxTxnOps,
 		},
 	}
 	e, err := miscellaneous.StartEmbeddedEtcd(logrus.NewEntry(d.Logger), ro)

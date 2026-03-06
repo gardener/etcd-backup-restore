@@ -19,7 +19,7 @@ import (
 	"github.com/gardener/etcd-backup-restore/pkg/wrappers"
 	"github.com/gardener/etcd-backup-restore/test/utils"
 
-	"go.etcd.io/etcd/pkg/types"
+	"go.etcd.io/etcd/client/pkg/v3/types"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -86,19 +86,18 @@ var _ = Describe("Running Compactor", func() {
 			cptr = compactor.NewCompactor(store, logger, nil)
 			restoreOpts = &brtypes.RestoreOptions{
 				Config: &brtypes.RestorationConfig{
-					InitialCluster:               restoreCluster,
-					InitialClusterToken:          restoreClusterToken,
-					DataDir:                      tempDataDir,
-					TempSnapshotsDir:             tempRestorationSnapshotsDir,
-					InitialAdvertisePeerURLs:     restorePeerURLs,
-					Name:                         restoreName,
-					SkipHashCheck:                skipHashCheck,
-					MaxFetchers:                  maxFetchers,
-					MaxRequestBytes:              maxRequestBytes,
-					MaxTxnOps:                    maxTxnOps,
-					MaxCallSendMsgSize:           maxCallSendMsgSize,
-					EmbeddedEtcdQuotaBytes:       embeddedEtcdQuotaBytes,
-					NextClusterVersionCompatible: true,
+					InitialCluster:           restoreCluster,
+					InitialClusterToken:      restoreClusterToken,
+					DataDir:                  tempDataDir,
+					TempSnapshotsDir:         tempRestorationSnapshotsDir,
+					InitialAdvertisePeerURLs: restorePeerURLs,
+					Name:                     restoreName,
+					SkipHashCheck:            skipHashCheck,
+					MaxFetchers:              maxFetchers,
+					MaxRequestBytes:          maxRequestBytes,
+					MaxTxnOps:                maxTxnOps,
+					MaxCallSendMsgSize:       maxCallSendMsgSize,
+					EmbeddedEtcdQuotaBytes:   embeddedEtcdQuotaBytes,
 				},
 				ClusterURLs: clusterUrlsMap,
 				PeerURLs:    peerUrls,
