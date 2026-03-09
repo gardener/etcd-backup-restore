@@ -11,7 +11,7 @@ import (
 
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 
-	"go.etcd.io/etcd/pkg/types"
+	"go.etcd.io/etcd/client/pkg/v3/types"
 
 	_ "github.com/gardener/etcd-backup-restore/pkg/snapshot/restorer"
 
@@ -23,16 +23,15 @@ var _ = Describe("restorer types", func() {
 	var (
 		makeRestorationConfig = func(s string, b bool, i int) *brtypes.RestorationConfig {
 			return &brtypes.RestorationConfig{
-				InitialCluster:               s,
-				InitialClusterToken:          s,
-				DataDir:                      s,
-				TempSnapshotsDir:             s,
-				InitialAdvertisePeerURLs:     []string{s, s},
-				Name:                         s,
-				SkipHashCheck:                b,
-				MaxFetchers:                  uint(i),
-				EmbeddedEtcdQuotaBytes:       int64(i),
-				NextClusterVersionCompatible: true,
+				InitialCluster:           s,
+				InitialClusterToken:      s,
+				DataDir:                  s,
+				TempSnapshotsDir:         s,
+				InitialAdvertisePeerURLs: []string{s, s},
+				Name:                     s,
+				SkipHashCheck:            b,
+				MaxFetchers:              uint(i),
+				EmbeddedEtcdQuotaBytes:   int64(i),
 			}
 		}
 		makeSnap = func(s string, i int, t time.Time, b bool) *brtypes.Snapshot {

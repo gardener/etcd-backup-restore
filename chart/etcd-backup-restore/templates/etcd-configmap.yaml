@@ -37,8 +37,6 @@ data:
     # Number of committed transactions to trigger a snapshot to disk.
     snapshot-count: 75000
 
-    enable-v2: false
-
     # Raise alarms when backend size exceeds the given quota. 0 means use the
     # default quota.
     {{- if .Values.backup.etcdQuotaBytes }}
@@ -87,9 +85,6 @@ data:
     auto-compaction-retention: {{ .Values.autoCompaction.retentionLength }}
     {{- end }}
     {{- end }}
-
-    # Enable compatibility with next etcd cluster version
-    next-cluster-version-compatible: {{ .Values.backup.nextClusterVersionCompatible }}
 
 {{- if .Values.tls.etcd }}
     client-transport-security:

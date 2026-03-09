@@ -14,8 +14,8 @@ import (
 	mockfactory "github.com/gardener/etcd-backup-restore/pkg/mock/etcdutil/client"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 
-	"go.etcd.io/etcd/clientv3"
-	"go.etcd.io/etcd/etcdserver/etcdserverpb"
+	"go.etcd.io/etcd/api/v3/etcdserverpb"
+	clientv3 "go.etcd.io/etcd/client/v3"
 	"go.uber.org/mock/gomock"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -50,7 +50,6 @@ name: etcd1
 data-dir: ` + os.Getenv("ETCD_DATA_DIR") + `
 metrics: extensive
 snapshot-count: 75000
-enable-v2: false
 quota-backend-bytes: 1073741824
 listen-client-urls: http://0.0.0.0:2379
 advertise-client-urls:

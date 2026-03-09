@@ -23,8 +23,8 @@ import (
 	"github.com/gardener/etcd-backup-restore/test/utils"
 
 	"github.com/sirupsen/logrus"
-	"go.etcd.io/etcd/clientv3"
-	"go.etcd.io/etcd/pkg/types"
+	"go.etcd.io/etcd/client/pkg/v3/types"
+	clientv3 "go.etcd.io/etcd/client/v3"
 	"go.uber.org/mock/gomock"
 
 	. "github.com/gardener/etcd-backup-restore/pkg/snapshot/restorer"
@@ -97,21 +97,20 @@ var _ = Describe("Running Restorer", func() {
 			Expect(err).ShouldNot(HaveOccurred())
 			restoreOpts = brtypes.RestoreOptions{
 				Config: &brtypes.RestorationConfig{
-					DataDir:                      etcdDir,
-					TempSnapshotsDir:             tempDir,
-					InitialClusterToken:          restoreClusterToken,
-					InitialCluster:               restoreCluster,
-					Name:                         restoreName,
-					InitialAdvertisePeerURLs:     restorePeerURLs,
-					SkipHashCheck:                skipHashCheck,
-					MaxFetchers:                  maxFetchers,
-					MaxCallSendMsgSize:           maxCallSendMsgSize,
-					MaxRequestBytes:              maxRequestBytes,
-					MaxTxnOps:                    maxTxnOps,
-					EmbeddedEtcdQuotaBytes:       embeddedEtcdQuotaBytes,
-					AutoCompactionMode:           autoCompactionMode,
-					AutoCompactionRetention:      autoCompactionRetention,
-					NextClusterVersionCompatible: true,
+					DataDir:                  etcdDir,
+					TempSnapshotsDir:         tempDir,
+					InitialClusterToken:      restoreClusterToken,
+					InitialCluster:           restoreCluster,
+					Name:                     restoreName,
+					InitialAdvertisePeerURLs: restorePeerURLs,
+					SkipHashCheck:            skipHashCheck,
+					MaxFetchers:              maxFetchers,
+					MaxCallSendMsgSize:       maxCallSendMsgSize,
+					MaxRequestBytes:          maxRequestBytes,
+					MaxTxnOps:                maxTxnOps,
+					EmbeddedEtcdQuotaBytes:   embeddedEtcdQuotaBytes,
+					AutoCompactionMode:       autoCompactionMode,
+					AutoCompactionRetention:  autoCompactionRetention,
 				},
 				BaseSnapshot:  baseSnapshot,
 				DeltaSnapList: deltaSnapList,
@@ -257,27 +256,29 @@ var _ = Describe("Running Restorer", func() {
 			Expect(err).ShouldNot(HaveOccurred())
 
 			restorationConfig = &brtypes.RestorationConfig{
-				DataDir:                      etcdDir,
-				TempSnapshotsDir:             tempDir,
-				InitialClusterToken:          restoreClusterToken,
-				InitialCluster:               restoreCluster,
-				Name:                         restoreName,
-				InitialAdvertisePeerURLs:     restorePeerURLs,
-				SkipHashCheck:                skipHashCheck,
-				MaxFetchers:                  maxFetchers,
-				MaxCallSendMsgSize:           maxCallSendMsgSize,
-				MaxRequestBytes:              maxRequestBytes,
-				MaxTxnOps:                    maxTxnOps,
-				EmbeddedEtcdQuotaBytes:       embeddedEtcdQuotaBytes,
-				AutoCompactionMode:           autoCompactionMode,
-				AutoCompactionRetention:      autoCompactionRetention,
-				NextClusterVersionCompatible: true,
+				DataDir:                  etcdDir,
+				TempSnapshotsDir:         tempDir,
+				InitialClusterToken:      restoreClusterToken,
+				InitialCluster:           restoreCluster,
+				Name:                     restoreName,
+				InitialAdvertisePeerURLs: restorePeerURLs,
+				SkipHashCheck:            skipHashCheck,
+				MaxFetchers:              maxFetchers,
+				MaxCallSendMsgSize:       maxCallSendMsgSize,
+				MaxRequestBytes:          maxRequestBytes,
+				MaxTxnOps:                maxTxnOps,
+				EmbeddedEtcdQuotaBytes:   embeddedEtcdQuotaBytes,
+				AutoCompactionMode:       autoCompactionMode,
+				AutoCompactionRetention:  autoCompactionRetention,
 			}
 		})
 
 		AfterEach(func() {
-			etcd.Server.Stop()
-			etcd.Close()
+			if etcd != nil {
+				etcd.Server.Stop()
+				etcd.Close()
+				etcd = nil
+			}
 			cleanUp()
 		})
 
@@ -299,6 +300,7 @@ var _ = Describe("Running Restorer", func() {
 				Expect(err).ShouldNot(HaveOccurred())
 				etcd.Server.Stop()
 				etcd.Close()
+				etcd = nil
 
 				err = corruptEtcdDir()
 				Expect(err).ShouldNot(HaveOccurred())
@@ -346,6 +348,7 @@ var _ = Describe("Running Restorer", func() {
 				Expect(err).ShouldNot(HaveOccurred())
 				etcd.Server.Stop()
 				etcd.Close()
+				etcd = nil
 
 				err = corruptEtcdDir()
 				Expect(err).ShouldNot(HaveOccurred())
@@ -385,6 +388,7 @@ var _ = Describe("Running Restorer", func() {
 				err = utils.RunSnapshotter(logger, snapstoreConfig, deltaSnapshotPeriod, ep, "", "", ssrCtx.Done(), true, compressionConfig)
 				Expect(err).ShouldNot(HaveOccurred())
 				etcd.Close()
+				etcd = nil
 
 				err = corruptEtcdDir()
 				Expect(err).ShouldNot(HaveOccurred())
@@ -433,6 +437,7 @@ var _ = Describe("Running Restorer", func() {
 				err = utils.RunSnapshotter(logger, snapstoreConfig, deltaSnapshotPeriod, ep, "", "", ssrCtx.Done(), true, compressionConfig)
 				Expect(err).ShouldNot(HaveOccurred())
 				etcd.Close()
+				etcd = nil
 
 				baseSnapshot, deltaSnapList, err = miscellaneous.GetLatestFullSnapshotAndDeltaSnapList(store)
 				Expect(err).ShouldNot(HaveOccurred())
@@ -872,21 +877,20 @@ var _ = Describe("Running Restorer when both v1 and v2 directory structures are 
 		Expect(err).ShouldNot(HaveOccurred())
 
 		restorationConfig = &brtypes.RestorationConfig{
-			DataDir:                      etcdDataDir,
-			TempSnapshotsDir:             restoreTempDir,
-			InitialClusterToken:          restoreClusterToken,
-			InitialCluster:               restoreCluster,
-			Name:                         restoreName,
-			InitialAdvertisePeerURLs:     restorePeerURLs,
-			SkipHashCheck:                skipHashCheck,
-			MaxFetchers:                  maxFetchers,
-			MaxCallSendMsgSize:           maxCallSendMsgSize,
-			MaxRequestBytes:              maxRequestBytes,
-			MaxTxnOps:                    maxTxnOps,
-			EmbeddedEtcdQuotaBytes:       embeddedEtcdQuotaBytes,
-			AutoCompactionMode:           autoCompactionMode,
-			AutoCompactionRetention:      autoCompactionRetention,
-			NextClusterVersionCompatible: true,
+			DataDir:                  etcdDataDir,
+			TempSnapshotsDir:         restoreTempDir,
+			InitialClusterToken:      restoreClusterToken,
+			InitialCluster:           restoreCluster,
+			Name:                     restoreName,
+			InitialAdvertisePeerURLs: restorePeerURLs,
+			SkipHashCheck:            skipHashCheck,
+			MaxFetchers:              maxFetchers,
+			MaxCallSendMsgSize:       maxCallSendMsgSize,
+			MaxRequestBytes:          maxRequestBytes,
+			MaxTxnOps:                maxTxnOps,
+			EmbeddedEtcdQuotaBytes:   embeddedEtcdQuotaBytes,
+			AutoCompactionMode:       autoCompactionMode,
+			AutoCompactionRetention:  autoCompactionRetention,
 		}
 
 		resp = &utils.EtcdDataPopulationResponse{}
@@ -1149,21 +1153,20 @@ var _ = Describe("Running Restorer when base snapshot has etcd auth enabled", fu
 		Expect(err).ShouldNot(HaveOccurred())
 
 		restorationConfig = &brtypes.RestorationConfig{
-			DataDir:                      etcdDataDir,
-			TempSnapshotsDir:             restoreTempDir,
-			InitialClusterToken:          restoreClusterToken,
-			InitialCluster:               restoreCluster,
-			Name:                         restoreName,
-			InitialAdvertisePeerURLs:     restorePeerURLs,
-			SkipHashCheck:                skipHashCheck,
-			MaxFetchers:                  maxFetchers,
-			MaxCallSendMsgSize:           maxCallSendMsgSize,
-			MaxRequestBytes:              maxRequestBytes,
-			MaxTxnOps:                    maxTxnOps,
-			EmbeddedEtcdQuotaBytes:       embeddedEtcdQuotaBytes,
-			AutoCompactionMode:           autoCompactionMode,
-			AutoCompactionRetention:      autoCompactionRetention,
-			NextClusterVersionCompatible: true,
+			DataDir:                  etcdDataDir,
+			TempSnapshotsDir:         restoreTempDir,
+			InitialClusterToken:      restoreClusterToken,
+			InitialCluster:           restoreCluster,
+			Name:                     restoreName,
+			InitialAdvertisePeerURLs: restorePeerURLs,
+			SkipHashCheck:            skipHashCheck,
+			MaxFetchers:              maxFetchers,
+			MaxCallSendMsgSize:       maxCallSendMsgSize,
+			MaxRequestBytes:          maxRequestBytes,
+			MaxTxnOps:                maxTxnOps,
+			EmbeddedEtcdQuotaBytes:   embeddedEtcdQuotaBytes,
+			AutoCompactionMode:       autoCompactionMode,
+			AutoCompactionRetention:  autoCompactionRetention,
 		}
 	})
 

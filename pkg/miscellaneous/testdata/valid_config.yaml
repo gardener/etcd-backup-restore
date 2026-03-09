@@ -6,8 +6,6 @@ metrics: basic
 # Number of committed transactions to trigger a snapshot to disk.
 snapshot-count: 75000
 
-# Accept etcd V2 client requests
-enable-v2: false
 # Raise alarms when backend size exceeds the given quota. 0 means use the
 # default quota.
 quota-backend-bytes: 8589934592
@@ -79,5 +77,3 @@ initial-cluster: etcd-events-0=https://etcd-events-0.etcd-events-peer.namespace.
 auto-compaction-mode: periodic
 # auto-compaction-retention defines Auto compaction retention length for etcd.
 auto-compaction-retention: 30m
-# Enable compatibility with next etcd cluster version
-next-cluster-version-compatible: true

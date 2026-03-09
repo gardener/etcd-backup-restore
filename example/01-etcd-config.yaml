@@ -5,7 +5,6 @@ name: etcd
 data-dir: "default.etcd"
 metrics: extensive
 snapshot-count: 75000
-enable-v2: false
 quota-backend-bytes: 8589934592 # 8Gi
 listen-client-urls: http://0.0.0.0:2379
 advertise-client-urls:
@@ -20,5 +19,3 @@ initial-cluster-token: new
 initial-cluster-state: new
 auto-compaction-mode: periodic
 auto-compaction-retention: 30m
-# Enable compatibility with next etcd cluster version
-next-cluster-version-compatible: true
