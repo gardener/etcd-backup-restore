@@ -1,0 +1,26 @@
+name: PR Review Timeline
+
+on:
+  pull_request:
+    types: [opened, closed, reopened, ready_for_review, review_requested, assigned, synchronize]
+  pull_request_review:
+    types: [submitted, edited, dismissed]
+
+jobs:
+  pr-review-timeline:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: PR Review Timeline
+        uses: shreyas-s-rao/pr-review-timeline@v0.2.1
+        id: timeline
+      - name: Output Timeline JSON
+        run: |
+          echo "${{ steps.timeline.outputs.timeline-json }}" > pr_review_timeline.json
+      - name: Upload Timeline Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr-review-timeline
+          path: pr_review_timeline.json
