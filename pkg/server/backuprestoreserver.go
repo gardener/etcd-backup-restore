@@ -278,6 +278,7 @@ func (b *BackupRestoreServer) runServer(ctx context.Context, restoreOpts *brtype
 				// TODO @ishan16696: For Multi-node etcd HTTP status need to be set to `StatusServiceUnavailable` only when backup-restore is in "StateUnknown".
 				handler.SetStatus(http.StatusServiceUnavailable)
 			}
+			handler.OnStoppedLeading()
 		},
 	}
 
