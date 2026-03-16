@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"net/http"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/gardener/etcd-backup-restore/pkg/backoff"
@@ -125,7 +124,6 @@ func (b *BackupRestoreServer) startHTTPServer(initializer initializer.Initialize
 		Logger:               b.logger,
 		StopCh:               make(chan struct{}),
 		EnableProfiling:      b.config.ServerConfig.EnableProfiling,
-		ReqCh:                make(chan struct{}),
 		AckCh:                make(chan struct{}),
 		EnableTLS:            b.config.ServerConfig.TLSCertFile != "" && b.config.ServerConfig.TLSKeyFile != "",
 		ServerTLSCertFile:    b.config.ServerConfig.TLSCertFile,
@@ -195,7 +193,6 @@ func (b *BackupRestoreServer) runServer(ctx context.Context, restoreOpts *brtype
 		cp              *copier.Copier
 	)
 	backupGcStop := make(chan struct{})
-	ackCh := make(chan struct{})
 	ssrStopCh := make(chan struct{})
 	mmStopCh := make(chan struct{})
 	if runServerWithSnapshotter {
@@ -262,9 +259,9 @@ func (b *BackupRestoreServer) runServer(ctx context.Context, restoreOpts *brtype
 
 				// set "http handler" with the latest snapshotter object
 				handler.SetSnapshotter(ssr)
-				go handleSsrStopRequest(leCtx, handler, ssr, ackCh, ssrStopCh, b.logger)
+				go handleSsrStopRequest(leCtx, ssrStopCh, b.logger)
 			}
-			go b.runEtcdProbeLoopWithSnapshotter(leCtx, handler, ssr, ss, ssrStopCh, ackCh)
+			go b.runEtcdProbeLoopWithSnapshotter(leCtx, handler, ssr, ss, ssrStopCh)
 			go defragmentor.DefragDataPeriodically(leCtx, b.config.EtcdConnectionConfig, b.defragmentationSchedule, defragCallBack, b.logger)
 		},
 		OnStoppedLeading: func() {
@@ -318,10 +315,6 @@ func (b *BackupRestoreServer) runServer(ctx context.Context, restoreOpts *brtype
 	le, err := leaderelection.NewLeaderElector(b.logger, b.config.EtcdConnectionConfig, b.config.LeaderElectionConfig, leaderCallbacks, memberLeaseCallbacks, checkLeadershipFunc, promoteCallback)
 	if err != nil {
 		return err
-	}
-
-	if runServerWithSnapshotter {
-		go handleAckState(handler, ackCh)
 	}
 
 	if b.config.HealthConfig.MemberLeaseRenewalEnabled {
@@ -381,7 +374,7 @@ func (b *BackupRestoreServer) updatePeerURLIfChanged(ctx context.Context, tlsEna
 
 // runEtcdProbeLoopWithSnapshotter runs the etcd probe loop
 // for the case when backup-restore becomes leading sidecar.
-func (b *BackupRestoreServer) runEtcdProbeLoopWithSnapshotter(ctx context.Context, handler *HTTPHandler, ssr *snapshotter.Snapshotter, ss brtypes.SnapStore, ssrStopCh <-chan struct{}, ackCh chan<- struct{}) {
+func (b *BackupRestoreServer) runEtcdProbeLoopWithSnapshotter(ctx context.Context, handler *HTTPHandler, ssr *snapshotter.Snapshotter, ss brtypes.SnapStore, ssrStopCh <-chan struct{}) {
 	var (
 		err                       error
 		initialDeltaSnapshotTaken bool
@@ -435,7 +428,6 @@ func (b *BackupRestoreServer) runEtcdProbeLoopWithSnapshotter(ctx context.Contex
 				ssrStopped, err := ssr.CollectEventsSincePrevSnapshot(ssrStopCh)
 				if ssrStopped {
 					b.logger.Info("Snapshotter stopped.")
-					ackCh <- emptyStruct
 					b.logger.Info("Shutting down...")
 					return
 				}
@@ -510,7 +502,6 @@ func (b *BackupRestoreServer) runEtcdProbeLoopWithSnapshotter(ctx context.Contex
 				b.backoffConfig.Start = true
 			}
 			b.logger.Infof("Snapshotter stopped.")
-			ackCh <- emptyStruct
 
 			// Stop garbage collector
 			close(gcStopCh)
@@ -556,34 +547,13 @@ func (b *BackupRestoreServer) probeEtcd(ctx context.Context) error {
 	return nil
 }
 
-func handleAckState(handler *HTTPHandler, ackCh chan struct{}) {
-	for {
-		<-ackCh
-		if atomic.CompareAndSwapUint32(&handler.AckState, HandlerAckWaiting, HandlerAckDone) {
-			handler.AckCh <- emptyStruct
-		}
-	}
-}
-
 // handleSsrStopRequest responds to handlers request and stop interrupt.
-func handleSsrStopRequest(ctx context.Context, handler *HTTPHandler, _ *snapshotter.Snapshotter, ackCh chan<- struct{}, ssrStopCh chan<- struct{}, logger *logrus.Entry) {
+func handleSsrStopRequest(ctx context.Context, ssrStopCh chan<- struct{}, logger *logrus.Entry) {
 	logger.Info("Starting the handleSsrStopRequest handler...")
-	for {
-		var ok bool
-		select {
-		case _, ok = <-handler.ReqCh:
-		case _, ok = <-ctx.Done():
-			logger.Infof("handleSsrStopRequest: %v", ctx.Err())
-		}
 
-		ackCh <- emptyStruct
-		close(ssrStopCh)
-
-		if !ok {
-			logger.Info("Stopping handleSsrStopRequest handler...")
-			return
-		}
-	}
+	<-ctx.Done()
+	close(ssrStopCh)
+	logger.Info("Stopping handleSsrStopRequest handler...")
 }
 
 func hasPeerURLChanged(ctx context.Context, m member.Control, cli client.ClusterCloser) (bool, error) {

@@ -80,7 +80,6 @@ type HTTPHandler struct {
 	server                    *http.Server
 	Logger                    *logrus.Entry
 	HTTPHandlerMutex          *sync.Mutex
-	ReqCh                     chan struct{}
 	StopCh                    chan struct{}
 	StorageProvider           string
 	initializationStatus      string

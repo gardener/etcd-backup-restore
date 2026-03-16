@@ -277,9 +277,7 @@ func (ssr *Snapshotter) closeEtcdClient() {
 		ssr.cancelWatch()
 		ssr.cancelWatch = nil
 	}
-	if ssr.watchCh != nil {
-		ssr.watchCh = nil
-	}
+	ssr.watchCh = nil
 
 	if ssr.etcdWatchClient != nil {
 		if err := (*ssr.etcdWatchClient).Close(); err != nil {
