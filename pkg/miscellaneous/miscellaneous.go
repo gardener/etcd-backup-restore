@@ -195,7 +195,7 @@ func (e *EmbeddedEtcd) Close() {
 		}
 	}
 
-	e.Etcd.Server.Stop()
+	e.Server.Stop()
 	e.Etcd.Close()
 }
 

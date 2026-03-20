@@ -94,7 +94,7 @@ func (b bucketHandle) UserProject(projectID string) BucketHandle {
 
 // SetPrefix ...
 func (bi bucketIterator) SetPrefix(s string) {
-	bi.BucketIterator.Prefix = s
+	bi.Prefix = s
 }
 
 // ACL ...
