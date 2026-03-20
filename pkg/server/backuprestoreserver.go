@@ -259,7 +259,7 @@ func (b *BackupRestoreServer) runServer(ctx context.Context, restoreOpts *brtype
 
 				// set "http handler" with the latest snapshotter object
 				handler.SetSnapshotter(ssr)
-				go handleSsrStopRequest(leCtx, ssrStopCh, b.logger)
+				go handleSsrStopRequest(leCtx, b.logger, ssrStopCh)
 			}
 			go b.runEtcdProbeLoopWithSnapshotter(leCtx, handler, ssr, ss, ssrStopCh)
 			go defragmentor.DefragDataPeriodically(leCtx, b.config.EtcdConnectionConfig, b.defragmentationSchedule, defragCallBack, b.logger)
@@ -548,7 +548,7 @@ func (b *BackupRestoreServer) probeEtcd(ctx context.Context) error {
 }
 
 // handleSsrStopRequest responds to handlers request and stop interrupt.
-func handleSsrStopRequest(ctx context.Context, ssrStopCh chan<- struct{}, logger *logrus.Entry) {
+func handleSsrStopRequest(ctx context.Context, logger *logrus.Entry, ssrStopCh chan<- struct{}) {
 	logger.Info("Starting the handleSsrStopRequest handler...")
 
 	<-ctx.Done()
