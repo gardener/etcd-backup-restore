@@ -56,14 +56,14 @@ $(GINKGO): go.mod
 	go build -o $(GINKGO) github.com/onsi/ginkgo/v2/ginkgo
 
 $(KUBECTL): $(call tool_version_file,$(KUBECTL),$(KUBECTL_VERSION))
-	curl -Lo $(KUBECTL) https://dl.k8s.io/release/$(KUBECTL_VERSION)/bin/$(SYSTEM_NAME)/$(SYSTEM_ARCH)/kubectl
+	curl -fLo $(KUBECTL) --retry 5 --retry-delay 5 https://dl.k8s.io/release/$(KUBECTL_VERSION)/bin/$(SYSTEM_NAME)/$(SYSTEM_ARCH)/kubectl
 	chmod +x $(KUBECTL)
 
 $(HELM): $(call tool_version_file,$(HELM),$(HELM_VERSION))
 	curl -sSfL https://raw.githubusercontent.com/helm/helm/master/scripts/get-helm-3 | HELM_INSTALL_DIR=$(TOOLS_BIN_DIR) USE_SUDO=false bash -s -- --version $(HELM_VERSION)
 
 $(KIND): $(call tool_version_file,$(KIND),$(KIND_VERSION))
-	curl -L -o $(KIND) https://kind.sigs.k8s.io/dl/$(KIND_VERSION)/kind-$(SYSTEM_NAME)-$(SYSTEM_ARCH)
+	curl -fLo $(KIND) --retry 5 --retry-delay 5 https://kind.sigs.k8s.io/dl/$(KIND_VERSION)/kind-$(SYSTEM_NAME)-$(SYSTEM_ARCH)
 	chmod +x $(KIND)
 
 $(GOIMPORTS):
