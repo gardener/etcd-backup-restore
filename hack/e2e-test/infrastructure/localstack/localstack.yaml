@@ -24,7 +24,7 @@ spec:
               value: "1"
             - name: SERVICES
               value: s3
-          image: localstack/localstack:s3-latest
+          image: localstack/localstack:s3-community-archive
           imagePullPolicy: IfNotPresent
           name: localstack-service
           ports:
