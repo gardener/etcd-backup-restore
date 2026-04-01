@@ -324,8 +324,8 @@ var _ = Describe("EtcdUtil Tests", func() {
 
 		AfterEach(func() {
 			if tempConfigFile != "" {
-				os.Remove(tempConfigFile)
-				os.Unsetenv("ETCD_CONF")
+				Expect(os.Remove(tempConfigFile)).To(Succeed())
+				Expect(os.Unsetenv("ETCD_CONF")).To(Succeed())
 				tempConfigFile = ""
 			}
 		})
