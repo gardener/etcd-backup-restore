@@ -333,10 +333,10 @@ var _ = Describe("EtcdUtil Tests", func() {
 		Context("when UseServiceEndpoints is false", func() {
 			It("should use Endpoints from config", func() {
 				etcdClient, err := etcdutil.GetTLSClientForEtcd(&cfg, &client.Options{UseServiceEndpoints: false})
+				defer etcdClient.Close()
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(etcdClient).ShouldNot(BeNil())
 				Expect(etcdClient.Endpoints()).Should(Equal([]string{"http://default:2379"}))
-				etcdClient.Close()
 			})
 		})
 
@@ -345,10 +345,10 @@ var _ = Describe("EtcdUtil Tests", func() {
 				It("should use ServiceEndpoints", func() {
 					cfg.ServiceEndpoints = []string{"http://service:2379"}
 					etcdClient, err := etcdutil.GetTLSClientForEtcd(&cfg, &client.Options{UseServiceEndpoints: true})
+					defer etcdClient.Close()
 					Expect(err).ShouldNot(HaveOccurred())
 					Expect(etcdClient).ShouldNot(BeNil())
 					Expect(etcdClient.Endpoints()).Should(Equal([]string{"http://service:2379"}))
-					etcdClient.Close()
 				})
 			})
 
@@ -374,21 +374,21 @@ advertise-client-urls:
     - http://member-3:2379
 `)
 						tempFile, err := os.CreateTemp("", "etcd-config-*.yaml")
+						defer tempFile.Close()
 						Expect(err).ShouldNot(HaveOccurred())
 						tempConfigFile = tempFile.Name()
 						_, err = tempFile.Write(configContent)
 						Expect(err).ShouldNot(HaveOccurred())
-						tempFile.Close()
 
 						// Set environment variable to point to temp config file
 						os.Setenv("ETCD_CONF", tempConfigFile)
 
 						cfg.ServiceEndpoints = []string{}
 						etcdClient, err := etcdutil.GetTLSClientForEtcd(&cfg, &client.Options{UseServiceEndpoints: true})
+						defer etcdClient.Close()
 						Expect(err).ShouldNot(HaveOccurred())
 						Expect(etcdClient).ShouldNot(BeNil())
 						Expect(etcdClient.Endpoints()).Should(ConsistOf("http://member-1:2379", "http://member-2:2379", "http://member-3:2379"))
-						etcdClient.Close()
 					})
 				})
 
