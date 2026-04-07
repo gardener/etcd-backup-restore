@@ -67,7 +67,7 @@ func NewInitializeCommand(_ context.Context) *cobra.Command {
 			if err != nil {
 				logger.Fatalf("failed to create initializer object: %v", err)
 			}
-			if err := etcdInitializer.Initialize(mode, opts.validatorOptions.FailBelowRevision); err != nil {
+			if err := etcdInitializer.Initialize(mode); err != nil {
 				logger.Fatalf("initializer failed. %v", err)
 			}
 		},

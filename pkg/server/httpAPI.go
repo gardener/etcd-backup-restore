@@ -231,20 +231,6 @@ func (h *HTTPHandler) serveInitialize(rw http.ResponseWriter, req *http.Request)
 
 			h.SetStatus(http.StatusServiceUnavailable)
 
-			failBelowRevisionStr := req.URL.Query().Get("failbelowrevision")
-			h.Logger.Infof("Validation failBelowRevision: %s", failBelowRevisionStr)
-			var failBelowRevision int64
-			if len(failBelowRevisionStr) != 0 {
-				var err error
-				failBelowRevision, err = strconv.ParseInt(failBelowRevisionStr, 10, 64)
-				if err != nil {
-					h.initializationStatusMutex.Lock()
-					defer h.initializationStatusMutex.Unlock()
-					h.Logger.Errorf("Failed initialization due wrong parameter value `failbelowrevision`: %v", err)
-					h.initializationStatus = initializationStatusFailed
-					return
-				}
-			}
 			switch modeVal := req.URL.Query().Get("mode"); modeVal {
 			case string(validator.Full):
 				mode = validator.Full
@@ -254,7 +240,7 @@ func (h *HTTPHandler) serveInitialize(rw http.ResponseWriter, req *http.Request)
 				mode = validator.Full
 			}
 			h.Logger.Infof("Validation mode: %s", mode)
-			err := h.Initializer.Initialize(mode, failBelowRevision)
+			err := h.Initializer.Initialize(mode)
 			h.initializationStatusMutex.Lock()
 			defer h.initializationStatusMutex.Unlock()
 			if err != nil {
