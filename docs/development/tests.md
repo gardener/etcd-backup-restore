@@ -48,6 +48,10 @@ Currently, the tests can be run using the following cloud providers:
 
 #### Running the e2e tests with the emulators
 
+> **_NOTE:_** Running the AWS e2e tests requires a `LOCALSTACK_AUTH_TOKEN` environment variable to be set.
+> The project has a [LocalStack for Open Source](https://localstack.cloud/open-source) license. Ask a
+> maintainer for the token, or apply for your own.
+
 ##### On a Kind Cluster
 
 To run the e2e tests with the emulators, run the following command:
