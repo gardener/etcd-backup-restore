@@ -21,7 +21,7 @@ jobs:
       mode: release
 
   release-to-github-and-bump:
-    uses: gardener/cc-utils/.github/workflows/release.yaml@master
+    uses: gardener/cc-utils/.github/workflows/release.yaml@v1
     needs:
       - build
     secrets: inherit
