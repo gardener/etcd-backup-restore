@@ -50,7 +50,9 @@ Currently, the tests can be run using the following cloud providers:
 
 > **_NOTE:_** Running the AWS e2e tests requires a `LOCALSTACK_AUTH_TOKEN` environment variable to be set.
 > The project has a [LocalStack for Open Source](https://localstack.cloud/open-source) license. Ask a
-> maintainer for the token, or apply for your own.
+> maintainer for the token, or apply for your own. Alternatively, the frozen community archive image
+> `localstack/localstack:s3-community-archive` can be used without a token, but it will not receive
+> updates or security patches.
 
 ##### On a Kind Cluster
 
