@@ -12,6 +12,7 @@ on:
 jobs:
   build:
     uses: ./.github/workflows/build.yaml
+    secrets: inherit
     permissions:
       contents: read
       id-token: write
@@ -31,5 +32,4 @@ jobs:
     with:
       release-commit-target: branch
       next-version: ${{ inputs.next-version }}
-      next-version-callback-action-path:
       slack-channel-id: C0177NLL8V9 # #gardener-etcd
