@@ -15,6 +15,7 @@ import (
 
 	"github.com/gardener/etcd-backup-restore/pkg/compressor"
 	"github.com/gardener/etcd-backup-restore/pkg/etcdutil"
+	"github.com/gardener/etcd-backup-restore/pkg/etcdutil/client"
 	mockfactory "github.com/gardener/etcd-backup-restore/pkg/mock/etcdutil/client"
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
@@ -302,6 +303,107 @@ var _ = Describe("EtcdUtil Tests", func() {
 
 				err = etcdutil.DefragmentData(testCtx, clientMaintenance, client, dummyClientEndpoints, mockTimeout, logger)
 				Expect(err).ShouldNot(HaveOccurred())
+			})
+		})
+	})
+
+	Describe("UseServiceEndpoints option", func() {
+		var (
+			cfg            brtypes.EtcdConnectionConfig
+			tempConfigFile string
+		)
+
+		BeforeEach(func() {
+			cfg = brtypes.EtcdConnectionConfig{
+				Endpoints:          []string{"http://default:2379"},
+				ServiceEndpoints:   []string{},
+				InsecureTransport:  true,
+				InsecureSkipVerify: false,
+			}
+		})
+
+		AfterEach(func() {
+			if tempConfigFile != "" {
+				Expect(os.Remove(tempConfigFile)).To(Succeed())
+				Expect(os.Unsetenv("ETCD_CONF")).To(Succeed())
+				tempConfigFile = ""
+			}
+		})
+
+		Context("when UseServiceEndpoints is false", func() {
+			It("should use Endpoints from config", func() {
+				etcdClient, err := etcdutil.GetTLSClientForEtcd(&cfg, &client.Options{UseServiceEndpoints: false})
+				Expect(err).ShouldNot(HaveOccurred())
+				defer etcdClient.Close()
+				Expect(etcdClient).ShouldNot(BeNil())
+				Expect(etcdClient.Endpoints()).Should(Equal([]string{"http://default:2379"}))
+			})
+		})
+
+		Context("when UseServiceEndpoints is true", func() {
+			Context("and ServiceEndpoints are provided", func() {
+				It("should use ServiceEndpoints", func() {
+					cfg.ServiceEndpoints = []string{"http://service:2379"}
+					etcdClient, err := etcdutil.GetTLSClientForEtcd(&cfg, &client.Options{UseServiceEndpoints: true})
+					Expect(err).ShouldNot(HaveOccurred())
+					defer etcdClient.Close()
+					Expect(etcdClient).ShouldNot(BeNil())
+					Expect(etcdClient.Endpoints()).Should(Equal([]string{"http://service:2379"}))
+				})
+			})
+
+			Context("and ServiceEndpoints are empty", func() {
+				Context("and config file exists with member client URLs", func() {
+					It("should use endpoints from config file", func() {
+						// Create a temporary config file with proper format
+						configContent := []byte(`name: member-1
+initial-cluster: member-1=http://member-1:2380,member-2=http://member-2:2380,member-3=http://member-3:2380
+initial-advertise-peer-urls:
+  member-1:
+    - http://member-1:2380
+  member-2:
+    - http://member-2:2380
+  member-3:
+    - http://member-3:2380
+advertise-client-urls:
+  member-1:
+    - http://member-1:2379
+  member-2:
+    - http://member-2:2379
+  member-3:
+    - http://member-3:2379
+`)
+						tempFile, err := os.CreateTemp("", "etcd-config-*.yaml")
+						Expect(err).ShouldNot(HaveOccurred())
+						defer tempFile.Close()
+						tempConfigFile = tempFile.Name()
+						_, err = tempFile.Write(configContent)
+						Expect(err).ShouldNot(HaveOccurred())
+
+						// Set environment variable to point to temp config file
+						os.Setenv("ETCD_CONF", tempConfigFile)
+
+						cfg.ServiceEndpoints = []string{}
+						etcdClient, err := etcdutil.GetTLSClientForEtcd(&cfg, &client.Options{UseServiceEndpoints: true})
+						Expect(err).ShouldNot(HaveOccurred())
+						defer etcdClient.Close()
+						Expect(etcdClient).ShouldNot(BeNil())
+						Expect(etcdClient.Endpoints()).Should(ConsistOf("http://member-1:2379", "http://member-2:2379", "http://member-3:2379"))
+					})
+				})
+
+				Context("and config file is missing", func() {
+					It("should fallback to Endpoints", func() {
+						// Set invalid config file path
+						os.Setenv("ETCD_CONF", "/nonexistent/path/config.yaml")
+
+						cfg.ServiceEndpoints = []string{}
+						_, err := etcdutil.GetTLSClientForEtcd(&cfg, &client.Options{UseServiceEndpoints: true})
+						// Should fail because config file doesn't exist
+						Expect(err).Should(HaveOccurred())
+						Expect(err.Error()).Should(ContainSubstring("failed to get etcd endpoints from config file"))
+					})
+				})
 			})
 		})
 	})
