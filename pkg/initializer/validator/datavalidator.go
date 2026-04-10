@@ -59,8 +59,8 @@ func (d *DataValidator) snapDir() string { return filepath.Join(d.memberDir(), "
 func (d *DataValidator) backendPath() string { return filepath.Join(d.snapDir(), "db") }
 
 // Validate performs the steps required to validate data for Etcd instance.
-func (d *DataValidator) Validate(mode Mode, failBelowRevision int64) (DataDirStatus, error) {
-	status, err := d.sanityCheck(failBelowRevision)
+func (d *DataValidator) Validate(mode Mode) (DataDirStatus, error) {
+	status, err := d.sanityCheck()
 	if status != DataDirectoryValid {
 		return d.checkStatus(status, err)
 	}
@@ -81,7 +81,7 @@ func (d *DataValidator) Validate(mode Mode, failBelowRevision int64) (DataDirSta
 	return DataDirectoryValid, nil
 }
 
-func (d *DataValidator) sanityCheck(failBelowRevision int64) (DataDirStatus, error) {
+func (d *DataValidator) sanityCheck() (DataDirStatus, error) {
 	mntDataDir := path.Dir(d.Config.DataDir)
 	path := mntDataDir + "/" + safeGuard
 	namespace := os.Getenv(podNamespace)
@@ -162,7 +162,7 @@ func (d *DataValidator) sanityCheck(failBelowRevision int64) (DataDirStatus, err
 	}
 
 	d.Logger.Info("Checking for etcd revision consistency...")
-	etcdRevisionStatus, latestSnapshotRevision, err := d.checkEtcdDataRevisionConsistency(etcdRevision, failBelowRevision)
+	etcdRevisionStatus, latestSnapshotRevision, err := d.checkEtcdDataRevisionConsistency(etcdRevision)
 
 	// if etcd revision is inconsistent with latest snapshot revision then
 	//   check the etcd revision consistency by starting an embedded etcd since the WALs file can have uncommited data which it was unable to flush to Bolt DB
@@ -318,8 +318,8 @@ func verifyDB(path string) error {
 }
 
 // checkEtcdDataRevisionConsistency compares the latest revision of the etcd db file and the latest snapshot revision to verify that the etcd revision is not lesser than snapshot revision.
-// Return DataDirStatus indicating whether it is due to failBelowRevision or latest snapshot revision for snapstore and also return the latest snapshot revision.
-func (d *DataValidator) checkEtcdDataRevisionConsistency(etcdRevision, failBelowRevision int64) (DataDirStatus, int64, error) {
+// Return DataDirStatus and latest snapshot revision.
+func (d *DataValidator) checkEtcdDataRevisionConsistency(etcdRevision int64) (DataDirStatus, int64, error) {
 	var latestSnapshotRevision int64
 	latestSnapshotRevision = 0
 
@@ -338,10 +338,6 @@ func (d *DataValidator) checkEtcdDataRevisionConsistency(etcdRevision, failBelow
 		latestSnapshotRevision = fullSnap.LastRevision
 	} else {
 		d.Logger.Infof("No snapshot found.")
-		if etcdRevision < failBelowRevision {
-			d.Logger.Infof("current etcd revision (%d) is less than fail below revision (%d): possible data loss", etcdRevision, failBelowRevision)
-			return FailBelowRevisionConsistencyError, latestSnapshotRevision, nil
-		}
 		return DataDirectoryValid, latestSnapshotRevision, nil
 	}
 

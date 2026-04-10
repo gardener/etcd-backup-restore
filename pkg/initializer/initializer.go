@@ -40,7 +40,7 @@ const (
 //   - Check if Latest snapshot available.
 //   - Try to perform an Etcd data restoration from the latest snapshot.
 //   - No snapshots are available, start etcd as a fresh installation.
-func (e *EtcdInitializer) Initialize(mode validator.Mode, failBelowRevision int64) error {
+func (e *EtcdInitializer) Initialize(mode validator.Mode) error {
 	logger := e.Logger.WithField("actor", "initializer")
 	metrics.CurrentClusterSize.With(prometheus.Labels{}).Set(float64(e.Validator.OriginalClusterSize))
 	start := time.Now()
@@ -80,7 +80,7 @@ func (e *EtcdInitializer) Initialize(mode validator.Mode, failBelowRevision int6
 		}
 	}
 
-	dataDirStatus, err := e.Validator.Validate(mode, failBelowRevision)
+	dataDirStatus, err := e.Validator.Validate(mode)
 	if dataDirStatus == validator.WrongVolumeMounted {
 		metrics.ValidationDurationSeconds.With(prometheus.Labels{metrics.LabelSucceeded: metrics.ValueSucceededFalse}).Observe(time.Since(start).Seconds())
 		return fmt.Errorf("won't initialize ETCD because wrong ETCD volume is mounted: %v", err)
@@ -94,11 +94,6 @@ func (e *EtcdInitializer) Initialize(mode validator.Mode, failBelowRevision int6
 	if dataDirStatus == validator.DataDirectoryStatusUnknown {
 		metrics.ValidationDurationSeconds.With(prometheus.Labels{metrics.LabelSucceeded: metrics.ValueSucceededFalse}).Observe(time.Since(start).Seconds())
 		return fmt.Errorf("error while initializing: %v", err)
-	}
-
-	if dataDirStatus == validator.FailBelowRevisionConsistencyError {
-		metrics.ValidationDurationSeconds.With(prometheus.Labels{metrics.LabelSucceeded: metrics.ValueSucceededFalse}).Observe(time.Since(start).Seconds())
-		return fmt.Errorf("failed to initialize since fail below revision check failed")
 	}
 
 	metrics.ValidationDurationSeconds.With(prometheus.Labels{metrics.LabelSucceeded: metrics.ValueSucceededTrue}).Observe(time.Since(start).Seconds())

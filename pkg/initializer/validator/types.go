@@ -35,8 +35,6 @@ const (
 	DataDirStatusInvalidInMultiNode
 	// RevisionConsistencyError indicates current etcd revision is inconsistent with latest snapshot revision.
 	RevisionConsistencyError
-	// FailBelowRevisionConsistencyError indicates the current etcd revision is inconsistent with failBelowRevision.
-	FailBelowRevisionConsistencyError
 	// FailToOpenBoltDBError indicates that backup-restore is unable to open boltDB as it is failed to acquire lock over database.
 	FailToOpenBoltDBError
 )
@@ -77,5 +75,5 @@ type DataValidator struct {
 
 // Validator is the interface for data validation actions.
 type Validator interface {
-	Validate(Mode, int64) error
+	Validate(Mode) error
 }

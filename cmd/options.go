@@ -186,8 +186,7 @@ func (c *restorerOptions) complete() {
 }
 
 type validatorOptions struct {
-	ValidationMode    string `json:"validationMode,omitempty"`
-	FailBelowRevision int64  `json:"experimentalFailBelowRevision,omitempty"`
+	ValidationMode string `json:"validationMode,omitempty"`
 }
 
 // newValidatorOptions returns the validation config.
@@ -200,7 +199,6 @@ func newValidatorOptions() *validatorOptions {
 // AddFlags adds the flags to flagset.
 func (c *validatorOptions) addFlags(fs *flag.FlagSet) {
 	fs.StringVar(&c.ValidationMode, "validation-mode", string(c.ValidationMode), "mode to do data initialization[full/sanity]")
-	fs.Int64Var(&c.FailBelowRevision, "experimental-fail-below-revision", c.FailBelowRevision, "minimum required etcd revision, below which validation fails")
 }
 
 // Validate validates the config.

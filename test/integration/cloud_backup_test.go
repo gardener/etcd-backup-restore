@@ -243,7 +243,7 @@ auto-compaction-retention: 30m`
 					Logger:    logger,
 					ZapLogger: zapLogger,
 				}
-				dataDirStatus, err := dataValidator.Validate(validator.Full, 0)
+				dataDirStatus, err := dataValidator.Validate(validator.Full)
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(dataDirStatus).Should(Equal(validator.DataDirStatus(validator.DataDirectoryValid)))
 			})
@@ -278,7 +278,7 @@ auto-compaction-retention: 30m`
 					Logger:    logger,
 					ZapLogger: zapLogger,
 				}
-				dataDirStatus, err := dataValidator.Validate(validator.Full, 0)
+				dataDirStatus, err := dataValidator.Validate(validator.Full)
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(dataDirStatus).Should(SatisfyAny(Equal(validator.DataDirStatus(validator.DataDirectoryCorrupt)), Equal(validator.DataDirStatus(validator.RevisionConsistencyError))))
 			})
