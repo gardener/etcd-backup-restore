@@ -36,7 +36,6 @@ const (
 	envStoreCredentials          = "GOOGLE_APPLICATION_CREDENTIALS" // #nosec G101 -- This is not a hardcoded password, but only the environment variable to the credentials.
 	envSourceStoreCredentials    = "SOURCE_GOOGLE_APPLICATION_CREDENTIALS"
 	envGoogleStorageEmulatorHost = "STORAGE_EMULATOR_HOST"
-	fileNameStorageAPIEndpoint   = "storageAPIEndpoint"
 	// serviceAccountCredentialType is the type of the credentials contained in the serviceaccount.json file.
 	serviceAccountCredentialType = "service_account"
 	// externalAccountCredentialType is the type of credentials contained in the credentialsConfig file.
@@ -83,21 +82,8 @@ func NewGCSSnapStore(config *brtypes.SnapstoreConfig) (*GCSSnapStore, error) {
 	if err := validateGCSCredential(config); err != nil {
 		return nil, err
 	}
-	// TODO: @renormalize support for passing Endpoint through the credential file must be removed in v0.42.0.
-	endpoint, err := getGCSStorageAPIEndpointFromFile(config)
-	if err != nil {
-		return nil, err
-	}
-	if endpoint != "" {
-		logrus.Warnf("Passing endpoint override through the credential file is now deprecated. Please use the `--store-endpoint-override` flag instead.")
-	}
 
-	// endpoint override specified as a CLI flag takes precedence over configuration passed in the credential file.
-	if config.EndpointOverride != "" {
-		endpoint = config.EndpointOverride
-	}
-
-	opts, err := configureClientOptions(config, endpoint)
+	opts, err := configureClientOptions(config, config.EndpointOverride)
 	if err != nil {
 		return nil, fmt.Errorf("failed to configure client options for GCS client with error: %w", err)
 	}
@@ -141,22 +127,6 @@ func configureClientOptions(config *brtypes.SnapstoreConfig, endpoint string) ([
 	}
 
 	return opts, nil
-}
-
-func getGCSStorageAPIEndpointFromFile(config *brtypes.SnapstoreConfig) (string, error) {
-	if gcsApplicationCredentialsPath, isSet := os.LookupEnv(getEnvPrefixString(config) + envStoreCredentials); isSet {
-		storageAPIEndpointFilePath := path.Join(path.Dir(gcsApplicationCredentialsPath), fileNameStorageAPIEndpoint)
-		if _, err := os.Stat(storageAPIEndpointFilePath); err != nil {
-			// if the file does not exist, then there is no override for the storage API endpoint
-			return "", nil
-		}
-		endpoint, err := os.ReadFile(storageAPIEndpointFilePath) // #nosec G304 -- this is a trusted file, obtained from mounted secret.
-		if err != nil {
-			return "", fmt.Errorf("error getting storage API endpoint from %v", storageAPIEndpointFilePath)
-		}
-		return string(endpoint), nil
-	}
-	return "", nil
 }
 
 // NewGCSSnapStoreFromClient create new GCSSnapStore from shared configuration with specified bucket.
