@@ -64,7 +64,29 @@ type advertiseURLsConfig struct {
 	InitialAdvertisePeerURLs map[string][]string `json:"initial-advertise-peer-urls"`
 }
 
-// GetLatestFullSnapshotAndDeltaSnapList returns the latest snapshot
+// GetNLatestFullSnapshots returns the latest N full snapshots from the store.
+// N must be greater than 0.
+func GetNLatestFullSnapshots(store brtypes.SnapStore, n int) (brtypes.SnapList, error) {
+	if n <= 0 {
+		return nil, fmt.Errorf("invalid value for n: %d, n must be greater than 0", n)
+	}
+
+	snapList, err := store.List(false)
+	if err != nil {
+		return nil, err
+	}
+
+	var fullSnapshotList brtypes.SnapList
+	for index := len(snapList); index > 0 && len(fullSnapshotList) < n; index-- {
+		if snapList[index-1].Kind == brtypes.SnapshotKindFull {
+			fullSnapshotList = append(fullSnapshotList, snapList[index-1])
+		}
+	}
+
+	return fullSnapshotList, nil
+}
+
+// GetLatestFullSnapshotAndDeltaSnapList returns the latest snapshot.
 func GetLatestFullSnapshotAndDeltaSnapList(store brtypes.SnapStore) (*brtypes.Snapshot, brtypes.SnapList, error) {
 	var (
 		fullSnapshot  *brtypes.Snapshot
