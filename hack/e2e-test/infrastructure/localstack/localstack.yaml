@@ -24,7 +24,12 @@ spec:
               value: "1"
             - name: SERVICES
               value: s3
-          image: localstack/localstack:s3-latest
+            - name: LOCALSTACK_AUTH_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: localstack-auth
+                  key: auth-token
+          image: localstack/localstack:stable
           imagePullPolicy: IfNotPresent
           name: localstack-service
           ports:
