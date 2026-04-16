@@ -26,7 +26,7 @@ const (
 	ValueRestoreSingleNode = "single_node"
 	// LabelKind is a metrics label indicates kind of snapshot associated with metric.
 	LabelKind = "kind"
-	// LabelError is a metric error to indicate error occured.
+	// LabelError is a metric error to indicate error occurred.
 	LabelError = "error"
 	// LabelRestorationKind metric label indicates kind of restoration associated with metric.
 	LabelRestorationKind = "restore"
