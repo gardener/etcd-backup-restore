@@ -37,7 +37,7 @@ type Heartbeat struct {
 	heartbeatTimer *time.Timer
 	etcdConfig     *brtypes.EtcdConnectionConfig
 	metadata       map[string]string // metadata is currently added as annotations to the k8s lease object
-	podName        string
+	memberName     string
 	podNamespace   string
 }
 
@@ -61,11 +61,19 @@ func NewHeartbeat(logger *logrus.Entry, etcdConfig *brtypes.EtcdConnectionConfig
 	if err != nil {
 		logger.Fatalf("POD_NAMESPACE env var not present: %v", err)
 	}
+
+	configFile := miscellaneous.GetConfigFilePath()
+	prefix, err := miscellaneous.GetMemberNamePrefix(configFile)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read member name prefix: %w", err)
+	}
+	memberName = miscellaneous.ComputeMemberName(prefix, memberName)
+
 	return &Heartbeat{
 		logger:       logger.WithField("actor", "heartbeat"),
 		etcdConfig:   etcdConfig,
 		k8sClient:    clientSet,
-		podName:      memberName,
+		memberName:   memberName,
 		podNamespace: namespace,
 		metadata:     metadata,
 	}, nil
@@ -86,7 +94,7 @@ func (hb *Heartbeat) RenewMemberLease(ctx context.Context) error {
 	memberLease := &v1.Lease{}
 	err := hb.k8sClient.Get(ctx, client.ObjectKey{
 		Namespace: hb.podNamespace,
-		Name:      hb.podName,
+		Name:      hb.memberName,
 	}, memberLease)
 	if err != nil {
 		return &errors.EtcdError{
