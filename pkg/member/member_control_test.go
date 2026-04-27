@@ -28,9 +28,11 @@ var _ = Describe("Membercontrol", func() {
 		ctrl                 *gomock.Controller
 		factory              *mockfactory.MockFactory
 		cl                   *mockfactory.MockClusterCloser
+		memberNamePrefix     string
 	)
 
 	BeforeEach(func() {
+		memberNamePrefix = ""
 		etcdConnectionConfig = brtypes.NewEtcdConnectionConfig()
 		etcdConnectionConfig.Endpoints = []string{etcd.Clients[0].Addr().String()}
 		etcdConnectionConfig.ConnectionTimeout.Duration = 30 * time.Second
@@ -43,6 +45,15 @@ var _ = Describe("Membercontrol", func() {
 		ctrl = gomock.NewController(GinkgoT())
 		factory = mockfactory.NewMockFactory(ctrl)
 		cl = mockfactory.NewMockClusterCloser(ctrl)
+	})
+
+	JustBeforeEach(func() {
+		urlKey := podName
+		prefixLine := ""
+		if memberNamePrefix != "" {
+			urlKey = memberNamePrefix + "-" + podName
+			prefixLine = "\nmember-name-prefix: " + memberNamePrefix
+		}
 
 		outfile := "/tmp/etcd.conf.yaml"
 		etcdConfigYaml := `# Human-readable name for this member.
@@ -53,21 +64,20 @@ snapshot-count: 75000
 quota-backend-bytes: 1073741824
 listen-client-urls: http://0.0.0.0:2379
 advertise-client-urls:
-  ` + podName + `:
+  ` + urlKey + `:
     - http://` + etcd.Clients[0].Addr().String() + `
 initial-advertise-peer-urls:
-  ` + podName + `:
+  ` + urlKey + `:
     - http://` + etcd.Peers[0].Addr().String() + `
 initial-cluster: etcd1=http://0.0.0.0:2380
 initial-cluster-token: new
 initial-cluster-state: new
 auto-compaction-mode: periodic
-auto-compaction-retention: 30m`
+auto-compaction-retention: 30m` + prefixLine
 
 		err := os.WriteFile(outfile, []byte(etcdConfigYaml), 0755)
 		Expect(err).ShouldNot(HaveOccurred())
 		os.Setenv("ETCD_CONF", outfile)
-
 	})
 
 	AfterEach(func() {
@@ -109,15 +119,24 @@ auto-compaction-retention: 30m`
 		})
 		Context("If member is not part of a cluster", func() {
 			It("Should return false", func() {
-				podName := "default-0"
-				os.Setenv("POD_NAME", podName)
+				os.Setenv("POD_NAME", "default-0")
 
 				mem := member.NewMemberControl(etcdConnectionConfig)
 				present, err := mem.IsMemberInCluster(context.TODO())
 
 				Expect(present).To(BeFalse())
 				Expect(err).To(BeNil())
-				_ = os.Unsetenv("POD_NAME")
+			})
+		})
+		Context("If member-name-prefix is set in config", func() {
+			BeforeEach(func() {
+				memberNamePrefix = "myprefix"
+			})
+			It("should apply the prefix to POD_NAME and use it for the member lookup", func() {
+				mem := member.NewMemberControl(etcdConnectionConfig)
+				present, err := mem.IsMemberInCluster(context.TODO())
+				Expect(present).To(BeFalse())
+				Expect(err).To(BeNil())
 			})
 		})
 	})
@@ -129,6 +148,8 @@ auto-compaction-retention: 30m`
 		)
 		BeforeEach(func() {
 			factory.EXPECT().NewCluster().Return(cl, nil)
+		})
+		JustBeforeEach(func() {
 			m = member.NewMemberControl(etcdConnectionConfig)
 		})
 
@@ -195,19 +216,17 @@ auto-compaction-retention: 30m`
 		var (
 			m member.Control
 		)
-		BeforeEach(func() {
+		JustBeforeEach(func() {
 			m = member.NewMemberControl(etcdConnectionConfig)
 		})
 		Context("When cluster is up and member is not part of the list", func() {
 			It("should return true", func() {
-				podName := "default-0"
-				os.Setenv("POD_NAME", podName)
+				os.Setenv("POD_NAME", "default-0")
 				m = member.NewMemberControl(etcdConnectionConfig)
 
 				isScaleUp, err := m.IsClusterScaledUp(testCtx)
 				Expect(isScaleUp).Should(BeTrue())
 				Expect(err).ShouldNot(HaveOccurred())
-				_ = os.Unsetenv("POD_NAME")
 			})
 		})
 
