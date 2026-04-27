@@ -64,6 +64,43 @@ type advertiseURLsConfig struct {
 	InitialAdvertisePeerURLs map[string][]string `json:"initial-advertise-peer-urls"`
 }
 
+// GetMemberNamePrefix reads the member-name-prefix from the etcd config file.
+func GetMemberNamePrefix(configFile string) (string, error) {
+	config, err := ReadConfigFileAsMap(configFile)
+	if err != nil {
+		return "", fmt.Errorf("failed to read etcd config file %q: %w", configFile, err)
+	}
+	if prefix, ok := config["member-name-prefix"]; ok {
+		if p, ok := prefix.(string); ok {
+			return p, nil
+		}
+	}
+	return "", nil
+}
+
+// ComputeMemberName constructs the member name from an optional prefix and pod name.
+// If prefix is non-empty, the member name is "<prefix>-<podName>", otherwise it is just <podName>.
+func ComputeMemberName(memberNamePrefix, podName string) string {
+	if memberNamePrefix != "" {
+		return memberNamePrefix + "-" + podName
+	}
+	return podName
+}
+
+// GetMemberName reads the member-name-prefix from the config file and computes
+// the member name using the POD_NAME environment variable.
+func GetMemberName(configFile string) (string, error) {
+	podName, err := GetEnvVarOrError("POD_NAME")
+	if err != nil {
+		return "", fmt.Errorf("POD_NAME env var not set: %w", err)
+	}
+	prefix, err := GetMemberNamePrefix(configFile)
+	if err != nil {
+		return "", fmt.Errorf("failed to get member name prefix: %w", err)
+	}
+	return ComputeMemberName(prefix, podName), nil
+}
+
 // GetNLatestFullSnapshots returns the latest N full snapshots from the store.
 // N must be greater than 0.
 func GetNLatestFullSnapshots(store brtypes.SnapStore, n int) (brtypes.SnapList, error) {
@@ -602,11 +639,12 @@ func parseAdvertiseURLsConfig(configFile string) (*advertiseURLsConfig, error) {
 	return &advURLsConfig, nil
 }
 
-// GetMemberPeerURLs retrieves the initial advertise peer URLs for the etcd member using the POD_NAME environment variable.
+// GetMemberPeerURLs retrieves the initial advertise peer URLs for the etcd member.
+// The member name is derived from the POD_NAME environment variable and the optional member-name-prefix in the config.
 func GetMemberPeerURLs(configFile string) ([]string, error) {
-	memberName, err := GetEnvVarOrError("POD_NAME")
+	memberName, err := GetMemberName(configFile)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to get member name: %w", err)
 	}
 
 	advURLsConfig, err := parseAdvertiseURLsConfig(configFile)
@@ -627,11 +665,12 @@ func GetMemberPeerURLs(configFile string) ([]string, error) {
 	return peerURLs, nil
 }
 
-// GetMemberClientURLs retrieves the advertise client URLs for the etcd member using the POD_NAME environment variable.
+// GetMemberClientURLs retrieves the advertise client URLs for the etcd member.
+// The member name is derived from the POD_NAME environment variable and the optional member-name-prefix in the config.
 func GetMemberClientURLs(configFile string) ([]string, error) {
-	memberName, err := GetEnvVarOrError("POD_NAME")
+	memberName, err := GetMemberName(configFile)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to get member name: %w", err)
 	}
 
 	advURLsConfig, err := parseAdvertiseURLsConfig(configFile)
