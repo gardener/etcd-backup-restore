@@ -421,7 +421,15 @@ func (h *HTTPHandler) serveConfig(rw http.ResponseWriter, req *http.Request) {
 	podNS := os.Getenv("POD_NAMESPACE")
 	podName := os.Getenv("POD_NAME")
 
-	config["name"] = podName
+	memberNamePrefix, err := miscellaneous.GetMemberNamePrefix(inputFileName)
+	if err != nil {
+		h.Logger.Warnf("Unable to read member name prefix from etcd config file: %v", err)
+		rw.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	memberName := miscellaneous.ComputeMemberName(memberNamePrefix, podName)
+
+	config["name"] = memberName
 
 	// fetch initial-advertise-peer-urls from etcd config file
 	initAdPeerURLs, err := miscellaneous.GetMemberPeerURLs(inputFileName)
@@ -441,7 +449,7 @@ func (h *HTTPHandler) serveConfig(rw http.ResponseWriter, req *http.Request) {
 	}
 	config["advertise-client-urls"] = strings.Join(advClientURLs, ",")
 
-	config["initial-cluster"] = getInitialCluster(req.Context(), fmt.Sprint(config["initial-cluster"]), *h.EtcdConnectionConfig, *h.Logger, podName)
+	config["initial-cluster"] = getInitialCluster(req.Context(), fmt.Sprint(config["initial-cluster"]), *h.EtcdConnectionConfig, *h.Logger, memberName)
 
 	clusterSize, err := miscellaneous.GetClusterSize(fmt.Sprint(config["initial-cluster"]))
 	if err != nil {
@@ -510,7 +518,7 @@ func (h *HTTPHandler) getClusterState(ctx context.Context, clusterSize int, podN
 	return *state, nil
 }
 
-func getInitialCluster(ctx context.Context, initialCluster string, etcdConn brtypes.EtcdConnectionConfig, logger logrus.Entry, podName string) string {
+func getInitialCluster(ctx context.Context, initialCluster string, etcdConn brtypes.EtcdConnectionConfig, logger logrus.Entry, memberName string) string {
 	// INITIAL_CLUSTER served via the etcd config must be tailored to the number of members in the cluster at that point. Else etcd complains with error "member count is unequal"
 	// One reason why we might want to have a strict ordering when members are joining the cluster
 	// addmember subcommand achieves this by making sure the pod with the previous index is running before attempting to add itself as a learner
@@ -560,7 +568,7 @@ func getInitialCluster(ctx context.Context, initialCluster string, etcdConn brty
 		for _, y := range initialcluster {
 			// Add member to `initial-cluster` only if already a cluster member
 			z := strings.Split(y, "=")
-			if membrs[z[0]] || z[0] == podName {
+			if membrs[z[0]] || z[0] == memberName {
 				cluster = cluster + y + ","
 			}
 		}
