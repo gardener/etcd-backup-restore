@@ -114,7 +114,7 @@ func GetTLSClientForEtcd(tlsConfig *brtypes.EtcdConnectionConfig, options *clien
 				return nil, fmt.Errorf("failed to get etcd endpoints from config file %s: %v", configFilePath, err)
 			}
 			if len(endpoints) == 0 {
-				endpoints = tlsConfig.Endpoints
+				return nil, fmt.Errorf("no etcd endpoints present in config file %s", configFilePath)
 			}
 		}
 	}
