@@ -78,11 +78,11 @@ func GetMemberNamePrefix(configFile string) (string, error) {
 	return "", nil
 }
 
-// ComputeMemberName constructs the member name from an optional prefix and pod name.
-// If prefix is non-empty, the member name is "<prefix>-<podName>", otherwise it is just <podName>.
+// ComputeMemberName constructs the member name from a pod name and from an optional member-name-prefix (if any).
+// If member-name-prefix is non-empty, then member name would be "<memberPrefix>-<podName>", otherwise it would be just <podName>.
 func ComputeMemberName(memberNamePrefix, podName string) string {
 	if memberNamePrefix != "" {
-		return memberNamePrefix + "-" + podName
+		return fmt.Sprintf("%s-%s", memberNamePrefix, podName)
 	}
 	return podName
 }
@@ -94,11 +94,11 @@ func GetMemberName(configFile string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("POD_NAME env var not set: %w", err)
 	}
-	prefix, err := GetMemberNamePrefix(configFile)
+	memberNamePrefix, err := GetMemberNamePrefix(configFile)
 	if err != nil {
-		return "", fmt.Errorf("failed to get member name prefix: %w", err)
+		return "", fmt.Errorf("failed to get member-name-prefix: %w", err)
 	}
-	return ComputeMemberName(prefix, podName), nil
+	return ComputeMemberName(memberNamePrefix, podName), nil
 }
 
 // GetNLatestFullSnapshots returns the latest N full snapshots from the store.

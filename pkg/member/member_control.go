@@ -108,7 +108,7 @@ func NewMemberControl(etcdConnConfig *brtypes.EtcdConnectionConfig) Control {
 
 	memberNamePrefix, err := miscellaneous.GetMemberNamePrefix(configFile)
 	if err != nil {
-		logger.Fatalf("failed to read member name prefix: %v", err)
+		logger.Fatalf("failed to read member-name-prefix: %v", err)
 	}
 	memberName := miscellaneous.ComputeMemberName(memberNamePrefix, podName)
 
