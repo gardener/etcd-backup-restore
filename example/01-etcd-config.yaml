@@ -19,3 +19,6 @@ initial-cluster-token: new
 initial-cluster-state: new
 auto-compaction-mode: periodic
 auto-compaction-retention: 30m
+# Optional: prefix to prepend to the pod name to form the etcd member name.
+# When set, the member name becomes "<member-name-prefix>-<pod-name>".
+# member-name-prefix: ""

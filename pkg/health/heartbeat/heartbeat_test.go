@@ -29,13 +29,29 @@ var _ = Describe("Heartbeat", func() {
 	var (
 		etcdConnectionConfig *brtypes.EtcdConnectionConfig
 		metadata             map[string]string
+		memberNamePrefix     string
 	)
 
 	BeforeEach(func() {
+		memberNamePrefix = ""
 		etcdConnectionConfig = brtypes.NewEtcdConnectionConfig()
 		etcdConnectionConfig.Endpoints = []string{etcd.Clients[0].Addr().String()}
 		etcdConnectionConfig.ConnectionTimeout.Duration = 5 * time.Second
 		metadata = map[string]string{}
+	})
+
+	JustBeforeEach(func() {
+		prefixLine := ""
+		if memberNamePrefix != "" {
+			prefixLine = "\nmember-name-prefix: " + memberNamePrefix
+		}
+		outfile := "/tmp/etcd-heartbeat.conf.yaml"
+		Expect(os.WriteFile(outfile, []byte("name: etcd-test"+prefixLine), 0600)).To(Succeed())
+		Expect(os.Setenv("ETCD_CONF", outfile)).To(Succeed())
+	})
+
+	AfterEach(func() {
+		_ = os.Unsetenv("ETCD_CONF")
 	})
 
 	Describe("creating Heartbeat", func() {
@@ -358,6 +374,34 @@ var _ = Describe("Heartbeat", func() {
 
 				err = heartbeat.RenewMemberLease(context.TODO())
 				Expect(err).Should(HaveOccurred())
+			})
+		})
+		Context("With member-name-prefix set in config", func() {
+			BeforeEach(func() {
+				memberNamePrefix = "myprefix"
+				Expect(os.Setenv("POD_NAME", "test_pod")).To(Succeed())
+				Expect(os.Setenv("POD_NAMESPACE", "test_namespace")).To(Succeed())
+				metadata = map[string]string{heartbeat.PeerURLTLSEnabledKey: "true"}
+			})
+			AfterEach(func() {
+				Expect(os.Unsetenv("POD_NAME")).To(Succeed())
+				Expect(os.Unsetenv("POD_NAMESPACE")).To(Succeed())
+			})
+			It("should use the prefixed member name to renew the member lease", func() {
+				clientSet := miscellaneous.GetFakeKubernetesClientSet()
+				hb, err := heartbeat.NewHeartbeat(logger, etcdConnectionConfig, clientSet, metadata)
+				Expect(err).ShouldNot(HaveOccurred())
+
+				prefixedLease := &v1.Lease{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "myprefix-test_pod",
+						Namespace: "test_namespace",
+					},
+				}
+				Expect(clientSet.Create(context.TODO(), prefixedLease)).To(Succeed())
+
+				err = hb.RenewMemberLease(context.TODO())
+				Expect(err).ShouldNot(HaveOccurred())
 			})
 		})
 	})

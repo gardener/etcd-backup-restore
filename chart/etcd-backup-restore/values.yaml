@@ -51,6 +51,10 @@ autoCompaction:
 
 replicas: 1
 
+# memberNamePrefix is an optional prefix prepended to the pod name to form the etcd member name.
+# When set, the member name becomes "<memberNamePrefix>-<pod-name>".
+memberNamePrefix: ""
+
 backup:
   # schedule is cron standard schedule to take full snapshots.
   schedule: "0 */1 * * *"

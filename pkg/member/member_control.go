@@ -80,6 +80,7 @@ type memberControl struct {
 	clientFactory etcdClient.Factory
 	logger        logrus.Entry
 	podName       string
+	memberName    string
 	configFile    string
 	podNamespace  string
 }
@@ -105,10 +106,16 @@ func NewMemberControl(etcdConnConfig *brtypes.EtcdConnectionConfig) Control {
 	//TODO: Refactor needed
 	configFile = miscellaneous.GetConfigFilePath()
 
+	memberNamePrefix, err := miscellaneous.GetMemberNamePrefix(configFile)
+	if err != nil {
+		logger.Fatalf("failed to read member-name-prefix: %v", err)
+	}
+	memberName := miscellaneous.ComputeMemberName(memberNamePrefix, podName)
+
 	return &memberControl{
 		clientFactory: clientFactory,
 		logger:        *logger,
-		podName:       podName,
+		memberName:    memberName,
 		configFile:    configFile,
 		podNamespace:  podNamespace,
 	}
@@ -134,10 +141,10 @@ func (m *memberControl) AddMemberAsLearner(ctx context.Context) error {
 	response, err := cli.MemberAddAsLearner(memAddCtx, memberPeerURLs)
 	if err != nil {
 		if errors.Is(err, rpctypes.Error(rpctypes.ErrGRPCPeerURLExist)) || errors.Is(err, rpctypes.Error(rpctypes.ErrGRPCMemberExist)) {
-			m.logger.Infof("Member %s with peer urls %v already part of etcd cluster", m.podName, memberPeerURLs)
+			m.logger.Infof("Member %s with peer urls %v already part of etcd cluster", m.memberName, memberPeerURLs)
 			return nil
 		} else if errors.Is(err, rpctypes.Error(rpctypes.ErrGRPCTooManyLearners)) {
-			m.logger.Infof("Unable to add member %s as a learner because the cluster already has a learner", m.podName)
+			m.logger.Infof("Unable to add member %s as a learner because the cluster already has a learner", m.memberName)
 			return rpctypes.Error(rpctypes.ErrGRPCTooManyLearners)
 		}
 		metrics.IsLearnerCountTotal.With(prometheus.Labels{metrics.LabelSucceeded: metrics.ValueSucceededFalse}).Inc()
@@ -154,7 +161,7 @@ func (m *memberControl) AddMemberAsLearner(ctx context.Context) error {
 
 // IsMemberInCluster checks is the current members peer URL is already part of the etcd cluster
 func (m *memberControl) IsMemberInCluster(_ context.Context) (_ bool, err error) {
-	m.logger.Infof("Checking if member %s is part of a running cluster", m.podName)
+	m.logger.Infof("Checking if member %s is part of a running cluster", m.memberName)
 	// Check if an etcd is already available
 
 	backoff := miscellaneous.CreateBackoff(RetryPeriod, RetrySteps)
@@ -191,21 +198,21 @@ func (m *memberControl) IsMemberInCluster(_ context.Context) (_ bool, err error)
 	}
 
 	for _, member := range etcdMemberList.Members {
-		if member.GetName() == m.podName {
-			m.logger.Infof("Member %s part of running cluster", m.podName)
+		if member.GetName() == m.memberName {
+			m.logger.Infof("Member %s part of running cluster", m.memberName)
 			return true, nil
 		}
 	}
 
-	m.logger.Infof("Member %v not part of any running cluster", m.podName)
-	m.logger.Infof("Could not find member %v in the list", m.podName)
+	m.logger.Infof("Member %v not part of any running cluster", m.memberName)
+	m.logger.Infof("Could not find member %v in the list", m.memberName)
 	return false, nil
 }
 
 // doUpdateMemberPeerAddress updated the peer address of a specified etcd member
 func (m *memberControl) doUpdateMemberPeerAddress(ctx context.Context, cli etcdClient.ClusterCloser, id uint64) error {
 	// Already existing clusters or cluster after restoration have `http://localhost:2380` as the peer address. This needs to explicitly updated to the correct peer address.
-	m.logger.Infof("Updating member peer URL for %s", m.podName)
+	m.logger.Infof("Updating member peer URL for %s", m.memberName)
 	memberPeerURLs, err := miscellaneous.GetMemberPeerURLs(m.configFile)
 	if err != nil {
 		return fmt.Errorf("could not fetch member URL : %v", err)
@@ -223,7 +230,7 @@ func (m *memberControl) doUpdateMemberPeerAddress(ctx context.Context, cli etcdC
 
 // PromoteMember promotes an etcd member from a learner to a voting member of the cluster. This will succeed only if its logs are caught up with the leader
 func (m *memberControl) PromoteMember(ctx context.Context) error {
-	m.logger.Infof("Attempting to promote member %s", m.podName)
+	m.logger.Infof("Attempting to promote member %s", m.memberName)
 	cli, err := m.clientFactory.NewCluster()
 	if err != nil {
 		return fmt.Errorf("failed to build etcd cluster client : %v", err)
@@ -241,7 +248,7 @@ func (m *memberControl) PromoteMember(ctx context.Context) error {
 		return fmt.Errorf("error listing members: %v", err)
 	}
 
-	foundMember := findMember(etcdList.Members, m.podName)
+	foundMember := findMember(etcdList.Members, m.memberName)
 	if foundMember == nil {
 		return ErrMissingMember
 	}
@@ -260,7 +267,7 @@ func findMember(existingMembers []*etcdserverpb.Member, memberName string) *etcd
 
 // UpdateMemberPeerURL updates the peer address of a specified etcd cluster member.
 func (m *memberControl) UpdateMemberPeerURL(ctx context.Context, cli etcdClient.ClusterCloser) error {
-	m.logger.Infof("Attempting to update the member Info: %v", m.podName)
+	m.logger.Infof("Attempting to update the member Info: %v", m.memberName)
 	ctx, cancel := context.WithTimeout(ctx, brtypes.DefaultEtcdConnectionTimeout)
 	defer cancel()
 
@@ -274,7 +281,7 @@ func (m *memberControl) UpdateMemberPeerURL(ctx context.Context, cli etcdClient.
 
 // RemoveMember removes the member from the etcd cluster.
 func (m *memberControl) RemoveMember(ctx context.Context) error {
-	m.logger.Infof("Removing the %s member from cluster", m.podName)
+	m.logger.Infof("Removing the %s member from cluster", m.memberName)
 
 	cli, err := m.clientFactory.NewCluster()
 	if err != nil {
@@ -290,7 +297,7 @@ func (m *memberControl) RemoveMember(ctx context.Context) error {
 		return fmt.Errorf("error listing members: %v", err)
 	}
 
-	foundMember := findMember(memberInfo.Members, m.podName)
+	foundMember := findMember(memberInfo.Members, m.memberName)
 	if foundMember == nil {
 		return nil
 	}
@@ -352,7 +359,7 @@ func (m *memberControl) GetPeerURLs(ctx context.Context, closer etcdClient.Clust
 		return nil, fmt.Errorf("could not list any etcd members %w", err)
 	}
 	for _, member := range etcdMemberList.Members {
-		if member.GetName() == m.podName {
+		if member.GetName() == m.memberName {
 			return member.GetPeerURLs(), nil
 		}
 	}
@@ -371,7 +378,7 @@ func (m *memberControl) WasMemberInCluster(ctx context.Context, clientSet client
 	memberLease := &v1.Lease{}
 	if err := clientSet.Get(ctx, client.ObjectKey{
 		Namespace: m.podNamespace,
-		Name:      m.podName,
+		Name:      m.memberName,
 	}, memberLease); err != nil {
 		m.logger.Errorf("couldn't fetch member lease while checking if the member was part of the cluster: %v", err)
 		return false

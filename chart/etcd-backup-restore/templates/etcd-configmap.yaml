@@ -18,10 +18,17 @@ data:
     {{- end }}
     # store the root context for later use
     {{- $root := . }}
+    # store the optional member name prefix
+    {{- $memberNamePrefix := .Values.memberNamePrefix | default "" }}
     # store the cluster entries in a list to be used for the initial-cluster configuration
     {{- $clusterEntries := list }}
     {{- range $i := until $replicas }}
-    {{- $entry := printf "%s-etcd-%d=%s://%s-etcd-%d.%s-etcd-peer.%s.svc:%d" $root.Release.Name $i $peerScheme $root.Release.Name $i $root.Release.Name $root.Release.Namespace (int $root.Values.servicePorts.etcd.peer) }}
+    {{- $podName := printf "%s-etcd-%d" $root.Release.Name $i }}
+    {{- $memberName := $podName }}
+    {{- if $memberNamePrefix }}
+    {{- $memberName = printf "%s-%s" $memberNamePrefix $podName }}
+    {{- end }}
+    {{- $entry := printf "%s=%s://%s-etcd-%d.%s-etcd-peer.%s.svc:%d" $memberName $peerScheme $root.Release.Name $i $root.Release.Name $root.Release.Namespace (int $root.Values.servicePorts.etcd.peer) }}
     {{- $clusterEntries = append $clusterEntries $entry }}
     {{- end }}
 
@@ -53,7 +60,12 @@ data:
     # Each member should include it's client URLs under the member name.
     advertise-client-urls:
       {{- range $i := until $replicas }}
-      {{ $root.Release.Name }}-etcd-{{ $i }}:
+      {{- $podName := printf "%s-etcd-%d" $root.Release.Name $i }}
+      {{- $memberName := $podName }}
+      {{- if $memberNamePrefix }}
+      {{- $memberName = printf "%s-%s" $memberNamePrefix $podName }}
+      {{- end }}
+      {{ $memberName }}:
       - {{ if $root.Values.tls.etcd }}https{{ else }}http{{ end }}://{{ $root.Release.Name }}-etcd-{{ $i }}.{{ $root.Release.Name }}-etcd-peer.{{ $root.Release.Namespace }}.svc:{{ $root.Values.servicePorts.etcd.client }}
       {{- end }}
 
@@ -61,7 +73,12 @@ data:
     # Each member should include it's peer URLs under the member name.
     initial-advertise-peer-urls:
       {{- range $i := until $replicas }}
-      {{ $root.Release.Name }}-etcd-{{ $i }}:
+      {{- $podName := printf "%s-etcd-%d" $root.Release.Name $i }}
+      {{- $memberName := $podName }}
+      {{- if $memberNamePrefix }}
+      {{- $memberName = printf "%s-%s" $memberNamePrefix $podName }}
+      {{- end }}
+      {{ $memberName }}:
       - {{ $peerScheme }}://{{ $root.Release.Name }}-etcd-{{ $i }}.{{ $root.Release.Name }}-etcd-peer.{{ $root.Release.Namespace }}.svc:{{ $root.Values.servicePorts.etcd.peer }}
       {{- end }}
 
@@ -84,6 +101,11 @@ data:
     {{- if .Values.autoCompaction.retentionLength }}
     auto-compaction-retention: {{ .Values.autoCompaction.retentionLength }}
     {{- end }}
+    {{- end }}
+
+    {{- if $memberNamePrefix }}
+    # Optional prefix prepended to the pod name to form the etcd member name.
+    member-name-prefix: {{ $memberNamePrefix }}
     {{- end }}
 
 {{- if .Values.tls.etcd }}

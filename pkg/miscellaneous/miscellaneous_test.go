@@ -992,6 +992,85 @@ initial-cluster: etcd1=http://0.0.0.0:2380`
 			})
 		})
 	})
+
+	Describe("Member Name Computation", func() {
+		Describe("#ComputeMemberName", func() {
+			It("should return podName when prefix is empty", func() {
+				Expect(ComputeMemberName("", "etcd-main-0")).To(Equal("etcd-main-0"))
+			})
+			It("should return prefix-podName when prefix is non-empty", func() {
+				Expect(ComputeMemberName("myprefix", "etcd-main-0")).To(Equal("myprefix-etcd-main-0"))
+			})
+		})
+
+		Describe("#GetMemberNamePrefix", func() {
+			const configFile = "/tmp/etcd-member-prefix-config.yaml"
+			AfterEach(func() {
+				_ = os.Remove(configFile)
+			})
+			It("should return an error when config file cannot be read", func() {
+				_, err := GetMemberNamePrefix("/nonexistent/config.yaml")
+				Expect(err).To(HaveOccurred())
+			})
+			It("should return empty string when member-name-prefix is not set", func() {
+				writeConfigToFile(configFile, map[string]interface{}{"name": "etcd-test"})
+				prefix, err := GetMemberNamePrefix(configFile)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(prefix).To(Equal(""))
+			})
+			It("should return the prefix when member-name-prefix is set", func() {
+				writeConfigToFile(configFile, map[string]interface{}{
+					"name":               "etcd-test",
+					"member-name-prefix": "myprefix",
+				})
+				prefix, err := GetMemberNamePrefix(configFile)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(prefix).To(Equal("myprefix"))
+			})
+		})
+
+		Describe("#GetMemberName", func() {
+			const (
+				configFile = "/tmp/etcd-member-name-config.yaml"
+				podName    = "etcd-main-0"
+			)
+			BeforeEach(func() {
+				Expect(os.Setenv("POD_NAME", podName)).To(Succeed())
+			})
+			AfterEach(func() {
+				Expect(os.Unsetenv("POD_NAME")).To(Succeed())
+				_ = os.Remove(configFile)
+			})
+			It("should return podName when member-name-prefix is not set", func() {
+				writeConfigToFile(configFile, map[string]interface{}{"name": "etcd-test"})
+				name, err := GetMemberName(configFile)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(name).To(Equal(podName))
+			})
+			It("should return prefix-podName when member-name-prefix is set", func() {
+				writeConfigToFile(configFile, map[string]interface{}{
+					"name":               "etcd-test",
+					"member-name-prefix": "myprefix",
+				})
+				name, err := GetMemberName(configFile)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(name).To(Equal("myprefix-" + podName))
+			})
+			It("should return an error when config file cannot be read", func() {
+				_, err := GetMemberName("/nonexistent/config.yaml")
+				Expect(err).To(HaveOccurred())
+			})
+			Context("When POD_NAME environment variable is not set", func() {
+				BeforeEach(func() {
+					Expect(os.Unsetenv("POD_NAME")).To(Succeed())
+				})
+				It("should return an error", func() {
+					_, err := GetMemberName(configFile)
+					Expect(err).To(HaveOccurred())
+				})
+			})
+		})
+	})
 })
 
 func emptyStatefulSet(name, namespace string) *appsv1.StatefulSet {
