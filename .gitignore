@@ -39,3 +39,18 @@ dev
 
 # gosec
 gosec-report.sarif
+
+# AI coding agents
+# Claude Code
+.claude/
+.agents/
+CLAUDE.md
+skills-lock.json
+
+# Cursor
+.cursor/
+.cursorrules
+
+# GitHub Copilot
+.copilot/
+.github/copilot-instructions.md
