@@ -14,7 +14,7 @@ jobs:
       pull-requests: read
     steps:
       - name: PR Review Timeline
-        uses: shreyas-s-rao/pr-review-timeline@v0.2.1
+        uses: shreyas-s-rao/pr-review-timeline@v0.2.2
         id: timeline
       - name: Output Timeline JSON
         run: |
