@@ -60,8 +60,6 @@ const (
 
 	// DefragThreshold is the minimum total DB size above which schedule defragmentation is triggered.
 	DefragThreshold = 3 * 1024 * 1024 * 1024 // 3GB
-	// FreeSpaceThreshold is the minimum free space above which schedule defragmentation is triggered.
-	FreeSpaceThreshold = 1 * 1024 * 1024 * 1024 // 1GB
 )
 
 type advertiseURLsConfig struct {
@@ -830,7 +828,7 @@ func getEtcdWrapperEndpoint(etcdEndpoints []string) (string, error) {
 // It returns false (do not skip) when either TotalDBSize or available free space is greater than threshold.
 // It returns true (can skip) when the TotalDBSize and available free space are below threshold, meaning defragmentation would have
 // little benefit.
-func CanDefragSkip(pCtx context.Context, client etcdClient.MaintenanceCloser, etcdConnectionConfig *brtypes.EtcdConnectionConfig) (bool, error) {
+func CanDefragSkip(pCtx context.Context, client etcdClient.MaintenanceCloser, etcdConnectionConfig *brtypes.EtcdConnectionConfig, defragCfg *brtypes.DefragConfig) (bool, error) {
 	ctx, cancel := context.WithTimeout(pCtx, etcdConnectionConfig.ConnectionTimeout.Duration)
 	defer cancel()
 
@@ -843,7 +841,7 @@ func CanDefragSkip(pCtx context.Context, client etcdClient.MaintenanceCloser, et
 		return false, err
 	}
 
-	if etcdStatus.DbSize > DefragThreshold || ((etcdStatus.DbSize - etcdStatus.DbSizeInUse) > FreeSpaceThreshold) {
+	if etcdStatus.DbSize > DefragThreshold || ((etcdStatus.DbSize - etcdStatus.DbSizeInUse) > defragCfg.FreespaceThreshold) {
 		return false, nil
 	}
 

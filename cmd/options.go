@@ -208,22 +208,22 @@ func (c *validatorOptions) validate() error {
 
 type snapshotterOptions struct {
 	etcdConnectionConfig     *brtypes.EtcdConnectionConfig
+	defragConfig             *brtypes.DefragConfig
 	compressionConfig        *compressor.CompressionConfig
 	snapstoreConfig          *brtypes.SnapstoreConfig
 	snapshotterConfig        *brtypes.SnapshotterConfig
 	exponentialBackoffConfig *brtypes.ExponentialBackoffConfig
-	defragmentationSchedule  string
 }
 
 // newSnapshotterOptions returns the snapshotter options.
 func newSnapshotterOptions() *snapshotterOptions {
 	return &snapshotterOptions{
 		etcdConnectionConfig:     brtypes.NewEtcdConnectionConfig(),
+		defragConfig:             brtypes.NewDefragConfig(),
 		snapstoreConfig:          snapstore.NewSnapstoreConfig(),
 		snapshotterConfig:        snapshotter.NewSnapshotterConfig(),
 		compressionConfig:        compressor.NewCompressorConfig(),
 		exponentialBackoffConfig: brtypes.NewExponentialBackOffConfig(),
-		defragmentationSchedule:  "0 0 */3 * *",
 	}
 }
 
@@ -234,9 +234,7 @@ func (c *snapshotterOptions) addFlags(fs *flag.FlagSet) {
 	c.snapshotterConfig.AddFlags(fs)
 	c.compressionConfig.AddFlags(fs)
 	c.exponentialBackoffConfig.AddFlags(fs)
-
-	// Miscellaneous
-	fs.StringVar(&c.defragmentationSchedule, "defragmentation-schedule", c.defragmentationSchedule, "schedule to defragment etcd data directory")
+	c.defragConfig.AddFlags(fs)
 }
 
 // Validate validates the config.
@@ -254,6 +252,10 @@ func (c *snapshotterOptions) validate() error {
 	}
 
 	if err := c.exponentialBackoffConfig.Validate(); err != nil {
+		return err
+	}
+
+	if err := c.defragConfig.Validate(); err != nil {
 		return err
 	}
 	return c.etcdConnectionConfig.Validate()

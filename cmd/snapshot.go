@@ -48,13 +48,13 @@ storing snapshots on various cloud storage providers as well as local disk locat
 				logger.Fatalf("Failed to create snapshotter: %v", err)
 			}
 
-			defragSchedule, err := cron.ParseStandard(opts.defragmentationSchedule)
+			defragSchedule, err := cron.ParseStandard(opts.defragConfig.DefragmentationSchedule)
 			if err != nil {
 				logger.Fatalf("failed to parse defragmentation schedule: %v", err)
 				return
 			}
 
-			go defragmentor.DefragDataPeriodically(ctx, opts.etcdConnectionConfig, defragSchedule, ssr.TriggerFullSnapshot, logger)
+			go defragmentor.DefragDataPeriodically(ctx, opts.etcdConnectionConfig, opts.defragConfig, defragSchedule, ssr.TriggerFullSnapshot, logger)
 
 			go ssr.RunGarbageCollector(ctx.Done())
 			if err := ssr.Run(ctx.Done(), true); err != nil {

@@ -43,6 +43,7 @@ const (
 var _ = Describe("Miscellaneous Tests", func() {
 	var (
 		etcdConnectionConfig *brtypes.EtcdConnectionConfig
+		defragConfig         *brtypes.DefragConfig
 		ctrl                 *gomock.Controller
 		factory              *mockfactory.MockFactory
 		cm                   *mockfactory.MockMaintenanceCloser
@@ -51,10 +52,10 @@ var _ = Describe("Miscellaneous Tests", func() {
 
 	BeforeEach(func() {
 		etcdConnectionConfig = brtypes.NewEtcdConnectionConfig()
+		defragConfig = brtypes.NewDefragConfig()
 		etcdConnectionConfig.Endpoints = []string{"http://127.0.0.1:2379"}
 		etcdConnectionConfig.ConnectionTimeout.Duration = 30 * time.Second
 		etcdConnectionConfig.SnapshotTimeout.Duration = 30 * time.Second
-		etcdConnectionConfig.DefragTimeout.Duration = 30 * time.Second
 
 		ctrl = gomock.NewController(GinkgoT())
 		factory = mockfactory.NewMockFactory(ctrl)
@@ -1086,7 +1087,7 @@ initial-cluster: etcd1=http://0.0.0.0:2380`
 				return response, nil
 			}).Times(1)
 
-			canSkip, err := CanDefragSkip(context.Background(), clientMaintenance, etcdConnectionConfig)
+			canSkip, err := CanDefragSkip(context.Background(), clientMaintenance, etcdConnectionConfig, defragConfig)
 			Expect(err).Should(BeNil())
 			Expect(canSkip).Should(BeFalse())
 		})
@@ -1102,7 +1103,7 @@ initial-cluster: etcd1=http://0.0.0.0:2380`
 				return response, nil
 			}).Times(1)
 
-			canSkip, err := CanDefragSkip(context.Background(), clientMaintenance, etcdConnectionConfig)
+			canSkip, err := CanDefragSkip(context.Background(), clientMaintenance, etcdConnectionConfig, defragConfig)
 			Expect(err).Should(BeNil())
 			Expect(canSkip).Should(BeFalse())
 		})
@@ -1118,7 +1119,7 @@ initial-cluster: etcd1=http://0.0.0.0:2380`
 				return response, nil
 			}).Times(1)
 
-			canSkip, err := CanDefragSkip(context.Background(), clientMaintenance, etcdConnectionConfig)
+			canSkip, err := CanDefragSkip(context.Background(), clientMaintenance, etcdConnectionConfig, defragConfig)
 			Expect(err).Should(BeNil())
 			Expect(canSkip).Should(BeTrue())
 		})
@@ -1129,7 +1130,7 @@ initial-cluster: etcd1=http://0.0.0.0:2380`
 
 			cm.EXPECT().Status(gomock.Any(), gomock.Any()).Return(nil, fmt.Errorf("failed to connect to the dummy etcd")).AnyTimes()
 
-			canSkip, err := CanDefragSkip(context.Background(), clientMaintenance, etcdConnectionConfig)
+			canSkip, err := CanDefragSkip(context.Background(), clientMaintenance, etcdConnectionConfig, defragConfig)
 			Expect(err).ShouldNot(BeNil())
 			Expect(canSkip).Should(BeFalse())
 		})

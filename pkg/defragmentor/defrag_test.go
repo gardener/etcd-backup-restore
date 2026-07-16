@@ -25,17 +25,18 @@ import (
 var _ = Describe("Defrag", func() {
 	var (
 		etcdConnectionConfig *brtypes.EtcdConnectionConfig
+		defragConfig         *brtypes.DefragConfig
 		keyPrefix            = "/defrag/key-"
 		valuePrefix          = "val"
 	)
 
 	BeforeEach(func() {
 		etcdConnectionConfig = brtypes.NewEtcdConnectionConfig()
+		defragConfig = brtypes.NewDefragConfig()
 		etcdConnectionConfig.Endpoints = endpoints
 		etcdConnectionConfig.ConnectionTimeout.Duration = 30 * time.Second
 		etcdConnectionConfig.SnapshotTimeout.Duration = 30 * time.Second
-		etcdConnectionConfig.DefragTimeout.Duration = 30 * time.Second
-
+		defragConfig.DefragTimeout.Duration = 30 * time.Second
 	})
 
 	Context("Defragmentation", func() {
@@ -81,7 +82,7 @@ var _ = Describe("Defrag", func() {
 			// compact the ETCD DB to let the defragmentor have full effect
 			_, err = clientKV.Compact(testCtx, oldRevision, clientv3.WithCompactPhysical())
 			Expect(err).ShouldNot(HaveOccurred())
-			defragmentorJob := NewDefragmentorJob(testCtx, etcdConnectionConfig, logger, nil)
+			defragmentorJob := NewDefragmentorJob(testCtx, etcdConnectionConfig, defragConfig, logger, nil)
 			defragmentorJob.Run()
 
 			ctx, cancel = context.WithTimeout(testCtx, etcdDialTimeout)
@@ -94,7 +95,7 @@ var _ = Describe("Defrag", func() {
 		})
 
 		It("should keep size of DB same in case of timeout", func() {
-			etcdConnectionConfig.DefragTimeout.Duration = time.Microsecond
+			defragConfig.DefragTimeout.Duration = time.Microsecond
 			clientFactory := etcdutil.NewFactory(*etcdConnectionConfig)
 
 			clientMaintenance, err := clientFactory.NewMaintenance()
@@ -108,7 +109,7 @@ var _ = Describe("Defrag", func() {
 			oldDBSize := oldStatus.DbSize
 			oldRevision := oldStatus.Header.GetRevision()
 
-			defragmentorJob := NewDefragmentorJob(ctx, etcdConnectionConfig, logger, nil)
+			defragmentorJob := NewDefragmentorJob(ctx, etcdConnectionConfig, defragConfig, logger, nil)
 			defragmentorJob.Run()
 			cancel()
 
@@ -152,7 +153,7 @@ var _ = Describe("Defrag", func() {
 
 			defragThreadCtx, cancelDefragThread := context.WithTimeout(testCtx, time.Second*time.Duration(235))
 			defer cancelDefragThread()
-			DefragDataPeriodically(defragThreadCtx, etcdConnectionConfig, defragSchedule, func(_ context.Context, _ bool) (*brtypes.Snapshot, error) {
+			DefragDataPeriodically(defragThreadCtx, etcdConnectionConfig, defragConfig, defragSchedule, func(_ context.Context, _ bool) (*brtypes.Snapshot, error) {
 				defragCount++
 				return nil, nil
 			}, logger)

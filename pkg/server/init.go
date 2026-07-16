@@ -13,7 +13,6 @@ import (
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 
-	"github.com/robfig/cron/v3"
 	flag "github.com/spf13/pflag"
 )
 
@@ -27,7 +26,7 @@ func NewBackupRestoreComponentConfig() *BackupRestoreComponentConfig {
 		SecondarySnapstoreConfig: snapstore.NewSecondarySnapstoreConfig(),
 		CompressionConfig:        compressor.NewCompressorConfig(),
 		RestorationConfig:        brtypes.NewRestorationConfig(),
-		DefragmentationSchedule:  defaultDefragmentationSchedule,
+		DefragConfig:             brtypes.NewDefragConfig(),
 		HealthConfig:             brtypes.NewHealthConfig(),
 		LeaderElectionConfig:     brtypes.NewLeaderElectionConfig(),
 		ExponentialBackoffConfig: brtypes.NewExponentialBackOffConfig(),
@@ -47,8 +46,7 @@ func (c *BackupRestoreComponentConfig) AddFlags(fs *flag.FlagSet) {
 	c.LeaderElectionConfig.AddFlags(fs)
 	c.ExponentialBackoffConfig.AddFlags(fs)
 	c.SecondarySnapstoreConfig.AddFlags(fs)
-	// Miscellaneous
-	fs.StringVar(&c.DefragmentationSchedule, "defragmentation-schedule", c.DefragmentationSchedule, "schedule to defragment etcd data directory")
+	c.DefragConfig.AddFlags(fs)
 	fs.BoolVar(&c.UseEtcdWrapper, "use-etcd-wrapper", c.UseEtcdWrapper, "to enable backup-restore to use etcd-wrapper related functionality. Note: enable this flag only if etcd-wrapper is deployed.")
 }
 
@@ -75,9 +73,6 @@ func (c *BackupRestoreComponentConfig) Validate() error {
 	if err := c.HealthConfig.Validate(); err != nil {
 		return err
 	}
-	if _, err := cron.ParseStandard(c.DefragmentationSchedule); err != nil {
-		return err
-	}
 	if err := c.LeaderElectionConfig.Validate(); err != nil {
 		return err
 	}
@@ -86,6 +81,10 @@ func (c *BackupRestoreComponentConfig) Validate() error {
 	}
 
 	if err := c.SecondarySnapstoreConfig.Validate(); err != nil {
+		return err
+	}
+
+	if err := c.DefragConfig.Validate(); err != nil {
 		return err
 	}
 	return nil
