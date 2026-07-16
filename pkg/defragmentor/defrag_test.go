@@ -62,6 +62,8 @@ var _ = Describe("Defrag", func() {
 		})
 
 		It("should defragment and reduce size of DB within time", func() {
+			// To make sure defrag should run set the FreespaceThreshold =1Byte
+			defragConfig.FreespaceThreshold = 1
 			clientFactory := etcdutil.NewFactory(*etcdConnectionConfig)
 
 			clientMaintenance, err := clientFactory.NewMaintenance()
@@ -79,7 +81,10 @@ var _ = Describe("Defrag", func() {
 			oldDBSize := oldStatus.DbSize
 			oldRevision := oldStatus.Header.GetRevision()
 
-			// compact the ETCD DB to let the defragmentor have full effect
+			// Delete all keys and compact the ETCD DB to let the defragmentor have full effect
+			_, err = clientKV.Delete(testCtx, "", clientv3.WithPrefix())
+			Expect(err).ShouldNot(HaveOccurred())
+
 			_, err = clientKV.Compact(testCtx, oldRevision, clientv3.WithCompactPhysical())
 			Expect(err).ShouldNot(HaveOccurred())
 			defragmentorJob := NewDefragmentorJob(testCtx, etcdConnectionConfig, defragConfig, logger, nil)
@@ -91,7 +96,7 @@ var _ = Describe("Defrag", func() {
 			Expect(err).ShouldNot(HaveOccurred())
 
 			Expect(newStatus.DbSize).Should(BeNumerically("<", oldDBSize))
-			Expect(newStatus.Header.GetRevision()).Should(BeNumerically("==", oldRevision))
+			Expect(newStatus.Header.GetRevision()).Should(BeNumerically("==", oldRevision+1))
 		})
 
 		It("should keep size of DB same in case of timeout", func() {
@@ -123,6 +128,8 @@ var _ = Describe("Defrag", func() {
 		})
 
 		It("should defrag periodically with callback", func() {
+			// To make sure defrag should run set the FreespaceThreshold to 1Byte
+			defragConfig.FreespaceThreshold = 1
 			defragCount := 0
 			minimumExpectedDefragCount := 2
 			defragSchedule, _ := cron.ParseStandard("*/1 * * * *")
