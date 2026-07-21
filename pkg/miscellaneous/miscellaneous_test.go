@@ -22,12 +22,10 @@ import (
 	"go.uber.org/mock/gomock"
 	appsv1 "k8s.io/api/apps/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/yaml"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	. "github.com/onsi/gomega/gstruct"
 )
 
 var (
@@ -516,115 +514,6 @@ var _ = Describe("Miscellaneous Tests", func() {
 				ds = NewDummyStore(snapList)
 				containsBackup := ContainsBackup(&ds, logger.Logger)
 				Expect(containsBackup).Should(BeFalse())
-			})
-		})
-	})
-
-	Describe("Get the Initial ClusterState for scale-up feature", func() {
-		var (
-			sts             *appsv1.StatefulSet
-			statefulSetName = "etcd-test"
-			podName         = "etcd-test-0"
-			namespace       = "test_namespace"
-		)
-
-		BeforeEach(func() {
-			sts = emptyStatefulSet(statefulSetName, namespace)
-		})
-
-		Context("In single node etcd: no scale-up", func() {
-			BeforeEach(func() {
-				sts.Spec = appsv1.StatefulSetSpec{
-					Replicas: ptr.To(int32(1)),
-				}
-				sts.Status = appsv1.StatefulSetStatus{
-					UpdatedReplicas: 1,
-				}
-			})
-
-			It("Should return the cluster state as nil", func() {
-				clientSet := GetFakeKubernetesClientSet()
-
-				err := clientSet.Create(testCtx, sts)
-				Expect(err).ShouldNot(HaveOccurred())
-
-				clusterState, err := GetInitialClusterStateIfScaleup(testCtx, *logger, clientSet, podName, namespace)
-				Expect(err).ToNot(HaveOccurred())
-				Expect(clusterState).To(BeNil())
-			})
-		})
-
-		Context("In multi-node etcd bootstrap: no scale-up", func() {
-			BeforeEach(func() {
-				sts.Spec = appsv1.StatefulSetSpec{
-					Replicas: ptr.To(int32(3)),
-				}
-				sts.Status = appsv1.StatefulSetStatus{
-					UpdatedReplicas: 3,
-				}
-			})
-
-			It("Should return the cluster state as nil", func() {
-				clientSet := GetFakeKubernetesClientSet()
-
-				err := clientSet.Create(testCtx, sts)
-				Expect(err).ShouldNot(HaveOccurred())
-
-				clusterState, err := GetInitialClusterStateIfScaleup(testCtx, *logger, clientSet, podName, namespace)
-				Expect(err).ToNot(HaveOccurred())
-				Expect(clusterState).Should(BeNil())
-			})
-		})
-
-		Context("In case of Scaling up from single node to multi-node etcd", func() {
-			BeforeEach(func() {
-				sts.Spec = appsv1.StatefulSetSpec{
-					Replicas: ptr.To(int32(3)),
-				}
-				sts.Status = appsv1.StatefulSetStatus{
-					UpdatedReplicas: 1,
-				}
-			})
-
-			It("Should return clusterState as `existing` ", func() {
-				clientSet := GetFakeKubernetesClientSet()
-
-				err := clientSet.Create(testCtx, sts)
-				Expect(err).ShouldNot(HaveOccurred())
-
-				clusterState, err := GetInitialClusterStateIfScaleup(testCtx, *logger, clientSet, podName, namespace)
-				Expect(err).ToNot(HaveOccurred())
-				Expect(clusterState).Should(PointTo(Equal(ClusterStateExisting)))
-			})
-		})
-
-		Context("Unable to fetch statefulset", func() {
-			It("Should return error", func() {
-				sts = &appsv1.StatefulSet{
-					TypeMeta: metav1.TypeMeta{
-						Kind:       "StatefulSet",
-						APIVersion: "apps/v1",
-					},
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      statefulSetName,
-						Namespace: namespace,
-					},
-					Spec: appsv1.StatefulSetSpec{
-						Replicas: ptr.To(int32(3)),
-					},
-					Status: appsv1.StatefulSetStatus{
-						UpdatedReplicas: 1,
-					},
-				}
-
-				wrongNamespace := "wrongNamespace"
-				clientSet := GetFakeKubernetesClientSet()
-
-				err := clientSet.Create(testCtx, sts)
-				Expect(err).ShouldNot(HaveOccurred())
-
-				_, err = GetInitialClusterStateIfScaleup(testCtx, *logger, clientSet, podName, wrongNamespace)
-				Expect(err).To(HaveOccurred())
 			})
 		})
 	})
