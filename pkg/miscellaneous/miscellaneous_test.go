@@ -20,8 +20,6 @@ import (
 	"go.etcd.io/etcd/api/v3/etcdserverpb"
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"go.uber.org/mock/gomock"
-	appsv1 "k8s.io/api/apps/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/yaml"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -671,52 +669,6 @@ var _ = Describe("Miscellaneous Tests", func() {
 		})
 	})
 
-	Describe("Etcd Statefulset", func() {
-		var (
-			sts             *appsv1.StatefulSet
-			statefulSetName = "etcd-test"
-			podName         = "etcd-test-0"
-			namespace       = "test_namespace"
-		)
-		BeforeEach(func() {
-			sts = &appsv1.StatefulSet{
-				TypeMeta: metav1.TypeMeta{
-					Kind:       "StatefulSet",
-					APIVersion: "apps/v1",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      statefulSetName,
-					Namespace: namespace,
-				},
-			}
-		})
-		Context("Etcd statefulset exists", func() {
-			It("should return statefulset", func() {
-				clientSet := GetFakeKubernetesClientSet()
-
-				err := clientSet.Create(testCtx, sts)
-				Expect(err).ShouldNot(HaveOccurred())
-
-				etcdSts, err := GetStatefulSet(testCtx, clientSet, namespace, podName)
-				Expect(err).ShouldNot(HaveOccurred())
-				Expect(etcdSts).ShouldNot(BeNil())
-			})
-		})
-		Context("Etcd statefulset not exist in a given namespace", func() {
-			It("should return error", func() {
-				wrongNS := "wrong-namespace"
-				clientSet := GetFakeKubernetesClientSet()
-
-				err := clientSet.Create(testCtx, sts)
-				Expect(err).ShouldNot(HaveOccurred())
-
-				etcdSts, err := GetStatefulSet(testCtx, clientSet, wrongNS, podName)
-				Expect(err).Should(HaveOccurred())
-				Expect(etcdSts).Should(BeNil())
-			})
-		})
-	})
-
 	Describe("read config file into a map", func() {
 		const testdataPath = "testdata"
 		var (
@@ -961,15 +913,6 @@ initial-cluster: etcd1=http://0.0.0.0:2380`
 		})
 	})
 })
-
-func emptyStatefulSet(name, namespace string) *appsv1.StatefulSet {
-	return &appsv1.StatefulSet{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: namespace,
-		},
-	}
-}
 
 func generateSnapshotList(n int) brtypes.SnapList {
 	snapList := brtypes.SnapList{}

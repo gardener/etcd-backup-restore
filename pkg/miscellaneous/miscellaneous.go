@@ -17,7 +17,6 @@ import (
 	"path/filepath"
 	"sort"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/gardener/etcd-backup-restore/pkg/errors"
@@ -33,7 +32,6 @@ import (
 	"go.etcd.io/etcd/client/pkg/v3/types"
 	"go.etcd.io/etcd/server/v3/embed"
 	"go.uber.org/zap"
-	appsv1 "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -527,18 +525,6 @@ func IsBackupBucketEmpty(snapStoreConfig *brtypes.SnapstoreConfig, logger *logru
 		return false
 	}
 	return true
-}
-
-// GetStatefulSet gets the StatefulSet with the name podName in podNamespace namespace. It will return if there is any error or the StatefulSet is not found.
-func GetStatefulSet(ctx context.Context, clientSet client.Client, podNamespace string, podName string) (*appsv1.StatefulSet, error) {
-	curSts := &appsv1.StatefulSet{}
-	if err := clientSet.Get(ctx, client.ObjectKey{
-		Namespace: podNamespace,
-		Name:      podName[:strings.LastIndex(podName, "-")],
-	}, curSts); err != nil {
-		return nil, err
-	}
-	return curSts, nil
 }
 
 // DoPromoteMember promotes a given learner to a voting member.

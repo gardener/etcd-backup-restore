@@ -489,13 +489,12 @@ func (h *HTTPHandler) getClusterState(ctx context.Context, clusterSize int) (str
 		return miscellaneous.ClusterStateNew, nil
 	}
 
-	// Multi-node case: rely solely on etcd membership state (learner presence)
-	// to decide whether this member is joining an existing cluster or bootstrapping a new one.
-	// StatefulSet status is intentionally NOT consulted here — /config is only requested
-	// after backup-restore initialization, at which point any joining member should
-	// already have been added as a learner.
+	// clusterSize > 1
+	// Either a multi-node bootstrap or a restoration of single member in multi-node.
 	m := member.NewMemberControl(h.EtcdConnectionConfig)
 
+	// check whether a learner is present in the cluster.
+	// if a learner is present then return `ClusterStateExisting` because to start a learner clusterState must be 'existing'.
 	present, err := m.IsLearnerPresent(ctx)
 	if err != nil {
 		h.Logger.Warnf("failed to check learner presence, defaulting cluster state to 'new': %v", err)
