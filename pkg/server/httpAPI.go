@@ -456,7 +456,7 @@ func (h *HTTPHandler) serveConfig(rw http.ResponseWriter, req *http.Request) {
 		rw.WriteHeader(http.StatusInternalServerError)
 		return
 	}
-	state, err := h.getClusterState(req.Context(), clusterSize)
+	state, err := h.getClusterState(req.Context(), clusterSize, member.NewMemberControl(h.EtcdConnectionConfig))
 	if err != nil {
 		h.Logger.Warnf("failed to get cluster state %v", err)
 		rw.WriteHeader(http.StatusInternalServerError)
@@ -483,15 +483,19 @@ func (h *HTTPHandler) serveConfig(rw http.ResponseWriter, req *http.Request) {
 	h.Logger.Info("Served config for ETCD instance.")
 }
 
+// learnerChecker checks for learner presence in an etcd cluster.
+type learnerChecker interface {
+	IsLearnerPresent(context.Context) (bool, error)
+}
+
 // getClusterState returns the Cluster state either `new` or `existing`.
-func (h *HTTPHandler) getClusterState(ctx context.Context, clusterSize int) (string, error) {
+func (h *HTTPHandler) getClusterState(ctx context.Context, clusterSize int, m learnerChecker) (string, error) {
 	if clusterSize == 1 {
 		return miscellaneous.ClusterStateNew, nil
 	}
 
 	// clusterSize > 1
 	// Either a multi-node bootstrap or a restoration of single member in multi-node.
-	m := member.NewMemberControl(h.EtcdConnectionConfig)
 
 	// check whether a learner is present in the cluster.
 	// if a learner is present then return `ClusterStateExisting` because to start a learner clusterState must be 'existing'.
@@ -504,7 +508,6 @@ func (h *HTTPHandler) getClusterState(ctx context.Context, clusterSize int) (str
 		return miscellaneous.ClusterStateExisting, nil
 	}
 	return miscellaneous.ClusterStateNew, nil
-
 }
 
 func getInitialCluster(ctx context.Context, initialCluster string, etcdConn brtypes.EtcdConnectionConfig, logger logrus.Entry, memberName string) string {
