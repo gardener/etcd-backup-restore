@@ -28,7 +28,7 @@ type BackupRestoreComponentConfig struct {
 	HealthConfig             *brtypes.HealthConfig             `json:"healthConfig,omitempty"`
 	LeaderElectionConfig     *brtypes.Config                   `json:"leaderElectionConfig,omitempty"`
 	ExponentialBackoffConfig *brtypes.ExponentialBackoffConfig `json:"exponentialBackoffConfig,omitempty"`
-	DefragmentationSchedule  string                            `json:"defragmentationSchedule"`
+	DefragConfig             *brtypes.DefragConfig             `json:"defragConfig,omitempty"`
 	UseEtcdWrapper           bool                              `json:"useEtcdWrapper,omitempty"`
 }
 

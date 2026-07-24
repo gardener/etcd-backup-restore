@@ -54,6 +54,9 @@ const (
 
 	// etcdWrapperPort defines the port no. used by etcd-wrapper.
 	etcdWrapperPort = "9095"
+
+	// DefragThreshold is the minimum total DB size above which schedule defragmentation is triggered.
+	DefragThreshold = 3 * 1024 * 1024 * 1024 // 3GB
 )
 
 type advertiseURLsConfig struct {
@@ -788,4 +791,28 @@ func getEtcdWrapperEndpoint(etcdEndpoints []string) (string, error) {
 	}
 
 	return fmt.Sprintf("%s://%s:%s", etcdURL.Scheme, etcdURL.Hostname(), etcdWrapperPort), nil
+}
+
+// CanDefragSkip checks whether defragmentation can be skipped for a given etcd cluster.
+// It returns false (do not skip) when either TotalDBSize or available free space is greater than threshold.
+// It returns true (can skip) when the TotalDBSize and available free space are below threshold, meaning defragmentation would have
+// little benefit.
+func CanDefragSkip(pCtx context.Context, client etcdClient.MaintenanceCloser, etcdConnectionConfig *brtypes.EtcdConnectionConfig, defragCfg *brtypes.DefragConfig) (bool, error) {
+	ctx, cancel := context.WithTimeout(pCtx, etcdConnectionConfig.ConnectionTimeout.Duration)
+	defer cancel()
+
+	if len(etcdConnectionConfig.Endpoints) == 0 {
+		return false, fmt.Errorf("etcd endpoints are not passed correctly")
+	}
+
+	etcdStatus, err := client.Status(ctx, etcdConnectionConfig.Endpoints[0])
+	if err != nil {
+		return false, err
+	}
+
+	if etcdStatus.DbSize > DefragThreshold || ((etcdStatus.DbSize - etcdStatus.DbSizeInUse) > defragCfg.FreespaceThreshold) {
+		return false, nil
+	}
+
+	return true, nil
 }

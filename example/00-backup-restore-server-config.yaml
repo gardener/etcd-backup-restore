@@ -5,7 +5,6 @@ etcdConnectionConfig:
   # password: admin
   connectionTimeout: 10s
   snapshotTimeout: 8m
-  defragTimeout: 8m
   # insecureTransport: true
   # insecureSkipVerify: true
   # certFile: "ssl/etcd/tls.crt"
@@ -58,8 +57,12 @@ restorationConfig:
   autoCompactionMode: "periodic"
   autoCompactionRetention: "30m"
 
-defragmentationSchedule: "0 0 */3 * *"
 useEtcdWrapper: false
+
+defragConfig:
+  defragmentationSchedule: "0 0 */3 * *"
+  defragTimeout: 8m
+  freespaceThreshold: 524288000
 
 compressionConfig:
    enabled: true

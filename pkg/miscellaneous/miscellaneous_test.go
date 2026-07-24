@@ -39,6 +39,7 @@ const (
 var _ = Describe("Miscellaneous Tests", func() {
 	var (
 		etcdConnectionConfig *brtypes.EtcdConnectionConfig
+		defragConfig         *brtypes.DefragConfig
 		ctrl                 *gomock.Controller
 		factory              *mockfactory.MockFactory
 		cm                   *mockfactory.MockMaintenanceCloser
@@ -47,10 +48,10 @@ var _ = Describe("Miscellaneous Tests", func() {
 
 	BeforeEach(func() {
 		etcdConnectionConfig = brtypes.NewEtcdConnectionConfig()
+		defragConfig = brtypes.NewDefragConfig()
 		etcdConnectionConfig.Endpoints = []string{"http://127.0.0.1:2379"}
 		etcdConnectionConfig.ConnectionTimeout.Duration = 30 * time.Second
 		etcdConnectionConfig.SnapshotTimeout.Duration = 30 * time.Second
-		etcdConnectionConfig.DefragTimeout.Duration = 30 * time.Second
 
 		ctrl = gomock.NewController(GinkgoT())
 		factory = mockfactory.NewMockFactory(ctrl)
@@ -910,6 +911,69 @@ initial-cluster: etcd1=http://0.0.0.0:2380`
 					Expect(err).To(HaveOccurred())
 				})
 			})
+		})
+	})
+
+	Describe("Can Defragmentation be skipped", func() {
+		BeforeEach(func() {
+			factory.EXPECT().NewMaintenance().Return(cm, nil).AnyTimes()
+		})
+		It("should return false when TotalDBSize is greater than threshold", func() {
+			clientMaintenance, err := factory.NewMaintenance()
+			Expect(err).ShouldNot(HaveOccurred())
+
+			cm.EXPECT().Status(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, _ string) (*clientv3.StatusResponse, error) {
+				response := new(clientv3.StatusResponse)
+				response.DbSize = 4 * 1024 * 1024 * 1024 // 4GB
+				return response, nil
+			}).Times(1)
+
+			canSkip, err := CanDefragSkip(context.Background(), clientMaintenance, etcdConnectionConfig, defragConfig)
+			Expect(err).Should(BeNil())
+			Expect(canSkip).Should(BeFalse())
+		})
+
+		It("should return false when available free space is greater than threshold", func() {
+			clientMaintenance, err := factory.NewMaintenance()
+			Expect(err).ShouldNot(HaveOccurred())
+
+			cm.EXPECT().Status(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, _ string) (*clientv3.StatusResponse, error) {
+				response := new(clientv3.StatusResponse)
+				response.DbSize = 2 * 1024 * 1024 * 1024 // 2GB
+				response.DbSizeInUse = 500 * 1024 * 1024 // 500MB
+				return response, nil
+			}).Times(1)
+
+			canSkip, err := CanDefragSkip(context.Background(), clientMaintenance, etcdConnectionConfig, defragConfig)
+			Expect(err).Should(BeNil())
+			Expect(canSkip).Should(BeFalse())
+		})
+
+		It("should return true when TotalDBSize and available free space are below threshold", func() {
+			clientMaintenance, err := factory.NewMaintenance()
+			Expect(err).ShouldNot(HaveOccurred())
+
+			cm.EXPECT().Status(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, _ string) (*clientv3.StatusResponse, error) {
+				response := new(clientv3.StatusResponse)
+				response.DbSize = 1 * 1024 * 1024 * 1024 // 1GB
+				response.DbSizeInUse = 500 * 1024 * 1024 // 500MB
+				return response, nil
+			}).Times(1)
+
+			canSkip, err := CanDefragSkip(context.Background(), clientMaintenance, etcdConnectionConfig, defragConfig)
+			Expect(err).Should(BeNil())
+			Expect(canSkip).Should(BeTrue())
+		})
+
+		It("should return false with error", func() {
+			clientMaintenance, err := factory.NewMaintenance()
+			Expect(err).ShouldNot(HaveOccurred())
+
+			cm.EXPECT().Status(gomock.Any(), gomock.Any()).Return(nil, fmt.Errorf("failed to connect to the dummy etcd")).AnyTimes()
+
+			canSkip, err := CanDefragSkip(context.Background(), clientMaintenance, etcdConnectionConfig, defragConfig)
+			Expect(err).ShouldNot(BeNil())
+			Expect(canSkip).Should(BeFalse())
 		})
 	})
 })

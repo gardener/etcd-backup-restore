@@ -51,7 +51,7 @@ var (
 // NewBackupRestoreServer return new backup restore server.
 func NewBackupRestoreServer(logger *logrus.Logger, config *BackupRestoreComponentConfig) (*BackupRestoreServer, error) {
 	serverLogger := logger.WithField("actor", "backup-restore-server")
-	defragmentationSchedule, err := cron.ParseStandard(config.DefragmentationSchedule)
+	defragmentationSchedule, err := cron.ParseStandard(config.DefragConfig.DefragmentationSchedule)
 	if err != nil {
 		// Ideally this case should not occur, since this check is done at the config validaitions.
 		return nil, err
@@ -262,7 +262,7 @@ func (b *BackupRestoreServer) runServer(ctx context.Context, restoreOpts *brtype
 				go handleSsrStopRequest(leCtx, b.logger, ssrStopCh)
 			}
 			go b.runEtcdProbeLoopWithSnapshotter(leCtx, handler, ssr, ss, ssrStopCh)
-			go defragmentor.DefragDataPeriodically(leCtx, b.config.EtcdConnectionConfig, b.defragmentationSchedule, defragCallBack, b.logger)
+			go defragmentor.DefragDataPeriodically(leCtx, b.config.EtcdConnectionConfig, b.config.DefragConfig, b.defragmentationSchedule, defragCallBack, b.logger)
 		},
 		OnStoppedLeading: func() {
 			if runServerWithSnapshotter {

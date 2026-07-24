@@ -23,20 +23,25 @@ type CallbackFunc func(ctx context.Context, isFinal bool) (*brtypes.Snapshot, er
 type defragmentorJob struct {
 	ctx                  context.Context
 	etcdConnectionConfig *brtypes.EtcdConnectionConfig
+	defragConfig         *brtypes.DefragConfig
 	logger               *logrus.Entry
 	callback             CallbackFunc
 }
 
 // NewDefragmentorJob returns the new defragmentor job.
-func NewDefragmentorJob(ctx context.Context, etcdConnectionConfig *brtypes.EtcdConnectionConfig, logger *logrus.Entry, callback CallbackFunc) cron.Job {
+func NewDefragmentorJob(ctx context.Context, etcdConnectionConfig *brtypes.EtcdConnectionConfig, defragConfig *brtypes.DefragConfig, logger *logrus.Entry, callback CallbackFunc) cron.Job {
 	return &defragmentorJob{
 		ctx:                  ctx,
 		etcdConnectionConfig: etcdConnectionConfig,
+		defragConfig:         defragConfig,
 		logger:               logger.WithField("job", "defragmentor"),
 		callback:             callback,
 	}
 }
 
+// Run executes one defragmentation cycle.
+//   - First checks whether defragmentation can be skipped based on DB-size and free-space thresholds.
+//   - If not, then waits until all etcd cluster members are healthy before defragmenting.
 func (d *defragmentorJob) Run() {
 	clientFactory := etcdutil.NewFactory(*d.etcdConnectionConfig)
 
@@ -45,6 +50,14 @@ func (d *defragmentorJob) Run() {
 		d.logger.Warnf("failed to create etcd maintenance client")
 	}
 	defer clientMaintenance.Close()
+
+	canSkip, err := miscellaneous.CanDefragSkip(d.ctx, clientMaintenance, d.etcdConnectionConfig, d.defragConfig)
+	if err != nil {
+		d.logger.Warnf("failed to check etcd defrag skip conditions, proceeding with etcd defragmentation: %v", err)
+	} else if canSkip {
+		d.logger.Infof("skipping the schedule defrag for etcd cluster as Total DBSize is below %dGB threshold and available free-space is below %dGB threshold", miscellaneous.DefragThreshold/1024/1024/1024, d.defragConfig.FreespaceThreshold/1024/1024/1024)
+		return
+	}
 
 	client, err := clientFactory.NewCluster()
 	if err != nil {
@@ -75,8 +88,8 @@ waitLoop:
 			}
 
 			if isClusterHealthy {
-				d.logger.Infof("Starting the defragmentation as all members of etcd cluster are in healthy state")
-				err = etcdutil.DefragmentData(d.ctx, clientMaintenance, client, etcdEndpoints, d.etcdConnectionConfig.DefragTimeout.Duration, d.logger)
+				d.logger.Infof("Starting the schedule defragmentation as all members of etcd cluster are in healthy state")
+				err = etcdutil.DefragmentData(d.ctx, clientMaintenance, client, etcdEndpoints, d.defragConfig.DefragTimeout.Duration, d.logger)
 				if err != nil {
 					d.logger.Warnf("failed to defrag data with error: %v", err)
 					continue
@@ -93,8 +106,8 @@ waitLoop:
 }
 
 // DefragDataPeriodically defragments the data directory of each etcd member.
-func DefragDataPeriodically(ctx context.Context, etcdConnectionConfig *brtypes.EtcdConnectionConfig, defragmentationSchedule cron.Schedule, callback CallbackFunc, logger *logrus.Entry) {
-	defragmentorJob := NewDefragmentorJob(ctx, etcdConnectionConfig, logger, callback)
+func DefragDataPeriodically(ctx context.Context, etcdConnectionConfig *brtypes.EtcdConnectionConfig, defragConfig *brtypes.DefragConfig, defragmentationSchedule cron.Schedule, callback CallbackFunc, logger *logrus.Entry) {
+	defragmentorJob := NewDefragmentorJob(ctx, etcdConnectionConfig, defragConfig, logger, callback)
 	// TODO: Sync logrus logger to cron logger
 	jobRunner := cron.New(cron.WithChain(cron.SkipIfStillRunning(cron.DefaultLogger)))
 	jobRunner.Schedule(defragmentationSchedule, defragmentorJob)
