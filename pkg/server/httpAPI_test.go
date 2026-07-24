@@ -53,6 +53,12 @@ func TestGetClusterState(t *testing.T) {
 			expectedState:  miscellaneous.ClusterStateNew,
 		},
 		{
+			name:          "multi-node fresh bootstrap (0-to-3 scale-out) returns new",
+			clusterSize:   3,
+			learnerErr:    errors.New("context deadline exceeded"),
+			expectedState: miscellaneous.ClusterStateNew,
+		},
+		{
 			name:           "multi-node with IsLearnerPresent error defaults to new",
 			clusterSize:    3,
 			learnerPresent: false,
@@ -65,10 +71,7 @@ func TestGetClusterState(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			h := &HTTPHandler{Logger: logrus.New().WithField("suite", "cluster state")}
 			m := &fakeLearnerChecker{learnerPresent: tt.learnerPresent, err: tt.learnerErr}
-			state, err := h.getClusterState(context.Background(), tt.clusterSize, m)
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
+			state := h.getClusterState(context.Background(), tt.clusterSize, m)
 			if state != tt.expectedState {
 				t.Errorf("expected state %q, got %q", tt.expectedState, state)
 			}

@@ -456,13 +456,7 @@ func (h *HTTPHandler) serveConfig(rw http.ResponseWriter, req *http.Request) {
 		rw.WriteHeader(http.StatusInternalServerError)
 		return
 	}
-	state, err := h.getClusterState(req.Context(), clusterSize, member.NewMemberControl(h.EtcdConnectionConfig))
-	if err != nil {
-		h.Logger.Warnf("failed to get cluster state %v", err)
-		rw.WriteHeader(http.StatusInternalServerError)
-		return
-	}
-	h.Logger.Infof("The cluster state is %v", state)
+	state := h.getClusterState(req.Context(), clusterSize, member.NewMemberControl(h.EtcdConnectionConfig))
 	config["initial-cluster-state"] = state
 
 	data, err := yaml.Marshal(&config)
@@ -489,9 +483,10 @@ type learnerChecker interface {
 }
 
 // getClusterState returns the Cluster state either `new` or `existing`.
-func (h *HTTPHandler) getClusterState(ctx context.Context, clusterSize int, m learnerChecker) (string, error) {
+func (h *HTTPHandler) getClusterState(ctx context.Context, clusterSize int, m learnerChecker) string {
 	if clusterSize == 1 {
-		return miscellaneous.ClusterStateNew, nil
+		h.Logger.Infof("The cluster size is 1. The cluster state is %v", miscellaneous.ClusterStateNew)
+		return miscellaneous.ClusterStateNew
 	}
 
 	// clusterSize > 1
@@ -501,13 +496,20 @@ func (h *HTTPHandler) getClusterState(ctx context.Context, clusterSize int, m le
 	// if a learner is present then return `ClusterStateExisting` because to start a learner clusterState must be 'existing'.
 	present, err := m.IsLearnerPresent(ctx)
 	if err != nil {
+		// During a fresh multi-node bootstrap, etcd is not yet running when this is called,
+		// so IsLearnerPresent will fail with a timeout. Defaulting to 'new' is safe here
+		// because the initializer handles the scale-up path (adding a learner) before this
+		// code is reached. Returning an error to the caller would cause a 500, deadlocking
+		// the bootstrap since etcd-wrapper never receives its config.
 		h.Logger.Warnf("failed to check learner presence, defaulting cluster state to 'new': %v", err)
-		return miscellaneous.ClusterStateNew, nil
+		return miscellaneous.ClusterStateNew
 	}
 	if present {
-		return miscellaneous.ClusterStateExisting, nil
+		h.Logger.Infof("Learner is present. The cluster state is %v", miscellaneous.ClusterStateExisting)
+		return miscellaneous.ClusterStateExisting
 	}
-	return miscellaneous.ClusterStateNew, nil
+	h.Logger.Infof("No learner is present. The cluster state is %v", miscellaneous.ClusterStateNew)
+	return miscellaneous.ClusterStateNew
 }
 
 func getInitialCluster(ctx context.Context, initialCluster string, etcdConn brtypes.EtcdConnectionConfig, logger logrus.Entry, memberName string) string {
