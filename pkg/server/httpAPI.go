@@ -418,7 +418,6 @@ func (h *HTTPHandler) serveConfig(rw http.ResponseWriter, req *http.Request) {
 	}
 
 	// fetch pod name from env
-	podNS := os.Getenv("POD_NAMESPACE")
 	podName := os.Getenv("POD_NAME")
 
 	memberNamePrefix, err := miscellaneous.GetMemberNamePrefix(inputFileName)
@@ -457,12 +456,7 @@ func (h *HTTPHandler) serveConfig(rw http.ResponseWriter, req *http.Request) {
 		rw.WriteHeader(http.StatusInternalServerError)
 		return
 	}
-	state, err := h.getClusterState(req.Context(), clusterSize, podName, podNS)
-	if err != nil {
-		h.Logger.Warnf("failed to get cluster state %v", err)
-		rw.WriteHeader(http.StatusInternalServerError)
-		return
-	}
+	state := h.getClusterState(req.Context(), clusterSize, member.NewMemberControl(h.EtcdConnectionConfig))
 	config["initial-cluster-state"] = state
 
 	data, err := yaml.Marshal(&config)
@@ -483,39 +477,39 @@ func (h *HTTPHandler) serveConfig(rw http.ResponseWriter, req *http.Request) {
 	h.Logger.Info("Served config for ETCD instance.")
 }
 
-// getClusterState returns the Cluster state either `new` or `existing`.
-func (h *HTTPHandler) getClusterState(ctx context.Context, clusterSize int, podName string, podNS string) (string, error) {
-	if clusterSize == 1 {
-		return miscellaneous.ClusterStateNew, nil
-	}
+// learnerChecker checks for learner presence in an etcd cluster.
+type learnerChecker interface {
+	IsLearnerPresent(context.Context) (bool, error)
+}
 
-	client, err := miscellaneous.GetKubernetesClientSetOrError()
-	if err != nil {
-		h.Logger.Warnf("Failed to create clientset: %v", err)
-		return "", fmt.Errorf("failed to get clusterState: %w", err)
+// getClusterState returns the Cluster state either `new` or `existing`.
+func (h *HTTPHandler) getClusterState(ctx context.Context, clusterSize int, m learnerChecker) string {
+	if clusterSize == 1 {
+		h.Logger.Infof("The cluster size is 1. The cluster state is %v", miscellaneous.ClusterStateNew)
+		return miscellaneous.ClusterStateNew
 	}
 
 	// clusterSize > 1
-	state, err := miscellaneous.GetInitialClusterStateIfScaleup(ctx, *h.Logger, client, podName, podNS)
+	// Either a multi-node bootstrap or a restoration of single member in multi-node.
+
+	// check whether a learner is present in the cluster.
+	// if a learner is present then return `ClusterStateExisting` because to start a learner clusterState must be 'existing'.
+	present, err := m.IsLearnerPresent(ctx)
 	if err != nil {
-		return "", err
+		// During a fresh multi-node bootstrap, etcd is not yet running when this is called,
+		// so IsLearnerPresent will fail with a timeout. Defaulting to 'new' is safe here
+		// because the initializer handles the scale-up path (adding a learner) before this
+		// code is reached. Returning an error to the caller would cause a 500, deadlocking
+		// the bootstrap since etcd-wrapper never receives its config.
+		h.Logger.Warnf("failed to check learner presence, defaulting cluster state to 'new': %v", err)
+		return miscellaneous.ClusterStateNew
 	}
-
-	if state == nil {
-		// Not a Scale-up scenario.
-		// Either a multi-node bootstrap or a restoration of single member in multi-node.
-		m := member.NewMemberControl(h.EtcdConnectionConfig)
-
-		// check whether a learner is present in the cluster
-		// if a learner is present then return `ClusterStateExisting` else `ClusterStateNew`.
-		if present, err := m.IsLearnerPresent(ctx); present && err == nil {
-			return miscellaneous.ClusterStateExisting, nil
-		}
-		return miscellaneous.ClusterStateNew, nil
-
+	if present {
+		h.Logger.Infof("Learner is present. The cluster state is %v", miscellaneous.ClusterStateExisting)
+		return miscellaneous.ClusterStateExisting
 	}
-
-	return *state, nil
+	h.Logger.Infof("No learner is present. The cluster state is %v", miscellaneous.ClusterStateNew)
+	return miscellaneous.ClusterStateNew
 }
 
 func getInitialCluster(ctx context.Context, initialCluster string, etcdConn brtypes.EtcdConnectionConfig, logger logrus.Entry, memberName string) string {
