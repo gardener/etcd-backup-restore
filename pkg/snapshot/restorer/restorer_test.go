@@ -23,6 +23,7 @@ import (
 	"github.com/gardener/etcd-backup-restore/test/utils"
 
 	"github.com/sirupsen/logrus"
+	"go.etcd.io/etcd/api/v3/mvccpb"
 	"go.etcd.io/etcd/client/pkg/v3/types"
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"go.uber.org/mock/gomock"
@@ -1230,6 +1231,83 @@ var _ = Describe("Unit testing individual functions for restorer package", func(
 
 				err := ErrorArrayToError(errs)
 				Expect(err).Should(Equal(expectedErr))
+			})
+		})
+	})
+
+	Describe("testing FilterEventsAfterRevision", func() {
+		// makeEvents builds an ascending-by-ModRevision event slice from the given revisions.
+		makeEvents := func(revs ...int64) []brtypes.Event {
+			events := make([]brtypes.Event, 0, len(revs))
+			for _, rev := range revs {
+				events = append(events, brtypes.Event{
+					EtcdEvent: &clientv3.Event{
+						Type: mvccpb.PUT,
+						Kv:   &mvccpb.KeyValue{Key: []byte("k"), ModRevision: rev},
+					},
+				})
+			}
+			return events
+		}
+		modRevs := func(events []brtypes.Event) []int64 {
+			revs := make([]int64, 0, len(events))
+			for _, e := range events {
+				revs = append(revs, e.EtcdEvent.Kv.ModRevision)
+			}
+			return revs
+		}
+
+		Context("when no event overlaps (current revision below all events)", func() {
+			It("should return all events unchanged", func() {
+				events := makeEvents(101, 102, 103, 104)
+				filtered := FilterEventsAfterRevision(events, 100)
+				Expect(modRevs(filtered)).To(Equal([]int64{101, 102, 103, 104}))
+			})
+		})
+
+		Context("when the current revision partially overlaps the events", func() {
+			It("should drop the already-applied prefix and keep the rest", func() {
+				events := makeEvents(101, 102, 103, 104, 105)
+				filtered := FilterEventsAfterRevision(events, 103)
+				Expect(modRevs(filtered)).To(Equal([]int64{104, 105}))
+			})
+		})
+
+		Context("when an event's ModRevision equals the current revision", func() {
+			It("should skip that event (strictly greater only)", func() {
+				events := makeEvents(101, 102, 103)
+				filtered := FilterEventsAfterRevision(events, 102)
+				Expect(modRevs(filtered)).To(Equal([]int64{103}))
+			})
+		})
+
+		Context("when the current revision is at the last revision of the delta", func() {
+			It("should return no events", func() {
+				events := makeEvents(101, 102, 103, 104)
+				filtered := FilterEventsAfterRevision(events, 104)
+				Expect(filtered).To(BeEmpty())
+			})
+		})
+
+		Context("when the current revision is beyond the entire delta (full overlap)", func() {
+			It("should return no events", func() {
+				events := makeEvents(101, 102, 103, 104)
+				filtered := FilterEventsAfterRevision(events, 108)
+				Expect(filtered).To(BeEmpty())
+			})
+		})
+
+		Context("when the events slice is empty", func() {
+			It("should return no events", func() {
+				Expect(FilterEventsAfterRevision([]brtypes.Event{}, 100)).To(BeEmpty())
+			})
+		})
+
+		Context("when multiple events share the same ModRevision at the boundary", func() {
+			It("should cut at the first strictly-greater element", func() {
+				events := makeEvents(101, 102, 102, 103)
+				filtered := FilterEventsAfterRevision(events, 102)
+				Expect(modRevs(filtered)).To(Equal([]int64{103}))
 			})
 		})
 	})
