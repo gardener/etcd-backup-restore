@@ -35,6 +35,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/sirupsen/logrus"
+	"go.etcd.io/etcd/api/v3/etcdserverpb"
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/yaml"
@@ -448,7 +449,11 @@ func (h *HTTPHandler) serveConfig(rw http.ResponseWriter, req *http.Request) {
 	}
 	config["advertise-client-urls"] = strings.Join(advClientURLs, ",")
 
-	config["initial-cluster"] = getInitialCluster(req.Context(), fmt.Sprint(config["initial-cluster"]), *h.EtcdConnectionConfig, *h.Logger, memberName)
+	if miscellaneous.EndpointsFileConfigured() {
+		config["initial-cluster"] = getInitialClusterFromMemberList(req.Context(), inputFileName, memberName, member.NewMemberControl(h.EtcdConnectionConfig), *h.Logger)
+	} else {
+		config["initial-cluster"] = getInitialCluster(req.Context(), fmt.Sprint(config["initial-cluster"]), *h.EtcdConnectionConfig, *h.Logger, memberName)
+	}
 
 	clusterSize, err := miscellaneous.GetClusterSize(fmt.Sprint(config["initial-cluster"]))
 	if err != nil {
@@ -482,6 +487,11 @@ type learnerChecker interface {
 	IsLearnerPresent(context.Context) (bool, error)
 }
 
+// memberLister lists members of an etcd cluster.
+type memberLister interface {
+	ListMembers(context.Context) ([]*etcdserverpb.Member, error)
+}
+
 // getClusterState returns the Cluster state either `new` or `existing`.
 func (h *HTTPHandler) getClusterState(ctx context.Context, clusterSize int, m learnerChecker) string {
 	if clusterSize == 1 {
@@ -510,6 +520,42 @@ func (h *HTTPHandler) getClusterState(ctx context.Context, clusterSize int, m le
 	}
 	h.Logger.Infof("No learner is present. The cluster state is %v", miscellaneous.ClusterStateNew)
 	return miscellaneous.ClusterStateNew
+}
+
+func getInitialClusterFromMemberList(ctx context.Context, configFile, memberName string, ml memberLister, logger logrus.Entry) string {
+	peerURLs := make(map[string][]string)
+
+	members, err := ml.ListMembers(ctx)
+	if err != nil {
+		logger.Warnf("Could not list members: %v", err)
+	}
+	for _, m := range members {
+		// Skip members with no name — they have been registered (e.g. as a learner) but
+		// have not started yet and will not have announced a real name. Including them
+		// under an empty key produces a duplicate-URL entry once self is injected below.
+		if m.GetName() == "" {
+			continue
+		}
+		peerURLs[m.GetName()] = m.GetPeerURLs()
+	}
+
+	// If this member is not yet in the list (e.g. joining as a new member), inject self.
+	if _, ok := peerURLs[memberName]; !ok {
+		selfPeerURLs, err := miscellaneous.GetMemberPeerURLs(configFile)
+		if err != nil {
+			logger.Warnf("Could not get self peer URLs: %v", err)
+			return ""
+		}
+		peerURLs[memberName] = selfPeerURLs
+	}
+
+	var parts []string
+	for name, urls := range peerURLs {
+		for _, u := range urls {
+			parts = append(parts, name+"="+u)
+		}
+	}
+	return strings.Join(parts, ",")
 }
 
 func getInitialCluster(ctx context.Context, initialCluster string, etcdConn brtypes.EtcdConnectionConfig, logger logrus.Entry, memberName string) string {
