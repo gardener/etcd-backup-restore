@@ -716,6 +716,18 @@ func parseAdvertiseURLsConfig(configFile string) (*advertiseURLsConfig, error) {
 // GetMemberPeerURLs retrieves the initial advertise peer URLs for the etcd member.
 // The member name is derived from the POD_NAME environment variable and the optional member-name-prefix in the config.
 func GetMemberPeerURLs(configFile string) ([]string, error) {
+	if EndpointsFileConfigured() {
+		podIP, err := GetEnvVarOrError("POD_IP")
+		if err != nil {
+			return nil, fmt.Errorf("POD_IP not set: %w", err)
+		}
+		scheme, port, err := GetPeerURLSchemeAndPort(configFile)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get peer URL scheme/port: %w", err)
+		}
+		return []string{fmt.Sprintf("%s://%s:%s", scheme, podIP, port)}, nil
+	}
+
 	memberName, err := GetMemberName(configFile)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get member name: %w", err)
@@ -742,6 +754,18 @@ func GetMemberPeerURLs(configFile string) ([]string, error) {
 // GetMemberClientURLs retrieves the advertise client URLs for the etcd member.
 // The member name is derived from the POD_NAME environment variable and the optional member-name-prefix in the config.
 func GetMemberClientURLs(configFile string) ([]string, error) {
+	if EndpointsFileConfigured() {
+		podIP, err := GetEnvVarOrError("POD_IP")
+		if err != nil {
+			return nil, fmt.Errorf("POD_IP not set: %w", err)
+		}
+		scheme, port, err := GetClientURLSchemeAndPort(configFile)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get client URL scheme/port: %w", err)
+		}
+		return []string{fmt.Sprintf("%s://%s:%s", scheme, podIP, port)}, nil
+	}
+
 	memberName, err := GetMemberName(configFile)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get member name: %w", err)
