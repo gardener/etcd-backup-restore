@@ -11,6 +11,7 @@ import (
 
 	"github.com/gardener/etcd-backup-restore/pkg/compressor"
 	"github.com/gardener/etcd-backup-restore/pkg/initializer/validator"
+	"github.com/gardener/etcd-backup-restore/pkg/miscellaneous"
 	"github.com/gardener/etcd-backup-restore/pkg/server"
 	"github.com/gardener/etcd-backup-restore/pkg/snapshot/snapshotter"
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
@@ -58,6 +59,12 @@ func (o *serverOptions) addFlags(fs *flag.FlagSet) {
 func (o *serverOptions) complete() {
 	o.Config.Complete()
 	o.Logger.SetLevel(logrus.Level(o.LogLevel))
+
+	if miscellaneous.EndpointsFileConfigured() {
+		if _, err := miscellaneous.GetEndpointsFromFile(); err != nil {
+			o.Logger.Fatalf("invalid ENDPOINTS file at startup: %v", err)
+		}
+	}
 }
 
 func (o *serverOptions) loadConfigFromFile() error {
