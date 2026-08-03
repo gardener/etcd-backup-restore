@@ -243,10 +243,6 @@ func (r *Restorer) applyDeltaSnapshots(clientFactory client.Factory, endPoints [
 
 	embeddedEtcdQuotaBytes := float64(ro.Config.EmbeddedEtcdQuotaBytes)
 
-	if err := verifySnapshotRevision(clientKV, snapList[0]); err != nil {
-		return err
-	}
-
 	// no more delta snapshots available
 	if len(snapList) == 1 {
 		return nil
@@ -466,7 +462,22 @@ func (r *Restorer) applySnaps(clientKV client.KVCloser, clientMaintenance client
 
 // applyEventsAndVerify applies events from one snapshot to the embedded etcd and verifies the correctness of the sequence of snapshot applied.
 func applyEventsAndVerify(clientKV client.KVCloser, events []brtypes.Event, snap *brtypes.Snapshot) error {
-	if err := applyEventsToEtcd(clientKV, events); err != nil {
+	// A snapshot's events can overlap with revisions already present in the store (e.g. the full snapshot
+	// running ahead of its recorded revision, or consecutive delta snapshots overlapping), so drop the
+	// already-present events before applying, to avoid advancing the revision beyond the snapshot's last revision.
+	lastRevision, err := getLatestRevision(clientKV)
+	if err != nil {
+		return fmt.Errorf("failed to get etcd latest revision for delta snapshot %s : %v", snap.SnapName, err)
+	}
+	newEvents := FilterEventsAfterRevision(events, lastRevision)
+	if len(newEvents) == 0 {
+		// The delta snapshot completely overlaps with the existing revisions, so there is nothing to apply.
+		// We deliberately do not verify the revision here: since nothing was applied, the etcd revision is
+		// already at or beyond this snapshot's last revision, so the strict equality check would wrongly fail.
+		return nil
+	}
+
+	if err := applyEventsToEtcd(clientKV, newEvents); err != nil {
 		return fmt.Errorf("failed to apply events to etcd for delta snapshot %s : %v", snap.SnapName, err)
 	}
 
@@ -476,7 +487,7 @@ func applyEventsAndVerify(clientKV client.KVCloser, events []brtypes.Event, snap
 	return nil
 }
 
-// applyFirstDeltaSnapshot applies the events from first delta snapshot to etcd.
+// applyFirstDeltaSnapshot fetches the first delta snapshot from the store and applies its events to etcd.
 func (r *Restorer) applyFirstDeltaSnapshot(clientKV client.KVCloser, snap *brtypes.Snapshot) error {
 	r.logger.Infof("Applying first delta snapshot %s", path.Join(snap.SnapDir, snap.SnapName))
 
@@ -495,31 +506,12 @@ func (r *Restorer) applyFirstDeltaSnapshot(clientKV client.KVCloser, snap *brtyp
 		return fmt.Errorf("failed to unmarshal events data from delta snapshot %s : %v", snap.SnapName, err)
 	}
 
-	// Note: Since revision in full snapshot file name might be lower than actual revision stored in snapshot.
-	// This is because of issue referred below. So, as per workaround used in our logic of taking delta snapshot,
-	// the latest revision from full snapshot may overlap with first few revision on first delta snapshot
-	// Hence, we have to additionally take care of that.
-	// Refer: https://github.com/coreos/etcd/issues/9037
-	ctx, cancel := context.WithTimeout(context.TODO(), etcdConnectionTimeout)
-	defer cancel()
-	resp, err := clientKV.Get(ctx, "", clientv3.WithLastRev()...)
-	if err != nil {
-		return fmt.Errorf("failed to get etcd latest revision: %v", err)
-	}
-	lastRevision := resp.Header.Revision
-
-	// remove all events that are already present in the restored database as it can be at, or even beyond the first delta's LastRevision
-	newEvents := FilterEventsAfterRevision(events, lastRevision)
-	if len(newEvents) == 0 {
-		// there is nothing to apply.
-		// please refer: https://github.com/gardener/etcd-backup-restore/issues/844
-		r.logger.Infof("First delta snapshot %s completely overlaps with the full snapshot (db revision: %d); skipping it.", path.Join(snap.SnapDir, snap.SnapName), lastRevision)
-		return nil
-	}
-
-	r.logger.Infof("Applying first delta snapshot %s", path.Join(snap.SnapDir, snap.SnapName))
-
-	return applyEventsToEtcd(clientKV, newEvents)
+	// Note: The revision in the full snapshot file name might be lower than the actual revision stored in the
+	// snapshot (refer https://github.com/coreos/etcd/issues/9037), so the latest revision from the full snapshot
+	// may overlap with the first few revisions of the first delta snapshot. applyEventsAndVerify filters out these
+	// already-present events before applying, so the overlap (including a complete overlap, refer
+	// https://github.com/gardener/etcd-backup-restore/issues/844) is handled the same way as for subsequent deltas.
+	return applyEventsAndVerify(clientKV, events, snap)
 }
 
 func persistRawDeltaSnapshot(rc io.ReadCloser, tempFilePath string) error {
@@ -540,25 +532,40 @@ func persistRawDeltaSnapshot(rc io.ReadCloser, tempFilePath string) error {
 	return rc.Close()
 }
 
-// FilterEventsAfterRevision returns the sub-slice of events whose ModRevision is
-// strictly greater than currentRev, events are ordered ascending by ModRevision, which is guaranteed as they are
-// collected in-order from an etcd watch (see snapshotter.handleDeltaWatchEvents).
-func FilterEventsAfterRevision(events []brtypes.Event, currentRev int64) []brtypes.Event {
-	for index, event := range events {
-		if event.EtcdEvent.Kv.ModRevision > currentRev {
-			return events[index:]
+// getLatestRevision returns the current revision of the etcd store backing clientKV.
+func getLatestRevision(clientKV client.KVCloser) (int64, error) {
+	ctx, cancel := context.WithTimeout(context.TODO(), etcdConnectionTimeout)
+	defer cancel()
+	resp, err := clientKV.Get(ctx, "", clientv3.WithLastRev()...)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get etcd latest revision: %v", err)
+	}
+	return resp.Header.Revision, nil
+}
+
+// FilterEventsAfterRevision returns the sub-slice of events whose ModRevision is strictly greater
+// than lastRevision. The events are ordered ascending by ModRevision, which is guaranteed as they
+// are collected in-order from an etcd watch (see snapshotter.handleDeltaWatchEvents), so a binary
+// search suffices to locate the first such event. An empty slice is returned when every event is
+// already present in the store (i.e. at or below lastRevision).
+func FilterEventsAfterRevision(events []brtypes.Event, lastRevision int64) []brtypes.Event {
+	// finalIndex defaults to len(events) so that a full overlap yields an empty slice.
+	finalIndex := len(events)
+	leftIndex, rightIndex := 0, len(events)-1
+	for leftIndex <= rightIndex {
+		curIndex := leftIndex + (rightIndex-leftIndex)/2
+		if events[curIndex].EtcdEvent.Kv.ModRevision > lastRevision {
+			finalIndex = curIndex
+			rightIndex = curIndex - 1
+		} else {
+			leftIndex = curIndex + 1
 		}
 	}
-	return nil
+	return events[finalIndex:]
 }
 
 // applyEventsToEtcd performs operations in events sequentially.
 func applyEventsToEtcd(clientKV client.KVCloser, events []brtypes.Event) error {
-	// just a sanity check to avoid sending empty transaction at the end of the func which generally is a no-op but just to be on the safer side to avoid any revision bump in etcd.
-	if len(events) == 0 {
-		return nil
-	}
-
 	var (
 		lastRev int64
 		ops     = []clientv3.Op{}
@@ -596,11 +603,10 @@ func verifySnapshotRevision(clientKV client.KVCloser, snap *brtypes.Snapshot) er
 		return fmt.Errorf("failed to connect to etcd KV client: %v", err)
 	}
 	etcdRevision := getResponse.Header.GetRevision()
-	// The embedded etcd's revision must be at least the snapshot's LastRevision. It can also be higher when the snapshot fully overlaps data already present in the restored database
-	// eg: a full snapshot whose recorded revision lagged the actual data it contained, so the first delta snapshot is entirely contained in the full snapshot.
-	// So if the etcdRevision is less than than the applied snapshot's LastRevision, it then indicates missing events and is treated as an error.
-	if etcdRevision < snap.LastRevision {
-		return fmt.Errorf("mismatched event revision while applying delta snapshot, expected at least %d but applied %d ", snap.LastRevision, etcdRevision)
+	// This is only called after applying a non-empty set of non-overlapping events, so the etcd revision
+	// must land exactly on the snapshot's last revision. Any deviation indicates a wrong sequence of applied events.
+	if snap.LastRevision != etcdRevision {
+		return fmt.Errorf("mismatched event revision while applying delta snapshot, expected %d but applied %d ", snap.LastRevision, etcdRevision)
 	}
 	return nil
 }
