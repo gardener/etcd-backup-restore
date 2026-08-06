@@ -14,7 +14,6 @@ import (
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 	"github.com/gardener/etcd-backup-restore/test/utils"
 
-	cron "github.com/robfig/cron/v3"
 	clientv3 "go.etcd.io/etcd/client/v3"
 
 	. "github.com/gardener/etcd-backup-restore/pkg/defragmentor"
@@ -130,9 +129,9 @@ var _ = Describe("Defrag", func() {
 		It("should defrag periodically with callback", func() {
 			// To make sure defrag should run set the FreespaceThreshold to 1Byte
 			defragConfig.FreespaceThreshold = 1
+			defragConfig.DefragmentationSchedule = "*/1 * * * *"
 			defragCount := 0
 			minimumExpectedDefragCount := 2
-			defragSchedule, _ := cron.ParseStandard("*/1 * * * *")
 
 			// Then populate the etcd with some more data to add the subsequent delta snapshots
 			populatorCtx, cancelPopulator := context.WithTimeout(testCtx, 5*time.Second)
@@ -160,7 +159,7 @@ var _ = Describe("Defrag", func() {
 
 			defragThreadCtx, cancelDefragThread := context.WithTimeout(testCtx, time.Second*time.Duration(235))
 			defer cancelDefragThread()
-			DefragDataPeriodically(defragThreadCtx, etcdConnectionConfig, defragConfig, defragSchedule, func(_ context.Context, _ bool) (*brtypes.Snapshot, error) {
+			DefragDataPeriodically(defragThreadCtx, etcdConnectionConfig, defragConfig, func(_ context.Context, _ bool) (*brtypes.Snapshot, error) {
 				defragCount++
 				return nil, nil
 			}, logger)

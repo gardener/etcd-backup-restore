@@ -824,11 +824,11 @@ func getEtcdWrapperEndpoint(etcdEndpoints []string) (string, error) {
 	return fmt.Sprintf("%s://%s:%s", etcdURL.Scheme, etcdURL.Hostname(), etcdWrapperPort), nil
 }
 
-// CanDefragSkip checks whether defragmentation can be skipped for a given etcd cluster.
+// CanSkipDefrag checks whether defragmentation can be skipped for a given etcd cluster.
 // It returns false (do not skip) when either TotalDBSize or available free space is greater than threshold.
 // It returns true (can skip) when the TotalDBSize and available free space are below threshold, meaning defragmentation would have
 // little benefit.
-func CanDefragSkip(pCtx context.Context, client etcdClient.MaintenanceCloser, etcdConnectionConfig *brtypes.EtcdConnectionConfig, defragCfg *brtypes.DefragConfig) (bool, error) {
+func CanSkipDefrag(pCtx context.Context, client etcdClient.MaintenanceCloser, etcdConnectionConfig *brtypes.EtcdConnectionConfig, defragCfg *brtypes.DefragConfig) (bool, error) {
 	ctx, cancel := context.WithTimeout(pCtx, etcdConnectionConfig.ConnectionTimeout.Duration)
 	defer cancel()
 

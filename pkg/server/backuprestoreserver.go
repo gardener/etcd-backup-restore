@@ -28,7 +28,6 @@ import (
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/robfig/cron/v3"
 	"github.com/sirupsen/logrus"
 	"go.etcd.io/etcd/client/pkg/v3/types"
 	"k8s.io/apimachinery/pkg/util/sets"
@@ -37,10 +36,9 @@ import (
 
 // BackupRestoreServer holds the details for backup-restore server.
 type BackupRestoreServer struct {
-	logger                  *logrus.Entry
-	config                  *BackupRestoreComponentConfig
-	defragmentationSchedule cron.Schedule
-	backoffConfig           *backoff.ExponentialBackoff
+	logger        *logrus.Entry
+	config        *BackupRestoreComponentConfig
+	backoffConfig *backoff.ExponentialBackoff
 }
 
 var (
@@ -51,18 +49,12 @@ var (
 // NewBackupRestoreServer return new backup restore server.
 func NewBackupRestoreServer(logger *logrus.Logger, config *BackupRestoreComponentConfig) (*BackupRestoreServer, error) {
 	serverLogger := logger.WithField("actor", "backup-restore-server")
-	defragmentationSchedule, err := cron.ParseStandard(config.DefragConfig.DefragmentationSchedule)
-	if err != nil {
-		// Ideally this case should not occur, since this check is done at the config validaitions.
-		return nil, err
-	}
 	exponentialBackoffConfig := backoff.NewExponentialBackOffConfig(config.ExponentialBackoffConfig.AttemptLimit, config.ExponentialBackoffConfig.Multiplier, config.ExponentialBackoffConfig.ThresholdTime.Duration)
 
 	return &BackupRestoreServer{
-		logger:                  serverLogger,
-		config:                  config,
-		defragmentationSchedule: defragmentationSchedule,
-		backoffConfig:           exponentialBackoffConfig,
+		logger:        serverLogger,
+		config:        config,
+		backoffConfig: exponentialBackoffConfig,
 	}, nil
 }
 
@@ -262,7 +254,7 @@ func (b *BackupRestoreServer) runServer(ctx context.Context, restoreOpts *brtype
 				go handleSsrStopRequest(leCtx, b.logger, ssrStopCh)
 			}
 			go b.runEtcdProbeLoopWithSnapshotter(leCtx, handler, ssr, ss, ssrStopCh)
-			go defragmentor.DefragDataPeriodically(leCtx, b.config.EtcdConnectionConfig, b.config.DefragConfig, b.defragmentationSchedule, defragCallBack, b.logger)
+			go defragmentor.DefragDataPeriodically(leCtx, b.config.EtcdConnectionConfig, b.config.DefragConfig, defragCallBack, b.logger)
 		},
 		OnStoppedLeading: func() {
 			if runServerWithSnapshotter {

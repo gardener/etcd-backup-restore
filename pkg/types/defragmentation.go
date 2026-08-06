@@ -17,7 +17,7 @@ import (
 const (
 	// DefaultDefragSchedule is the default cron schedule for defragmentation (midnight every 3 days).
 	DefaultDefragSchedule = "0 0 */3 * *"
-	// DefaultDefragConnectionTimeout defines default timeout duration for ETCD defrag call.
+	// DefaultDefragConnectionTimeout defines the default timeout duration for Etcd's defrag api call.
 	DefaultDefragConnectionTimeout time.Duration = 8 * time.Minute
 	// DefragRetryPeriod is used as the duration after which a defragmentation is retried.
 	DefragRetryPeriod time.Duration = 1 * time.Minute
@@ -48,7 +48,7 @@ func NewDefragConfig() *DefragConfig {
 func (c *DefragConfig) AddFlags(fs *flag.FlagSet) {
 	fs.Int64Var(&c.FreespaceThreshold, "freespace-threshold", c.FreespaceThreshold, "minimum free-space in database only above which schedule defragmentation is triggered.")
 	fs.StringVar(&c.DefragmentationSchedule, "defragmentation-schedule", c.DefragmentationSchedule, "cron schedule to defragment etcd data directory")
-	fs.DurationVar(&c.DefragTimeout.Duration, "etcd-defrag-timeout", c.DefragTimeout.Duration, "timeout duration for etcd defrag call")
+	fs.DurationVar(&c.DefragTimeout.Duration, "etcd-defrag-timeout", c.DefragTimeout.Duration, "timeout duration for etcd's api defrag call")
 }
 
 // Validate validates the DefragConfig fields.

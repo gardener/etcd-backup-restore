@@ -51,7 +51,7 @@ func (d *defragmentorJob) Run() {
 	}
 	defer clientMaintenance.Close()
 
-	canSkip, err := miscellaneous.CanDefragSkip(d.ctx, clientMaintenance, d.etcdConnectionConfig, d.defragConfig)
+	canSkip, err := miscellaneous.CanSkipDefrag(d.ctx, clientMaintenance, d.etcdConnectionConfig, d.defragConfig)
 	if err != nil {
 		d.logger.Warnf("failed to check etcd defrag skip conditions, proceeding with etcd defragmentation: %v", err)
 	} else if canSkip {
@@ -88,7 +88,7 @@ waitLoop:
 			}
 
 			if isClusterHealthy {
-				d.logger.Infof("Starting the schedule defragmentation as all members of etcd cluster are in healthy state")
+				d.logger.Infof("Starting the scheduled defragmentation since all members of the etcd cluster are in a healthy state")
 				err = etcdutil.DefragmentData(d.ctx, clientMaintenance, client, etcdEndpoints, d.defragConfig.DefragTimeout.Duration, d.logger)
 				if err != nil {
 					d.logger.Warnf("failed to defrag data with error: %v", err)
@@ -106,7 +106,13 @@ waitLoop:
 }
 
 // DefragDataPeriodically defragments the data directory of each etcd member.
-func DefragDataPeriodically(ctx context.Context, etcdConnectionConfig *brtypes.EtcdConnectionConfig, defragConfig *brtypes.DefragConfig, defragmentationSchedule cron.Schedule, callback CallbackFunc, logger *logrus.Entry) {
+func DefragDataPeriodically(ctx context.Context, etcdConnectionConfig *brtypes.EtcdConnectionConfig, defragConfig *brtypes.DefragConfig, callback CallbackFunc, logger *logrus.Entry) {
+	defragmentationSchedule, err := cron.ParseStandard(defragConfig.DefragmentationSchedule)
+	if err != nil {
+		logger.Fatalf("failed to parse defragmentation schedule: %v", err)
+		return
+	}
+
 	defragmentorJob := NewDefragmentorJob(ctx, etcdConnectionConfig, defragConfig, logger, callback)
 	// TODO: Sync logrus logger to cron logger
 	jobRunner := cron.New(cron.WithChain(cron.SkipIfStillRunning(cron.DefaultLogger)))
