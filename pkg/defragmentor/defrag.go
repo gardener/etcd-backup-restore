@@ -51,11 +51,11 @@ func (d *defragmentorJob) Run() {
 	}
 	defer clientMaintenance.Close()
 
-	canSkip, err := miscellaneous.CanSkipDefrag(d.ctx, clientMaintenance, d.etcdConnectionConfig, d.defragConfig)
+	canSkip, err := etcdutil.CanSkipDefrag(d.ctx, clientMaintenance, d.etcdConnectionConfig, d.defragConfig)
 	if err != nil {
 		d.logger.Warnf("failed to check etcd defrag skip conditions, proceeding with etcd defragmentation: %v", err)
 	} else if canSkip {
-		d.logger.Infof("skipping the schedule defrag for etcd cluster as Total DBSize is below %dGB threshold and available free-space is below %dGB threshold", miscellaneous.DefragThreshold/1024/1024/1024, d.defragConfig.FreespaceThreshold/1024/1024/1024)
+		d.logger.Infof("skipping the schedule defrag for etcd cluster as Total DBSize is below %dGB threshold and available free-space is below %dGB threshold", etcdutil.DefragThreshold/1024/1024/1024, d.defragConfig.FreespaceThreshold/1024/1024/1024)
 		return
 	}
 

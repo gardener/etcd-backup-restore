@@ -57,7 +57,7 @@ func (c *DefragConfig) Validate() error {
 		return fmt.Errorf("etcd defrag timeout should be greater than zero")
 	}
 	if _, err := cron.ParseStandard(c.DefragmentationSchedule); err != nil {
-		return err
+		return fmt.Errorf("error while parsing defragmentation schedule: %w", err)
 	}
 	if c.FreespaceThreshold <= 0 {
 		return fmt.Errorf("freespace-threshold for schedule defrag must be greater than 0")
