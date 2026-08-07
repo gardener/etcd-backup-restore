@@ -55,7 +55,7 @@ func (d *defragmentorJob) Run() {
 	if err != nil {
 		d.logger.Warnf("failed to check etcd defrag skip conditions, proceeding with etcd defragmentation: %v", err)
 	} else if canSkip {
-		d.logger.Infof("skipping the schedule defrag for etcd cluster as Total DBSize is below %dGB threshold and available free-space is below %dGB threshold", etcdutil.DefragThreshold/1024/1024/1024, d.defragConfig.FreespaceThreshold/1024/1024/1024)
+		d.logger.Infof("skipping the schedule defrag for etcd cluster as Total DBSize is below %.2fGB threshold and available free-space is below %.2fGB threshold", float64(etcdutil.DefragThreshold)/1024/1024/1024, float64(d.defragConfig.FreespaceThreshold)/1024/1024/1024)
 		return
 	}
 
