@@ -50,7 +50,6 @@ var _ = Describe("Miscellaneous Tests", func() {
 		etcdConnectionConfig.Endpoints = []string{"http://127.0.0.1:2379"}
 		etcdConnectionConfig.ConnectionTimeout.Duration = 30 * time.Second
 		etcdConnectionConfig.SnapshotTimeout.Duration = 30 * time.Second
-		etcdConnectionConfig.DefragTimeout.Duration = 30 * time.Second
 
 		ctrl = gomock.NewController(GinkgoT())
 		factory = mockfactory.NewMockFactory(ctrl)

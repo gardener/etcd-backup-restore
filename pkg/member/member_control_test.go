@@ -37,7 +37,6 @@ var _ = Describe("Membercontrol", func() {
 		etcdConnectionConfig.Endpoints = []string{etcd.Clients[0].Addr().String()}
 		etcdConnectionConfig.ConnectionTimeout.Duration = 30 * time.Second
 		etcdConnectionConfig.SnapshotTimeout.Duration = 30 * time.Second
-		etcdConnectionConfig.DefragTimeout.Duration = 30 * time.Second
 
 		os.Setenv("POD_NAME", podName)
 		os.Setenv("POD_NAMESPACE", podNamespace)

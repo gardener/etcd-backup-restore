@@ -31,6 +31,8 @@ import (
 
 const (
 	hashBufferSize = 4 * 1024 * 1024 // 4 MB
+	// DefragThreshold is the minimum total DB size above which schedule defragmentation is triggered.
+	DefragThreshold = 3 * 1024 * 1024 * 1024 // 3GB
 )
 
 // NewFactory returns a Factory that constructs new clients using the supplied ETCD client configuration.
@@ -425,4 +427,28 @@ func saveSnapshotToStore(store brtypes.SnapStore, rc io.ReadCloser, startTime ti
 	metrics.SnapshotDurationSeconds.With(prometheus.Labels{metrics.LabelKind: snapshot.Kind, metrics.LabelSucceeded: metrics.ValueSucceededTrue}).Observe(timeTaken.Seconds())
 	logger.Infof("Total time to save %s snapshot: %f seconds.", snapshot.Kind, timeTaken.Seconds())
 	return snapshot, nil
+}
+
+// CanSkipDefrag checks whether defragmentation can be skipped for a given etcd cluster.
+// It returns false (do not skip) when either TotalDBSize or available free space is greater than threshold.
+// It returns true (can skip) when the TotalDBSize and available free space are below threshold, meaning defragmentation would have
+// little benefit.
+func CanSkipDefrag(pCtx context.Context, client client.MaintenanceCloser, etcdConnectionConfig *brtypes.EtcdConnectionConfig, defragCfg *brtypes.DefragConfig) (bool, error) {
+	ctx, cancel := context.WithTimeout(pCtx, etcdConnectionConfig.ConnectionTimeout.Duration)
+	defer cancel()
+
+	if len(etcdConnectionConfig.Endpoints) == 0 {
+		return false, fmt.Errorf("etcd endpoints are not passed correctly")
+	}
+
+	etcdStatus, err := client.Status(ctx, etcdConnectionConfig.Endpoints[0])
+	if err != nil {
+		return false, err
+	}
+
+	if etcdStatus.DbSize > DefragThreshold || ((etcdStatus.DbSize - etcdStatus.DbSizeInUse) > defragCfg.FreespaceThreshold) {
+		return false, nil
+	}
+
+	return true, nil
 }
