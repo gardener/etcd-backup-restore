@@ -154,7 +154,7 @@ func (c *Client) addOperationPutObjectLegalHoldMiddlewares(stack *middleware.Sta
 	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRecordResponseTiming(stack); err != nil {
+	if err = addRecordResponseTiming(stack, options); err != nil {
 		return err
 	}
 	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {
@@ -197,6 +197,9 @@ func (c *Client) addOperationPutObjectLegalHoldMiddlewares(stack *middleware.Sta
 		return err
 	}
 	if err = disableAcceptEncodingGzip(stack); err != nil {
+		return err
+	}
+	if err = s3cust.HandleResponseErrorWith200Status(stack); err != nil {
 		return err
 	}
 	if err = addRequestResponseLogging(stack, options); err != nil {
