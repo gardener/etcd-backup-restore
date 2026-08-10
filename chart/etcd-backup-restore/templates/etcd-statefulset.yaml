@@ -211,14 +211,6 @@ spec:
   {{- if eq .Values.backup.storageProvider "S3" }}
         - name: "AWS_APPLICATION_CREDENTIALS"
           value: "/var/etcd-backup"
-    {{- if .Values.backup.s3.endpoint }}
-        - name: "AWS_ENDPOINT_URL_S3"
-          valueFrom:
-            secretKeyRef:
-              name: {{ .Release.Name }}-etcd-backup
-              key: "endpoint"
-              optional: true
-    {{- end }}
   {{- else if eq .Values.backup.storageProvider "ABS" }}
         - name: "AZURE_APPLICATION_CREDENTIALS"
           value: "/var/etcd-backup"
