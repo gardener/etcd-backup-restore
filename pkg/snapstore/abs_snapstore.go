@@ -31,7 +31,6 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blockblob"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/container"
 	"github.com/sirupsen/logrus"
-	"k8s.io/utils/ptr"
 )
 
 const (
@@ -89,10 +88,9 @@ type ABSSnapStore struct {
 }
 
 type absCredentials struct {
-	Domain         *string `json:"domain,omitempty"`
-	BucketName     string  `json:"bucketName"`
-	StorageAccount string  `json:"storageAccount"`
-	StorageKey     string  `json:"storageKey"`
+	BucketName     string `json:"bucketName"`
+	StorageAccount string `json:"storageAccount"`
+	StorageKey     string `json:"storageKey"`
 }
 
 // NewABSSnapStore creates a new ABSSnapStore using a shared configuration and a specified bucket
@@ -108,15 +106,9 @@ func NewABSSnapStore(config *brtypes.SnapstoreConfig) (*ABSSnapStore, error) {
 	}
 
 	// Construct the ABS Container endpoint.
-	// TODO: @renormalize support for passing Domain through the credential file must be removed in v0.42.0.
-	domain := brtypes.AzureBlobStorageGlobalDomain
-	if absCreds.Domain != nil {
-		logrus.Warnf("Passing endpoint override through the credential file is now deprecated. Please use the `--store-endpoint-override` flag instead.")
-		domain = *absCreds.Domain
-	}
-	containerURL := fmt.Sprintf("https://%s.%s/%s", absCreds.StorageAccount, domain, config.Container)
+	containerURL := fmt.Sprintf("https://%s.%s/%s", absCreds.StorageAccount, brtypes.AzureBlobStorageGlobalDomain, config.Container)
 
-	// endpoint override specified as a CLI flag takes precedence over configuration passed in the credential file.
+	// endpoint override specified as a CLI flag takes precedence over the default.
 	if config.EndpointOverride != "" {
 		containerURL, err = url.JoinPath(config.EndpointOverride, config.Container)
 		if err != nil {
@@ -224,12 +216,6 @@ func readABSCredentialFiles(dirname string) (*absCredentials, error) {
 				return nil, err
 			}
 			absConfig.StorageKey = string(data)
-		} else if file.Name() == "domain" {
-			data, err := os.ReadFile(path.Join(dirname, file.Name())) // #nosec G304 -- this is a trusted file, obtained via mounted secret.
-			if err != nil {
-				return nil, err
-			}
-			absConfig.Domain = ptr.To(string(data))
 		}
 	}
 
