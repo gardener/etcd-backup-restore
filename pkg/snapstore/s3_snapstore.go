@@ -210,7 +210,7 @@ func awsCredentialsFromConfig(awsConfig *awsCredentials) ([]func(*awsconfig.Load
 	}
 	cfgOpts = append(cfgOpts, awsconfig.WithCredentialsProvider(aws.NewCredentialsCache(credentialsProvider)))
 
-	// TODO: @renormalize support for passing Endpoint through the credential file must be removed in v0.42.0.
+	// TODO: @renormalize support for passing Endpoint through the credential file must be removed.
 	if awsConfig.Endpoint != nil {
 		logrus.Warnf("Passing endpoint override through the credential file is now deprecated. Please use the `--store-endpoint-override` flag instead.")
 		cfgOpts = append(cfgOpts, awsconfig.WithBaseEndpoint(*awsConfig.Endpoint))
