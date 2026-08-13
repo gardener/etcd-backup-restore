@@ -7,8 +7,10 @@ package heartbeat_test
 import (
 	"context"
 	"os"
+	"path/filepath"
 	"time"
 
+	"github.com/gardener/etcd-backup-restore/pkg/etcdutil"
 	"github.com/gardener/etcd-backup-restore/pkg/health/heartbeat"
 	"github.com/gardener/etcd-backup-restore/pkg/miscellaneous"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
@@ -65,19 +67,19 @@ var _ = Describe("Heartbeat", func() {
 		})
 		Context("With valid config", func() {
 			It("should not return error", func() {
-				_, err := heartbeat.NewHeartbeat(logger, etcdConnectionConfig, miscellaneous.GetFakeKubernetesClientSet(), metadata)
+				_, err := heartbeat.NewHeartbeat(logger, etcdConnectionConfig, miscellaneous.GetFakeKubernetesClientSet(), metadata, "")
 				Expect(err).ShouldNot(HaveOccurred())
 			})
 		})
 		Context("With invalid etcdconnection config passed", func() {
 			It("should return error", func() {
-				_, err := heartbeat.NewHeartbeat(logger, nil, miscellaneous.GetFakeKubernetesClientSet(), metadata)
+				_, err := heartbeat.NewHeartbeat(logger, nil, miscellaneous.GetFakeKubernetesClientSet(), metadata, "")
 				Expect(err).Should(HaveOccurred())
 			})
 		})
 		Context("With invalid clientset passed", func() {
 			It("should return error", func() {
-				_, err := heartbeat.NewHeartbeat(logger, etcdConnectionConfig, nil, metadata)
+				_, err := heartbeat.NewHeartbeat(logger, etcdConnectionConfig, nil, metadata, "")
 				Expect(err).Should(HaveOccurred())
 			})
 		})
@@ -86,7 +88,7 @@ var _ = Describe("Heartbeat", func() {
 				metadata[heartbeat.PeerURLTLSEnabledKey] = "true"
 			})
 			It("should not return error", func() {
-				_, err := heartbeat.NewHeartbeat(logger, etcdConnectionConfig, miscellaneous.GetFakeKubernetesClientSet(), metadata)
+				_, err := heartbeat.NewHeartbeat(logger, etcdConnectionConfig, miscellaneous.GetFakeKubernetesClientSet(), metadata, "")
 				Expect(err).ToNot(HaveOccurred())
 			})
 		})
@@ -330,7 +332,7 @@ var _ = Describe("Heartbeat", func() {
 			})
 			It("Should correctly update the member lease", func() {
 				clientSet := miscellaneous.GetFakeKubernetesClientSet()
-				hb, err := heartbeat.NewHeartbeat(logger, etcdConnectionConfig, clientSet, metadata)
+				hb, err := heartbeat.NewHeartbeat(logger, etcdConnectionConfig, clientSet, metadata, "")
 				Expect(err).ShouldNot(HaveOccurred())
 
 				err = clientSet.Create(context.TODO(), lease)
@@ -348,11 +350,49 @@ var _ = Describe("Heartbeat", func() {
 				}, l)
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(l.Spec.HolderIdentity).ToNot(BeNil())
-				// Test if HolderIdentity is in the format <memberID>:<clusterID>:Leader
-				// where memberID and clusterID are in hexadecimal format.
 				Expect(*l.Spec.HolderIdentity).To(MatchRegexp("^[a-f0-9]+:[a-f0-9]+:Leader$"))
 				Expect(l.Annotations).ToNot(BeEmpty())
 				Expect(l.Annotations[heartbeat.PeerURLTLSEnabledKey]).To(Equal("true"))
+
+				// dataDir="" — no member-id file should be created in the working directory.
+				Expect(filepath.Join(".", etcdutil.MemberIDFileName)).NotTo(BeAnExistingFile())
+
+				err = clientSet.Delete(context.TODO(), l)
+				Expect(err).ShouldNot(HaveOccurred())
+				err = clientSet.Delete(context.TODO(), pod)
+				Expect(err).ShouldNot(HaveOccurred())
+			})
+
+			It("Should write member-id file when dataDir is set", func() {
+				dataDir := GinkgoT().TempDir()
+				clientSet := miscellaneous.GetFakeKubernetesClientSet()
+				hb, err := heartbeat.NewHeartbeat(logger, etcdConnectionConfig, clientSet, metadata, dataDir)
+				Expect(err).ShouldNot(HaveOccurred())
+
+				err = clientSet.Create(context.TODO(), lease)
+				Expect(err).ShouldNot(HaveOccurred())
+				err = clientSet.Create(context.TODO(), pod)
+				Expect(err).ShouldNot(HaveOccurred())
+
+				err = hb.RenewMemberLease(context.TODO())
+				Expect(err).ShouldNot(HaveOccurred())
+
+				l := &v1.Lease{}
+				err = clientSet.Get(context.TODO(), client.ObjectKey{
+					Namespace: os.Getenv("POD_NAMESPACE"),
+					Name:      os.Getenv("POD_NAME"),
+				}, l)
+				Expect(err).ShouldNot(HaveOccurred())
+				Expect(l.Spec.HolderIdentity).ToNot(BeNil())
+				holderIdentity := *l.Spec.HolderIdentity
+				Expect(holderIdentity).To(MatchRegexp("^[a-f0-9]+:[a-f0-9]+:Leader$"))
+
+				memberIDPath := etcdutil.MemberIDFilePath(dataDir)
+				Expect(memberIDPath).To(BeAnExistingFile())
+				contents, readErr := os.ReadFile(memberIDPath)
+				Expect(readErr).ShouldNot(HaveOccurred())
+				Expect(string(contents)).To(Equal(holderIdentity))
+
 				err = clientSet.Delete(context.TODO(), l)
 				Expect(err).ShouldNot(HaveOccurred())
 				err = clientSet.Delete(context.TODO(), pod)
@@ -369,7 +409,7 @@ var _ = Describe("Heartbeat", func() {
 				Expect(os.Unsetenv("POD_NAMESPACE")).To(Succeed())
 			})
 			It("Should return an error", func() {
-				heartbeat, err := heartbeat.NewHeartbeat(logger, etcdConnectionConfig, miscellaneous.GetFakeKubernetesClientSet(), metadata)
+				heartbeat, err := heartbeat.NewHeartbeat(logger, etcdConnectionConfig, miscellaneous.GetFakeKubernetesClientSet(), metadata, "")
 				Expect(err).ShouldNot(HaveOccurred())
 
 				err = heartbeat.RenewMemberLease(context.TODO())
@@ -389,7 +429,7 @@ var _ = Describe("Heartbeat", func() {
 			})
 			It("should use the prefixed member name to renew the member lease", func() {
 				clientSet := miscellaneous.GetFakeKubernetesClientSet()
-				hb, err := heartbeat.NewHeartbeat(logger, etcdConnectionConfig, clientSet, metadata)
+				hb, err := heartbeat.NewHeartbeat(logger, etcdConnectionConfig, clientSet, metadata, "")
 				Expect(err).ShouldNot(HaveOccurred())
 
 				prefixedLease := &v1.Lease{
@@ -421,7 +461,7 @@ var _ = Describe("Heartbeat", func() {
 		})
 		Context("With fail to create clientset", func() {
 			It("Should return an error", func() {
-				err := heartbeat.RenewMemberLeasePeriodically(testCtx, mmStopCh, hConfig, logger, etcdConnectionConfig)
+				err := heartbeat.RenewMemberLeasePeriodically(testCtx, mmStopCh, hConfig, logger, etcdConnectionConfig, "")
 				Expect(err).Should(HaveOccurred())
 			})
 		})

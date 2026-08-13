@@ -12,6 +12,7 @@ import (
 
 	"github.com/gardener/etcd-backup-restore/pkg/errors"
 	"github.com/gardener/etcd-backup-restore/pkg/etcdutil"
+	"github.com/gardener/etcd-backup-restore/pkg/member"
 	"github.com/gardener/etcd-backup-restore/pkg/miscellaneous"
 	utils "github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
@@ -39,10 +40,11 @@ type Heartbeat struct {
 	metadata       map[string]string // metadata is currently added as annotations to the k8s lease object
 	memberName     string
 	podNamespace   string
+	dataDir        string
 }
 
 // NewHeartbeat returns the heartbeat object.
-func NewHeartbeat(logger *logrus.Entry, etcdConfig *brtypes.EtcdConnectionConfig, clientSet client.Client, metadata map[string]string) (*Heartbeat, error) {
+func NewHeartbeat(logger *logrus.Entry, etcdConfig *brtypes.EtcdConnectionConfig, clientSet client.Client, metadata map[string]string, dataDir string) (*Heartbeat, error) {
 	if etcdConfig == nil {
 		return nil, &errors.EtcdError{
 			Message: "nil etcd config passed, can not create heartbeat",
@@ -76,6 +78,7 @@ func NewHeartbeat(logger *logrus.Entry, etcdConfig *brtypes.EtcdConnectionConfig
 		memberName:   memberName,
 		podNamespace: namespace,
 		metadata:     metadata,
+		dataDir:      dataDir,
 	}, nil
 }
 
@@ -119,14 +122,11 @@ func (hb *Heartbeat) RenewMemberLease(ctx context.Context) error {
 		}
 	}
 
-	memberInfo := strconv.FormatUint(response.Header.GetMemberId(), 16)
-	memberInfo += ":"
-	memberInfo += strconv.FormatUint(response.Header.GetClusterId(), 16)
-	if response.Header.GetMemberId() == response.Leader {
-		memberInfo += ":Leader"
-	} else {
-		memberInfo += ":Member"
-	}
+	memberInfo := member.FormatMemberIdentity(
+		response.Header.GetMemberId(),
+		response.Header.GetClusterId(),
+		response.Header.GetMemberId() == response.Leader,
+	)
 
 	//Change HolderIdentity and RenewTime of lease
 	renewedMemberLease := memberLease.DeepCopy()
@@ -139,6 +139,17 @@ func (hb *Heartbeat) RenewMemberLease(ctx context.Context) error {
 	}
 	for k, v := range hb.metadata {
 		renewedMemberLease.Annotations[k] = v
+	}
+
+	// Persist the member ID to the PV before updating the lease so the file is
+	// at least as fresh as the lease and the guard can resolve the ID even when
+	// the lease API is temporarily unreachable.
+	if hb.dataDir != "" {
+		if err := member.WriteMemberIDFile(hb.dataDir, memberInfo); err != nil {
+			// Error-level: a failed write leaves the file-fallback path permanently
+			// degraded. If the PV is full or read-only the operator must act.
+			hb.logger.Errorf("failed to persist member ID file: %v", err)
+		}
 	}
 
 	err = hb.k8sClient.Patch(ctx, renewedMemberLease, client.MergeFrom(memberLease))
@@ -317,7 +328,7 @@ func DeltaSnapshotCaseLeaseUpdate(ctx context.Context, logger *logrus.Entry, k8s
 }
 
 // RenewMemberLeasePeriodically has a timer and will periodically call RenewMemberLeases to renew the member lease until stopped
-func RenewMemberLeasePeriodically(ctx context.Context, stopCh chan struct{}, hconfig *brtypes.HealthConfig, logger *logrus.Entry, etcdConfig *brtypes.EtcdConnectionConfig) error {
+func RenewMemberLeasePeriodically(ctx context.Context, stopCh chan struct{}, hconfig *brtypes.HealthConfig, logger *logrus.Entry, etcdConfig *brtypes.EtcdConnectionConfig, dataDir string) error {
 	peerURLTLSEnabled, err := miscellaneous.IsPeerURLTLSEnabled()
 	if err != nil {
 		return fmt.Errorf("unable to check peer TLS enabled or not: %v", err)
@@ -332,7 +343,7 @@ func RenewMemberLeasePeriodically(ctx context.Context, stopCh chan struct{}, hco
 		PeerURLTLSEnabledKey: strconv.FormatBool(peerURLTLSEnabled),
 	}
 
-	hb, err := NewHeartbeat(logger, etcdConfig, clientSet, metadata)
+	hb, err := NewHeartbeat(logger, etcdConfig, clientSet, metadata, dataDir)
 	if err != nil {
 		return fmt.Errorf("failed to initialize new heartbeat: %v", err)
 	}
