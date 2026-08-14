@@ -17,6 +17,9 @@ import (
 	"go.etcd.io/etcd/api/v3/etcdserverpb"
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"go.uber.org/mock/gomock"
+	coordinationv1 "k8s.io/api/coordination/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -234,6 +237,97 @@ auto-compaction-retention: 30m` + prefixLine
 				isScaleUp, err := m.IsClusterScaledUp(testCtx)
 				Expect(isScaleUp).Should(BeFalse())
 				Expect(err).ShouldNot(HaveOccurred())
+			})
+		})
+	})
+
+	Describe("Checking whether the member was permanently removed", func() {
+		// WasPermanentlyRemoved resolves the local member ID (from the lease named
+		// after the member, falling back to the member-id file) and then inspects
+		// the boltdb members_removed tombstone bucket. memberName == podName ==
+		// "etcd-test-0" and podNamespace == "test-podnamespace" here, matching the
+		// env vars set in the outer BeforeEach.
+		var (
+			dataDir string
+			m       member.Control
+		)
+
+		newLease := func(holderIdentity *string) *coordinationv1.Lease {
+			return &coordinationv1.Lease{
+				ObjectMeta: metav1.ObjectMeta{Name: podName, Namespace: podNamespace},
+				Spec:       coordinationv1.LeaseSpec{HolderIdentity: holderIdentity},
+			}
+		}
+
+		BeforeEach(func() {
+			dataDir, err = os.MkdirTemp("", "was-removed-")
+			Expect(err).NotTo(HaveOccurred())
+		})
+
+		JustBeforeEach(func() {
+			m = member.NewMemberControl(etcdConnectionConfig)
+		})
+
+		AfterEach(func() {
+			Expect(os.RemoveAll(dataDir)).To(Succeed())
+		})
+
+		Context("when the local member ID cannot be resolved (no lease, no file)", func() {
+			It("returns false without inspecting the tombstone", func() {
+				cl := fake.NewClientBuilder().Build()
+
+				removed, err := m.WasPermanentlyRemoved(testCtx, dataDir, cl)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(removed).To(BeFalse())
+			})
+		})
+
+		Context("when the member ID is resolved from the lease and is in the tombstone", func() {
+			It("reports the member as permanently removed", func() {
+				identity := "abcdef:c1c1:Member"
+				cl := fake.NewClientBuilder().WithObjects(newLease(&identity)).Build()
+				writeTombstoneDB(dataDir, true, uint64(0xabcdef))
+
+				removed, err := m.WasPermanentlyRemoved(testCtx, dataDir, cl)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(removed).To(BeTrue())
+			})
+		})
+
+		Context("when the member ID is resolved but is not in the tombstone", func() {
+			It("reports the member as not removed", func() {
+				identity := "abcdef:c1c1:Member"
+				cl := fake.NewClientBuilder().WithObjects(newLease(&identity)).Build()
+				writeTombstoneDB(dataDir, true, uint64(0xdef))
+
+				removed, err := m.WasPermanentlyRemoved(testCtx, dataDir, cl)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(removed).To(BeFalse())
+			})
+		})
+
+		Context("when the member ID is resolved from the member-id file (lease absent)", func() {
+			It("reports the member as permanently removed", func() {
+				cl := fake.NewClientBuilder().Build() // lease NotFound
+				Expect(member.WriteMemberIDFile(dataDir, "abcdef:c1c1:Member")).To(Succeed())
+				writeTombstoneDB(dataDir, true, uint64(0xabcdef))
+
+				removed, err := m.WasPermanentlyRemoved(testCtx, dataDir, cl)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(removed).To(BeTrue())
+			})
+		})
+
+		Context("when the member ID is resolved but the boltdb backend is missing", func() {
+			It("fails closed (possible partial deletion)", func() {
+				identity := "abcdef:c1c1:Member"
+				cl := fake.NewClientBuilder().WithObjects(newLease(&identity)).Build()
+				// No boltdb written under dataDir/member/snap/db.
+
+				removed, err := m.WasPermanentlyRemoved(testCtx, dataDir, cl)
+				Expect(err).To(HaveOccurred())
+				Expect(err).To(MatchError(member.ErrMembershipCheckFailed))
+				Expect(removed).To(BeFalse())
 			})
 		})
 	})

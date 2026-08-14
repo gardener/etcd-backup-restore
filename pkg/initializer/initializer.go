@@ -56,6 +56,24 @@ func (e *EtcdInitializer) Initialize(mode validator.Mode) error {
 
 		m := member.NewMemberControl(e.Config.EtcdConnectionConfig)
 
+		// Always run the anti-rejoin guard when prior data is present on the PV,
+		// regardless of whether the member lease is still alive. A stale lease
+		// must not bypass the tombstone check.
+		hasData, err := e.Validator.HasPriorData()
+		if err != nil {
+			return fmt.Errorf("cannot determine etcd data directory state, failing closed to prevent unsafe rejoin: %v", err)
+		}
+		if hasData {
+			removed, err := m.WasPermanentlyRemoved(ctx, e.Config.RestoreOptions.Config.DataDir, clientSet)
+			if err != nil {
+				return fmt.Errorf("unable to determine whether this member was permanently removed from the etcd cluster: %v", err)
+			}
+			if removed {
+				logger.Fatal("this member has been permanently removed from the etcd cluster and cannot rejoin")
+			}
+			logger.Info("membership check passed; member is not removed, proceeding with scale-up check")
+		}
+
 		// check heartbeat of etcd member
 		if memberHeartbeatPresent = m.WasMemberInCluster(ctx, clientSet); memberHeartbeatPresent {
 			logger.Info("member found to be already a part of the cluster")
