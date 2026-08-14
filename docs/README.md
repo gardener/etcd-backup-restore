@@ -11,6 +11,10 @@
 * [Tests](development/tests.md)
 * [Adding support for a new object store provider](development/new_cp_support.md)
 
+## Concepts
+
+* [Anti-rejoin guard](concepts/anti-rejoin-guard.md)
+
 ## Design and Proposals
 
 * [Core design](proposals/design.md)
