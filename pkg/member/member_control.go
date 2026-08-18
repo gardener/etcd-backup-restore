@@ -276,7 +276,12 @@ func (m *memberControl) UpdateMemberPeerURL(ctx context.Context, cli etcdClient.
 		return fmt.Errorf("error listing members: %v", err)
 	}
 
-	return m.doUpdateMemberPeerAddress(ctx, cli, membersInfo.Header.GetMemberId())
+	foundMember := findMember(membersInfo.Members, m.memberName)
+	if foundMember == nil {
+		return ErrMissingMember
+	}
+
+	return m.doUpdateMemberPeerAddress(ctx, cli, foundMember.GetID())
 }
 
 // RemoveMember removes the member from the etcd cluster.

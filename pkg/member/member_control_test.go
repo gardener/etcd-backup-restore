@@ -152,29 +152,32 @@ auto-compaction-retention: 30m` + prefixLine
 			m = member.NewMemberControl(etcdConnectionConfig)
 		})
 
+		memberListResponse := func(targetName string) func(_ context.Context) (*clientv3.MemberListResponse, error) {
+			return func(_ context.Context) (*clientv3.MemberListResponse, error) {
+				etcdMember1 := &etcdserverpb.Member{
+					ID:   dummyID,
+					Name: targetName,
+				}
+				etcdMember2 := &etcdserverpb.Member{
+					ID:   dummyID + 1,
+					Name: "other-member",
+				}
+				response := new(clientv3.MemberListResponse)
+				response.Members = []*etcdserverpb.Member{etcdMember1, etcdMember2}
+				response.Header = &etcdserverpb.ResponseHeader{
+					MemberId: dummyID + 1, // responding member is NOT the target
+				}
+				return response, nil
+			}
+		}
+
 		Context("Able to connect to etcd member", func() {
-			It("Should not return error", func() {
+			It("Should not return error and update the correct member ID", func() {
 				client, err := factory.NewCluster()
 				Expect(err).ShouldNot(HaveOccurred())
 
-				cl.EXPECT().MemberList(gomock.Any()).DoAndReturn(func(_ context.Context) (*clientv3.MemberListResponse, error) {
-					etcdMember1 := &etcdserverpb.Member{
-						ID: dummyID,
-					}
-					etcdMember2 := &etcdserverpb.Member{
-						ID: dummyID + 1,
-					}
-					response := new(clientv3.MemberListResponse)
-
-					response.Members = append(response.Members, etcdMember1, etcdMember2)
-					response.Members = []*etcdserverpb.Member{etcdMember1, etcdMember2}
-					response.Header = &etcdserverpb.ResponseHeader{
-						MemberId: dummyID,
-					}
-					return response, nil
-				})
-
-				cl.EXPECT().MemberUpdate(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil)
+				cl.EXPECT().MemberList(gomock.Any()).DoAndReturn(memberListResponse(podName))
+				cl.EXPECT().MemberUpdate(gomock.Any(), dummyID, gomock.Any()).Return(nil, nil)
 
 				err = m.UpdateMemberPeerURL(context.TODO(), client)
 				Expect(err).ShouldNot(HaveOccurred())
@@ -186,27 +189,23 @@ auto-compaction-retention: 30m` + prefixLine
 				client, err := factory.NewCluster()
 				Expect(err).ShouldNot(HaveOccurred())
 
-				cl.EXPECT().MemberList(gomock.Any()).DoAndReturn(func(_ context.Context) (*clientv3.MemberListResponse, error) {
-					etcdMember1 := &etcdserverpb.Member{
-						ID: dummyID,
-					}
-					etcdMember2 := &etcdserverpb.Member{
-						ID: dummyID + 1,
-					}
-					response := new(clientv3.MemberListResponse)
-
-					response.Members = append(response.Members, etcdMember1, etcdMember2)
-					response.Members = []*etcdserverpb.Member{etcdMember1, etcdMember2}
-					response.Header = &etcdserverpb.ResponseHeader{
-						MemberId: dummyID,
-					}
-					return response, nil
-				})
-
-				cl.EXPECT().MemberUpdate(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, fmt.Errorf("unable to connect to dummy etcd"))
+				cl.EXPECT().MemberList(gomock.Any()).DoAndReturn(memberListResponse(podName))
+				cl.EXPECT().MemberUpdate(gomock.Any(), dummyID, gomock.Any()).Return(nil, fmt.Errorf("unable to connect to dummy etcd"))
 
 				err = m.UpdateMemberPeerURL(context.TODO(), client)
 				Expect(err).Should(HaveOccurred())
+			})
+		})
+
+		Context("Member not found in the cluster member list", func() {
+			It("Should return ErrMissingMember", func() {
+				client, err := factory.NewCluster()
+				Expect(err).ShouldNot(HaveOccurred())
+
+				cl.EXPECT().MemberList(gomock.Any()).DoAndReturn(memberListResponse("unknown-member"))
+
+				err = m.UpdateMemberPeerURL(context.TODO(), client)
+				Expect(err).Should(MatchError(member.ErrMissingMember))
 			})
 		})
 	})
