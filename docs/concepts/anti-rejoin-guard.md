@@ -1,6 +1,6 @@
 # Anti-rejoin guard
 
-When a multi-node etcd cluster is scaled in, `etcd-druid` removes an etcd member from the cluster before the corresponding StatefulSet pod is terminated. In the short window between the member removal and the pod termination, the pod can still restart with its old data directory.
+If etcd cluster is managed by [etcd-druid](https://github.com/gardener/etcd-druid) and when a multi-node etcd cluster is [scaled in](https://github.com/gardener/etcd-druid/blob/master/docs/proposals/08-scale-in.md), `etcd-druid` removes an etcd member from the cluster before the corresponding StatefulSet pod is terminated. In the short window between the member removal and the pod termination, the pod can still restart with its old data directory.
 
 Without a guard, `etcd-backup-restore` interprets the state *"this pod has local etcd data, but its member ID is not present in the live cluster"* as a scale-out case and re-adds the removed member as a learner. `etcd-druid` removes it again, the same pod re-adds itself, and the cluster enters a remove/re-add loop.
 
