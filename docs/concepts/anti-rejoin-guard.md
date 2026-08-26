@@ -2,7 +2,7 @@
 
 If etcd cluster is managed by [etcd-druid](https://github.com/gardener/etcd-druid) and when a multi-node etcd cluster is [scaled in](https://github.com/gardener/etcd-druid/blob/master/docs/proposals/08-scale-in.md), `etcd-druid` removes an etcd member from the cluster before the corresponding StatefulSet pod is terminated. In the short window between the member removal and the pod termination, the pod can still restart with its old data directory.
 
-Without a guard, `etcd-backup-restore` interprets the state *"this pod has local etcd data, but its member ID is not present in the live cluster"* as a scale-out case and re-adds the removed member as a learner. `etcd-druid` removes it again, the same pod re-adds itself, and the cluster enters a remove/re-add loop.
+Without a guard, `etcd-backup-restore` interprets the state *"this pod has local etcd data, but its member ID is not present in the live cluster"* as a scale-out case and re-adds the removed member as a learner to the etcd cluster. `etcd-druid` find out that member hasn't been removed yet (still present in cluster), hence it removes the cluster member again, but now again the backup-restore of member pod re-adds the removed member, and the cluster enters a remove/re-add loop.
 
 The anti-rejoin guard closes this loop. On a multi-node cluster it runs on every startup **before** the membership and scale-up checks, whenever the data directory already holds an etcd member tree (`member/`, `wal/`, `snap/`). It runs regardless of whether the member lease is still alive — a stale lease must not be allowed to bypass the tombstone check. If the local member was explicitly removed from the cluster, startup stops with `ErrMemberPermanentlyRemoved` instead of re-adding the member.
 
