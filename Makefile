@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2024 SAP SE or an SAP affiliate company and Gardener contributors
+# SPDX-FileCopyrightText: Contributors to the Gardener project
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -24,6 +24,12 @@ include $(REPO_ROOT)/hack/tools.mk
 
 # Rules for verification, formatting, linting and cleaning
 # -------------------------------------------------------------------------
+# Generate code.
+.PHONY: generate
+generate: $(GO_ADD_LICENSE)
+	@go generate ./pkg/mock/...
+	@./hack/addlicenseheaders.sh ${YEAR}
+
 # Add license headers.
 .PHONY: add-license-headers
 add-license-headers: $(GO_ADD_LICENSE)
