@@ -22,17 +22,15 @@ If the resolved local member ID is present in `members_removed`, the cluster has
 
 ```mermaid
 flowchart TD
-    Start[backup-restore init, multi-node] --> Data{Data dir has member/wal/snap tree?}
-    Data -->|No| Fresh[Fresh PVC: skip guard, continue]
+    Start[backup-restore init, multi-node] --> Data{Data dir has valid structure + valid files}
+    Data -->|No| Fresh[No prior data: skip guard, continue]
     Data -->|Yes| Lease{Member lease has ID?}
     Lease -->|Yes| Have[Local member ID]
     Lease -->|No / unavailable| File{member-id file exists?}
     File -->|No| NoID[No ID: treat as fresh join, continue]
     File -->|Yes| Have
-    Have --> DB{boltdb backend exists?}
-    DB -->|No| Failed[Partial deletion: ErrMembershipCheckFailed, fail closed]
-    DB -->|Yes| Open[Open boltdb read-only]
-    Open -->|Open/read fails or corrupt| Failed
+    Have --> Open[Open boltdb read-only]
+    Open -->|Open/read fails or corrupt| Failed[Data inconsistency: ErrMembershipCheckFailed, fail closed]
     Open -->|OK| Removed{Own ID in members_removed?}
     Removed -->|No| Continue[Not removed, continue normal init]
     Removed -->|Yes| Stop[ErrMemberPermanentlyRemoved, stop]
@@ -44,9 +42,9 @@ The check is deliberately conservative and **fails closed** — when it cannot b
 
 - If the data directory state **cannot be determined** (the `member/`, `wal/`, `snap/` structure check itself errors), the guard fails closed.
 - If **no local member ID** can be resolved (neither lease nor member-id file), there is nothing to check, so normal initialization continues.
-- If a local member ID **is** resolved but the **boltdb backend file is missing**, the WAL tree is present but the db is not — a possible partial PVC deletion. The guard cannot safely treat this as a fresh member, so it fails closed.
-- If the boltdb exists but **cannot be opened** (the read-only open is bounded by a lock-acquisition timeout to ride out transient lock contention) or is **corrupt** (bolt panics are recovered and surfaced as errors), the guard fails closed. The process then exits and is restarted by the crash-back-off loop.
+- If a local member ID **is** resolved but the **boltdb backend cannot be opened** (file missing, lock-acquisition timeout, or corrupt — bolt panics are recovered and surfaced as errors), the data directory is in an inconsistent state. The guard cannot safely proceed, so it fails closed. The process then exits and is restarted by the crash-back-off loop.
 - Only the **local member's own ID** is considered. Entries for other removed members are ignored.
+- If the guard passes (the member ID is **not** in `members_removed`), no action is taken and normal initialization continues as-is — the existing membership and restoration flow is unchanged.
 
 Opening boltdb **read-only** ensures the guard cannot corrupt a live backend, and reading only the small `members_removed` bucket keeps runtime and memory overhead negligible. This follows the same access pattern — including recovering from bolt panics on a corrupt backend — already used by `etcd-backup-restore`'s data validator (`getLatestEtcdRevision`).
 

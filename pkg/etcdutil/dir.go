@@ -7,7 +7,7 @@ package etcdutil
 import "path/filepath"
 
 const (
-	// MemberIDFileName is the name of the file that caches the member identity on the PV.
+	// MemberIDFileName is the name of the file that persist the etcd cluster member identity on the PV.
 	MemberIDFileName = "member-id"
 )
 
