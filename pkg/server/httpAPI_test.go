@@ -10,11 +10,14 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"strings"
 	"testing"
 
 	"github.com/gardener/etcd-backup-restore/pkg/miscellaneous"
 
 	"github.com/sirupsen/logrus"
+	"go.etcd.io/etcd/api/v3/etcdserverpb"
 )
 
 // fakeLearnerChecker is a test double for learnerChecker.
@@ -25,6 +28,159 @@ type fakeLearnerChecker struct {
 
 func (f *fakeLearnerChecker) IsLearnerPresent(_ context.Context) (bool, error) {
 	return f.learnerPresent, f.err
+}
+
+// fakeMemberLister is a test double for memberLister.
+type fakeMemberLister struct {
+	err     error
+	members []*etcdserverpb.Member
+}
+
+func (f *fakeMemberLister) ListMembers(_ context.Context) ([]*etcdserverpb.Member, error) {
+	return f.members, f.err
+}
+
+func TestGetInitialClusterFromMemberList(t *testing.T) {
+	etcdConf := `
+initial-advertise-peer-urls:
+  etcd-main-0:
+    - http://10.0.0.1:2380
+advertise-client-urls:
+  etcd-main-0:
+    - http://10.0.0.1:2379
+`
+	confFile, err := os.CreateTemp("", "etcd-conf-*.yaml")
+	if err != nil {
+		t.Fatalf("create temp config: %v", err)
+	}
+	defer os.Remove(confFile.Name())
+	if _, err := confFile.WriteString(etcdConf); err != nil {
+		t.Fatalf("write temp config: %v", err)
+	}
+	confFile.Close()
+
+	// A non-empty ENDPOINTS file so EndpointsFileConfigured() returns true,
+	// which makes GetMemberPeerURLs derive the self URL from POD_IP instead of
+	// doing a name lookup in the config map.
+	endpointsFile, err := os.CreateTemp("", "endpoints-*")
+	if err != nil {
+		t.Fatalf("create endpoints file: %v", err)
+	}
+	defer os.Remove(endpointsFile.Name())
+	endpointsFile.Close()
+
+	logger := logrus.New().WithField("suite", "getInitialClusterFromMemberList")
+
+	tests := []struct {
+		wantCluster map[string]string
+		ml          *fakeMemberLister
+		name        string
+		podName     string
+		podIP       string
+		memberName  string
+	}{
+		{
+			name:       "multi-member: adds self if absent",
+			podName:    "etcd-main-2",
+			podIP:      "10.0.0.3",
+			memberName: "etcd-main-2",
+			ml: &fakeMemberLister{
+				members: []*etcdserverpb.Member{
+					{Name: "etcd-main-0", PeerURLs: []string{"http://10.0.0.1:2380"}},
+					{Name: "etcd-main-1", PeerURLs: []string{"http://10.0.0.2:2380"}},
+				},
+			},
+			wantCluster: map[string]string{
+				"etcd-main-0": "http://10.0.0.1:2380",
+				"etcd-main-1": "http://10.0.0.2:2380",
+				"etcd-main-2": "http://10.0.0.3:2380",
+			},
+		},
+		{
+			name:       "multi-member: self already present, not duplicated",
+			podName:    "etcd-main-0",
+			podIP:      "10.0.0.1",
+			memberName: "etcd-main-0",
+			ml: &fakeMemberLister{
+				members: []*etcdserverpb.Member{
+					{Name: "etcd-main-0", PeerURLs: []string{"http://10.0.0.1:2380"}},
+					{Name: "etcd-main-1", PeerURLs: []string{"http://10.0.0.2:2380"}},
+				},
+			},
+			wantCluster: map[string]string{
+				"etcd-main-0": "http://10.0.0.1:2380",
+				"etcd-main-1": "http://10.0.0.2:2380",
+			},
+		},
+		{
+			name:       "ListMembers error falls back to self only",
+			podName:    "etcd-main-0",
+			podIP:      "10.0.0.1",
+			memberName: "etcd-main-0",
+			ml:         &fakeMemberLister{err: errors.New("etcd unavailable")},
+			wantCluster: map[string]string{
+				"etcd-main-0": "http://10.0.0.1:2380",
+			},
+		},
+		{
+			// A learner registered but not yet started reports an empty name in
+			// MemberList. It must not produce a duplicate or empty-name entry.
+			name:       "unstarted learner (empty name) does not duplicate self URL",
+			podName:    "etcd-main-1",
+			podIP:      "10.0.0.2",
+			memberName: "etcd-main-1",
+			ml: &fakeMemberLister{
+				members: []*etcdserverpb.Member{
+					{Name: "etcd-main-0", PeerURLs: []string{"http://10.0.0.1:2380"}},
+					{Name: "", PeerURLs: []string{"http://10.0.0.2:2380"}},
+				},
+			},
+			wantCluster: map[string]string{
+				"etcd-main-0": "http://10.0.0.1:2380",
+				"etcd-main-1": "http://10.0.0.2:2380",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv(miscellaneous.EndpointsEnvVar, endpointsFile.Name())
+			t.Setenv("POD_NAME", tt.podName)
+			t.Setenv("POD_IP", tt.podIP)
+
+			result := getInitialClusterFromMemberList(context.Background(), confFile.Name(), tt.memberName, tt.ml, *logger)
+
+			got := parseInitialCluster(result)
+			if len(got) != len(tt.wantCluster) {
+				t.Errorf("got %d entries %v, want %d entries %v", len(got), got, len(tt.wantCluster), tt.wantCluster)
+				return
+			}
+			for name, wantURL := range tt.wantCluster {
+				if gotURL, ok := got[name]; !ok {
+					t.Errorf("missing entry for member %q in result %q", name, result)
+				} else if gotURL != wantURL {
+					t.Errorf("member %q: got URL %q, want %q", name, gotURL, wantURL)
+				}
+			}
+		})
+	}
+}
+
+// parseInitialCluster parses a comma-separated "name=url" initial-cluster string
+// into a map of member name -> peer URL.
+func parseInitialCluster(s string) map[string]string {
+	result := make(map[string]string)
+	if s == "" {
+		return result
+	}
+	for _, entry := range strings.Split(s, ",") {
+		name, url, ok := strings.Cut(entry, "=")
+		if !ok {
+			continue
+		}
+		result[name] = url
+	}
+	return result
 }
 
 func TestGetClusterState(t *testing.T) {

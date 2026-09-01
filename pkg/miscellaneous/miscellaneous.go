@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gardener/etcd-backup-restore/pkg/errors"
@@ -49,6 +50,8 @@ const (
 	ClusterStateNew = "new"
 	// ClusterStateExisting defines the "existing" state of etcd cluster.
 	ClusterStateExisting = "existing"
+	// EndpointsEnvVar is the environment variable that points to the ENDPOINTS file.
+	EndpointsEnvVar = "ENDPOINTS"
 
 	https = "https"
 
@@ -444,6 +447,108 @@ func GetConfigFilePath() string {
 	return EtcdConfigFilePath
 }
 
+// EndpointsFileConfigured returns true iff the ENDPOINTS environment variable is set.
+func EndpointsFileConfigured() bool {
+	return os.Getenv(EndpointsEnvVar) != ""
+}
+
+// GetEndpointsFromFile reads the ENDPOINTS file and returns a list of IPs.
+// If ENDPOINTS is unset, returns (nil, nil). If the file is empty, injects POD_IP and
+// returns [POD_IP] (bootstrap: single-member, no peers yet). Invalid content is fatal.
+func GetEndpointsFromFile() ([]string, error) {
+	filePath := os.Getenv(EndpointsEnvVar)
+	if filePath == "" {
+		return nil, nil
+	}
+
+	data, err := os.ReadFile(filePath) // #nosec G304 -- path comes from a trusted env var.
+	if err != nil {
+		return nil, fmt.Errorf("failed to read ENDPOINTS file %q: %w", filePath, err)
+	}
+
+	var ips []string
+	for _, line := range strings.Split(strings.TrimSpace(string(data)), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		if net.ParseIP(line) == nil {
+			return nil, fmt.Errorf("invalid IP address %q in ENDPOINTS file %q", line, filePath)
+		}
+		ips = append(ips, line)
+	}
+
+	if len(ips) == 0 {
+		podIP, err := GetEnvVarOrError("POD_IP")
+		if err != nil {
+			return nil, fmt.Errorf("ENDPOINTS file is empty and POD_IP is not set: %w", err)
+		}
+		return []string{podIP}, nil
+	}
+
+	return ips, nil
+}
+
+// GetClientURLSchemeAndPort parses the first AdvertiseClientURLs entry from the config
+// file and returns the scheme and port.
+func GetClientURLSchemeAndPort(configFile string) (string, string, error) {
+	advURLsConfig, err := parseAdvertiseURLsConfig(configFile)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to parse advertise URLs config: %w", err)
+	}
+	rawURL, err := firstURL(advURLsConfig.AdvertiseClientURLs)
+	if err != nil {
+		return "", "", fmt.Errorf("no advertise-client-urls found in config file %q", configFile)
+	}
+	return schemeAndPort(rawURL, "advertise client URL")
+}
+
+// GetPeerURLSchemeAndPort parses the first InitialAdvertisePeerURLs entry from the config
+// file and returns the scheme and port.
+func GetPeerURLSchemeAndPort(configFile string) (string, string, error) {
+	advURLsConfig, err := parseAdvertiseURLsConfig(configFile)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to parse advertise URLs config: %w", err)
+	}
+	rawURL, err := firstURL(advURLsConfig.InitialAdvertisePeerURLs)
+	if err != nil {
+		return "", "", fmt.Errorf("no initial-advertise-peer-urls found in config file %q", configFile)
+	}
+	return schemeAndPort(rawURL, "initial-advertise-peer-url")
+}
+
+// firstURL returns the first non-empty URL from a name-indexed URL map.
+func firstURL(m map[string][]string) (string, error) {
+	for _, urls := range m {
+		if len(urls) > 0 {
+			return urls[0], nil
+		}
+	}
+	return "", fmt.Errorf("no URLs found")
+}
+
+// schemeAndPort parses a raw URL and returns its scheme and port.
+func schemeAndPort(rawURL, label string) (string, string, error) {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to parse %s %q: %w", label, rawURL, err)
+	}
+	_, port, err := net.SplitHostPort(u.Host)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to extract port from %s %q: %w", label, rawURL, err)
+	}
+	return u.Scheme, port, nil
+}
+
+// BuildURLsFromIPs constructs URL strings of the form <scheme>://<ip>:<port> for each IP.
+func BuildURLsFromIPs(ips []string, scheme, port string) []string {
+	urls := make([]string, len(ips))
+	for i, ip := range ips {
+		urls[i] = fmt.Sprintf("%s://%s:%s", scheme, ip, port)
+	}
+	return urls
+}
+
 // GetClusterSize returns the size of a cluster passed as a string
 func GetClusterSize(cluster string) (int, error) {
 	clusterMap, err := types.NewURLsMap(cluster)
@@ -611,6 +716,18 @@ func parseAdvertiseURLsConfig(configFile string) (*advertiseURLsConfig, error) {
 // GetMemberPeerURLs retrieves the initial advertise peer URLs for the etcd member.
 // The member name is derived from the POD_NAME environment variable and the optional member-name-prefix in the config.
 func GetMemberPeerURLs(configFile string) ([]string, error) {
+	if EndpointsFileConfigured() {
+		podIP, err := GetEnvVarOrError("POD_IP")
+		if err != nil {
+			return nil, fmt.Errorf("POD_IP not set: %w", err)
+		}
+		scheme, port, err := GetPeerURLSchemeAndPort(configFile)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get peer URL scheme/port: %w", err)
+		}
+		return []string{fmt.Sprintf("%s://%s:%s", scheme, podIP, port)}, nil
+	}
+
 	memberName, err := GetMemberName(configFile)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get member name: %w", err)
@@ -637,6 +754,18 @@ func GetMemberPeerURLs(configFile string) ([]string, error) {
 // GetMemberClientURLs retrieves the advertise client URLs for the etcd member.
 // The member name is derived from the POD_NAME environment variable and the optional member-name-prefix in the config.
 func GetMemberClientURLs(configFile string) ([]string, error) {
+	if EndpointsFileConfigured() {
+		podIP, err := GetEnvVarOrError("POD_IP")
+		if err != nil {
+			return nil, fmt.Errorf("POD_IP not set: %w", err)
+		}
+		scheme, port, err := GetClientURLSchemeAndPort(configFile)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get client URL scheme/port: %w", err)
+		}
+		return []string{fmt.Sprintf("%s://%s:%s", scheme, podIP, port)}, nil
+	}
+
 	memberName, err := GetMemberName(configFile)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get member name: %w", err)

@@ -911,6 +911,151 @@ initial-cluster: etcd1=http://0.0.0.0:2380`
 			})
 		})
 	})
+	Describe("ENDPOINTS-file helpers", func() {
+		const (
+			configFile = "/tmp/etcd-endpoints-test-config.yaml"
+		)
+
+		AfterEach(func() {
+			Expect(os.Unsetenv(EndpointsEnvVar)).To(Succeed())
+			Expect(os.Unsetenv("POD_IP")).To(Succeed())
+			_ = os.Remove(configFile)
+		})
+
+		Describe("#EndpointsFileConfigured", func() {
+			It("should return false when ENDPOINTS is not set", func() {
+				Expect(os.Unsetenv(EndpointsEnvVar)).To(Succeed())
+				Expect(EndpointsFileConfigured()).To(BeFalse())
+			})
+			It("should return true when ENDPOINTS is set", func() {
+				Expect(os.Setenv(EndpointsEnvVar, "/some/file")).To(Succeed())
+				Expect(EndpointsFileConfigured()).To(BeTrue())
+			})
+		})
+
+		Describe("#GetEndpointsFromFile", func() {
+			It("should return nil when ENDPOINTS is not set", func() {
+				Expect(os.Unsetenv(EndpointsEnvVar)).To(Succeed())
+				ips, err := GetEndpointsFromFile()
+				Expect(err).NotTo(HaveOccurred())
+				Expect(ips).To(BeNil())
+			})
+
+			It("should return an error when the file does not exist", func() {
+				Expect(os.Setenv(EndpointsEnvVar, "/nonexistent/path/endpoints.txt")).To(Succeed())
+				_, err := GetEndpointsFromFile()
+				Expect(err).To(HaveOccurred())
+			})
+
+			It("should inject POD_IP when the file is empty and POD_IP is set", func() {
+				f, err := os.CreateTemp("", "endpoints-*.txt")
+				Expect(err).NotTo(HaveOccurred())
+				Expect(f.Close()).To(Succeed())
+				Expect(os.Setenv(EndpointsEnvVar, f.Name())).To(Succeed())
+				Expect(os.Setenv("POD_IP", "10.0.0.5")).To(Succeed())
+				defer func() { _ = os.Remove(f.Name()) }()
+
+				ips, err := GetEndpointsFromFile()
+				Expect(err).NotTo(HaveOccurred())
+				Expect(ips).To(Equal([]string{"10.0.0.5"}))
+			})
+
+			It("should return an error when the file is empty and POD_IP is not set", func() {
+				f, err := os.CreateTemp("", "endpoints-*.txt")
+				Expect(err).NotTo(HaveOccurred())
+				Expect(f.Close()).To(Succeed())
+				Expect(os.Setenv(EndpointsEnvVar, f.Name())).To(Succeed())
+				Expect(os.Unsetenv("POD_IP")).To(Succeed())
+				defer func() { _ = os.Remove(f.Name()) }()
+
+				_, err = GetEndpointsFromFile()
+				Expect(err).To(HaveOccurred())
+			})
+
+			It("should return an error when a line contains an invalid IP", func() {
+				f, err := os.CreateTemp("", "endpoints-*.txt")
+				Expect(err).NotTo(HaveOccurred())
+				_, err = f.WriteString("10.0.0.1\nnot-an-ip\n")
+				Expect(err).NotTo(HaveOccurred())
+				Expect(f.Close()).To(Succeed())
+				Expect(os.Setenv(EndpointsEnvVar, f.Name())).To(Succeed())
+				defer func() { _ = os.Remove(f.Name()) }()
+
+				_, err = GetEndpointsFromFile()
+				Expect(err).To(HaveOccurred())
+			})
+
+			It("should return all valid IPs from the file", func() {
+				f, err := os.CreateTemp("", "endpoints-*.txt")
+				Expect(err).NotTo(HaveOccurred())
+				_, err = f.WriteString("10.0.0.1\n10.0.0.2\n10.0.0.3\n")
+				Expect(err).NotTo(HaveOccurred())
+				Expect(f.Close()).To(Succeed())
+				Expect(os.Setenv(EndpointsEnvVar, f.Name())).To(Succeed())
+				defer func() { _ = os.Remove(f.Name()) }()
+
+				ips, err := GetEndpointsFromFile()
+				Expect(err).NotTo(HaveOccurred())
+				Expect(ips).To(Equal([]string{"10.0.0.1", "10.0.0.2", "10.0.0.3"}))
+			})
+		})
+
+		Describe("#GetClientURLSchemeAndPort and #GetPeerURLSchemeAndPort", func() {
+			It("should return an error when the config file cannot be read", func() {
+				_, _, err := GetClientURLSchemeAndPort("/nonexistent/config.yaml")
+				Expect(err).To(HaveOccurred())
+				_, _, err = GetPeerURLSchemeAndPort("/nonexistent/config.yaml")
+				Expect(err).To(HaveOccurred())
+			})
+
+			It("should return an error when advertise URLs are missing", func() {
+				writeConfigToFile(configFile, map[string]interface{}{"name": "etcd-test"})
+				_, _, err := GetClientURLSchemeAndPort(configFile)
+				Expect(err).To(HaveOccurred())
+				_, _, err = GetPeerURLSchemeAndPort(configFile)
+				Expect(err).To(HaveOccurred())
+			})
+
+			It("should return scheme and port from advertise-client-urls", func() {
+				writeConfigToFile(configFile, map[string]interface{}{
+					"name": "etcd-test",
+					"advertise-client-urls": map[string][]string{
+						"pod1": {"https://10.0.0.1:2379"},
+					},
+				})
+				scheme, port, err := GetClientURLSchemeAndPort(configFile)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(scheme).To(Equal("https"))
+				Expect(port).To(Equal("2379"))
+			})
+
+			It("should return scheme and port from initial-advertise-peer-urls", func() {
+				writeConfigToFile(configFile, map[string]interface{}{
+					"name": "etcd-test",
+					"initial-advertise-peer-urls": map[string][]string{
+						"pod1": {"http://10.0.0.1:2380"},
+					},
+				})
+				scheme, port, err := GetPeerURLSchemeAndPort(configFile)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(scheme).To(Equal("http"))
+				Expect(port).To(Equal("2380"))
+			})
+		})
+
+		Describe("#BuildURLsFromIPs", func() {
+			It("should build correct URLs for each IP", func() {
+				urls := BuildURLsFromIPs([]string{"10.0.0.1", "10.0.0.2"}, "https", "2379")
+				Expect(urls).To(Equal([]string{"https://10.0.0.1:2379", "https://10.0.0.2:2379"}))
+			})
+
+			It("should return an empty slice for no IPs", func() {
+				urls := BuildURLsFromIPs([]string{}, "http", "2379")
+				Expect(urls).To(BeEmpty())
+			})
+		})
+	})
+
 })
 
 func generateSnapshotList(n int) brtypes.SnapList {

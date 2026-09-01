@@ -73,6 +73,9 @@ type Control interface {
 
 	// GetPeerURLs returns the list of current peer URLs of the etcd cluster member.
 	GetPeerURLs(context.Context, etcdClient.ClusterCloser) ([]string, error)
+
+	// ListMembers returns the current member list of the etcd cluster.
+	ListMembers(context.Context) ([]*etcdserverpb.Member, error)
 }
 
 // memberControl holds the configuration for the mechanism of adding a new member to the cluster.
@@ -364,6 +367,29 @@ func (m *memberControl) GetPeerURLs(ctx context.Context, closer etcdClient.Clust
 		}
 	}
 	return []string{}, nil
+}
+
+// ListMembers returns the current member list of the etcd cluster.
+func (m *memberControl) ListMembers(ctx context.Context) ([]*etcdserverpb.Member, error) {
+	cli, err := m.clientFactory.NewCluster()
+	if err != nil {
+		return nil, fmt.Errorf("failed to build etcd cluster client: %v", err)
+	}
+	defer cli.Close()
+
+	var memList *clientv3.MemberListResponse
+	backoff := miscellaneous.CreateBackoff(RetryPeriod, RetrySteps)
+	if err = retry.OnError(backoff, func(err error) bool {
+		return err != nil
+	}, func() error {
+		listCtx, cancel := context.WithTimeout(ctx, EtcdTimeout)
+		defer cancel()
+		memList, err = cli.MemberList(listCtx)
+		return err
+	}); err != nil {
+		return nil, fmt.Errorf("MemberList failed: %w", err)
+	}
+	return memList.Members, nil
 }
 
 // WasMemberInCluster checks whether etcd member was part of etcd cluster.
