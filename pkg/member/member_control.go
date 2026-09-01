@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"strconv"
 	"time"
 
@@ -57,6 +58,11 @@ type Control interface {
 
 	// WasMemberInCluster checks whether current members was part of the etcd cluster or not.
 	WasMemberInCluster(context.Context, client.Client) bool
+
+	// WasPermanentlyRemoved reports whether this member was explicitly removed
+	// from the cluster during a prior scale-in. Returns ErrMembershipCheckFailed
+	// if the check cannot be completed (fails closed).
+	WasPermanentlyRemoved(ctx context.Context, dataDir string, k8sClient client.Client) (bool, error)
 
 	// PromoteMember promotes an etcd member from a learner to a voting member of the cluster.
 	// This will succeed if and only if learner is in a healthy state and the learner is in sync with leader.
@@ -384,10 +390,43 @@ func (m *memberControl) WasMemberInCluster(ctx context.Context, clientSet client
 		return false
 	}
 
-	if memberLease.Spec.HolderIdentity == nil {
-		return false
+	return memberLease.Spec.HolderIdentity != nil
+}
+
+// WasPermanentlyRemoved checks whether this member was permanently removed from
+// the etcd cluster during a prior scale-in by inspecting the boltdb
+// members_removed tombstone bucket. It resolves the local member ID from the
+// k8s lease first, falling back to the on-disk member-id file.
+func (m *memberControl) WasPermanentlyRemoved(ctx context.Context, dataDir string, k8sClient client.Client) (bool, error) {
+	logger := m.logger.WithField("actor", "anti-rejoin")
+	memberID, ok, err := ResolveLocalMemberID(ctx, logger, dataDir, k8sClient, m.podNamespace, m.memberName)
+	if err != nil {
+		return false, fmt.Errorf("%w: unable to determine local member ID: %w", ErrMembershipCheckFailed, err)
 	}
-	return true
+	if !ok {
+		return false, nil
+	}
+
+	dbPath := etcdutil.BackendDBPath(dataDir)
+	if _, err := os.Stat(dbPath); err != nil {
+		if os.IsNotExist(err) {
+			// WAL directories exist (hasData was true) but the db file is gone —
+			// partial PVC deletion. We have a resolved memberID so we cannot safely
+			// treat this as a fresh member; fail closed.
+			return false, fmt.Errorf("%w: member ID %s resolved but boltdb backend %q does not exist — possible partial deletion; failing closed",
+				ErrMembershipCheckFailed, strconv.FormatUint(memberID, 16), dbPath)
+		}
+		return false, fmt.Errorf("%w: unable to stat boltdb backend %q: %w", ErrMembershipCheckFailed, dbPath, err)
+	}
+
+	removed, err := IsMemberRemoved(dbPath, memberID)
+	if err != nil {
+		return false, fmt.Errorf("%w: %w", ErrMembershipCheckFailed, err)
+	}
+	if removed {
+		logger.Infof("member %s was permanently removed from the etcd cluster", strconv.FormatUint(memberID, 16))
+	}
+	return removed, nil
 }
 
 // AddLearnerWithRetry add a new member as a learner with exponential backoff.
