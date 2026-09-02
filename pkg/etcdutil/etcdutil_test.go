@@ -329,9 +329,17 @@ var _ = Describe("EtcdUtil Tests", func() {
 					return response, nil
 				}).AnyTimes()
 
-				cm.EXPECT().Status(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, _ string) (*clientv3.StatusResponse, error) {
+				// Status on the leader endpoint.
+				cm.EXPECT().Status(gomock.Any(), dummyClientEndpoints[0]).DoAndReturn(func(_ context.Context, _ string) (*clientv3.StatusResponse, error) {
 					response := new(clientv3.StatusResponse)
 					response.Leader = dummyID
+					response.DbSize = 10
+					return response, nil
+				}).AnyTimes()
+				// Status on the follower endpoint.
+				cm.EXPECT().Status(gomock.Any(), dummyClientEndpoints[1]).DoAndReturn(func(_ context.Context, _ string) (*clientv3.StatusResponse, error) {
+					response := new(clientv3.StatusResponse)
+					response.RaftIndex = 42
 					response.DbSize = 10
 					return response, nil
 				}).AnyTimes()

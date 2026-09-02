@@ -25,6 +25,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/sirupsen/logrus"
+	"go.etcd.io/etcd/api/v3/etcdserverpb"
 	"go.etcd.io/etcd/client/pkg/v3/transport"
 	clientv3 "go.etcd.io/etcd/client/v3"
 )
@@ -224,57 +225,8 @@ func DefragmentData(defragCtx context.Context, clientMaintenance client.Maintena
 	}
 
 	// Optionally transfer leadership before defragmenting the leader to keep writes flowing.
-	// MoveLeader must be sent to the current leader, so use the first known leader endpoint.
-	leaderTransferred := false
-	if moveLeader && len(followerEtcdEndpoints) > 0 && len(leaderEtcdEndpoints) > 0 {
-		func() {
-			ctx, cancel := context.WithTimeout(defragCtx, brtypes.DefaultEtcdConnectionTimeout)
-			defer cancel()
-			membersInfo, err := clientCluster.MemberList(ctx)
-			if err != nil {
-				logger.Warnf("failed to list members for leadership transfer: %v, defragmenting leader in place", err)
-				return
-			}
-			// Pick the first voting non-learner follower as the transfer target.
-			var transfereeID uint64
-			for _, m := range membersInfo.Members {
-				if m.GetID() != leaderID && !m.GetIsLearner() {
-					transfereeID = m.GetID()
-					break
-				}
-			}
-			if transfereeID == 0 {
-				logger.Warnf("no eligible voting follower found for leadership transfer, defragmenting leader in place")
-				return
-			}
+	transferLeadership(defragCtx, clientMaintenance, clientCluster, clientFactory, leaderEtcdEndpoints, followerEtcdEndpoints, leaderID, logger, moveLeader)
 
-			leaderEndpoint := leaderEtcdEndpoints[0]
-			func() {
-				ctx, cancel := context.WithTimeout(defragCtx, brtypes.DefaultLeaderTransferTimeout)
-				defer cancel()
-				// clientFactory is used to create a maintenance client pinned to the leader endpoint for the
-				// MoveLeader call, ensuring the request is never rejected with ErrNotLeader.
-				leaderMaintenance, err := clientFactory.NewMaintenanceForEndpoint(leaderEndpoint)
-				if err != nil {
-					logger.Warnf("failed to create maintenance client for leader endpoint %s: %v, defragmenting leader in place", leaderEndpoint, err)
-					return
-				}
-				defer leaderMaintenance.Close()
-				if _, err := leaderMaintenance.MoveLeader(ctx, transfereeID); err != nil {
-					logger.Warnf("failed to transfer etcd leadership from %s to member %d: %v, defragmenting leader in place", leaderEndpoint, transfereeID, err)
-				} else {
-					logger.Infof("etcd leadership transferred from %s to member %d, will now defragment the former leader", leaderEndpoint, transfereeID)
-					leaderTransferred = true
-				}
-			}()
-		}()
-	}
-
-	if leaderTransferred {
-		logger.Info("Starting the defragmentation on former etcd leader (now follower)")
-	} else {
-		logger.Info("Starting the defragmentation on etcd leader")
-	}
 	// Perform the defragmentation on etcd leader (or former leader after transfer).
 	for _, ep := range leaderEtcdEndpoints {
 		if err := func() error {
@@ -289,6 +241,87 @@ func DefragmentData(defragCtx context.Context, clientMaintenance client.Maintena
 		}
 	}
 	return nil
+}
+
+// transferLeadership attempts to transfer etcd leadership away from the current leader to the
+// most up-to-date voting follower before the leader is defragmented, avoiding cluster-wide write
+// stalls during the leader's defragmentation. Returns true if the transfer succeeded.
+// If the transfer cannot be performed it logs a warning and returns false so the caller can
+// defragment the leader in place.
+func transferLeadership(defragCtx context.Context, clientMaintenance client.MaintenanceCloser, clientCluster client.ClusterCloser, clientFactory client.Factory, leaderEtcdEndpoints, followerEtcdEndpoints []string, leaderID uint64, logger *logrus.Entry, moveLeader bool) bool {
+	if !moveLeader || len(followerEtcdEndpoints) == 0 || len(leaderEtcdEndpoints) == 0 {
+		return false
+	}
+
+	leaderTransferred := false
+	func() {
+		ctx, cancel := context.WithTimeout(defragCtx, brtypes.DefaultEtcdConnectionTimeout)
+		defer cancel()
+		membersInfo, err := clientCluster.MemberList(ctx)
+		if err != nil {
+			logger.Warnf("failed to list members for leadership transfer: %v, defragmenting leader in place", err)
+			return
+		}
+
+		transfereeID := selectLeaderTransferee(ctx, clientMaintenance, membersInfo.Members, leaderID, logger)
+		if transfereeID == 0 {
+			return
+		}
+
+		leaderEndpoint := leaderEtcdEndpoints[0]
+		func() {
+			ctx, cancel := context.WithTimeout(defragCtx, brtypes.DefaultLeaderTransferTimeout)
+			defer cancel()
+			leaderMaintenance, err := clientFactory.NewMaintenanceForEndpoint(leaderEndpoint)
+			if err != nil {
+				logger.Warnf("failed to create maintenance client for leader endpoint %s: %v, defragmenting leader in place", leaderEndpoint, err)
+				return
+			}
+			defer leaderMaintenance.Close()
+			if _, err := leaderMaintenance.MoveLeader(ctx, transfereeID); err != nil {
+				logger.Warnf("failed to transfer etcd leadership from %s to member %d: %v, defragmenting leader in place", leaderEndpoint, transfereeID, err)
+			} else {
+				logger.Infof("etcd leadership transferred from %s to member %d, will now defragment the former leader", leaderEndpoint, transfereeID)
+				leaderTransferred = true
+			}
+		}()
+	}()
+	if leaderTransferred {
+		logger.Info("Starting the defragmentation on former etcd leader (now follower)")
+	} else {
+		logger.Info("Starting the defragmentation on etcd leader")
+	}
+	return leaderTransferred
+}
+
+// selectLeaderTransferee picks the voting member with the highest RaftIndex as the MoveLeader transfer target.
+func selectLeaderTransferee(ctx context.Context, clientMaintenance client.MaintenanceCloser, members []*etcdserverpb.Member, leaderID uint64, logger *logrus.Entry) uint64 {
+	var transfereeID uint64
+	var bestRaftIndex uint64
+	reachableFollowers := 0
+	for _, m := range members {
+		if m.GetID() == leaderID || m.GetIsLearner() {
+			continue
+		}
+		for _, ep := range m.GetClientURLs() {
+			if status, err := clientMaintenance.Status(ctx, ep); err == nil {
+				reachableFollowers++
+				if transfereeID == 0 || status.RaftIndex > bestRaftIndex {
+					bestRaftIndex = status.RaftIndex
+					transfereeID = m.GetID()
+				}
+				break
+			}
+		}
+	}
+	if transfereeID == 0 {
+		if reachableFollowers == 0 {
+			logger.Warnf("no reachable voting follower found for leadership transfer, defragmenting leader in place")
+		} else {
+			logger.Warnf("no eligible voting follower found for leadership transfer, defragmenting leader in place")
+		}
+	}
+	return transfereeID
 }
 
 // GetEtcdEndPointsSorted returns the etcd leaderEndpoints, etcd followerEndpoints, and the leader member ID.
