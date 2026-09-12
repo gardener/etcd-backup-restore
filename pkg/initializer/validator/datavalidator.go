@@ -12,7 +12,6 @@ import (
 	"io"
 	"os"
 	"path"
-	"path/filepath"
 	"time"
 
 	"github.com/gardener/etcd-backup-restore/pkg/etcdutil"
@@ -50,13 +49,13 @@ var (
 	isBoltDBPanic = false
 )
 
-func (d *DataValidator) memberDir() string { return filepath.Join(d.Config.DataDir, "member") }
+func (d *DataValidator) memberDir() string { return etcdutil.MemberDir(d.Config.DataDir) }
 
-func (d *DataValidator) walDir() string { return filepath.Join(d.memberDir(), "wal") }
+func (d *DataValidator) walDir() string { return etcdutil.WALDir(d.Config.DataDir) }
 
-func (d *DataValidator) snapDir() string { return filepath.Join(d.memberDir(), "snap") }
+func (d *DataValidator) snapDir() string { return etcdutil.SnapDir(d.Config.DataDir) }
 
-func (d *DataValidator) backendPath() string { return filepath.Join(d.snapDir(), "db") }
+func (d *DataValidator) backendPath() string { return etcdutil.BackendDBPath(d.Config.DataDir) }
 
 // Validate performs the steps required to validate data for Etcd instance.
 func (d *DataValidator) Validate(mode Mode) (DataDirStatus, error) {
@@ -125,7 +124,7 @@ func (d *DataValidator) sanityCheck() (DataDirStatus, error) {
 	}
 
 	d.Logger.Info("Checking for data directory structure validity...")
-	etcdDirStructValid, err := d.hasEtcdDirectoryStructure()
+	etcdDirStructValid, err := d.HasEtcdDirectoryStructure()
 	if err != nil {
 		return DataDirectoryStatusUnknown, err
 	}
@@ -221,8 +220,9 @@ func (d *DataValidator) checkForDataCorruption() error {
 	return nil
 }
 
-// hasEtcdDirectoryStructure checks for existence of the required sub-directories.
-func (d *DataValidator) hasEtcdDirectoryStructure() (bool, error) {
+// HasEtcdDirectoryStructure reports whether the data directory contains an etcd member tree
+// (member/, wal/, snap/ sub-directories).
+func (d *DataValidator) HasEtcdDirectoryStructure() (bool, error) {
 	var memberExist, snapExist, walExist bool
 	var err error
 	if memberExist, err = directoryExist(d.memberDir()); err != nil {
