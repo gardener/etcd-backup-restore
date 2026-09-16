@@ -2,10 +2,10 @@
 
 ## Overview
 
-The `ENDPOINTS` file mechanism allows `etcd-backup-restore` to reach etcd when a stable
+The `ENDPOINTS` file mechanism allows `etcd-backup-restore` sidecar to reach etcd when a stable
 service endpoint is not available. Instead of a static `--endpoints` flag, `etcd-backup-restore`
 reads endpoints from a plain-text file and, optionally, keeps that file up to date by
-periodically querying the live etcd member list.
+periodically querying the live etcd cluster's member list.
 
 ## Enabling the Feature
 
@@ -41,14 +41,14 @@ To keep the file up to date as members join, enable periodic refresh:
 
 ```yaml
 etcdConnectionConfig:
-  endpointsRefreshEnabled: true
+  endpointsRefreshEnabled: true # default set to false
   endpointsRefreshInterval: 30s   # must be > 0; default is 30s
 ```
 
 Or via CLI flags:
 
 ```
---enable-endpoints-refresh
+--enable-endpoints-refresh=true (default set to false)
 --endpoints-refresh-interval=30s
 ```
 
