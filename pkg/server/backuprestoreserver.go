@@ -317,6 +317,14 @@ func (b *BackupRestoreServer) runServer(ctx context.Context, restoreOpts *brtype
 		}()
 	}
 
+	if b.config.EtcdConnectionConfig.EndpointsRefreshEnabled {
+		go func() {
+			if err := member.RefreshEndpointsPeriodically(ctx, b.config.EtcdConnectionConfig, b.logger); err != nil {
+				b.logger.Fatalf("failed RefreshEndpoints: %v", err)
+			}
+		}()
+	}
+
 	return le.Run(ctx)
 }
 

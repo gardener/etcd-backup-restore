@@ -226,5 +226,12 @@ tls:
     #       -----BEGIN PRIVATE KEY-----
     #       ...
     #       -----END PRIVATE KEY-----
+# dynamicEndpoints enables endpoint discovery via a file instead of a static --endpoints flag.
+# dynamicEndpoints: {}
+#   endpointsFile: /etc/etcd/endpoints  # path inside the container where the ENDPOINTS file will be mounted
+#   hostPath: /etc/etcd/endpoints       # path on the host node that backs the ENDPOINTS file
+#   endpointsRefreshEnabled: false      # enable periodic refresh of the file from the live member list
+#   endpointsRefreshInterval: 30s       # interval between refreshes; must be > 0 when refresh is enabled
+
 # podAnnotations that will be passed to the resulting etcd pod
 podAnnotations: {}

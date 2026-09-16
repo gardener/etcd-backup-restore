@@ -106,7 +106,18 @@ func GetTLSClientForEtcd(tlsConfig *brtypes.EtcdConnectionConfig, options *clien
 
 	endpoints := tlsConfig.Endpoints
 	if options.UseServiceEndpoints {
-		if len(tlsConfig.ServiceEndpoints) > 0 {
+		if miscellaneous.EndpointsFileConfigured() {
+			ips, err := miscellaneous.GetEndpointsFromFile()
+			if err != nil {
+				return nil, err
+			}
+			configFilePath := miscellaneous.GetConfigFilePath()
+			scheme, port, err := miscellaneous.GetClientURLSchemeAndPort(configFilePath)
+			if err != nil {
+				return nil, err
+			}
+			endpoints = miscellaneous.BuildURLsFromIPs(ips, scheme, port)
+		} else if len(tlsConfig.ServiceEndpoints) > 0 {
 			endpoints = tlsConfig.ServiceEndpoints
 		} else {
 			configFilePath := miscellaneous.GetConfigFilePath()

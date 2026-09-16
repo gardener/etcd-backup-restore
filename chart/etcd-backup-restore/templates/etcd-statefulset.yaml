@@ -185,6 +185,14 @@ spec:
         - --etcd-connection-timeout-leader-election={{ .Values.backup.leaderElection.etcdConnectionTimeout }}
         - --reelection-period={{ .Values.backup.leaderElection.reelectionPeriod }}
         - --use-etcd-wrapper=true
+{{- if .Values.dynamicEndpoints }}
+  {{- if .Values.dynamicEndpoints.endpointsRefreshEnabled }}
+        - --enable-endpoints-refresh=true
+    {{- if .Values.dynamicEndpoints.endpointsRefreshInterval }}
+        - --endpoints-refresh-interval={{ .Values.dynamicEndpoints.endpointsRefreshInterval }}
+    {{- end }}
+  {{- end }}
+{{- end }}
 {{- if and .Values.etcdAuth.username .Values.etcdAuth.password }}
         - --etcd-username={{ .Values.etcdAuth.username }}
         - --etcd-password={{ .Values.etcdAuth.password }}
@@ -205,6 +213,15 @@ spec:
               fieldPath: metadata.name
         - name: "POD_NAMESPACE"
           value: {{ .Release.Namespace }}
+        - name: "POD_IP"
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: status.podIP
+{{- if .Values.dynamicEndpoints }}
+        - name: ENDPOINTS
+          value: {{ .Values.dynamicEndpoints.endpointsFile }}
+{{- end }}
         - name: STORAGE_CONTAINER
           value: {{ .Values.backup.storageContainer }}
 {{- if .Values.backup.storageProvider }}
@@ -299,6 +316,10 @@ spec:
           mountPath: "/var/etcd-backup/"
   {{- end }}
 {{- end }}
+{{- if .Values.dynamicEndpoints }}
+        - name: endpoints-file
+          mountPath: {{ .Values.dynamicEndpoints.endpointsFile }}
+{{- end }}
       securityContext:
         runAsGroup: 65532
         runAsNonRoot: true
@@ -371,6 +392,12 @@ spec:
               audience: {{ .Values.backup.tokenAuth.audience }}
           {{- end }}
   {{- end }}
+{{- end }}
+{{- if .Values.dynamicEndpoints }}
+      - name: endpoints-file
+        hostPath:
+          path: {{ .Values.dynamicEndpoints.hostPath }}
+          type: FileOrCreate
 {{- end }}
   volumeClaimTemplates:
   - metadata:

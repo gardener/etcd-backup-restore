@@ -309,6 +309,94 @@ var _ = Describe("EtcdUtil Tests", func() {
 		})
 	})
 
+	Describe("ENDPOINTS file precedence", func() {
+		var (
+			cfg            brtypes.EtcdConnectionConfig
+			tempConfigFile string
+			tempIPFile     string
+		)
+
+		BeforeEach(func() {
+			cfg = brtypes.EtcdConnectionConfig{
+				Endpoints:          []string{"http://default:2379"},
+				ServiceEndpoints:   []string{"http://service:2379"},
+				InsecureTransport:  true,
+				InsecureSkipVerify: false,
+			}
+		})
+
+		AfterEach(func() {
+			_ = os.Unsetenv("ENDPOINTS")
+			_ = os.Unsetenv("POD_IP")
+			_ = os.Unsetenv("ETCD_CONF")
+			if tempConfigFile != "" {
+				_ = os.Remove(tempConfigFile)
+				tempConfigFile = ""
+			}
+			if tempIPFile != "" {
+				_ = os.Remove(tempIPFile)
+				tempIPFile = ""
+			}
+		})
+
+		writeEtcdConfig := func(path string) {
+			content := []byte(`name: etcd-test
+advertise-client-urls:
+  etcd-test:
+    - http://10.0.0.1:2379
+initial-advertise-peer-urls:
+  etcd-test:
+    - http://10.0.0.1:2380
+`)
+			Expect(os.WriteFile(path, content, 0600)).To(Succeed())
+		}
+
+		Context("when UseServiceEndpoints is true", func() {
+			Context("and ENDPOINTS env is set with a valid IP file", func() {
+				It("overrides ServiceEndpoints with IPs from file", func() {
+					f, err := os.CreateTemp("", "endpoints-*.txt")
+					Expect(err).NotTo(HaveOccurred())
+					tempIPFile = f.Name()
+					_, err = f.WriteString("10.0.0.2\n10.0.0.3\n")
+					Expect(err).NotTo(HaveOccurred())
+					Expect(f.Close()).To(Succeed())
+
+					cfgFile, err := os.CreateTemp("", "etcd-config-*.yaml")
+					Expect(err).NotTo(HaveOccurred())
+					tempConfigFile = cfgFile.Name()
+					Expect(cfgFile.Close()).To(Succeed())
+					writeEtcdConfig(tempConfigFile)
+
+					Expect(os.Setenv("ENDPOINTS", tempIPFile)).To(Succeed())
+					Expect(os.Setenv("ETCD_CONF", tempConfigFile)).To(Succeed())
+
+					etcdClient, err := etcdutil.GetTLSClientForEtcd(&cfg, &client.Options{UseServiceEndpoints: true})
+					Expect(err).NotTo(HaveOccurred())
+					defer etcdClient.Close()
+					Expect(etcdClient.Endpoints()).To(ConsistOf("http://10.0.0.2:2379", "http://10.0.0.3:2379"))
+				})
+			})
+
+			Context("and ENDPOINTS env is set but the file does not exist", func() {
+				It("returns an error", func() {
+					Expect(os.Setenv("ENDPOINTS", "/nonexistent/endpoints.txt")).To(Succeed())
+
+					_, err := etcdutil.GetTLSClientForEtcd(&cfg, &client.Options{UseServiceEndpoints: true})
+					Expect(err).To(HaveOccurred())
+				})
+			})
+		})
+
+		Context("when ENDPOINTS env is unset", func() {
+			It("uses Endpoints from config unchanged", func() {
+				etcdClient, err := etcdutil.GetTLSClientForEtcd(&cfg, &client.Options{UseServiceEndpoints: false})
+				Expect(err).NotTo(HaveOccurred())
+				defer etcdClient.Close()
+				Expect(etcdClient.Endpoints()).To(Equal([]string{"http://default:2379"}))
+			})
+		})
+	})
+
 	Describe("UseServiceEndpoints option", func() {
 		var (
 			cfg            brtypes.EtcdConnectionConfig
