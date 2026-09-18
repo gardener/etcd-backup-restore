@@ -89,7 +89,7 @@ waitLoop:
 
 			if isClusterHealthy {
 				d.logger.Infof("Starting the scheduled defragmentation since all members of the etcd cluster are in a healthy state")
-				err = etcdutil.DefragmentData(d.ctx, clientMaintenance, client, etcdEndpoints, d.defragConfig.DefragTimeout.Duration, d.logger)
+				err = etcdutil.DefragmentData(d.ctx, clientMaintenance, client, clientFactory, etcdEndpoints, d.defragConfig.DefragTimeout.Duration, d.logger, d.defragConfig.MoveLeader)
 				if err != nil {
 					d.logger.Warnf("failed to defrag data with error: %v", err)
 					continue
