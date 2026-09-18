@@ -175,7 +175,7 @@ var _ = Describe("EtcdUtil Tests", func() {
 
 				cl.EXPECT().MemberList(gomock.Any()).Return(nil, fmt.Errorf("failed to connect with the dummy etcd")).AnyTimes()
 
-				leaderEtcdEndpoints, followerEtcdEndpoints, _, err := etcdutil.GetEtcdEndPointsSorted(testCtx, clientMaintenance, client, dummyClientEndpoints, logger)
+				leaderEtcdEndpoints, followerEtcdEndpoints, _, _, err := etcdutil.GetEtcdEndPointsSorted(testCtx, clientMaintenance, client, dummyClientEndpoints, logger)
 				Expect(err).Should(HaveOccurred())
 				Expect(leaderEtcdEndpoints).Should(BeNil())
 				Expect(followerEtcdEndpoints).Should(BeNil())
@@ -209,7 +209,7 @@ var _ = Describe("EtcdUtil Tests", func() {
 
 				cm.EXPECT().Status(gomock.Any(), gomock.Any()).Return(nil, fmt.Errorf("failed to connect to the dummy etcd")).AnyTimes()
 
-				leaderEtcdEndpoints, followerEtcdEndpoints, _, err := etcdutil.GetEtcdEndPointsSorted(testCtx, clientMaintenance, client, dummyClientEndpoints, logger)
+				leaderEtcdEndpoints, followerEtcdEndpoints, _, _, err := etcdutil.GetEtcdEndPointsSorted(testCtx, clientMaintenance, client, dummyClientEndpoints, logger)
 				Expect(err).Should(HaveOccurred())
 				Expect(leaderEtcdEndpoints).Should(BeNil())
 				Expect(followerEtcdEndpoints).Should(BeNil())
@@ -257,7 +257,7 @@ var _ = Describe("EtcdUtil Tests", func() {
 
 				cm.EXPECT().Defragment(gomock.Any(), gomock.Any()).Return(nil, fmt.Errorf("failed to defrag the etcd")).AnyTimes()
 
-				leaderEtcdEndpoints, followerEtcdEndpoints, _, err := etcdutil.GetEtcdEndPointsSorted(testCtx, clientMaintenance, client, dummyClientEndpoints, logger)
+				leaderEtcdEndpoints, followerEtcdEndpoints, _, _, err := etcdutil.GetEtcdEndPointsSorted(testCtx, clientMaintenance, client, dummyClientEndpoints, logger)
 				Expect(err).ShouldNot(HaveOccurred())
 				Expect(leaderEtcdEndpoints).Should(Equal([]string{dummyClientEndpoints[0]}))
 				Expect(followerEtcdEndpoints).Should(Equal([]string{dummyClientEndpoints[1]}))
@@ -467,42 +467,118 @@ var _ = Describe("EtcdUtil Tests", func() {
 			})
 		})
 
-		Context("MoveLeader enabled but second MemberList call fails", func() {
-			It("should warn and defragment the leader in place without error", func() {
+		Context("MoveLeader enabled and parent context cancelled after successful transfer", func() {
+			It("should still defragment the former leader despite context cancellation", func() {
+				cancelCtx, cancelFunc := context.WithCancel(testCtx)
+
 				clientMaintenance, err := factory.NewMaintenance()
 				Expect(err).ShouldNot(HaveOccurred())
 
 				client, err := factory.NewCluster()
 				Expect(err).ShouldNot(HaveOccurred())
 
-				callCount := 0
-				cl.EXPECT().MemberList(gomock.Any()).DoAndReturn(func(_ context.Context) (*clientv3.MemberListResponse, error) {
-					callCount++
-					if callCount == 1 {
-						response := new(clientv3.MemberListResponse)
-						response.Members = []*etcdserverpb.Member{
-							{ID: dummyID, ClientURLs: []string{dummyClientEndpoints[0]}},
-							{ID: dummyID + 1, ClientURLs: []string{dummyClientEndpoints[1]}},
-						}
-						return response, nil
-					}
-					return nil, fmt.Errorf("memberlist temporarily unavailable")
-				}).Times(2)
+				leaderCM := mockfactory.NewMockMaintenanceCloser(ctrl)
+				leaderCM.EXPECT().Close().Return(nil).AnyTimes()
 
-				cm.EXPECT().Status(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, _ string) (*clientv3.StatusResponse, error) {
+				cl.EXPECT().MemberList(gomock.Any()).DoAndReturn(func(_ context.Context) (*clientv3.MemberListResponse, error) {
+					response := new(clientv3.MemberListResponse)
+					response.Members = []*etcdserverpb.Member{
+						{ID: dummyID, ClientURLs: []string{dummyClientEndpoints[0]}},
+						{ID: dummyID + 1, ClientURLs: []string{dummyClientEndpoints[1]}},
+					}
+					return response, nil
+				}).AnyTimes()
+
+				cm.EXPECT().Status(gomock.Any(), dummyClientEndpoints[0]).DoAndReturn(func(_ context.Context, _ string) (*clientv3.StatusResponse, error) {
 					response := new(clientv3.StatusResponse)
 					response.Leader = dummyID
 					response.DbSize = 10
 					return response, nil
 				}).AnyTimes()
+				cm.EXPECT().Status(gomock.Any(), dummyClientEndpoints[1]).DoAndReturn(func(_ context.Context, _ string) (*clientv3.StatusResponse, error) {
+					response := new(clientv3.StatusResponse)
+					response.RaftIndex = 42
+					response.DbSize = 10
+					return response, nil
+				}).AnyTimes()
 
-				cm.EXPECT().Defragment(gomock.Any(), gomock.Any()).
-					Return(new(clientv3.DefragmentResponse), nil).Times(2)
+				// Follower defrag proceeds normally.
+				followerDefrag := cm.EXPECT().Defragment(gomock.Any(), dummyClientEndpoints[1]).
+					Return(new(clientv3.DefragmentResponse), nil).Times(1)
 
-				// No leader pinned client because MemberList failed before transferee was selected.
-				factory.EXPECT().NewMaintenanceForEndpoint(gomock.Any()).Times(0)
+				// MoveLeader cancel the parent context right after transfer to simulate the
+				// leader election loop detecting leadership change and cancelling leCtx.
+				factory.EXPECT().NewMaintenanceForEndpoint(dummyClientEndpoints[0]).
+					Return(leaderCM, nil).Times(1).After(followerDefrag)
+				moveLeaderCall := leaderCM.EXPECT().MoveLeader(gomock.Any(), uint64(dummyID+1)).
+					DoAndReturn(func(_ context.Context, _ uint64) (*clientv3.MoveLeaderResponse, error) {
+						cancelFunc()
+						return new(clientv3.MoveLeaderResponse), nil
+					}).Times(1).After(followerDefrag)
 
-				err = etcdutil.DefragmentData(testCtx, clientMaintenance, client, factory, dummyClientEndpoints, mockTimeout, logger, true)
+				// Former-leader defrag MUST still be called despite context cancellation.
+				cm.EXPECT().Defragment(gomock.Any(), dummyClientEndpoints[0]).
+					Return(new(clientv3.DefragmentResponse), nil).Times(1).After(moveLeaderCall)
+
+				err = etcdutil.DefragmentData(cancelCtx, clientMaintenance, client, factory, dummyClientEndpoints, mockTimeout, logger, true)
+				Expect(err).ShouldNot(HaveOccurred())
+			})
+		})
+
+		Context("MoveLeader enabled and parent context cancelled before MoveLeader returns", func() {
+			It("should still complete MoveLeader and defragment the former leader despite context cancellation", func() {
+				cancelCtx, cancelFunc := context.WithCancel(testCtx)
+
+				clientMaintenance, err := factory.NewMaintenance()
+				Expect(err).ShouldNot(HaveOccurred())
+
+				client, err := factory.NewCluster()
+				Expect(err).ShouldNot(HaveOccurred())
+
+				leaderCM := mockfactory.NewMockMaintenanceCloser(ctrl)
+				leaderCM.EXPECT().Close().Return(nil).AnyTimes()
+
+				cl.EXPECT().MemberList(gomock.Any()).DoAndReturn(func(_ context.Context) (*clientv3.MemberListResponse, error) {
+					response := new(clientv3.MemberListResponse)
+					response.Members = []*etcdserverpb.Member{
+						{ID: dummyID, ClientURLs: []string{dummyClientEndpoints[0]}},
+						{ID: dummyID + 1, ClientURLs: []string{dummyClientEndpoints[1]}},
+					}
+					return response, nil
+				}).AnyTimes()
+
+				cm.EXPECT().Status(gomock.Any(), dummyClientEndpoints[0]).DoAndReturn(func(_ context.Context, _ string) (*clientv3.StatusResponse, error) {
+					response := new(clientv3.StatusResponse)
+					response.Leader = dummyID
+					response.DbSize = 10
+					return response, nil
+				}).AnyTimes()
+				cm.EXPECT().Status(gomock.Any(), dummyClientEndpoints[1]).DoAndReturn(func(_ context.Context, _ string) (*clientv3.StatusResponse, error) {
+					response := new(clientv3.StatusResponse)
+					response.RaftIndex = 42
+					response.DbSize = 10
+					return response, nil
+				}).AnyTimes()
+
+				followerDefrag := cm.EXPECT().Defragment(gomock.Any(), dummyClientEndpoints[1]).
+					Return(new(clientv3.DefragmentResponse), nil).Times(1)
+
+				// Cancel the parent context BEFORE MoveLeader returns, simulating the
+				// reelection poll firing while the MoveLeader RPC is still in-flight.
+				factory.EXPECT().NewMaintenanceForEndpoint(dummyClientEndpoints[0]).
+					Return(leaderCM, nil).Times(1).After(followerDefrag)
+				moveLeaderCall := leaderCM.EXPECT().MoveLeader(gomock.Any(), uint64(dummyID+1)).
+					DoAndReturn(func(_ context.Context, _ uint64) (*clientv3.MoveLeaderResponse, error) {
+						cancelFunc()
+						return new(clientv3.MoveLeaderResponse), nil
+					}).Times(1).After(followerDefrag)
+
+				// Both the MoveLeader RPC and the former-leader defrag must complete despite the
+				// cancelled parent context.
+				cm.EXPECT().Defragment(gomock.Any(), dummyClientEndpoints[0]).
+					Return(new(clientv3.DefragmentResponse), nil).Times(1).After(moveLeaderCall)
+
+				err = etcdutil.DefragmentData(cancelCtx, clientMaintenance, client, factory, dummyClientEndpoints, mockTimeout, logger, true)
 				Expect(err).ShouldNot(HaveOccurred())
 			})
 		})
