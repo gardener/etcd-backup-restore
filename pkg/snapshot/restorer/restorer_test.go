@@ -23,6 +23,7 @@ import (
 	"github.com/gardener/etcd-backup-restore/test/utils"
 
 	"github.com/sirupsen/logrus"
+	"go.etcd.io/etcd/api/v3/mvccpb"
 	"go.etcd.io/etcd/client/pkg/v3/types"
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"go.uber.org/mock/gomock"
@@ -1230,6 +1231,79 @@ var _ = Describe("Unit testing individual functions for restorer package", func(
 
 				err := ErrorArrayToError(errs)
 				Expect(err).Should(Equal(expectedErr))
+			})
+		})
+	})
+
+	Describe("testing FilterEventsAfterRevision", func() {
+		// makeEvents builds an ascending-by-ModRevision event slice from the given revisions.
+		makeEvents := func(revs ...int64) []brtypes.Event {
+			events := make([]brtypes.Event, 0, len(revs))
+			for _, rev := range revs {
+				events = append(events, brtypes.Event{
+					EtcdEvent: &clientv3.Event{
+						Type: mvccpb.PUT,
+						Kv:   &mvccpb.KeyValue{Key: []byte("k"), ModRevision: rev},
+					},
+				})
+			}
+			return events
+		}
+		modRevs := func(events []brtypes.Event) []int64 {
+			if len(events) == 0 {
+				return nil
+			}
+			revs := make([]int64, 0, len(events))
+			for _, e := range events {
+				revs = append(revs, e.EtcdEvent.Kv.ModRevision)
+			}
+			return revs
+		}
+
+		DescribeTable("should return only the events with ModRevision strictly greater than lastRevision",
+			func(eventRevs []int64, lastRevision int64, expectedRevs []int64) {
+				filtered := FilterEventsAfterRevision(makeEvents(eventRevs...), lastRevision)
+				Expect(modRevs(filtered)).To(Equal(expectedRevs))
+			},
+			// no overlap: lastRevision below every event, so all events are returned.
+			Entry("no overlap", []int64{101, 102, 103, 104}, int64(100), []int64{101, 102, 103, 104}),
+			// partial overlap: the already-applied prefix is dropped.
+			Entry("partial overlap", []int64{101, 102, 103, 104, 105}, int64(103), []int64{104, 105}),
+			// lastRevision equal to an event's ModRevision: that event is already applied and skipped (strictly greater only).
+			Entry("boundary equals an event", []int64{101, 102, 103}, int64(102), []int64{103}),
+			// lastRevision below the smallest event but not zero.
+			Entry("lastRevision just below first event", []int64{5, 6, 7}, int64(4), []int64{5, 6, 7}),
+			// lastRevision is zero: every real event (ModRevision >= 1) is returned.
+			Entry("zero lastRevision returns all", []int64{1, 2, 3}, int64(0), []int64{1, 2, 3}),
+			// only the last event qualifies.
+			Entry("only the last event qualifies", []int64{101, 102, 103, 104}, int64(103), []int64{104}),
+			// single event, below lastRevision.
+			Entry("single event below lastRevision", []int64{50}, int64(60), []int64(nil)),
+			// single event, equal to lastRevision.
+			Entry("single event equal to lastRevision", []int64{50}, int64(50), []int64(nil)),
+			// single event, above lastRevision.
+			Entry("single event above lastRevision", []int64{50}, int64(49), []int64{50}),
+			// two events, boundary between them.
+			Entry("two events boundary in the middle", []int64{10, 20}, int64(10), []int64{20}),
+			// larger list forcing multiple bisection steps, boundary in the middle.
+			Entry("large list boundary in the middle", []int64{10, 20, 30, 40, 50, 60, 70, 80, 90, 100}, int64(55), []int64{60, 70, 80, 90, 100}),
+			// duplicate ModRevisions straddling the boundary: cut before the first strictly-greater element.
+			Entry("duplicates straddling the boundary", []int64{101, 102, 102, 103}, int64(102), []int64{103}),
+			// duplicate ModRevisions all equal to lastRevision: nothing qualifies.
+			Entry("all events equal to lastRevision", []int64{7, 7, 7}, int64(7), []int64(nil)),
+			// full overlap: lastRevision beyond every event.
+			Entry("full overlap beyond the last event", []int64{101, 102, 103, 104}, int64(108), []int64(nil)),
+		)
+
+		Context("when the events slice is empty", func() {
+			It("should return no events without panicking", func() {
+				Expect(FilterEventsAfterRevision([]brtypes.Event{}, 100)).To(BeEmpty())
+			})
+		})
+
+		Context("when the events slice is nil", func() {
+			It("should return no events without panicking", func() {
+				Expect(FilterEventsAfterRevision(nil, 100)).To(BeEmpty())
 			})
 		})
 	})
