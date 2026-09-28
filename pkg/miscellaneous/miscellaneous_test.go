@@ -17,6 +17,7 @@ import (
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 
+	"github.com/sirupsen/logrus"
 	"go.etcd.io/etcd/api/v3/etcdserverpb"
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"go.uber.org/mock/gomock"
@@ -1052,6 +1053,83 @@ initial-cluster: etcd1=http://0.0.0.0:2380`
 			It("should return an empty slice for no IPs", func() {
 				urls := BuildURLsFromIPs([]string{}, "http", "2379")
 				Expect(urls).To(BeEmpty())
+			})
+		})
+
+		Describe("#ReadClusterSize", func() {
+			var (
+				tmpConfigFile   string
+				tmpEndpointsDir string
+			)
+
+			BeforeEach(func() {
+				var err error
+				tmpConfigFile = "/tmp/etcd-original-cluster-size-config.yaml"
+				tmpEndpointsDir, err = os.MkdirTemp("", "endpoints-*")
+				Expect(err).NotTo(HaveOccurred())
+			})
+
+			AfterEach(func() {
+				Expect(os.Unsetenv(EndpointsEnvVar)).To(Succeed())
+				Expect(os.Unsetenv("ETCD_CONF")).To(Succeed())
+				Expect(os.Unsetenv("POD_IP")).To(Succeed())
+				_ = os.Remove(tmpConfigFile)
+				_ = os.RemoveAll(tmpEndpointsDir)
+			})
+
+			It("should return cluster size from configmap when ENDPOINTS is not set", func() {
+				writeConfigToFile(tmpConfigFile, map[string]interface{}{
+					"initial-cluster": "m0=http://10.0.0.1:2380,m1=http://10.0.0.2:2380,m2=http://10.0.0.3:2380",
+				})
+				Expect(os.Setenv("ETCD_CONF", tmpConfigFile)).To(Succeed())
+
+				size, err := ReadClusterSize(logrus.NewEntry(logrus.New()))
+				Expect(err).NotTo(HaveOccurred())
+				Expect(size).To(Equal(3))
+			})
+
+			It("should return cluster size from endpoints file when ENDPOINTS is set", func() {
+				endpointsFile := filepath.Join(tmpEndpointsDir, "endpoints")
+				Expect(os.WriteFile(endpointsFile, []byte("10.0.0.1\n10.0.0.2\n10.0.0.3\n"), 0600)).To(Succeed()) // #nosec G306 -- test file
+				Expect(os.Setenv(EndpointsEnvVar, endpointsFile)).To(Succeed())
+
+				size, err := ReadClusterSize(logrus.NewEntry(logrus.New()))
+				Expect(err).NotTo(HaveOccurred())
+				Expect(size).To(Equal(3))
+			})
+
+			It("should prefer endpoints file over configmap when both are present", func() {
+				// configmap says 1 member; endpoints file says 3 — endpoints wins.
+				writeConfigToFile(tmpConfigFile, map[string]interface{}{
+					"initial-cluster": "m0=http://localhost:2380",
+				})
+				Expect(os.Setenv("ETCD_CONF", tmpConfigFile)).To(Succeed())
+
+				endpointsFile := filepath.Join(tmpEndpointsDir, "endpoints")
+				Expect(os.WriteFile(endpointsFile, []byte("10.0.0.1\n10.0.0.2\n10.0.0.3\n"), 0600)).To(Succeed()) // #nosec G306 -- test file
+				Expect(os.Setenv(EndpointsEnvVar, endpointsFile)).To(Succeed())
+
+				size, err := ReadClusterSize(logrus.NewEntry(logrus.New()))
+				Expect(err).NotTo(HaveOccurred())
+				Expect(size).To(Equal(3))
+			})
+
+			It("should return 1 for an empty endpoints file (bootstrap: only POD_IP)", func() {
+				endpointsFile := filepath.Join(tmpEndpointsDir, "endpoints")
+				Expect(os.WriteFile(endpointsFile, []byte(""), 0600)).To(Succeed()) // #nosec G306 -- test file
+				Expect(os.Setenv(EndpointsEnvVar, endpointsFile)).To(Succeed())
+				Expect(os.Setenv("POD_IP", "10.0.0.1")).To(Succeed())
+
+				size, err := ReadClusterSize(logrus.NewEntry(logrus.New()))
+				Expect(err).NotTo(HaveOccurred())
+				Expect(size).To(Equal(1))
+			})
+
+			It("should return an error when the endpoints file is unreadable", func() {
+				Expect(os.Setenv(EndpointsEnvVar, "/nonexistent/endpoints")).To(Succeed())
+
+				_, err := ReadClusterSize(logrus.NewEntry(logrus.New()))
+				Expect(err).To(HaveOccurred())
 			})
 		})
 	})

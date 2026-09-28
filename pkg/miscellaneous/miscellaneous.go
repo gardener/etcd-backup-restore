@@ -549,8 +549,8 @@ func BuildURLsFromIPs(ips []string, scheme, port string) []string {
 	return urls
 }
 
-// GetClusterSize returns the size of a cluster passed as a string
-func GetClusterSize(cluster string) (int, error) {
+// ParseClusterSizeFromInitialClusterURLs returns the number of members encoded in a raw initial-cluster string.
+func ParseClusterSizeFromInitialClusterURLs(cluster string) (int, error) {
 	clusterMap, err := types.NewURLsMap(cluster)
 	if err != nil {
 		return 0, err
@@ -559,31 +559,40 @@ func GetClusterSize(cluster string) (int, error) {
 	return len(clusterMap), nil
 }
 
-// IsMultiNode determines whether a pod is part of a multi node setup or not
-// This is determined by checking the `initial-cluster` of the etcd configmap to check the number of members expected
-func IsMultiNode(logger *logrus.Entry) bool {
-	inputFileName := GetConfigFilePath()
+// ReadClusterSize returns the current etcd cluster size. It reads the size
+// from the endpoints file when ENDPOINTS is configured, or from the
+// config file when the endpoints file is not configured.
+func ReadClusterSize(logger *logrus.Entry) (int, error) {
+	// Prefer the endpoints file when the ENDPOINTS env var is set (self-hosted case).
+	if EndpointsFileConfigured() {
+		endpointsFilePath := os.Getenv(EndpointsEnvVar)
+		ips, err := GetEndpointsFromFile()
+		if err != nil {
+			return 0, fmt.Errorf("failed to read endpoints file %q: %w", endpointsFilePath, err)
+		}
+		size := len(ips)
+		logger.Infof("cluster size from endpoints file %s: %d", endpointsFilePath, size)
+		return size, nil
+	}
 
-	configYML, err := os.ReadFile(inputFileName) // #nosec G304 -- this is a trusted etcd config file.
+	// Fall back to the etcd configmap (Gardener STS case).
+	configFilePath := GetConfigFilePath()
+	configYML, err := os.ReadFile(configFilePath) // #nosec G304 -- this is a trusted etcd config file.
 	if err != nil {
-		return false
+		return 0, err
 	}
 
 	config := map[string]interface{}{}
-	if err := yaml.Unmarshal([]byte(configYML), &config); err != nil {
-		return false
+	if err := yaml.Unmarshal(configYML, &config); err != nil {
+		return 0, err
 	}
 
-	initialClusterMap, err := GetClusterSize(fmt.Sprint(config["initial-cluster"]))
+	size, err := ParseClusterSizeFromInitialClusterURLs(fmt.Sprint(config["initial-cluster"]))
 	if err != nil {
-		logger.Fatal("initial cluster value for not present in etcd config file")
+		return 0, err
 	}
-
-	if initialClusterMap > 1 {
-		return true
-	}
-
-	return false
+	logger.Infof("cluster size from config file %s: %d", configFilePath, size)
+	return size, nil
 }
 
 // SleepWithContext sleeps for a determined period while respecting a context
