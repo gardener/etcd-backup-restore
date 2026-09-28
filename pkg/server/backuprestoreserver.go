@@ -73,7 +73,7 @@ func (b *BackupRestoreServer) Run(ctx context.Context) error {
 		return err
 	}
 
-	initialClusterSize, err := miscellaneous.GetClusterSize(fmt.Sprint(config["initial-cluster"]))
+	initialClusterSize, err := miscellaneous.ParseClusterSizeFromInitialClusterURLs(fmt.Sprint(config["initial-cluster"]))
 	if err != nil {
 		b.logger.Fatal("Please provide initial cluster value for embedded ETCD")
 	}

@@ -455,7 +455,7 @@ func (h *HTTPHandler) serveConfig(rw http.ResponseWriter, req *http.Request) {
 		config["initial-cluster"] = getInitialCluster(req.Context(), fmt.Sprint(config["initial-cluster"]), *h.EtcdConnectionConfig, *h.Logger, memberName)
 	}
 
-	clusterSize, err := miscellaneous.GetClusterSize(fmt.Sprint(config["initial-cluster"]))
+	clusterSize, err := miscellaneous.ParseClusterSizeFromInitialClusterURLs(fmt.Sprint(config["initial-cluster"]))
 	if err != nil {
 		h.Logger.Warnf("Unable to determine the cluster size: %v", err)
 		rw.WriteHeader(http.StatusInternalServerError)
