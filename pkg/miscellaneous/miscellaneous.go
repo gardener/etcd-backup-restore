@@ -466,10 +466,15 @@ func GetEndpointsFromFile() ([]string, error) {
 		return nil, fmt.Errorf("failed to read ENDPOINTS file %q: %w", filePath, err)
 	}
 
+	podIP, err := GetEnvVarOrError("POD_IP")
+	if err != nil {
+		return nil, fmt.Errorf("POD_IP is not set: %w", err)
+	}
+
 	var ips []string
 	for _, line := range strings.Split(strings.TrimSpace(string(data)), "\n") {
 		line = strings.TrimSpace(line)
-		if line == "" {
+		if line == "" || line == podIP {
 			continue
 		}
 		if net.ParseIP(line) == nil {
@@ -478,15 +483,7 @@ func GetEndpointsFromFile() ([]string, error) {
 		ips = append(ips, line)
 	}
 
-	if len(ips) == 0 {
-		podIP, err := GetEnvVarOrError("POD_IP")
-		if err != nil {
-			return nil, fmt.Errorf("ENDPOINTS file is empty and POD_IP is not set: %w", err)
-		}
-		return []string{podIP}, nil
-	}
-
-	return ips, nil
+	return append([]string{podIP}, ips...), nil
 }
 
 // GetClientURLSchemeAndPort parses the first AdvertiseClientURLs entry from the config
