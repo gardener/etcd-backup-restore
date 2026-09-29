@@ -42,11 +42,13 @@ const (
 //   - No snapshots are available, start etcd as a fresh installation.
 func (e *EtcdInitializer) Initialize(mode validator.Mode) error {
 	logger := e.Logger.WithField("actor", "initializer")
-	if clusterSize, err := miscellaneous.ReadClusterSize(logger); err == nil {
-		e.Validator.OriginalClusterSize = clusterSize
-		e.Config.RestoreOptions.OriginalClusterSize = clusterSize
-		metrics.CurrentClusterSize.With(prometheus.Labels{}).Set(float64(clusterSize))
+	clusterSize, err := miscellaneous.ReadClusterSize(logger)
+	if err != nil {
+		return fmt.Errorf("could not determine etcd cluster size due to error: %w", err)
 	}
+	e.Validator.OriginalClusterSize = clusterSize
+	e.Config.RestoreOptions.OriginalClusterSize = clusterSize
+	metrics.CurrentClusterSize.With(prometheus.Labels{}).Set(float64(clusterSize))
 	start := time.Now()
 	memberHeartbeatPresent := false
 	ctx := context.Background()
