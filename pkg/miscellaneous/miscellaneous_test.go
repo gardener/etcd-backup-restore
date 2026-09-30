@@ -17,6 +17,7 @@ import (
 	"github.com/gardener/etcd-backup-restore/pkg/snapstore"
 	brtypes "github.com/gardener/etcd-backup-restore/pkg/types"
 
+	"github.com/sirupsen/logrus"
 	"go.etcd.io/etcd/api/v3/etcdserverpb"
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"go.uber.org/mock/gomock"
@@ -934,6 +935,11 @@ initial-cluster: etcd1=http://0.0.0.0:2380`
 		})
 
 		Describe("#GetEndpointsFromFile", func() {
+			AfterEach(func() {
+				Expect(os.Unsetenv(EndpointsEnvVar)).To(Succeed())
+				Expect(os.Unsetenv("POD_IP")).To(Succeed())
+			})
+
 			It("should return nil when ENDPOINTS is not set", func() {
 				Expect(os.Unsetenv(EndpointsEnvVar)).To(Succeed())
 				ips, err := GetEndpointsFromFile()
@@ -979,24 +985,59 @@ initial-cluster: etcd1=http://0.0.0.0:2380`
 				Expect(err).NotTo(HaveOccurred())
 				Expect(f.Close()).To(Succeed())
 				Expect(os.Setenv(EndpointsEnvVar, f.Name())).To(Succeed())
+				Expect(os.Setenv("POD_IP", "10.0.0.9")).To(Succeed())
 				defer func() { _ = os.Remove(f.Name()) }()
 
 				_, err = GetEndpointsFromFile()
 				Expect(err).To(HaveOccurred())
 			})
 
-			It("should return all valid IPs from the file", func() {
+			It("should always prepend POD_IP to the IPs from the file", func() {
 				f, err := os.CreateTemp("", "endpoints-*.txt")
 				Expect(err).NotTo(HaveOccurred())
 				_, err = f.WriteString("10.0.0.1\n10.0.0.2\n10.0.0.3\n")
 				Expect(err).NotTo(HaveOccurred())
 				Expect(f.Close()).To(Succeed())
 				Expect(os.Setenv(EndpointsEnvVar, f.Name())).To(Succeed())
+				Expect(os.Setenv("POD_IP", "10.0.0.9")).To(Succeed())
 				defer func() { _ = os.Remove(f.Name()) }()
 
 				ips, err := GetEndpointsFromFile()
 				Expect(err).NotTo(HaveOccurred())
-				Expect(ips).To(Equal([]string{"10.0.0.1", "10.0.0.2", "10.0.0.3"}))
+				Expect(ips).To(Equal([]string{"10.0.0.9", "10.0.0.1", "10.0.0.2", "10.0.0.3"}))
+			})
+
+			It("should count POD_IP as a member even when the file lists only existing members (scale-out)", func() {
+				// During scale-out from 1 to 2, the new member's ENDPOINTS file lists
+				// only the existing member's IP. POD_IP must still be counted, otherwise
+				// the cluster size is under-counted and a split-brain can occur.
+				f, err := os.CreateTemp("", "endpoints-*.txt")
+				Expect(err).NotTo(HaveOccurred())
+				_, err = f.WriteString("10.0.0.1\n")
+				Expect(err).NotTo(HaveOccurred())
+				Expect(f.Close()).To(Succeed())
+				Expect(os.Setenv(EndpointsEnvVar, f.Name())).To(Succeed())
+				Expect(os.Setenv("POD_IP", "10.0.0.2")).To(Succeed())
+				defer func() { _ = os.Remove(f.Name()) }()
+
+				ips, err := GetEndpointsFromFile()
+				Expect(err).NotTo(HaveOccurred())
+				Expect(ips).To(Equal([]string{"10.0.0.2", "10.0.0.1"}))
+			})
+
+			It("should not duplicate POD_IP when the file already contains it", func() {
+				f, err := os.CreateTemp("", "endpoints-*.txt")
+				Expect(err).NotTo(HaveOccurred())
+				_, err = f.WriteString("10.0.0.5\n10.0.0.1\n")
+				Expect(err).NotTo(HaveOccurred())
+				Expect(f.Close()).To(Succeed())
+				Expect(os.Setenv(EndpointsEnvVar, f.Name())).To(Succeed())
+				Expect(os.Setenv("POD_IP", "10.0.0.5")).To(Succeed())
+				defer func() { _ = os.Remove(f.Name()) }()
+
+				ips, err := GetEndpointsFromFile()
+				Expect(err).NotTo(HaveOccurred())
+				Expect(ips).To(Equal([]string{"10.0.0.5", "10.0.0.1"}))
 			})
 		})
 
@@ -1052,6 +1093,98 @@ initial-cluster: etcd1=http://0.0.0.0:2380`
 			It("should return an empty slice for no IPs", func() {
 				urls := BuildURLsFromIPs([]string{}, "http", "2379")
 				Expect(urls).To(BeEmpty())
+			})
+		})
+
+		Describe("#ReadClusterSize", func() {
+			var (
+				tmpConfigFile   string
+				tmpEndpointsDir string
+			)
+
+			BeforeEach(func() {
+				var err error
+				tmpConfigFile = "/tmp/etcd-original-cluster-size-config.yaml"
+				tmpEndpointsDir, err = os.MkdirTemp("", "endpoints-*")
+				Expect(err).NotTo(HaveOccurred())
+			})
+
+			AfterEach(func() {
+				Expect(os.Unsetenv(EndpointsEnvVar)).To(Succeed())
+				Expect(os.Unsetenv("ETCD_CONF")).To(Succeed())
+				Expect(os.Unsetenv("POD_IP")).To(Succeed())
+				_ = os.Remove(tmpConfigFile)
+				_ = os.RemoveAll(tmpEndpointsDir)
+			})
+
+			It("should return cluster size from configmap when ENDPOINTS is not set", func() {
+				writeConfigToFile(tmpConfigFile, map[string]interface{}{
+					"initial-cluster": "m0=http://10.0.0.1:2380,m1=http://10.0.0.2:2380,m2=http://10.0.0.3:2380",
+				})
+				Expect(os.Setenv("ETCD_CONF", tmpConfigFile)).To(Succeed())
+
+				size, err := ReadClusterSize(logrus.NewEntry(logrus.New()))
+				Expect(err).NotTo(HaveOccurred())
+				Expect(size).To(Equal(3))
+			})
+
+			It("should return cluster size from endpoints file when ENDPOINTS is set", func() {
+				endpointsFile := filepath.Join(tmpEndpointsDir, "endpoints")
+				Expect(os.WriteFile(endpointsFile, []byte("10.0.0.1\n10.0.0.2\n10.0.0.3\n"), 0600)).To(Succeed()) // #nosec G306 -- test file
+				Expect(os.Setenv(EndpointsEnvVar, endpointsFile)).To(Succeed())
+				Expect(os.Setenv("POD_IP", "10.0.0.1")).To(Succeed())
+
+				size, err := ReadClusterSize(logrus.NewEntry(logrus.New()))
+				Expect(err).NotTo(HaveOccurred())
+				Expect(size).To(Equal(3))
+			})
+
+			It("should count POD_IP as a member when the endpoints file lists only existing members", func() {
+				// Scale-out case: the file lists only the existing members, not this pod.
+				// POD_IP must be counted so the size is not under-reported.
+				endpointsFile := filepath.Join(tmpEndpointsDir, "endpoints")
+				Expect(os.WriteFile(endpointsFile, []byte("10.0.0.1\n"), 0600)).To(Succeed()) // #nosec G306 -- test file
+				Expect(os.Setenv(EndpointsEnvVar, endpointsFile)).To(Succeed())
+				Expect(os.Setenv("POD_IP", "10.0.0.2")).To(Succeed())
+
+				size, err := ReadClusterSize(logrus.NewEntry(logrus.New()))
+				Expect(err).NotTo(HaveOccurred())
+				Expect(size).To(Equal(2))
+			})
+
+			It("should prefer endpoints file over configmap when both are present", func() {
+				// configmap says 1 member; endpoints file plus POD_IP says 3 — endpoints wins.
+				writeConfigToFile(tmpConfigFile, map[string]interface{}{
+					"initial-cluster": "m0=http://localhost:2380",
+				})
+				Expect(os.Setenv("ETCD_CONF", tmpConfigFile)).To(Succeed())
+
+				endpointsFile := filepath.Join(tmpEndpointsDir, "endpoints")
+				Expect(os.WriteFile(endpointsFile, []byte("10.0.0.1\n10.0.0.2\n10.0.0.3\n"), 0600)).To(Succeed()) // #nosec G306 -- test file
+				Expect(os.Setenv(EndpointsEnvVar, endpointsFile)).To(Succeed())
+				Expect(os.Setenv("POD_IP", "10.0.0.1")).To(Succeed())
+
+				size, err := ReadClusterSize(logrus.NewEntry(logrus.New()))
+				Expect(err).NotTo(HaveOccurred())
+				Expect(size).To(Equal(3))
+			})
+
+			It("should return 1 for an empty endpoints file (bootstrap: only POD_IP)", func() {
+				endpointsFile := filepath.Join(tmpEndpointsDir, "endpoints")
+				Expect(os.WriteFile(endpointsFile, []byte(""), 0600)).To(Succeed()) // #nosec G306 -- test file
+				Expect(os.Setenv(EndpointsEnvVar, endpointsFile)).To(Succeed())
+				Expect(os.Setenv("POD_IP", "10.0.0.1")).To(Succeed())
+
+				size, err := ReadClusterSize(logrus.NewEntry(logrus.New()))
+				Expect(err).NotTo(HaveOccurred())
+				Expect(size).To(Equal(1))
+			})
+
+			It("should return an error when the endpoints file is unreadable", func() {
+				Expect(os.Setenv(EndpointsEnvVar, "/nonexistent/endpoints")).To(Succeed())
+
+				_, err := ReadClusterSize(logrus.NewEntry(logrus.New()))
+				Expect(err).To(HaveOccurred())
 			})
 		})
 	})

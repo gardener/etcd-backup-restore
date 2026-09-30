@@ -42,13 +42,19 @@ const (
 //   - No snapshots are available, start etcd as a fresh installation.
 func (e *EtcdInitializer) Initialize(mode validator.Mode) error {
 	logger := e.Logger.WithField("actor", "initializer")
-	metrics.CurrentClusterSize.With(prometheus.Labels{}).Set(float64(e.Validator.OriginalClusterSize))
+	clusterSize, err := miscellaneous.ReadClusterSize(logger)
+	if err != nil {
+		return fmt.Errorf("could not determine etcd cluster size due to error: %w", err)
+	}
+	e.Validator.OriginalClusterSize = clusterSize
+	e.Config.RestoreOptions.OriginalClusterSize = clusterSize
+	metrics.CurrentClusterSize.With(prometheus.Labels{}).Set(float64(clusterSize))
 	start := time.Now()
 	memberHeartbeatPresent := false
 	ctx := context.Background()
 
 	// Etcd cluster scale-up case
-	if miscellaneous.IsMultiNode(logger) {
+	if e.Validator.OriginalClusterSize > 1 {
 		clientSet, err := miscellaneous.GetKubernetesClientSetOrError()
 		if err != nil {
 			logger.Fatalf("failed to create clientset, %v", err)
@@ -66,12 +72,12 @@ func (e *EtcdInitializer) Initialize(mode validator.Mode) error {
 		if hasData {
 			removed, err := m.WasPermanentlyRemoved(ctx, e.Config.RestoreOptions.Config.DataDir, clientSet)
 			if err != nil {
-				return fmt.Errorf("unable to determine whether this member was permanently removed from the etcd cluster: %v", err)
+				logger.Errorf("error while determining whether this member was permanently removed from the etcd cluster, proceeding with scale-up check: %v", err)
+			} else if removed {
+				logger.Fatal("member has been permanently removed from the etcd cluster and cannot rejoin the existing cluster.")
+			} else {
+				logger.Info("member has not been permanently removed from the etcd cluster, proceeding with scale-up check")
 			}
-			if removed {
-				logger.Fatal("this member has been permanently removed from the etcd cluster and cannot rejoin")
-			}
-			logger.Info("membership check passed; member is not removed, proceeding with scale-up check")
 		}
 
 		// check heartbeat of etcd member
@@ -118,6 +124,7 @@ func (e *EtcdInitializer) Initialize(mode validator.Mode) error {
 
 	if dataDirStatus != validator.DataDirectoryValid {
 		if dataDirStatus == validator.DataDirStatusInvalidInMultiNode || (e.Validator.OriginalClusterSize > 1 && dataDirStatus == validator.DataDirectoryCorrupt) || (e.Validator.OriginalClusterSize > 1 && memberHeartbeatPresent) {
+			logger.Info("member's data directory found to be invalid in HA setup, triggering a single member restoration.")
 			start := time.Now()
 			if err := e.restoreInMultiNode(ctx); err != nil {
 				metrics.RestorationDurationSeconds.With(prometheus.Labels{metrics.LabelRestorationKind: metrics.ValueRestoreSingleMemberInMultiNode, metrics.LabelSucceeded: metrics.ValueSucceededFalse}).Observe(time.Since(start).Seconds())
@@ -126,6 +133,7 @@ func (e *EtcdInitializer) Initialize(mode validator.Mode) error {
 			metrics.RestorationDurationSeconds.With(prometheus.Labels{metrics.LabelRestorationKind: metrics.ValueRestoreSingleMemberInMultiNode, metrics.LabelSucceeded: metrics.ValueSucceededTrue}).Observe(time.Since(start).Seconds())
 		} else {
 			// For case: ClusterSize=1 or when multi-node cluster(ClusterSize>1) is bootstrapped
+			logger.Info("data directory found to be invalid, restoring it from backup-bucket if it's not empty.")
 			start := time.Now()
 			restored, err := e.restoreCorruptData()
 			if err != nil {
