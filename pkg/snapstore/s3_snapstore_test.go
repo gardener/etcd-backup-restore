@@ -45,6 +45,19 @@ func (m *mockS3Client) GetObject(_ context.Context, in *s3.GetObjectInput, _ ...
 	return &out, nil
 }
 
+// GetObject returns the object from map for mock test
+func (m *mockS3Client) HeadObject(_ context.Context, in *s3.HeadObjectInput, _ ...func(*s3.Options)) (*s3.HeadObjectOutput, error) {
+	if m.objects[*in.Key] == nil {
+		return nil, fmt.Errorf("object not found")
+	}
+	// Only need to return mocked response output
+	contentLength := int64(len(*m.objects[*in.Key]))
+	out := s3.HeadObjectOutput{
+		ContentLength: &contentLength,
+	}
+	return &out, nil
+}
+
 func (m *mockS3Client) CreateMultipartUpload(_ context.Context, in *s3.CreateMultipartUploadInput, _ ...func(*s3.Options)) (*s3.CreateMultipartUploadOutput, error) {
 	uploadID := time.Now().String()
 	var parts [][]byte
