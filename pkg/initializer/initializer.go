@@ -74,9 +74,9 @@ func (e *EtcdInitializer) Initialize(mode validator.Mode) error {
 			if err != nil {
 				logger.Errorf("error while determining whether this member was permanently removed from the etcd cluster, proceeding with scale-up check: %v", err)
 			} else if removed {
-				logger.Fatal("member has been permanently removed from the etcd cluster and cannot rejoin")
+				logger.Fatal("member has been permanently removed from the etcd cluster and cannot rejoin the existing cluster.")
 			} else {
-				logger.Info("membership check passed; member is not removed, proceeding with scale-up check")
+				logger.Info("member has not been permanently removed from the etcd cluster, proceeding with scale-up check")
 			}
 		}
 
@@ -124,7 +124,7 @@ func (e *EtcdInitializer) Initialize(mode validator.Mode) error {
 
 	if dataDirStatus != validator.DataDirectoryValid {
 		if dataDirStatus == validator.DataDirStatusInvalidInMultiNode || (e.Validator.OriginalClusterSize > 1 && dataDirStatus == validator.DataDirectoryCorrupt) || (e.Validator.OriginalClusterSize > 1 && memberHeartbeatPresent) {
-			logger.Info("invalid data directory, re-adding member as learner to sync from the cluster")
+			logger.Info("member's data directory found to be invalid in HA setup, triggering a single member restoration.")
 			start := time.Now()
 			if err := e.restoreInMultiNode(ctx); err != nil {
 				metrics.RestorationDurationSeconds.With(prometheus.Labels{metrics.LabelRestorationKind: metrics.ValueRestoreSingleMemberInMultiNode, metrics.LabelSucceeded: metrics.ValueSucceededFalse}).Observe(time.Since(start).Seconds())
@@ -133,7 +133,7 @@ func (e *EtcdInitializer) Initialize(mode validator.Mode) error {
 			metrics.RestorationDurationSeconds.With(prometheus.Labels{metrics.LabelRestorationKind: metrics.ValueRestoreSingleMemberInMultiNode, metrics.LabelSucceeded: metrics.ValueSucceededTrue}).Observe(time.Since(start).Seconds())
 		} else {
 			// For case: ClusterSize=1 or when multi-node cluster(ClusterSize>1) is bootstrapped
-			logger.Info("invalid data directory, restoring single-node cluster from snapshot")
+			logger.Info("data directory found to be invalid, restoring it from backup-bucket if it's not empty.")
 			start := time.Now()
 			restored, err := e.restoreCorruptData()
 			if err != nil {
