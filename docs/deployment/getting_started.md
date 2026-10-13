@@ -19,6 +19,7 @@ The procedure to provide credentials to access the cloud provider object store v
    2. For `S3-compatible providers` such as MinIO, `s3ForcePathStyle`, `insecureSkipVerify`, `trustedCaCert`, `requestChecksumCalculation` and `responseChecksumValidation`, can also be made available in an above file to configure the S3 client to communicate to a non-AWS provider.
    3. To enable Server-Side Encryption using Customer Managed Keys for `S3-compatible providers`, use `sseCustomerKey` and `sseCustomerAlgorithm` in the credentials file above. For example, `sseCustomerAlgorithm` could be set to `AES256`, and correspondingly the `sseCustomerKey` is set to a valid AES-256 key.
    4. To override the endpoint of the S3 compatible API, use the `--store-endpoint-override` flag and pass the corresponding URL. This can be used for S3 compatible providers like Ceph, MinIO, etc., or while using the localstack S3 emulator. For example, if the localstack emulator is running on your host along with etcd-backup-restore, `--store-endpoint-override=http://localhost:4566` should be passed.
+   5. If neither `AWS_APPLICATION_CREDENTIALS` nor `AWS_APPLICATION_CREDENTIALS_JSON` is set, the AWS SDK default credential chain is used: environment variables, the shared config and credentials files, web identity, or container and EC2 instance metadata. The SDK refreshes temporary credentials itself; a changed shared credentials file takes effect after a restart.
 
 * For `Google Cloud Storage`:
    1. GCS supports two alternative authentication options:
