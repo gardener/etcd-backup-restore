@@ -760,7 +760,9 @@ func (s *S3SnapStore) Delete(snap brtypes.Snapshot) error {
 	return err
 }
 
-// GetS3CredentialsLastModifiedTime returns the latest modification timestamp of the AWS credential file(s)
+// GetS3CredentialsLastModifiedTime returns the latest modification timestamp of the AWS credential file(s).
+// When no credential file is configured it returns the zero time and no error: the snapstore then uses
+// the AWS SDK default credential chain, which refreshes its own credentials, so there is nothing to watch.
 func GetS3CredentialsLastModifiedTime() (time.Time, error) {
 	// TODO: @renormalize Remove this extra handling in v0.31.0
 	// Check if a JSON file is present in the directory, if it is present -> the JSON file must be used for credentials.
@@ -805,7 +807,7 @@ func GetS3CredentialsLastModifiedTime() (time.Time, error) {
 		return awsTimeStamp, nil
 	}
 
-	return time.Time{}, fmt.Errorf("no environment variable set for the AWS credential file")
+	return time.Time{}, nil
 }
 
 func isAWSConfigEmpty(config *awsCredentials) error {

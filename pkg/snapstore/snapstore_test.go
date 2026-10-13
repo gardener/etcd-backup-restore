@@ -404,21 +404,26 @@ type CredentialTestConfig struct {
 	SnapstoreProvider string
 	CredentialType    string // "file" or "directory"
 	CredentialFiles   []string
+	// DefaultCredentialChain is set when the snapstore falls back to the SDK's
+	// default credential chain if no credential file is configured.
+	DefaultCredentialChain bool
 }
 
 var credentialTestConfigs = []CredentialTestConfig{
 	// AWS
 	{
-		EnvVariable:       "AWS_APPLICATION_CREDENTIALS",
-		SnapstoreProvider: brtypes.SnapstoreProviderS3,
-		CredentialType:    "directory",
-		CredentialFiles:   []string{"accessKeyID", "region", "secretAccessKey"},
+		EnvVariable:            "AWS_APPLICATION_CREDENTIALS",
+		SnapstoreProvider:      brtypes.SnapstoreProviderS3,
+		CredentialType:         "directory",
+		CredentialFiles:        []string{"accessKeyID", "region", "secretAccessKey"},
+		DefaultCredentialChain: true,
 	},
 	{
-		EnvVariable:       "AWS_APPLICATION_CREDENTIALS_JSON",
-		SnapstoreProvider: brtypes.SnapstoreProviderS3,
-		CredentialType:    "file",
-		CredentialFiles:   []string{"credentials.json"},
+		EnvVariable:            "AWS_APPLICATION_CREDENTIALS_JSON",
+		SnapstoreProvider:      brtypes.SnapstoreProviderS3,
+		CredentialType:         "file",
+		CredentialFiles:        []string{"credentials.json"},
+		DefaultCredentialChain: true,
 	},
 	// Azure
 	{
@@ -494,6 +499,14 @@ var _ = Describe("Dynamic access credential rotation test for each provider", fu
 		config := config
 		Describe(fmt.Sprintf("testing secret modification for %q with %q", config.SnapstoreProvider, config.EnvVariable), func() {
 			Context("environment variable not set", func() {
+				if config.DefaultCredentialChain {
+					It("should return the zero time without error, leaving credentials to the default chain", func() {
+						newSecretModifiedTime, err := GetSnapstoreSecretModifiedTime(config.SnapstoreProvider)
+						Expect(err).ShouldNot(HaveOccurred())
+						Expect(newSecretModifiedTime.IsZero()).Should(BeTrue())
+					})
+					return
+				}
 				It("should return error", func() {
 					newSecretModifiedTime, err := GetSnapstoreSecretModifiedTime(config.SnapstoreProvider)
 					Expect(err).Should(HaveOccurred())
