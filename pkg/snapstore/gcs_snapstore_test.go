@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"sort"
+	"strings"
 	"sync"
 
 	stiface "github.com/gardener/etcd-backup-restore/pkg/snapstore/gcs"
@@ -49,12 +50,14 @@ func (m *mockBucketHandle) Object(name string) stiface.ObjectHandle {
 	return &mockObjectHandle{object: name, client: m.client}
 }
 
-func (m *mockBucketHandle) Objects(context.Context, *storage.Query) stiface.ObjectIterator {
+func (m *mockBucketHandle) Objects(_ context.Context, q *storage.Query) stiface.ObjectIterator {
 	m.client.objectMutex.Lock()
 	defer m.client.objectMutex.Unlock()
 	var keys []string
 	for key := range m.client.objects {
-		keys = append(keys, key)
+		if strings.HasPrefix(key, q.Prefix) {
+			keys = append(keys, key)
+		}
 	}
 	sort.Strings(keys)
 	return &mockObjectIterator{keys: keys, tags: m.client.objectTags}

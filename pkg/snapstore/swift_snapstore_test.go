@@ -132,10 +132,13 @@ func handleListObjectNames(w http.ResponseWriter, r *http.Request) {
 	defer objectMapMutex.Unlock()
 
 	marker := r.URL.Query().Get("marker")
+	prefix := r.URL.Query().Get("prefix")
 	// To store the keys in slice in sorted order
 	var keys, contents []string
 	for k := range objectMap {
-		keys = append(keys, k)
+		if strings.HasPrefix(k, prefix) {
+			keys = append(keys, k)
+		}
 	}
 	sort.Strings(keys)
 
