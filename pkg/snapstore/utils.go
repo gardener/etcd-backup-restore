@@ -165,6 +165,16 @@ func getEnvPrefixString(config *brtypes.SnapstoreConfig) string {
 	return ""
 }
 
+// listPrefix drops the v1/v2 level and adds a trailing slash, so that <prefix>-x/ is not listed.
+func listPrefix(snapstorePrefix string) string {
+	prefixTokens := strings.Split(snapstorePrefix, "/")
+	prefix := path.Join(strings.Join(prefixTokens[:len(prefixTokens)-1], "/"))
+	if prefix == "" {
+		return prefix
+	}
+	return prefix + "/"
+}
+
 func adaptPrefix(snap *brtypes.Snapshot, snapstorePrefix string) string {
 	if strings.Contains(snap.Prefix, "/"+backupVersionV1) && strings.Contains(snapstorePrefix, "/"+backupVersionV2) {
 		return strings.Replace(snapstorePrefix, "/"+backupVersionV2, "/"+backupVersionV1, 1)
