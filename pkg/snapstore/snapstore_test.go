@@ -774,6 +774,76 @@ var _ = Describe("Get Immutability time for S3 bucket", func() {
 	})
 })
 
+var _ = Describe("List snapshots when another store prefix starts with the same string", func() {
+	const storePrefix = "my-cluster/etcd/v2"
+
+	BeforeEach(func() {
+		snap := brtypes.Snapshot{
+			CreatedOn:     time.Now().UTC(),
+			StartRevision: 0,
+			LastRevision:  2088,
+			Kind:          brtypes.SnapshotKindFull,
+		}
+		snap.GenerateSnapshotName()
+		ownData, otherData := []byte("own"), []byte("other")
+		objectMap[path.Join(storePrefix, snap.SnapName)] = &ownData
+		objectMap[path.Join("my-cluster/etcd-events", prefixV2, snap.SnapName)] = &otherData
+	})
+	AfterEach(func() {
+		resetObjectMap()
+	})
+
+	DescribeTable("lists only the snapshots under the store prefix",
+		func(newSnapStore func() brtypes.SnapStore) {
+			snapList, err := newSnapStore().List(false)
+			Expect(err).ShouldNot(HaveOccurred())
+			Expect(snapList).To(HaveLen(1))
+			Expect(snapList[0].Prefix).To(Equal(storePrefix + "/"))
+		},
+		Entry("S3 without versioning", func() brtypes.SnapStore {
+			return NewS3FromClient(s3NonObjectLockedBucket, storePrefix, "/tmp", 5, brtypes.MinChunkSize, &mockS3Client{
+				objects:          objectMap,
+				prefix:           storePrefix,
+				multiPartUploads: map[string]*[][]byte{},
+			}, SSECredentials{})
+		}),
+		Entry("S3 with object lock", func() brtypes.SnapStore {
+			return NewS3FromClient(s3ObjectLockedBucket, storePrefix, "/tmp", 5, brtypes.MinChunkSize, &mockS3Client{
+				objects:          objectMap,
+				prefix:           storePrefix,
+				multiPartUploads: map[string]*[][]byte{},
+			}, SSECredentials{})
+		}),
+		Entry("ABS", func() brtypes.SnapStore {
+			return NewABSSnapStoreFromClient(bucket, storePrefix, "/tmp", 5, brtypes.MinChunkSize, &fakeABSContainerClient{
+				objects:     objectMap,
+				prefix:      storePrefix,
+				blobClients: make(map[string]*fakeBlockBlobClient),
+				objectTags:  make(map[string]map[string]string),
+			})
+		}),
+		Entry("GCS", func() brtypes.SnapStore {
+			return NewGCSSnapStoreFromClient(bucket, storePrefix, "/tmp", 5, brtypes.MinChunkSize, &mockGCSClient{
+				objects:    objectMap,
+				prefix:     storePrefix,
+				objectTags: make(map[string]map[string]string),
+			})
+		}),
+		Entry("OSS", func() brtypes.SnapStore {
+			ossClient := &mockOSSClient{
+				objects:          objectMap,
+				prefix:           storePrefix,
+				multiPartUploads: map[string]*[][]byte{},
+				bucketName:       bucket,
+			}
+			return NewOSSFromBucket(storePrefix, "/tmp", bucket, 5, brtypes.MinChunkSize, ossClient, getOSSMockBucket(ossClient))
+		}),
+		Entry("Swift", func() brtypes.SnapStore {
+			return NewSwiftSnapstoreFromClient(bucket, storePrefix, "/tmp", 5, brtypes.MinChunkSize, fake.ServiceClient())
+		}),
+	)
+})
+
 var _ = Describe("S3 snapshot object is marked to be ignored/skipped", func() {
 	awsS3Client := &mockS3Client{
 		objects: objectMap,

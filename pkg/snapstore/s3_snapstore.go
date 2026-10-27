@@ -589,10 +589,7 @@ func (s *S3SnapStore) partUploader(wg *sync.WaitGroup, stopCh <-chan struct{}, s
 //   - It also captures the "ImmutabilityExpiryTime" and "VersionID" of corresponding versioned snapshot.
 func (s *S3SnapStore) List(includeAll bool) (brtypes.SnapList, error) {
 	var snapList brtypes.SnapList
-	prefixTokens := strings.Split(s.prefix, "/")
-	// Last element of the tokens is backup version
-	// Consider the parent of the backup version level (Required for Backward Compatibility)
-	prefix := path.Join(strings.Join(prefixTokens[:len(prefixTokens)-1], "/"))
+	prefix := listPrefix(s.prefix)
 
 	// Get the status of bucket versioning.
 	// Note: Bucket versioning will always be enabled for object lock.
