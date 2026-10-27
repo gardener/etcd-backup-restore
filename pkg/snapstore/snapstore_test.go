@@ -774,6 +774,34 @@ var _ = Describe("Get Immutability time for S3 bucket", func() {
 	})
 })
 
+var _ = DescribeTable("List S3 snapshots when the store prefix contains v1",
+	func(bucketName string) {
+		snap := brtypes.Snapshot{
+			CreatedOn:     time.Now().UTC(),
+			StartRevision: 0,
+			LastRevision:  2088,
+			Kind:          brtypes.SnapshotKindFull,
+		}
+		snap.GenerateSnapshotName()
+		storePrefix := path.Join("backups", "team-v1", "prod", prefixV2)
+		data := []byte("snapshot")
+		snapStore := NewS3FromClient(bucketName, storePrefix, "/tmp", 5, brtypes.MinChunkSize, &mockS3Client{
+			objects:          map[string]*[]byte{path.Join(storePrefix, snap.SnapName): &data},
+			prefix:           storePrefix,
+			multiPartUploads: map[string]*[][]byte{},
+		}, SSECredentials{})
+
+		snapList, err := snapStore.List(false)
+		Expect(err).ShouldNot(HaveOccurred())
+		Expect(snapList).To(HaveLen(1))
+		Expect(snapList[0].Prefix).To(Equal(storePrefix + "/"))
+		Expect(snapList[0].SnapDir).To(BeEmpty())
+		Expect(snapList[0].SnapName).To(Equal(snap.SnapName))
+	},
+	Entry("bucket without versioning", s3NonObjectLockedBucket),
+	Entry("bucket with object lock", s3ObjectLockedBucket),
+)
+
 var _ = Describe("S3 snapshot object is marked to be ignored/skipped", func() {
 	awsS3Client := &mockS3Client{
 		objects: objectMap,
