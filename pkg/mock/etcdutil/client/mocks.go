@@ -88,6 +88,21 @@ func (mr *MockFactoryMockRecorder) NewMaintenance() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "NewMaintenance", reflect.TypeOf((*MockFactory)(nil).NewMaintenance))
 }
 
+// NewMaintenanceForEndpoint mocks base method.
+func (m *MockFactory) NewMaintenanceForEndpoint(endpoint string) (client.MaintenanceCloser, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "NewMaintenanceForEndpoint", endpoint)
+	ret0, _ := ret[0].(client.MaintenanceCloser)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// NewMaintenanceForEndpoint indicates an expected call of NewMaintenanceForEndpoint.
+func (mr *MockFactoryMockRecorder) NewMaintenanceForEndpoint(endpoint any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "NewMaintenanceForEndpoint", reflect.TypeOf((*MockFactory)(nil).NewMaintenanceForEndpoint), endpoint)
+}
+
 // NewWatcher mocks base method.
 func (m *MockFactory) NewWatcher() (clientv3.Watcher, error) {
 	m.ctrl.T.Helper()
