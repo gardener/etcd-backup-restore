@@ -36,18 +36,15 @@ func ParseSnapshot(snapPath string) (*brtypes.Snapshot, error) {
 	var err error
 	var backupVersion = ""
 	s := &brtypes.Snapshot{}
-	// First try if the path contains v1
-	lastIndex := strings.LastIndex(snapPath, "v1/")
+	// Match whole path segments only, so a prefix like team-v1 is not read as v1
+	lastIndex := strings.LastIndex("/"+snapPath, "/"+backupVersionV1+"/")
 	if lastIndex >= 0 {
 		backupVersion = backupVersionV1
 	}
 
-	// Then try if the path contains v2
-	if backupVersion == "" {
-		lastIndex = strings.LastIndex(snapPath, "v2/")
-		if lastIndex >= 0 {
-			backupVersion = backupVersionV2
-		}
+	if v2Index := strings.LastIndex("/"+snapPath, "/"+backupVersionV2+"/"); v2Index > lastIndex {
+		lastIndex = v2Index
+		backupVersion = backupVersionV2
 	}
 
 	if backupVersion == "" {
