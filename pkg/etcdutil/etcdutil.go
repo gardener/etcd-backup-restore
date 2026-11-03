@@ -25,6 +25,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/sirupsen/logrus"
+	"go.etcd.io/etcd/api/v3/etcdserverpb"
 	"go.etcd.io/etcd/client/pkg/v3/transport"
 	clientv3 "go.etcd.io/etcd/client/v3"
 )
@@ -70,6 +71,12 @@ func (f *factoryImpl) NewKV() (client.KVCloser, error) {
 
 func (f *factoryImpl) NewMaintenance() (client.MaintenanceCloser, error) {
 	return f.NewClient()
+}
+
+func (f *factoryImpl) NewMaintenanceForEndpoint(endpoint string) (client.MaintenanceCloser, error) {
+	cfg := f.EtcdConnectionConfig
+	cfg.Endpoints = []string{endpoint}
+	return GetTLSClientForEtcd(&cfg, f.options)
 }
 
 func (f *factoryImpl) NewWatcher() (clientv3.Watcher, error) {
@@ -199,8 +206,11 @@ func PerformDefragmentation(defragCtx context.Context, client client.Maintenance
 
 // DefragmentData calls the defragmentation on each etcd followers endPoints
 // then calls the defragmentation on etcd leader endPoints.
-func DefragmentData(defragCtx context.Context, clientMaintenance client.MaintenanceCloser, clientCluster client.ClusterCloser, etcdEndpoints []string, defragTimeout time.Duration, logger *logrus.Entry) error {
-	leaderEtcdEndpoints, followerEtcdEndpoints, err := GetEtcdEndPointsSorted(defragCtx, clientMaintenance, clientCluster, etcdEndpoints, logger)
+// When moveLeader is true and the cluster has followers, leadership is transferred to a follower
+// before the leader is defragmented, avoiding cluster-wide write stalls. If the transfer fails,
+// a warning is logged and the leader is defragmented in place.
+func DefragmentData(defragCtx context.Context, clientMaintenance client.MaintenanceCloser, clientCluster client.ClusterCloser, clientFactory client.Factory, etcdEndpoints []string, defragTimeout time.Duration, logger *logrus.Entry, moveLeader bool) error {
+	leaderEtcdEndpoints, followerEtcdEndpoints, leaderID, members, err := GetEtcdEndPointsSorted(defragCtx, clientMaintenance, clientCluster, etcdEndpoints, logger)
 	logger.Debugf("etcdEndpoints: %v", etcdEndpoints)
 	logger.Debugf("leaderEndpoints: %v", leaderEtcdEndpoints)
 	logger.Debugf("followerEtcdEndpointss: %v", followerEtcdEndpoints)
@@ -225,11 +235,17 @@ func DefragmentData(defragCtx context.Context, clientMaintenance client.Maintena
 		}
 	}
 
-	logger.Info("Starting the defragmentation on etcd leader")
-	// Perform the defragmentation on etcd leader.
+	// Optionally transfer leadership before defragmenting the leader to keep writes flowing.
+	leaderTransferred := transferLeadership(defragCtx, clientMaintenance, clientFactory, members, leaderEtcdEndpoints, followerEtcdEndpoints, leaderID, logger, moveLeader)
+
+	// Perform the defragmentation on etcd leader (or former leader after transfer).
+	leaderDefragBaseCtx := defragCtx
+	if leaderTransferred {
+		leaderDefragBaseCtx = context.WithoutCancel(defragCtx)
+	}
 	for _, ep := range leaderEtcdEndpoints {
 		if err := func() error {
-			ctx, cancel := context.WithTimeout(defragCtx, defragTimeout)
+			ctx, cancel := context.WithTimeout(leaderDefragBaseCtx, defragTimeout)
 			defer cancel()
 			if err := PerformDefragmentation(ctx, clientMaintenance, ep, logger); err != nil {
 				return err
@@ -242,8 +258,84 @@ func DefragmentData(defragCtx context.Context, clientMaintenance client.Maintena
 	return nil
 }
 
-// GetEtcdEndPointsSorted returns the etcd leaderEndpoints and etcd followerEndpoints.
-func GetEtcdEndPointsSorted(ctx context.Context, clientMaintenance client.MaintenanceCloser, clientCluster client.ClusterCloser, etcdEndpoints []string, logger *logrus.Entry) ([]string, []string, error) {
+// transferLeadership attempts to transfer etcd leadership away from the current leader to the
+// most up-to-date voting follower before the leader is defragmented, avoiding cluster-wide write
+// stalls during the leader's defragmentation.
+// Returns true if the transfer succeeded; false means defrag in place.
+func transferLeadership(defragCtx context.Context, clientMaintenance client.MaintenanceCloser, clientFactory client.Factory, members []*etcdserverpb.Member, leaderEtcdEndpoints, followerEtcdEndpoints []string, leaderID uint64, logger *logrus.Entry, moveLeader bool) bool {
+	if !moveLeader || len(followerEtcdEndpoints) == 0 || len(leaderEtcdEndpoints) == 0 {
+		return false
+	}
+
+	// Detach from defragCtx so that the leader election loop cancelling leCtx while MoveLeader
+	// is in-flight does not cause MoveLeader to fail with context.Canceled.
+	detachedCtx := context.WithoutCancel(defragCtx)
+
+	transfereeID := func() uint64 {
+		ctx, cancel := context.WithTimeout(detachedCtx, brtypes.DefaultEtcdConnectionTimeout)
+		defer cancel()
+		return selectLeaderTransferee(ctx, clientMaintenance, members, leaderID, logger)
+	}()
+	if transfereeID == 0 {
+		logger.Info("Starting the defragmentation on etcd leader")
+		return false
+	}
+
+	leaderEndpoint := leaderEtcdEndpoints[0]
+	leaderMaintenance, err := clientFactory.NewMaintenanceForEndpoint(leaderEndpoint)
+	if err != nil {
+		logger.Warnf("failed to create maintenance client for leader endpoint %s: %v, defragmenting leader in place", leaderEndpoint, err)
+		logger.Info("Starting the defragmentation on etcd leader")
+		return false
+	}
+	defer leaderMaintenance.Close()
+
+	ctx, cancel := context.WithTimeout(detachedCtx, brtypes.DefaultLeaderTransferTimeout)
+	defer cancel()
+	if _, err := leaderMaintenance.MoveLeader(ctx, transfereeID); err != nil {
+		logger.Warnf("failed to transfer etcd leadership from %s to member %d: %v, defragmenting leader in place", leaderEndpoint, transfereeID, err)
+		logger.Info("Starting the defragmentation on etcd leader")
+		return false
+	}
+	logger.Infof("etcd leadership transferred from %s to member %d, will now defragment the former leader", leaderEndpoint, transfereeID)
+	logger.Info("Starting the defragmentation on former etcd leader (now follower)")
+	return true
+}
+
+// selectLeaderTransferee picks the voting member with the highest RaftIndex as the MoveLeader transfer target.
+func selectLeaderTransferee(ctx context.Context, clientMaintenance client.MaintenanceCloser, members []*etcdserverpb.Member, leaderID uint64, logger *logrus.Entry) uint64 {
+	var transfereeID uint64
+	var bestRaftIndex uint64
+	reachableFollowers := 0
+	for _, m := range members {
+		if m.GetID() == leaderID || m.GetIsLearner() {
+			continue
+		}
+		for _, ep := range m.GetClientURLs() {
+			if status, err := clientMaintenance.Status(ctx, ep); err == nil {
+				reachableFollowers++
+				if transfereeID == 0 || status.RaftIndex > bestRaftIndex {
+					bestRaftIndex = status.RaftIndex
+					transfereeID = m.GetID()
+				}
+				break
+			}
+		}
+	}
+	if transfereeID == 0 {
+		if reachableFollowers == 0 {
+			logger.Warnf("no reachable voting follower found for leadership transfer, defragmenting leader in place")
+		} else {
+			logger.Warnf("no eligible voting follower found for leadership transfer, defragmenting leader in place")
+		}
+	}
+	return transfereeID
+}
+
+// GetEtcdEndPointsSorted returns the etcd leaderEndpoints, etcd followerEndpoints, the leader
+// member ID, and the full member list. Returning the member list avoids a second MemberList
+// RPC in callers that need to iterate members for leader transfer.
+func GetEtcdEndPointsSorted(ctx context.Context, clientMaintenance client.MaintenanceCloser, clientCluster client.ClusterCloser, etcdEndpoints []string, logger *logrus.Entry) ([]string, []string, uint64, []*etcdserverpb.Member, error) {
 	var leaderEtcdEndpoints []string
 	var followerEtcdEndpoints []string
 	var endPoint string
@@ -254,17 +346,17 @@ func GetEtcdEndPointsSorted(ctx context.Context, clientMaintenance client.Mainte
 	membersInfo, err := clientCluster.MemberList(ctx)
 	if err != nil {
 		logger.Errorf("failed to get memberList of etcd with error: %v", err)
-		return nil, nil, err
+		return nil, nil, 0, nil, err
 	}
 
 	// to handle the single node etcd case (particularly: single node embedded etcd case)
 	if len(membersInfo.Members) == 1 {
 		leaderEtcdEndpoints = append(leaderEtcdEndpoints, etcdEndpoints...)
-		return leaderEtcdEndpoints, nil, nil
+		return leaderEtcdEndpoints, nil, membersInfo.Members[0].GetID(), membersInfo.Members, nil
 	}
 
 	if len(etcdEndpoints) == 0 {
-		return nil, nil, &errors.EtcdError{
+		return nil, nil, 0, nil, &errors.EtcdError{
 			Message: "etcd endpoints are not passed correctly",
 		}
 	}
@@ -273,7 +365,7 @@ func GetEtcdEndPointsSorted(ctx context.Context, clientMaintenance client.Mainte
 	response, err := clientMaintenance.Status(ctx, endPoint)
 	if err != nil {
 		logger.Errorf("failed to get status of etcd endPoint: %v with error: %v", endPoint, err)
-		return nil, nil, err
+		return nil, nil, 0, nil, err
 	}
 
 	for _, member := range membersInfo.Members {
@@ -284,7 +376,7 @@ func GetEtcdEndPointsSorted(ctx context.Context, clientMaintenance client.Mainte
 		}
 	}
 
-	return leaderEtcdEndpoints, followerEtcdEndpoints, nil
+	return leaderEtcdEndpoints, followerEtcdEndpoints, response.Leader, membersInfo.Members, nil
 }
 
 // TakeAndSaveFullSnapshot does the following operations:

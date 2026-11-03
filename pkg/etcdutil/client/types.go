@@ -33,5 +33,6 @@ type Factory interface {
 	NewCluster() (ClusterCloser, error)
 	NewKV() (KVCloser, error)
 	NewMaintenance() (MaintenanceCloser, error)
+	NewMaintenanceForEndpoint(endpoint string) (MaintenanceCloser, error)
 	NewWatcher() (clientv3.Watcher, error) // clientv3.Watcher already supports io.Closer
 }
