@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"sort"
 	"time"
 
 	mockfactory "github.com/gardener/etcd-backup-restore/pkg/mock/etcdutil/client"
@@ -162,6 +163,59 @@ var _ = Describe("Miscellaneous Tests", func() {
 					Expect(backups[i].CreatedOn.After(time.Now().UTC().AddDate(0, 0, -n))).To(BeTrue())
 				}
 			}
+		})
+
+		Context("when a full snapshot with a lower revision is created after one with a higher revision", func() {
+			var base, delta1, delta2, compacted, compactedDelta, latest, latestDelta *brtypes.Snapshot
+
+			newSnapshot := func(kind string, startRevision, lastRevision int64, createdOn time.Time) *brtypes.Snapshot {
+				snap := &brtypes.Snapshot{
+					Kind:          kind,
+					StartRevision: startRevision,
+					LastRevision:  lastRevision,
+					CreatedOn:     createdOn,
+				}
+				snap.GenerateSnapshotName()
+				return snap
+			}
+
+			BeforeEach(func() {
+				now := time.Now().UTC()
+				base = newSnapshot(brtypes.SnapshotKindFull, 0, 100, now.Add(-20*time.Minute))
+				delta1 = newSnapshot(brtypes.SnapshotKindDelta, 101, 200, now.Add(-19*time.Minute))
+				delta2 = newSnapshot(brtypes.SnapshotKindDelta, 201, 240, now.Add(-17*time.Minute))
+				compactedDelta = newSnapshot(brtypes.SnapshotKindDelta, 241, 250, now.Add(-12*time.Minute))
+				latest = newSnapshot(brtypes.SnapshotKindFull, 0, 260, now.Add(-10*time.Minute))
+				compacted = newSnapshot(brtypes.SnapshotKindFull, 0, 240, now.Add(-8*time.Minute))
+				latestDelta = newSnapshot(brtypes.SnapshotKindDelta, 261, 300, now.Add(-5*time.Minute))
+
+				snapList = brtypes.SnapList{latestDelta, compacted, delta2, latest, compactedDelta, base, delta1}
+				sort.Sort(snapList)
+				ds = NewDummyStore(snapList)
+			})
+
+			It("should return the backup with the highest revision as the latest", func() {
+				snaps, err := GetFilteredBackups(&ds, 1, nil)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(snaps).To(Equal(brtypes.SnapList{latest, latestDelta}))
+			})
+
+			It("should order all backups by revision", func() {
+				snaps, err := GetFilteredBackups(&ds, -1, nil)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(snaps).To(Equal(brtypes.SnapList{latest, latestDelta, compacted, compactedDelta, base, delta2, delta1}))
+			})
+		})
+
+		It("should order backups with the same revision by creation time", func() {
+			now := time.Now().UTC()
+			older := &brtypes.Snapshot{Kind: brtypes.SnapshotKindFull, LastRevision: 100, CreatedOn: now.Add(-time.Hour)}
+			newer := &brtypes.Snapshot{Kind: brtypes.SnapshotKindFull, LastRevision: 100, CreatedOn: now}
+			ds = NewDummyStore(brtypes.SnapList{newer, older})
+
+			snaps, err := GetFilteredBackups(&ds, -1, nil)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(snaps).To(Equal(brtypes.SnapList{newer, older}))
 		})
 	})
 
