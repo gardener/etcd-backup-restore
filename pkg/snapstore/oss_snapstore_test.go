@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -152,9 +153,16 @@ func (m *mockOSSBucket) AbortMultipartUpload(imur oss.InitiateMultipartUploadRes
 }
 
 // ListObject returns the objects from map for mock test
-func (m *mockOSSBucket) ListObjects(_ ...oss.Option) (oss.ListObjectsResult, error) {
+func (m *mockOSSBucket) ListObjects(options ...oss.Option) (oss.ListObjectsResult, error) {
+	prefix, err := oss.FindOption(options, "prefix", "")
+	if err != nil {
+		return oss.ListObjectsResult{}, err
+	}
 	var contents []oss.ObjectProperties
 	for key := range m.objects {
+		if !strings.HasPrefix(key, prefix.(string)) {
+			continue
+		}
 		tempObj := oss.ObjectProperties{
 			Key: key,
 		}
