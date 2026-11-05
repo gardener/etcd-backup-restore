@@ -404,7 +404,7 @@ func GetBackupLeaderEndPoint(endPoints []string, port uint) (string, error) {
 		return "", err
 	}
 
-	backupLeaderEndPoint := fmt.Sprintf("%s://%s:%s", url.Scheme, host, fmt.Sprintf("%d", port))
+	backupLeaderEndPoint := fmt.Sprintf("%s://%s", url.Scheme, net.JoinHostPort(host, fmt.Sprintf("%d", port)))
 	return backupLeaderEndPoint, nil
 }
 
@@ -538,10 +538,11 @@ func schemeAndPort(rawURL, label string) (string, string, error) {
 }
 
 // BuildURLsFromIPs constructs URL strings of the form <scheme>://<ip>:<port> for each IP.
+// IPv6 addresses are enclosed in square brackets.
 func BuildURLsFromIPs(ips []string, scheme, port string) []string {
 	urls := make([]string, len(ips))
 	for i, ip := range ips {
-		urls[i] = fmt.Sprintf("%s://%s:%s", scheme, ip, port)
+		urls[i] = fmt.Sprintf("%s://%s", scheme, net.JoinHostPort(ip, port))
 	}
 	return urls
 }
@@ -731,7 +732,7 @@ func GetMemberPeerURLs(configFile string) ([]string, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to get peer URL scheme/port: %w", err)
 		}
-		return []string{fmt.Sprintf("%s://%s:%s", scheme, podIP, port)}, nil
+		return []string{fmt.Sprintf("%s://%s", scheme, net.JoinHostPort(podIP, port))}, nil
 	}
 
 	memberName, err := GetMemberName(configFile)
@@ -769,7 +770,7 @@ func GetMemberClientURLs(configFile string) ([]string, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to get client URL scheme/port: %w", err)
 		}
-		return []string{fmt.Sprintf("%s://%s:%s", scheme, podIP, port)}, nil
+		return []string{fmt.Sprintf("%s://%s", scheme, net.JoinHostPort(podIP, port))}, nil
 	}
 
 	memberName, err := GetMemberName(configFile)
@@ -922,5 +923,5 @@ func getEtcdWrapperEndpoint(etcdEndpoints []string) (string, error) {
 		return "", err
 	}
 
-	return fmt.Sprintf("%s://%s:%s", etcdURL.Scheme, etcdURL.Hostname(), etcdWrapperPort), nil
+	return fmt.Sprintf("%s://%s", etcdURL.Scheme, net.JoinHostPort(etcdURL.Hostname(), etcdWrapperPort)), nil
 }
