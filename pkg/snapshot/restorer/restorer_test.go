@@ -2,17 +2,20 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package restorer_test
+package restorer
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
+	"testing"
 	"time"
 
 	"github.com/gardener/etcd-backup-restore/pkg/compressor"
@@ -27,7 +30,6 @@ import (
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"go.uber.org/mock/gomock"
 
-	. "github.com/gardener/etcd-backup-restore/pkg/snapshot/restorer"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
@@ -174,6 +176,36 @@ var _ = Describe("Running Restorer", func() {
 				err = restoreOpts.Config.Validate()
 				Expect(err).Should(HaveOccurred())
 			})
+		})
+
+		Context("with delta snapshots sharing a start revision", func() {
+			DescribeTable("should restore and preserve data with a duplicate delta snapshot", func(duplicateLast bool) {
+				Expect(deltaSnapList).NotTo(BeEmpty())
+				index := 0
+				if duplicateLast {
+					index = len(deltaSnapList) - 1
+				}
+				original := deltaSnapList[index]
+				duplicate := *original
+				duplicate.CreatedOn = duplicate.CreatedOn.Add(time.Second)
+				duplicate.GenerateSnapshotName()
+				rc, err := store.Fetch(*original)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(store.Save(duplicate, rc)).To(Succeed())
+				DeferCleanup(func() {
+					Expect(store.Delete(duplicate)).To(Succeed())
+				})
+
+				_, deltas, err := miscellaneous.GetLatestFullSnapshotAndDeltaSnapList(store)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(deltas).To(HaveLen(len(deltaSnapList) + 1))
+				restoreOpts.DeltaSnapList = deltas
+				Expect(restorer.RestoreAndStopEtcd(restoreOpts, nil)).To(Succeed())
+				Expect(utils.CheckDataConsistency(testCtx, restoreOpts.Config.DataDir, keyTo, "", "", logger)).To(Succeed())
+			},
+				Entry("duplicating the first delta", false),
+				Entry("duplicating the last delta", true),
+			)
 		})
 
 		Context("with maximum of one fetcher allowed", func() {
@@ -1235,6 +1267,129 @@ var _ = Describe("Unit testing individual functions for restorer package", func(
 	})
 
 })
+
+func TestDeduplicateDeltaSnapshots(t *testing.T) {
+	snapshot := func(start, last, timestamp int64) *brtypes.Snapshot {
+		snap := &brtypes.Snapshot{
+			Kind:          brtypes.SnapshotKindDelta,
+			StartRevision: start,
+			LastRevision:  last,
+			CreatedOn:     time.Unix(timestamp, 0),
+			Prefix:        "backup/v2",
+		}
+		snap.GenerateSnapshotName()
+		return snap
+	}
+	repeated := snapshot(4, 5, 1)
+
+	tests := []struct {
+		name         string
+		snaps        brtypes.SnapList
+		wantIndices  []int
+		wantError    []string
+		wantLogs     []string
+		wantLogCount int
+	}{
+		{name: "nil list"},
+		{name: "empty list", snaps: brtypes.SnapList{}},
+		{name: "single delta", snaps: brtypes.SnapList{snapshot(4, 5, 1)}, wantIndices: []int{0}},
+		{
+			name:        "normal chain retains revision order",
+			snaps:       brtypes.SnapList{snapshot(8, 9, 3), snapshot(4, 5, 1), snapshot(6, 7, 2)},
+			wantIndices: []int{1, 2, 0},
+		},
+		{
+			name:         "identical ranges retain the first input snapshot",
+			snaps:        brtypes.SnapList{snapshot(4, 5, 2), snapshot(4, 5, 1)},
+			wantIndices:  []int{0},
+			wantLogs:     []string{"same start revision", "Incr-00000004-00000005-1", "Incr-00000004-00000005-2"},
+			wantLogCount: 1,
+		},
+		{
+			name:         "shared start retains the highest end revision",
+			snaps:        brtypes.SnapList{snapshot(4, 7, 1), snapshot(4, 5, 3), snapshot(4, 6, 2), snapshot(8, 9, 4)},
+			wantIndices:  []int{0, 3},
+			wantLogs:     []string{"same start revision", "[4, 5]", "[4, 6]", "snapshot backup/v2/Incr-00000004-00000007-1 [4, 7]"},
+			wantLogCount: 2,
+		},
+		{
+			name:         "repeated snapshot pointer is retained once",
+			snaps:        brtypes.SnapList{repeated, repeated},
+			wantIndices:  []int{0},
+			wantLogs:     []string{"same start revision"},
+			wantLogCount: 1,
+		},
+		{
+			name:      "rejects fully contained ranges with different starts",
+			snaps:     brtypes.SnapList{snapshot(4, 9, 1), snapshot(6, 7, 2)},
+			wantError: []string{"different start revisions", "backup/v2/Incr-00000004-00000009-1 [4, 9]", "backup/v2/Incr-00000006-00000007-2 [6, 7]"},
+		},
+		{
+			name:      "rejects partial overlaps with different starts",
+			snaps:     brtypes.SnapList{snapshot(4, 7, 1), snapshot(6, 9, 2)},
+			wantError: []string{"different start revisions", "backup/v2/Incr-00000004-00000007-1 [4, 7]", "backup/v2/Incr-00000006-00000009-2 [6, 9]"},
+		},
+		{
+			name:      "rejects deltas that share a boundary revision",
+			snaps:     brtypes.SnapList{snapshot(4, 6, 1), snapshot(6, 8, 2)},
+			wantError: []string{"different start revisions", "backup/v2/Incr-00000004-00000006-1 [4, 6]", "backup/v2/Incr-00000006-00000008-2 [6, 8]"},
+		},
+		{
+			name:         "rejects overlap after choosing the longest delta",
+			snaps:        brtypes.SnapList{snapshot(4, 5, 1), snapshot(6, 7, 2), snapshot(4, 8, 3)},
+			wantError:    []string{"different start revisions", "backup/v2/Incr-00000006-00000007-2 [6, 7]", "backup/v2/Incr-00000004-00000008-3 [4, 8]"},
+			wantLogs:     []string{"same start revision"},
+			wantLogCount: 1,
+		},
+		{
+			name:         "keeps the longest delta for each start revision",
+			snaps:        brtypes.SnapList{snapshot(4, 5, 1), snapshot(9, 10, 2), snapshot(4, 8, 3), snapshot(9, 12, 4)},
+			wantIndices:  []int{2, 3},
+			wantLogs:     []string{"same start revision", "snapshot backup/v2/Incr-00000004-00000008-3 [4, 8]", "snapshot backup/v2/Incr-00000009-00000012-4 [9, 12]"},
+			wantLogCount: 2,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			g := NewWithT(t)
+			var logs bytes.Buffer
+			logger := logrus.New()
+			logger.SetOutput(&logs)
+			r := &Restorer{logger: logrus.NewEntry(logger)}
+			original := slices.Clone(tt.snaps)
+
+			got, err := r.deduplicateDeltaSnapshots(tt.snaps)
+
+			// Check the error result before inspecting returned snapshots.
+			if len(tt.wantError) > 0 {
+				g.Expect(err).To(HaveOccurred())
+				g.Expect(got).To(BeNil())
+			} else {
+				g.Expect(err).NotTo(HaveOccurred())
+			}
+			for _, message := range tt.wantError {
+				g.Expect(err).To(MatchError(ContainSubstring(message)))
+			}
+
+			// Check retained snapshots in restoration order.
+			g.Expect(got).To(HaveLen(len(tt.wantIndices)))
+			for i, index := range tt.wantIndices {
+				g.Expect(got[i]).To(BeIdenticalTo(original[index]), "unexpected retained snapshot at index %d", i)
+			}
+
+			// Ensure the caller's slice is unchanged.
+			g.Expect(tt.snaps).To(Equal(original))
+
+			// Check diagnostic log contents and count.
+			logOutput := logs.String()
+			for _, message := range tt.wantLogs {
+				g.Expect(logOutput).To(ContainSubstring(message))
+			}
+			g.Expect(strings.Count(logOutput, "\n")).To(Equal(tt.wantLogCount), "unexpected logs: %s", logOutput)
+		})
+	}
+}
 
 // corruptEtcdDir corrupts the etcd directory by deleting it
 func corruptEtcdDir() error {

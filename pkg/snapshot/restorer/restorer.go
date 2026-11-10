@@ -6,6 +6,7 @@ package restorer
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"crypto/sha256"
 	"encoding/json"
@@ -16,6 +17,7 @@ import (
 	"path"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -75,8 +77,14 @@ func (r *Restorer) RestoreAndStopEtcd(ro brtypes.RestoreOptions, m member.Contro
 
 // Restore restores the etcd data directory as per specified restore options but returns the ETCD server that it statrted.
 func (r *Restorer) Restore(ro brtypes.RestoreOptions, m member.Control) (*miscellaneous.EmbeddedEtcd, error) {
+	deltaSnaps, err := r.deduplicateDeltaSnapshots(ro.DeltaSnapList)
+	if err != nil {
+		return nil, fmt.Errorf("invalid delta snapshot sequence: %w", err)
+	}
+	ro.DeltaSnapList = deltaSnaps
+
 	r.logger.Infof("Creating temporary directory %s for persisting full and delta snapshots locally.", ro.Config.TempSnapshotsDir)
-	err := os.MkdirAll(ro.Config.TempSnapshotsDir, 0700)
+	err = os.MkdirAll(ro.Config.TempSnapshotsDir, 0700)
 	if err != nil {
 		return nil, err
 	}
@@ -131,6 +139,43 @@ func (r *Restorer) Restore(ro brtypes.RestoreOptions, m member.Control) (*miscel
 		}
 	}
 	return e, nil
+}
+
+// deduplicateDeltaSnapshots keeps the delta with the highest last revision for
+// each start revision and rejects overlaps between the retained delta snapshots.
+func (r *Restorer) deduplicateDeltaSnapshots(snaps brtypes.SnapList) (brtypes.SnapList, error) {
+	if len(snaps) < 2 {
+		return snaps, nil
+	}
+
+	// Sort by increasing StartRevision. For equal starts, put the highest LastRevision first.
+	ordered := append(brtypes.SnapList(nil), snaps...)
+	slices.SortStableFunc(ordered, func(a, b *brtypes.Snapshot) int {
+		if a.StartRevision != b.StartRevision {
+			return cmp.Compare(a.StartRevision, b.StartRevision)
+		}
+		return cmp.Compare(b.LastRevision, a.LastRevision)
+	})
+
+	// Skip snapshots with the same StartRevision and reject other overlaps.
+	result := brtypes.SnapList{ordered[0]}
+	for _, current := range ordered[1:] {
+		previous := result[len(result)-1]
+		if current.StartRevision == previous.StartRevision {
+			r.logger.Warnf("Skipping delta snapshot %s [%d, %d]: snapshot %s [%d, %d] has the same start revision and covers its revision range",
+				path.Join(current.Prefix, current.SnapDir, current.SnapName), current.StartRevision, current.LastRevision,
+				path.Join(previous.Prefix, previous.SnapDir, previous.SnapName), previous.StartRevision, previous.LastRevision)
+			continue
+		}
+
+		if current.StartRevision <= previous.LastRevision {
+			return nil, fmt.Errorf("delta snapshots %s [%d, %d] and %s [%d, %d] overlap with different start revisions",
+				path.Join(previous.Prefix, previous.SnapDir, previous.SnapName), previous.StartRevision, previous.LastRevision,
+				path.Join(current.Prefix, current.SnapDir, current.SnapName), current.StartRevision, current.LastRevision)
+		}
+		result = append(result, current)
+	}
+	return result, nil
 }
 
 // restoreFromBaseSnapshot restores the etcd data directory from the base snapshot.
