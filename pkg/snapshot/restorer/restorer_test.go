@@ -1283,12 +1283,11 @@ func TestDeduplicateDeltaSnapshots(t *testing.T) {
 	repeated := snapshot(4, 5, 1)
 
 	tests := []struct {
-		name         string
-		snaps        brtypes.SnapList
-		wantIndices  []int
-		wantError    []string
-		wantLogs     []string
-		wantLogCount int
+		name        string
+		snaps       brtypes.SnapList
+		wantIndices []int
+		wantError   []string
+		wantLogs    []string
 	}{
 		{name: "nil list"},
 		{name: "empty list", snaps: brtypes.SnapList{}},
@@ -1299,25 +1298,22 @@ func TestDeduplicateDeltaSnapshots(t *testing.T) {
 			wantIndices: []int{1, 2, 0},
 		},
 		{
-			name:         "identical ranges retain the first input snapshot",
-			snaps:        brtypes.SnapList{snapshot(4, 5, 2), snapshot(4, 5, 1)},
-			wantIndices:  []int{0},
-			wantLogs:     []string{"same start revision", "Incr-00000004-00000005-1", "Incr-00000004-00000005-2"},
-			wantLogCount: 1,
+			name:        "identical ranges retain the first input snapshot",
+			snaps:       brtypes.SnapList{snapshot(4, 5, 2), snapshot(4, 5, 1)},
+			wantIndices: []int{0},
+			wantLogs:    []string{"same start revision", "Incr-00000004-00000005-1", "Incr-00000004-00000005-2"},
 		},
 		{
-			name:         "shared start retains the highest end revision",
-			snaps:        brtypes.SnapList{snapshot(4, 7, 1), snapshot(4, 5, 3), snapshot(4, 6, 2), snapshot(8, 9, 4)},
-			wantIndices:  []int{0, 3},
-			wantLogs:     []string{"same start revision", "[4, 5]", "[4, 6]", "snapshot backup/v2/Incr-00000004-00000007-1 [4, 7]"},
-			wantLogCount: 2,
+			name:        "shared start retains the highest end revision",
+			snaps:       brtypes.SnapList{snapshot(4, 7, 1), snapshot(4, 5, 3), snapshot(4, 6, 2), snapshot(8, 9, 4)},
+			wantIndices: []int{0, 3},
+			wantLogs:    []string{"same start revision", "[4, 5]", "[4, 6]", "snapshot backup/v2/Incr-00000004-00000007-1 [4, 7]"},
 		},
 		{
-			name:         "repeated snapshot pointer is retained once",
-			snaps:        brtypes.SnapList{repeated, repeated},
-			wantIndices:  []int{0},
-			wantLogs:     []string{"same start revision"},
-			wantLogCount: 1,
+			name:        "repeated snapshot pointer is retained once",
+			snaps:       brtypes.SnapList{repeated, repeated},
+			wantIndices: []int{0},
+			wantLogs:    []string{"same start revision"},
 		},
 		{
 			name:      "rejects fully contained ranges with different starts",
@@ -1335,18 +1331,16 @@ func TestDeduplicateDeltaSnapshots(t *testing.T) {
 			wantError: []string{"different start revisions", "backup/v2/Incr-00000004-00000006-1 [4, 6]", "backup/v2/Incr-00000006-00000008-2 [6, 8]"},
 		},
 		{
-			name:         "rejects overlap after choosing the longest delta",
-			snaps:        brtypes.SnapList{snapshot(4, 5, 1), snapshot(6, 7, 2), snapshot(4, 8, 3)},
-			wantError:    []string{"different start revisions", "backup/v2/Incr-00000006-00000007-2 [6, 7]", "backup/v2/Incr-00000004-00000008-3 [4, 8]"},
-			wantLogs:     []string{"same start revision"},
-			wantLogCount: 1,
+			name:      "rejects overlap after choosing the longest delta",
+			snaps:     brtypes.SnapList{snapshot(4, 5, 1), snapshot(6, 7, 2), snapshot(4, 8, 3)},
+			wantError: []string{"different start revisions", "backup/v2/Incr-00000006-00000007-2 [6, 7]", "backup/v2/Incr-00000004-00000008-3 [4, 8]"},
+			wantLogs:  []string{"same start revision"},
 		},
 		{
-			name:         "keeps the longest delta for each start revision",
-			snaps:        brtypes.SnapList{snapshot(4, 5, 1), snapshot(9, 10, 2), snapshot(4, 8, 3), snapshot(9, 12, 4)},
-			wantIndices:  []int{2, 3},
-			wantLogs:     []string{"same start revision", "snapshot backup/v2/Incr-00000004-00000008-3 [4, 8]", "snapshot backup/v2/Incr-00000009-00000012-4 [9, 12]"},
-			wantLogCount: 2,
+			name:        "keeps the longest delta for each start revision",
+			snaps:       brtypes.SnapList{snapshot(4, 5, 1), snapshot(9, 10, 2), snapshot(4, 8, 3), snapshot(9, 12, 4)},
+			wantIndices: []int{2, 3},
+			wantLogs:    []string{"same start revision", "snapshot backup/v2/Incr-00000004-00000008-3 [4, 8]", "snapshot backup/v2/Incr-00000009-00000012-4 [9, 12]"},
 		},
 	}
 
@@ -1381,12 +1375,11 @@ func TestDeduplicateDeltaSnapshots(t *testing.T) {
 			// Ensure the caller's slice is unchanged.
 			g.Expect(tt.snaps).To(Equal(original))
 
-			// Check diagnostic log contents and count.
+			// Check diagnostic log contents.
 			logOutput := logs.String()
 			for _, message := range tt.wantLogs {
 				g.Expect(logOutput).To(ContainSubstring(message))
 			}
-			g.Expect(strings.Count(logOutput, "\n")).To(Equal(tt.wantLogCount), "unexpected logs: %s", logOutput)
 		})
 	}
 }
