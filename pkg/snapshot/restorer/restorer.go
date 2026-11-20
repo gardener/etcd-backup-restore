@@ -77,7 +77,7 @@ func (r *Restorer) RestoreAndStopEtcd(ro brtypes.RestoreOptions, m member.Contro
 
 // Restore restores the etcd data directory as per specified restore options but returns the ETCD server that it statrted.
 func (r *Restorer) Restore(ro brtypes.RestoreOptions, m member.Control) (*miscellaneous.EmbeddedEtcd, error) {
-	deltaSnaps, err := r.deduplicateDeltaSnapshots(ro.DeltaSnapList)
+	deltaSnaps, err := r.discardOverlappingDeltaSnapshots(ro.DeltaSnapList)
 	if err != nil {
 		return nil, fmt.Errorf("invalid delta snapshot sequence: %w", err)
 	}
@@ -141,9 +141,10 @@ func (r *Restorer) Restore(ro brtypes.RestoreOptions, m member.Control) (*miscel
 	return e, nil
 }
 
-// deduplicateDeltaSnapshots keeps the delta with the highest last revision for
+// discardOverlappingDeltaSnapshots keeps the delta with the highest last revision for
 // each start revision and rejects overlaps between the retained delta snapshots.
-func (r *Restorer) deduplicateDeltaSnapshots(snaps brtypes.SnapList) (brtypes.SnapList, error) {
+// TODO(@CaptainIRS): Revisit this if snapshotter is moved to a distributed lock mechanism.
+func (r *Restorer) discardOverlappingDeltaSnapshots(snaps brtypes.SnapList) (brtypes.SnapList, error) {
 	if len(snaps) < 2 {
 		return snaps, nil
 	}

@@ -1353,7 +1353,7 @@ func TestDeduplicateDeltaSnapshots(t *testing.T) {
 			r := &Restorer{logger: logrus.NewEntry(logger)}
 			original := slices.Clone(tt.snaps)
 
-			got, err := r.deduplicateDeltaSnapshots(tt.snaps)
+			got, err := r.discardOverlappingDeltaSnapshots(tt.snaps)
 
 			// Check the error result before inspecting returned snapshots.
 			if len(tt.wantError) > 0 {
