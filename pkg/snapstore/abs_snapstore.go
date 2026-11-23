@@ -267,10 +267,7 @@ func (a *ABSSnapStore) Fetch(snap brtypes.Snapshot) (io.ReadCloser, error) {
 
 // List will return sorted list with all snapshot files on store.
 func (a *ABSSnapStore) List(includeAll bool) (brtypes.SnapList, error) {
-	prefixTokens := strings.Split(a.prefix, "/")
-	// Last element of the tokens is backup version
-	// Consider the parent of the backup version level (Required for Backward Compatibility)
-	prefix := path.Join(strings.Join(prefixTokens[:len(prefixTokens)-1], "/"))
+	prefix := listPrefix(a.prefix)
 	var snapList brtypes.SnapList
 
 	// Prefix is compulsory here, since the container could potentially be used by other instances of etcd-backup-restore
