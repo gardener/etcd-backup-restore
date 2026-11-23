@@ -475,6 +475,28 @@ var _ = Describe("Miscellaneous Tests", func() {
 				Expect(backupLeaderEndPoint).To(Equal("http://127.0.0.1:8080"))
 			})
 		})
+
+		Context("IPv6 Etcd endpoint passed", func() {
+			It("should return backupLeaderEndPoint with the IPv6 address in brackets", func() {
+				backupLeaderEndPoint, err := GetBackupLeaderEndPoint([]string{"https://[fd00::1]:2379"}, portNo)
+				Expect(err).ShouldNot(HaveOccurred())
+				Expect(backupLeaderEndPoint).To(Equal("https://[fd00::1]:8080"))
+			})
+		})
+	})
+
+	Describe("#getEtcdWrapperEndpoint", func() {
+		It("should return the etcd-wrapper endpoint", func() {
+			etcdWrapperEndpoint, err := getEtcdWrapperEndpoint([]string{"https://10.0.0.1:2379"})
+			Expect(err).ShouldNot(HaveOccurred())
+			Expect(etcdWrapperEndpoint).To(Equal("https://10.0.0.1:9095"))
+		})
+
+		It("should enclose an IPv6 address in brackets", func() {
+			etcdWrapperEndpoint, err := getEtcdWrapperEndpoint([]string{"https://[fd00::1]:2379"})
+			Expect(err).ShouldNot(HaveOccurred())
+			Expect(etcdWrapperEndpoint).To(Equal("https://[fd00::1]:9095"))
+		})
 	})
 
 	Describe("Check Emptiness of backup-bucket", func() {
@@ -1090,9 +1112,39 @@ initial-cluster: etcd1=http://0.0.0.0:2380`
 				Expect(urls).To(Equal([]string{"https://10.0.0.1:2379", "https://10.0.0.2:2379"}))
 			})
 
+			It("should enclose IPv6 addresses in brackets", func() {
+				urls := BuildURLsFromIPs([]string{"fd00::1", "10.0.0.2"}, "https", "2379")
+				Expect(urls).To(Equal([]string{"https://[fd00::1]:2379", "https://10.0.0.2:2379"}))
+			})
+
 			It("should return an empty slice for no IPs", func() {
 				urls := BuildURLsFromIPs([]string{}, "http", "2379")
 				Expect(urls).To(BeEmpty())
+			})
+		})
+
+		Describe("#GetMemberPeerURLs and #GetMemberClientURLs", func() {
+			BeforeEach(func() {
+				writeConfigToFile(configFile, map[string]interface{}{
+					"name": "etcd-test",
+					"initial-advertise-peer-urls": map[string][]string{
+						"pod1": {"https://[fd00::1]:2380"},
+					},
+					"advertise-client-urls": map[string][]string{
+						"pod1": {"https://[fd00::1]:2379"},
+					},
+				})
+				Expect(os.Setenv(EndpointsEnvVar, "/some/file")).To(Succeed())
+			})
+
+			It("should enclose an IPv6 POD_IP in brackets", func() {
+				Expect(os.Setenv("POD_IP", "fd00::5")).To(Succeed())
+				peerURLs, err := GetMemberPeerURLs(configFile)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(peerURLs).To(Equal([]string{"https://[fd00::5]:2380"}))
+				clientURLs, err := GetMemberClientURLs(configFile)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(clientURLs).To(Equal([]string{"https://[fd00::5]:2379"}))
 			})
 		})
 
