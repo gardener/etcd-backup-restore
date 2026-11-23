@@ -178,6 +178,35 @@ var _ = Describe("Snapshot", func() {
 				Expect(snap.SnapName).To(Equal("Full-00000000-00002088-2387428"))
 			})
 		})
+		DescribeTable("when the store prefix contains v1 or v2",
+			func(snapPath, prefix, snapDir, snapName string, isChunk bool) {
+				snap, err := ParseSnapshot(snapPath)
+				Expect(err).ShouldNot(HaveOccurred())
+				Expect(snap.Prefix).To(Equal(prefix))
+				Expect(snap.SnapDir).To(Equal(snapDir))
+				Expect(snap.SnapName).To(Equal(snapName))
+				Expect(snap.IsChunk).To(Equal(isChunk))
+			},
+			Entry("v1 at the end of a segment", "/abc/team-v1/v2/Full-00000000-00002088-2387428",
+				"/abc/team-v1/v2/", "", "Full-00000000-00002088-2387428", false),
+			Entry("v1 inside a segment", "/a/v1x/b/v2/Full-00000000-00002088-2387428",
+				"/a/v1x/b/v2/", "", "Full-00000000-00002088-2387428", false),
+			Entry("v2 at the start of a segment", "/v2-store/v2/Full-00000000-00002088-2387428",
+				"/v2-store/v2/", "", "Full-00000000-00002088-2387428", false),
+			Entry("v1 segment in a v2 path", "/abc/v1/def/v2/Full-00000000-00002088-2387428",
+				"/abc/v1/def/v2/", "", "Full-00000000-00002088-2387428", false),
+			Entry("v1 segment in a v2 chunk path", "/abc/v1/v2/Full-00000000-00002088-2387428/0000000001",
+				"/abc/v1/v2/", "", "Full-00000000-00002088-2387428/0000000001", true),
+			Entry("v2 segment in a v1 path", "/abc/v2/v1/Backup--00000000-00002088-2387428/Full-00000000-00002088-2387428",
+				"/abc/v2/v1/", "Backup--00000000-00002088-2387428", "Full-00000000-00002088-2387428", false),
+		)
+		Context("when backup version is only part of a path segment", func() {
+			It("returns error", func() {
+				snapPath := "/abc/team-v2/Full-00000000-00002088-2387428"
+				_, err := ParseSnapshot(snapPath)
+				Expect(err).Should(HaveOccurred())
+			})
+		})
 		Context("when path without any backup version specified", func() {
 			It("returns error", func() {
 				snapPath := "/abc/Full-00000000-00002088-2387428"
