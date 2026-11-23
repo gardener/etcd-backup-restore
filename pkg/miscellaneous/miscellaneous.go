@@ -164,7 +164,7 @@ type backup struct {
 	DeltaSnapshotList brtypes.SnapList
 }
 
-// GetFilteredBackups returns sorted by date (new -> old) SnapList. It will also filter the snapshots that should be included or not using the filter function.
+// GetFilteredBackups returns SnapList sorted by the full snapshot's revision (new -> old), and by date (new -> old) for equal revisions. It will also filter the snapshots that should be included or not using the filter function.
 // If the filter is nil it will return all snapshots. Also, maxBackups can be used to target only the last N snapshots (-1 = all).
 func GetFilteredBackups(store brtypes.SnapStore, maxBackups int, filter func(snaps brtypes.Snapshot) bool) (brtypes.SnapList, error) {
 	snapList, err := store.List(false)
@@ -173,6 +173,9 @@ func GetFilteredBackups(store brtypes.SnapStore, maxBackups int, filter func(sna
 	}
 	backups := getStructuredBackupList(snapList)
 	sort.Slice(backups, func(i, j int) bool {
+		if backups[i].FullSnapshot.LastRevision != backups[j].FullSnapshot.LastRevision {
+			return backups[i].FullSnapshot.LastRevision > backups[j].FullSnapshot.LastRevision
+		}
 		return backups[i].FullSnapshot.CreatedOn.After(backups[j].FullSnapshot.CreatedOn)
 	})
 
