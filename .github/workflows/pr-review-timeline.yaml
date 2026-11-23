@@ -17,8 +17,10 @@ jobs:
         uses: shreyas-s-rao/pr-review-timeline@v0.2.2
         id: timeline
       - name: Output Timeline JSON
+        env:
+          TIMELINE_JSON: ${{ steps.timeline.outputs.timeline-json }}
         run: |
-          echo "${{ steps.timeline.outputs.timeline-json }}" > pr_review_timeline.json
+          printf '%s\n' "$TIMELINE_JSON" > pr_review_timeline.json
       - name: Upload Timeline Artifact
         uses: actions/upload-artifact@v4
         with:
