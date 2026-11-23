@@ -23,6 +23,8 @@ const (
 	DefragRetryPeriod time.Duration = 1 * time.Minute
 	// DefaultFreeSpaceThreshold is the minimum default free space above which schedule defragmentation is triggered.
 	DefaultFreeSpaceThreshold = 1 * 1024 * 1024 * 1024 // 1GB
+	// DefaultLeaderTransferTimeout is the timeout for a single etcd leader transfer operation.
+	DefaultLeaderTransferTimeout time.Duration = 30 * time.Second
 )
 
 // DefragConfig holds the configuration for etcd defragmentation.
@@ -33,6 +35,8 @@ type DefragConfig struct {
 	DefragTimeout wrappers.Duration `json:"defragTimeout,omitempty"`
 	// FreespaceThreshold is the minimum free space above which schedule defragmentation is triggered.
 	FreespaceThreshold int64 `json:"freespaceThreshold,omitempty"`
+	// MoveLeader controls whether etcd leadership is transferred away from the leader member before defragmenting it.
+	MoveLeader bool `json:"moveLeader,omitempty"`
 }
 
 // NewDefragConfig returns a DefragConfig with default values.
@@ -49,6 +53,7 @@ func (c *DefragConfig) AddFlags(fs *flag.FlagSet) {
 	fs.Int64Var(&c.FreespaceThreshold, "freespace-threshold", c.FreespaceThreshold, "minimum free-space in database only above which schedule defragmentation is triggered.")
 	fs.StringVar(&c.DefragmentationSchedule, "defragmentation-schedule", c.DefragmentationSchedule, "cron schedule to defragment etcd data directory")
 	fs.DurationVar(&c.DefragTimeout.Duration, "etcd-defrag-timeout", c.DefragTimeout.Duration, "timeout duration for etcd's api defrag call")
+	fs.BoolVar(&c.MoveLeader, "move-leader", c.MoveLeader, "transfer etcd leadership away from the leader before defragmenting it to avoid cluster-wide write stalls")
 }
 
 // Validate validates the DefragConfig fields.
