@@ -13,7 +13,7 @@ on:
 
 jobs:
   prepare:
-    uses: gardener/cc-utils/.github/workflows/prepare.yaml@bce63f62928717a11f610ec8022af9feb497d5df # v1
+    uses: gardener/cc-utils/.github/workflows/prepare.yaml@d478850afa1a7e0f9deb710e4d44eb0a2d8dce07 # 1.2881.0
     with:
       mode: ${{ inputs.mode }}
     permissions:
@@ -28,7 +28,7 @@ jobs:
       packages: write
       id-token: write
     secrets: inherit
-    uses: gardener/cc-utils/.github/workflows/oci-ocm.yaml@bce63f62928717a11f610ec8022af9feb497d5df # v1
+    uses: gardener/cc-utils/.github/workflows/oci-ocm.yaml@d478850afa1a7e0f9deb710e4d44eb0a2d8dce07 # 1.2881.0
     strategy:
       matrix:
         args:
@@ -61,7 +61,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: gardener/cc-utils/.github/actions/trusted-checkout@bce63f62928717a11f610ec8022af9feb497d5df # v1
+      - uses: gardener/cc-utils/.github/actions/trusted-checkout@d478850afa1a7e0f9deb710e4d44eb0a2d8dce07 # 1.2881.0
       - uses: actions/setup-go@v5
         with:
           go-version: "1.26"
@@ -73,7 +73,7 @@ jobs:
           .ci/unit_test |& tee /tmp/blobs.d/unit-test-log.txt
           tar czf /tmp/blobs.d/unit-test-log.tar.gz /tmp/blobs.d/unit-test-log.txt
       - name: add-test-results-to-component-descriptor
-        uses: gardener/cc-utils/.github/actions/export-ocm-fragments@bce63f62928717a11f610ec8022af9feb497d5df # v1
+        uses: gardener/cc-utils/.github/actions/export-ocm-fragments@d478850afa1a7e0f9deb710e4d44eb0a2d8dce07 # 1.2881.0
         with:
           blobs-directory: /tmp/blobs.d
           ocm-resources: |
@@ -92,7 +92,7 @@ jobs:
   #       custom setup, retrieving hyperscaler-secrets, which need to be migrated to OIDC-auth).
 
   sast-lint:
-    uses: gardener/cc-utils/.github/workflows/sastlint-ocm.yaml@bce63f62928717a11f610ec8022af9feb497d5df # v1
+    uses: gardener/cc-utils/.github/workflows/sastlint-ocm.yaml@d478850afa1a7e0f9deb710e4d44eb0a2d8dce07 # 1.2881.0
     permissions:
       contents: read
     with:
